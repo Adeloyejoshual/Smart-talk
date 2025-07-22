@@ -60,3 +60,19 @@ main {
 .form-box button:hover {
   background: #00c6ff;
 }
+footer {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 15px;
+  margin-top: 40px;
+  font-size: 14px;
+}
+
+footer a {
+  color: #fff;
+  text-decoration: none;
+  margin: 0 5px;
+}
+
+footer a:hover {
+  text-decoration: underline;
+}
