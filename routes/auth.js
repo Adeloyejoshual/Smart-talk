@@ -1,5 +1,7 @@
-{
+const user = {
   "username": "josh",
   "email": "josh@example.com",
-  "password": "123456"
-}
+  "password": "Smarttalk123"
+};
+
+console.log(user);
