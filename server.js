@@ -13,7 +13,10 @@ mongoose.connect(process.env.MONGO_URI)
   .then(() => {
     console.log('MongoDB Connected');
     app.listen(process.env.PORT || 5000, () =>
-      console.log(`Server running on port ${process.env.PORT}`)
+     app.get('/', (req, res) => {
+  res.send('SmartTalk API is live!');
+});
+    console.log(`Server running on port ${process.env.PORT}`)
     );
   })
   .catch(err => console.error(err));
