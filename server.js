@@ -1,22 +1,50 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
-const authRoutes = require('./routes/auth');
+const User = require('./models/User');
+const app = express();
 
 dotenv.config();
-const app = express();
+
+// Middlewares
 app.use(express.json());
 
-app.use('/api/auth', authRoutes);
-
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => {
-    console.log('MongoDB Connected');
-    app.listen(process.env.PORT || 5000, () =>
-     app.get('/', (req, res) => {
-  res.send('SmartTalk API is live!');
+// Root route
+app.get('/', (req, res) => {
+  res.send('SmartTalk API is live 🚀');
 });
-    console.log(`Server running on port ${process.env.PORT}`)
+
+// Register route
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { username, email, password } = req.body;
+    const user = new User({ username, email, password });
+    await user.save();
+    res.status(201).json({ message: 'User registered!' });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Login route (very basic, no hashing)
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    const user = await User.findOne({ email, password });
+    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+    res.status(200).json({ message: 'Login successful' });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// MongoDB Connection
+mongoose
+  .connect(process.env.MONGO_URI)
+  .then(() => {
+    console.log('MongoDB connected');
+    app.listen(process.env.PORT, () =>
+      console.log(`Server running on port ${process.env.PORT}`)
     );
   })
-  .catch(err => console.error(err));
+  .catch((err) => console.error('MongoDB connection failed:', err));
