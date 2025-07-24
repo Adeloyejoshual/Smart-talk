@@ -1,32 +1,33 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Smart Talk - Login</title>
+  <title>SmartTalk Login</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header>
-    <h1>Login to Smart Talk</h1>
-    <nav>
-      <a href="index.html">Home</a>
-      <a href="post.html">Post</a>
-      <a href="chat.html">Chat</a>
-      <a href="notifications.html">Notification</a>
-    </nav>
-  </header>
-  <main>
-    <form class="form-box" action="index.html" method="GET">
-      <label>Email:</label>
-      <input type="email" placeholder="Enter your email" required>
-      <label>Password:</label>
-      <input type="password" placeholder="Enter your password" required>
-      <button type="submit">Login</button>
-    </form>
-  </main>
-  <footer>
-    <p>&copy; 2025 Smart Talk. All rights reserved.</p>
-  </footer>
+  <h2>Login</h2>
+  <form id="loginForm">
+    <input type="email" id="email" placeholder="Email" required /><br />
+    <input type="password" id="password" placeholder="Password" required /><br />
+    <button type="submit">Login</button>
+  </form>
+  <p id="message"></p>
+  <script>
+    const form = document.getElementById('loginForm');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+
+      const data = await res.json();
+      document.getElementById('message').textContent = data.message || 'Login successful!';
+    });
+  </script>
 </body>
 </html>
