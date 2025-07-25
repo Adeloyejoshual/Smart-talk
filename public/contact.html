@@ -2,38 +2,57 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Contact - SmartTalk</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <header>
-    <h1>Contact SmartTalk</h1>
+    <h1>Contact Us</h1>
     <nav>
-      <a href="index.html">Home</a>
-      <a href="login.html">Login</a>
-      <a href="register.html">Register</a>
+      <a href="index.html">Home</a> |
+      <a href="login.html">Login</a> |
+      <a href="register.html">Register</a> |
       <a href="about.html">About</a>
     </nav>
   </header>
 
   <main>
-    <section>
-      <h2>Get in Touch</h2>
-      <p>If you have any questions, feel free to reach us at:</p>
-      <p><strong>Email:</strong> <a href="mailto:smarttalkgit@gmail.com">smarttalkgit@gmail.com</a></p>
+    <h2>We'd love to hear from you</h2>
 
-      <form action="#" method="post">
-        <input type="text" placeholder="Your Name" required><br>
-        <input type="email" placeholder="Your Email" required><br>
-        <textarea placeholder="Your Message" rows="5" required></textarea><br>
-        <button type="submit">Send Message</button>
-      </form>
-    </section>
+    <!-- ✅ Insert your form and script here -->
+    <form id="contactForm">
+      <input type="text" id="name" placeholder="Your Name" required><br>
+      <input type="email" id="email" placeholder="Your Email" required><br>
+      <textarea id="message" placeholder="Your Message" rows="5" required></textarea><br>
+      <button type="submit">Send Message</button>
+    </form>
+    <p id="status"></p>
+
+    <script>
+      const form = document.getElementById('contactForm');
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const name = document.getElementById('name').value;
+        const email = document.getElementById('email').value;
+        const message = document.getElementById('message').value;
+
+        const res = await fetch('/api/contact', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, email, message })
+        });
+
+        const data = await res.json();
+        document.getElementById('status').textContent = data.message || 'Sent!';
+        form.reset();
+      });
+    </script>
   </main>
 
   <footer>
-    <p>&copy; 2025 SmartTalk. All rights reserved.</p>
+    <p>&copy; 2025 SmartTalk — Contact us at <a href="mailto:smarttalkgit@gmail.com">smarttalkgit@gmail.com</a></p>
   </footer>
 </body>
 </html>
