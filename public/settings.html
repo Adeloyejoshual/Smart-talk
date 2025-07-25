@@ -1,25 +1,78 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Settings - SmartTalk</title>
-  <link rel="stylesheet" href="/style.css">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: #eef6fb;
+      color: #333;
+    }
+
+    header {
+      background-color: #007acc;
+      color: white;
+      padding: 20px;
+      text-align: center;
+    }
+
+    main {
+      max-width: 500px;
+      margin: 30px auto;
+      background: #fff;
+      padding: 30px 20px;
+      border-radius: 10px;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    }
+
+    h1, h2 {
+      margin-top: 0;
+      text-align: center;
+    }
+
+    ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    li {
+      margin: 20px 0;
+      text-align: center;
+    }
+
+    a {
+      display: inline-block;
+      padding: 12px 20px;
+      background-color: #007acc;
+      color: white;
+      border-radius: 5px;
+      text-decoration: none;
+      font-weight: bold;
+      transition: background-color 0.3s;
+    }
+
+    a:hover {
+      background-color: #005fa3;
+    }
+  </style>
 </head>
 <body>
   <header>
-    <h1>Settings</h1>
-    <nav>
-      <a href="/dashboard.html">Dashboard</a>
-      <a href="/profile.html">Profile</a>
-      <a href="/contact.html">Contact</a>
-    </nav>
+    <h1>SmartTalk Settings</h1>
   </header>
 
   <main>
-    <section>
-      <h2>General Settings</h2>
-      <p>Customize your SmartTalk experience.</p>
-    </section>
+    <h2>Settings Menu</h2>
+    <ul>
+      <li><a href="/notifications.html">🔔 Notifications</a></li>
+      <li><a href="/privacy.html">🔒 Privacy</a></li>
+      <li><a href="/account.html">⚙️ Account Preferences</a></li>
+    </ul>
   </main>
 </body>
 </html>
