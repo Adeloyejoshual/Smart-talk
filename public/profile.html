@@ -55,6 +55,10 @@
       color: white;
     }
 
+    .hidden {
+      display: none;
+    }
+
     p {
       font-size: 14px;
     }
@@ -66,10 +70,14 @@
 
   <div class="section">
     <h3>Edit Profile</h3>
-    <input type="text" id="newUsername" placeholder="New Username">
-    <input type="email" id="newEmail" placeholder="New Email">
-    <input type="password" id="newPassword" placeholder="New Password">
-    <button class="btn-blue" onclick="updateProfile()">Update Profile</button>
+    <button class="btn-blue" onclick="toggleEdit()">Edit Profile</button>
+
+    <div id="editForm" class="hidden">
+      <input type="text" id="newUsername" placeholder="New Username">
+      <input type="email" id="newEmail" placeholder="New Email">
+      <input type="password" id="newPassword" placeholder="New Password">
+      <button class="btn-blue" onclick="updateProfile()">Update Profile</button>
+    </div>
   </div>
 
   <div class="section">
@@ -97,6 +105,13 @@
 
     fetchProfile();
 
+    // Toggle Edit Profile form visibility
+    function toggleEdit() {
+      const form = document.getElementById('editForm');
+      form.classList.toggle('hidden');
+    }
+
+    // Update user profile
     async function updateProfile() {
       const username = document.getElementById('newUsername').value;
       const email = document.getElementById('newEmail').value;
