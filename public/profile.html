@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Your Profile - SmartTalk</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background-color: #f4f4f4;
+      color: #111;
+      transition: background-color 0.3s, color 0.3s;
+    }
+
+    .dark-mode {
+      background-color: #121212;
+      color: #f4f4f4;
+    }
+
+    .dark-mode h1, .dark-mode h2 {
+      color: #fff;
+    }
+
+    h1, h2 {
+      margin-top: 30px;
+    }
+
+    input, textarea {
+      padding: 10px;
+      margin-bottom: 10px;
+      width: 100%;
+      max-width: 400px;
+    }
+
+    button {
+      padding: 10px 20px;
+      margin-top: 10px;
+      background-color: #0057e7;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+
+    #toggleDark {
+      margin-bottom: 20px;
+    }
+
+    section {
+      margin-top: 30px;
+      border-top: 1px solid #ccc;
+      padding-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <button id="toggleDark">🌙 Toggle Dark Mode</button>
+
+  <h1>Welcome, <span id="topUsername">User</span>!</h1>
+
+  <p><strong>Username:</strong> <span id="username">Loading...</span></p>
+  <p><strong>Email:</strong> <span id="email">Loading...</span></p>
+
+  <section>
+    <h2>Edit Profile</h2>
+    <form id="updateForm">
+      <input type="text" id="newUsername" placeholder="New Username" required><br>
+      <input type="email" id="newEmail" placeholder="New Email" required><br>
+      <input type="password" id="newPassword" placeholder="New Password (optional)"><br>
+      <button type="submit">Update Profile</button>
+    </form>
+    <p id="status"></p>
+  </section>
+
+  <section>
+    <h2>Settings</h2>
+    <p>Settings options will be available soon.</p>
+  </section>
+
+  <section>
+    <h2>Customer Service</h2>
+    <p>Need help? Email us at <strong>smarttalkgit@gmail.com</strong></p>
+  </section>
+
+  <section>
+    <h2>Report Account</h2>
+    <button onclick="alert('Report submitted. We will review this account.')">Report This Account</button>
+  </section>
+
+  <section>
+    <h2>Delete Account</h2>
+    <button style="background-color: red;" onclick="alert('Your account will be reviewed for deletion.')">Delete My Account</button>
+  </section>
+
+  <script>
+    // Fetch profile
+    fetch('/api/profile')
+      .then(res => res.json())
+      .then(data => {
+        document.getElementById('username').textContent = data.username;
+        document.getElementById('email').textContent = data.email;
+        document.getElementById('topUsername').textContent = data.username;
+      });
+
+    // Update form
+    const form = document.getElementById('updateForm');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const newUsername = document.getElementById('newUsername').value;
+      const newEmail = document.getElementById('newEmail').value;
+      const newPassword = document.getElementById('newPassword').value;
+
+      const res = await fetch('/api/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: newUsername, email: newEmail, password: newPassword })
+      });
+
+      const result = await res.json();
+      document.getElementById('status').textContent = result.message || 'Updated!';
+      form.reset();
+    });
+
+    // Dark mode toggle
+    const toggleBtn = document.getElementById('toggleDark');
+    toggleBtn.addEventListener('click', () => {
+      document.body.classList.toggle('dark-mode');
+    });
+  </script>
+</body>
+</html>
