@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard | SmartTalk</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background-color: #f4f6f8;
+    }
+    header {
+      background-color: #4a90e2;
+      color: white;
+      padding: 1rem;
+      text-align: center;
+    }
+    .container {
+      display: flex;
+      min-height: 100vh;
+    }
+    nav {
+      width: 200px;
+      background-color: #2c3e50;
+      color: white;
+      padding: 1rem;
+    }
+    nav a {
+      display: block;
+      color: white;
+      text-decoration: none;
+      padding: 0.5rem 0;
+      margin-bottom: 5px;
+    }
+    nav a:hover {
+      background-color: #34495e;
+      padding-left: 5px;
+    }
+    main {
+      flex-grow: 1;
+      padding: 2rem;
+    }
+    .card {
+      background-color: white;
+      padding: 1.5rem;
+      border-radius: 8px;
+      box-shadow: 0 0 8px rgba(0,0,0,0.1);
+    }
+    .logout-btn {
+      display: inline-block;
+      margin-top: 20px;
+      padding: 8px 15px;
+      background-color: #e74c3c;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      text-decoration: none;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>SmartTalk Dashboard</h1>
+  </header>
+
+  <div class="container">
+    <nav>
+      <h3>Navigation</h3>
+      <a href="dashboard.html">Dashboard</a>
+      <a href="chat.html">Chat</a>
+      <a href="notification.html">Notifications</a>
+      <a href="profile.html">Profile</a>
+      <a href="index.html">Home</a>
+      <a href="login.html" class="logout-btn">Logout</a>
+    </nav>
+
+    <main>
+      <div class="card">
+        <h2>Welcome, User!</h2>
+        <p>You are now logged in to your dashboard. From here, you can navigate through different SmartTalk features.</p>
+      </div>
+    </main>
+  </div>
+
+</body>
+</html>
