@@ -4,11 +4,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SmartTalk Register</title>
-  <link rel="stylesheet" href="/style.css" />
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <div class="form-container">
-    <h2>Create an Account</h2>
+    <h2>Register</h2>
     <form id="registerForm">
       <input type="text" id="username" placeholder="Username" required /><br />
       <input type="email" id="email" placeholder="Email" required /><br />
@@ -16,7 +16,7 @@
       <button type="submit">Register</button>
     </form>
     <p id="message"></p>
-    <p>Already have an account? <a href="/login.html">Login here</a></p>
+    <p>Already have an account? <a href="login.html">Login here</a></p>
   </div>
 
   <script>
@@ -27,17 +27,18 @@
       const email = document.getElementById('email').value;
       const password = document.getElementById('password').value;
 
-      try {
-        const res = await fetch('/api/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, email, password })
-        });
+      const res = await fetch('/api/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, email, password })
+      });
 
-        const data = await res.json();
-        document.getElementById('message').textContent = data.message || 'Registration successful!';
-      } catch (err) {
-        document.getElementById('message').textContent = 'Error occurred during registration.';
+      const data = await res.json();
+
+      if (res.ok) {
+        window.location.href = '/login.html';
+      } else {
+        document.getElementById('message').textContent = data.message || 'Registration failed.';
       }
     });
   </script>
