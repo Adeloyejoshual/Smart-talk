@@ -1,36 +1,123 @@
-<!-- public/register.html -->
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Register - SmartTalk</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Register | SmartTalk</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      background-color: #f0f2f5;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+
+    .register-container {
+      background-color: #fff;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+      width: 300px;
+    }
+
+    h2 {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    input {
+      width: 100%;
+      padding: 10px;
+      margin: 10px 0;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+    }
+
+    button {
+      width: 100%;
+      padding: 10px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background-color: #0056b3;
+    }
+
+    .error {
+      color: red;
+      text-align: center;
+      font-size: 0.9em;
+    }
+
+    .link {
+      text-align: center;
+      margin-top: 10px;
+    }
+
+    .link a {
+      color: #333;
+      text-decoration: none;
+    }
+
+    .link a:hover {
+      text-decoration: underline;
+    }
+  </style>
 </head>
 <body>
-  <h2>Register</h2>
-
-  <form id="registerForm">
-    <input type="text" name="username" placeholder="Enter username" required /><br><br>
-    <button type="submit">Register</button>
-  </form>
-
-  <p>Already have an account? <a href="/login.html">Login here</a></p>
+  <div class="register-container">
+    <h2>Create Account</h2>
+    <form id="registerForm">
+      <input type="text" id="username" placeholder="Username" required />
+      <input type="password" id="password" placeholder="Password" required />
+      <button type="submit">Register</button>
+      <p class="error" id="errorMsg"></p>
+    </form>
+    <div class="link">
+      Already have an account? <a href="login.html">Login</a>
+    </div>
+  </div>
 
   <script>
-    document.getElementById('registerForm').addEventListener('submit', async (e) => {
+    const form = document.getElementById("registerForm");
+    const errorMsg = document.getElementById("errorMsg");
+
+    form.addEventListener("submit", async (e) => {
       e.preventDefault();
+      errorMsg.textContent = "";
 
-      const formData = new FormData(e.target);
-      const data = Object.fromEntries(formData.entries());
+      const username = document.getElementById("username").value.trim();
+      const password = document.getElementById("password").value;
 
-      const res = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-      });
+      try {
+        const res = await fetch("/api/register", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ username, password }),
+        });
 
-      const result = await res.json();
-      alert(result.message || 'Registration complete');
+        const data = await res.json();
 
-      if (res.ok) window.location.href = '/login.html';
+        if (!res.ok) {
+          errorMsg.textContent = data.error || "Registration failed";
+          return;
+        }
+
+        // Store token and redirect
+        localStorage.setItem("token", data.token);
+        window.location.href = "dashboard.html";
+      } catch (err) {
+        console.error(err);
+        errorMsg.textContent = "An error occurred. Try again.";
+      }
     });
   </script>
 </body>
