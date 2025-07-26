@@ -1,61 +1,50 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>SmartTalk Live Chat</title>
+  <title>SmartTalk Chat</title>
   <style>
-    body { font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; }
-    #chat { border: 1px solid #ccc; padding: 10px; height: 400px; overflow-y: scroll; margin-bottom: 10px; }
-    .msg { margin: 5px 0; }
-    .sender { font-weight: bold; }
+    body { font-family: Arial; padding: 20px; }
+    #messages { border: 1px solid #ccc; padding: 10px; height: 200px; overflow-y: scroll; }
+    input, button { margin-top: 10px; }
   </style>
 </head>
 <body>
   <h2>SmartTalk Live Chat</h2>
-  <div id="chat"></div>
-  <input id="sender" placeholder="Your name" style="width: 100%; margin-bottom: 10px;" />
-  <input id="message" placeholder="Type your message..." style="width: 80%;" />
+  <div id="messages"></div>
+  <input id="sender" placeholder="Your name" /><br>
+  <input id="message" placeholder="Type your message" />
   <button onclick="sendMessage()">Send</button>
 
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <script>
-    const socket = io('http://localhost:3000'); // Change this to your deployed URL later
-
-    const chat = document.getElementById('chat');
-    const senderInput = document.getElementById('sender');
-    const messageInput = document.getElementById('message');
-
-    // Receive messages
-    socket.on('receiveMessage', (data) => {
-      const msgDiv = document.createElement('div');
-      msgDiv.classList.add('msg');
-      msgDiv.innerHTML = `<span class="sender">${data.sender}:</span> ${data.content}`;
-      chat.appendChild(msgDiv);
-      chat.scrollTop = chat.scrollHeight;
-    });
+    const socket = io();
 
     function sendMessage() {
-      const sender = senderInput.value.trim();
-      const content = messageInput.value.trim();
-
-      if (!sender || !content) return alert("Please enter both sender and message.");
-
-      socket.emit('sendMessage', { sender, content });
-      messageInput.value = '';
+      const sender = document.getElementById('sender').value;
+      const content = document.getElementById('message').value;
+      if (sender && content) {
+        socket.emit('sendMessage', { sender, content });
+        document.getElementById('message').value = '';
+      }
     }
 
-    // Load previous messages
-    fetch('http://localhost:3000/messages')
+    socket.on('receiveMessage', (msg) => {
+      const messagesDiv = document.getElementById('messages');
+      const messageElement = document.createElement('div');
+      messageElement.innerText = `${msg.sender}: ${msg.content}`;
+      messagesDiv.appendChild(messageElement);
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    });
+
+    // Load chat history on page load
+    fetch('/messages')
       .then(res => res.json())
-      .then(messages => {
-        messages.forEach(data => {
-          const msgDiv = document.createElement('div');
-          msgDiv.classList.add('msg');
-          msgDiv.innerHTML = `<span class="sender">${data.sender}:</span> ${data.content}`;
-          chat.appendChild(msgDiv);
+      .then(data => {
+        data.forEach(msg => {
+          const div = document.createElement('div');
+          div.innerText = `${msg.sender}: ${msg.content}`;
+          document.getElementById('messages').appendChild(div);
         });
-        chat.scrollTop = chat.scrollHeight;
       });
   </script>
 </body>
