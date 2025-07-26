@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Admin Chat | SmartTalk</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #fdfdfd;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    #chat-box {
+      flex: 1;
+      padding: 10px;
+      overflow-y: auto;
+      background: #fff;
+      border-bottom: 1px solid #ccc;
+    }
+
+    .admin-message {
+      background-color: #d1c4e9;
+      margin-bottom: 10px;
+      padding: 8px;
+      border-radius: 6px;
+    }
+
+    #form {
+      display: flex;
+      padding: 10px;
+      background: #f5f5f5;
+    }
+
+    #input {
+      flex: 1;
+      padding: 10px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+    }
+
+    #sendBtn {
+      margin-left: 10px;
+      padding: 10px 20px;
+      background: #673ab7;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    #sendBtn:hover {
+      background: #512da8;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="chat-box"></div>
+
+  <form id="form">
+    <input id="input" autocomplete="off" placeholder="Type as Admin..." />
+    <button id="sendBtn">Send</button>
+  </form>
+
+  <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+  <script>
+    const token = localStorage.getItem('token');
+    if (!token) {
+      alert("Not authorized");
+      window.location.href = "/login.html";
+    }
+
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    const username = payload.username;
+    const isAdmin = payload.isAdmin || (username === "admin"); // Optional admin logic
+
+    if (!isAdmin) {
+      alert("Access denied. Admins only.");
+      window.location.href = "/dashboard.html";
+    }
+
+    const socket = io();
+    const form = document.getElementById('form');
+    const input = document.getElementById('input');
+    const chatBox = document.getElementById('chat-box');
+
+    socket.emit('joinAdmin', { username });
+
+    socket.on('adminMessage', ({ sender, text }) => {
+      const div = document.createElement('div');
+      div.className = 'admin-message';
+      div.innerText = `${sender}: ${text}`;
+      chatBox.appendChild(div);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    });
+
+    form.addEventListener('submit', e => {
+      e.preventDefault();
+      if (input.value.trim() === '') return;
+      socket.emit('sendAdminMessage', input.value.trim());
+      input.value = '';
+    });
+  </script>
+
+</body>
+</html>
