@@ -108,6 +108,26 @@
       socket.emit('sendMessage', input.value.trim());
       input.value = '';
     });
-  </script>
+  <script>
+  const messageInput = document.getElementById('messageInput');
+  const typingStatus = document.getElementById('typingStatus');
+  let typingTimeout;
+
+  messageInput.addEventListener('input', () => {
+    socket.emit('typing', username);
+    clearTimeout(typingTimeout);
+    typingTimeout = setTimeout(() => {
+      socket.emit('stopTyping', username);
+    }, 1000);
+  });
+
+  socket.on('displayTyping', (user) => {
+    typingStatus.innerText = `${user} is typing...`;
+  });
+
+  socket.on('removeTyping', () => {
+    typingStatus.innerText = '';
+  });
+</script>
 </body>
 </html>
