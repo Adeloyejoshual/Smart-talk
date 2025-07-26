@@ -1,39 +1,45 @@
+<!-- public/index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <title>SmartTalk Chat</title>
-  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <style>
-    body { font-family: sans-serif; padding: 20px; }
-    #messages { margin-top: 20px; }
-    .message { margin-bottom: 10px; }
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    #chat { border: 1px solid #ccc; padding: 10px; height: 300px; overflow-y: scroll; margin-bottom: 10px; }
+    #messageInput { width: 80%; }
   </style>
 </head>
 <body>
-  <h2>SmartTalk Chat</h2>
-  <input id="sender" placeholder="Your name" />
-  <input id="message" placeholder="Type a message" />
-  <button onclick="sendMessage()">Send</button>
+  <h2>💬 SmartTalk Real-Time Chat</h2>
+  <div id="chat"></div>
+  <input type="text" id="senderInput" placeholder="Your name" />
+  <input type="text" id="messageInput" placeholder="Type a message..." />
+  <button id="sendBtn">Send</button>
 
-  <div id="messages"></div>
-
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <script>
     const socket = io();
 
-    function sendMessage() {
-      const sender = document.getElementById('sender').value;
-      const content = document.getElementById('message').value;
-      if (!sender || !content) return alert('Fill all fields');
-      socket.emit('chatMessage', { sender, content });
-      document.getElementById('message').value = '';
-    }
+    const chat = document.getElementById('chat');
+    const senderInput = document.getElementById('senderInput');
+    const messageInput = document.getElementById('messageInput');
+    const sendBtn = document.getElementById('sendBtn');
 
-    socket.on('chatMessage', (data) => {
+    socket.on('chatMessage', (msg) => {
       const div = document.createElement('div');
-      div.className = 'message';
-      div.innerText = `${data.sender}: ${data.content} (${new Date(data.timestamp).toLocaleTimeString()})`;
-      document.getElementById('messages').appendChild(div);
+      div.textContent = `[${new Date(msg.timestamp).toLocaleTimeString()}] ${msg.sender}: ${msg.content}`;
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+    });
+
+    sendBtn.addEventListener('click', () => {
+      const sender = senderInput.value.trim();
+      const content = messageInput.value.trim();
+      if (sender && content) {
+        socket.emit('chatMessage', { sender, content });
+        messageInput.value = '';
+      }
     });
   </script>
 </body>
