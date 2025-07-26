@@ -4,48 +4,52 @@ const http = require('http');
 const mongoose = require('mongoose');
 const socketIo = require('socket.io');
 const cors = require('cors');
-const path = require('path'); // ✅ Add this line
-
-const authRoutes = require('./routes/auth');
+const Message = require('./models/Message');
 
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
     origin: '*',
-  }
+  },
 });
+
+// Connect to MongoDB
+mongoose.connect(process.env.MONGO_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+})
+.then(() => console.log('✅ Connected to MongoDB'))
+.catch((err) => console.error('❌ MongoDB connection error:', err));
 
 app.use(cors());
 app.use(express.json());
-app.use('/api/auth', authRoutes);
 
-// ✅ Serve static frontend from public directory
-app.use(express.static(path.join(__dirname, 'public')));
+// REST endpoint to fetch all messages
+app.get('/messages', async (req, res) => {
+  const messages = await Message.find().sort({ timestamp: 1 });
+  res.json(messages);
+});
 
-mongoose.connect(process.env.MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-}).then(() => console.log('✅ MongoDB Connected'))
-  .catch(err => console.error('❌ MongoDB Connection Error:', err));
-
-// ✅ Socket.io real-time messaging
+// Socket.io real-time logic
 io.on('connection', (socket) => {
-  console.log('🟢 User connected');
+  console.log('🔌 New client connected');
 
-  socket.on('chatMessage', (data) => {
-    const message = {
-      sender: data.sender,
-      content: data.content,
-      timestamp: new Date(),
-    };
-    io.emit('chatMessage', message); // broadcast to all
+  socket.on('sendMessage', async ({ sender, content }) => {
+    const message = new Message({ sender, content });
+    await message.save();
+
+    // Send message to all clients
+    io.emit('receiveMessage', message);
   });
 
   socket.on('disconnect', () => {
-    console.log('🔴 User disconnected');
+    console.log('❌ Client disconnected');
   });
 });
 
-const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+// Start server
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
+});
