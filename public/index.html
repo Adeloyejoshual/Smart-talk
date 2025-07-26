@@ -1,56 +1,59 @@
+<!-- public/index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>SmartTalk - Register</title>
-  <link rel="stylesheet" href="style.css" />
+  <meta charset="UTF-8">
+  <title>SmartTalk Chat</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    #chat { border: 1px solid #ccc; height: 300px; overflow-y: scroll; padding: 10px; margin-bottom: 10px; }
+    input[type="text"] { width: 80%; padding: 10px; }
+    button { padding: 10px; }
+    .message { margin-bottom: 5px; }
+    .username { font-weight: bold; }
+  </style>
 </head>
 <body>
-  <header>
-    <img src="logo.png" alt="SmartTalk Logo" style="max-height: 50px;">
-    <nav>
-      <a href="index.html">Home</a>
-      <a href="login.html">Login</a>
-      <a href="register.html">Register</a>
-      <a href="about.html">About</a>
-      <a href="contact.html">Contact</a>
-    </nav>
-  </header>
+  <h2>SmartTalk Chat</h2>
+  <div id="chat"></div>
+  <input type="text" id="username" placeholder="Enter your name" />
+  <input type="text" id="message" placeholder="Type a message..." />
+  <button onclick="sendMessage()">Send</button>
 
-  <main>
-    <h2>Register</h2>
-    <form id="registerForm">
-      <input type="text" id="username" placeholder="Username" required /><br />
-      <input type="email" id="email" placeholder="Email" required /><br />
-      <input type="password" id="password" placeholder="Password" required /><br />
-      <button type="submit">Register</button>
-    </form>
-    <p id="message"></p>
-    <p>Already have an account? <a href="login.html">Login</a></p>
-  </main>
-
+  <script src="/socket.io/socket.io.js"></script>
   <script>
-    const form = document.getElementById('registerForm');
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const username = document.getElementById('username').value;
-      const email = document.getElementById('email').value;
-      const password = document.getElementById('password').value;
+    const socket = io();
 
-      const res = await fetch('/api/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, email, password })
-      });
+    const chat = document.getElementById('chat');
+    const usernameInput = document.getElementById('username');
+    const messageInput = document.getElementById('message');
 
-      const data = await res.json();
-      if (res.ok) {
-        window.location.href = '/thankyou.html';
-      } else {
-        document.getElementById('message').textContent = data.message || 'Registration failed.';
-      }
+    // Receive old messages
+    socket.on('oldMessages', (messages) => {
+      messages.forEach(msg => addMessage(msg));
     });
+
+    // Receive new messages
+    socket.on('chatMessage', (msg) => {
+      addMessage(msg);
+    });
+
+    function sendMessage() {
+      const username = usernameInput.value.trim();
+      const message = messageInput.value.trim();
+      if (!username || !message) return;
+
+      socket.emit('chatMessage', { username, message });
+      messageInput.value = '';
+    }
+
+    function addMessage(msg) {
+      const div = document.createElement('div');
+      div.className = 'message';
+      div.innerHTML = `<span class="username">${msg.username}:</span> ${msg.message}`;
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+    }
   </script>
 </body>
 </html>
