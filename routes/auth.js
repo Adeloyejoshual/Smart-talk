@@ -1,17 +1,17 @@
 const express = require('express');
+const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const router = express.Router();
+const User = require('../models/User');
+require('dotenv').config();
 
-const User = require('../models/User'); // Make sure this model exists
-
-// Register a new user
+// Register Route
 router.post('/register', async (req, res) => {
-  const { username, email, password } = req.body;
+  const { username, password } = req.body;
 
   try {
-    // Check if user exists
-    const existingUser = await User.findOne({ email });
+    // Check if user already exists
+    const existingUser = await User.findOne({ username });
     if (existingUser) {
       return res.status(400).json({ message: 'User already exists' });
     }
@@ -20,48 +20,41 @@ router.post('/register', async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Save new user
-    const newUser = new User({
-      username,
-      email,
-      password: hashedPassword
-    });
-
-    await newUser.save();
+    const user = new User({ username, password: hashedPassword });
+    await user.save();
 
     res.status(201).json({ message: 'User registered successfully' });
-
-  } catch (error) {
+  } catch (err) {
+    console.error('Registration error:', err);
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Login a user
+// Login Route
 router.post('/login', async (req, res) => {
-  const { email, password } = req.body;
+  const { username, password } = req.body;
 
   try {
     // Find user
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ username });
     if (!user) {
-      return res.status(400).json({ message: 'Invalid credentials' });
+      return res.status(400).json({ message: 'Invalid username or password' });
     }
 
-    // Check password
+    // Compare passwords
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      return res.status(400).json({ message: 'Invalid credentials' });
+      return res.status(400).json({ message: 'Invalid username or password' });
     }
 
-    // Create JWT
-    const token = jwt.sign(
-      { userId: user._id, email: user.email },
-      process.env.JWT_SECRET,
-      { expiresIn: '1d' }
-    );
+    // Generate JWT
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+      expiresIn: '7d',
+    });
 
-    res.json({ token });
-
-  } catch (error) {
+    res.json({ token, message: 'Login successful' });
+  } catch (err) {
+    console.error('Login error:', err);
     res.status(500).json({ message: 'Server error' });
   }
 });
