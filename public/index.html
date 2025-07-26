@@ -1,59 +1,40 @@
-<!-- public/index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <title>SmartTalk Chat</title>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <style>
-    body { font-family: Arial, sans-serif; padding: 20px; }
-    #chat { border: 1px solid #ccc; height: 300px; overflow-y: scroll; padding: 10px; margin-bottom: 10px; }
-    input[type="text"] { width: 80%; padding: 10px; }
-    button { padding: 10px; }
-    .message { margin-bottom: 5px; }
-    .username { font-weight: bold; }
+    body { font-family: sans-serif; padding: 20px; }
+    #messages { margin-top: 20px; }
+    .message { margin-bottom: 10px; }
   </style>
 </head>
 <body>
   <h2>SmartTalk Chat</h2>
-  <div id="chat"></div>
-  <input type="text" id="username" placeholder="Enter your name" />
-  <input type="text" id="message" placeholder="Type a message..." />
+  <input id="sender" placeholder="Your name" />
+  <input id="message" placeholder="Type a message" />
   <button onclick="sendMessage()">Send</button>
 
-  <script src="/socket.io/socket.io.js"></script>
+  <div id="messages"></div>
+
   <script>
     const socket = io();
 
-    const chat = document.getElementById('chat');
-    const usernameInput = document.getElementById('username');
-    const messageInput = document.getElementById('message');
-
-    // Receive old messages
-    socket.on('oldMessages', (messages) => {
-      messages.forEach(msg => addMessage(msg));
-    });
-
-    // Receive new messages
-    socket.on('chatMessage', (msg) => {
-      addMessage(msg);
-    });
-
     function sendMessage() {
-      const username = usernameInput.value.trim();
-      const message = messageInput.value.trim();
-      if (!username || !message) return;
-
-      socket.emit('chatMessage', { username, message });
-      messageInput.value = '';
+      const sender = document.getElementById('sender').value;
+      const content = document.getElementById('message').value;
+      if (!sender || !content) return alert('Fill all fields');
+      socket.emit('chatMessage', { sender, content });
+      document.getElementById('message').value = '';
     }
 
-    function addMessage(msg) {
+    socket.on('chatMessage', (data) => {
       const div = document.createElement('div');
       div.className = 'message';
-      div.innerHTML = `<span class="username">${msg.username}:</span> ${msg.message}`;
-      chat.appendChild(div);
-      chat.scrollTop = chat.scrollHeight;
-    }
+      div.innerText = `${data.sender}: ${data.content} (${new Date(data.timestamp).toLocaleTimeString()})`;
+      document.getElementById('messages').appendChild(div);
+    });
   </script>
 </body>
 </html>
