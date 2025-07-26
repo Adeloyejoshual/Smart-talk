@@ -2,89 +2,91 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Dashboard | SmartTalk</title>
-  <link rel="stylesheet" href="style.css" />
   <style>
     body {
-      margin: 0;
-      font-family: Arial, sans-serif;
+      font-family: sans-serif;
       background-color: #f4f6f8;
-    }
-    header {
-      background-color: #4a90e2;
-      color: white;
-      padding: 1rem;
-      text-align: center;
-    }
-    .container {
       display: flex;
-      min-height: 100vh;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
     }
-    nav {
-      width: 200px;
-      background-color: #2c3e50;
-      color: white;
-      padding: 1rem;
+
+    .dashboard {
+      background: white;
+      padding: 40px;
+      border-radius: 16px;
+      box-shadow: 0 0 15px rgba(0, 0, 0, 0.15);
+      text-align: center;
+      width: 320px;
     }
-    nav a {
-      display: block;
-      color: white;
-      text-decoration: none;
-      padding: 0.5rem 0;
-      margin-bottom: 5px;
+
+    h2 {
+      margin-bottom: 20px;
     }
-    nav a:hover {
-      background-color: #34495e;
-      padding-left: 5px;
+
+    .username {
+      color: #007bff;
     }
-    main {
-      flex-grow: 1;
-      padding: 2rem;
-    }
-    .card {
-      background-color: white;
-      padding: 1.5rem;
-      border-radius: 8px;
-      box-shadow: 0 0 8px rgba(0,0,0,0.1);
-    }
-    .logout-btn {
-      display: inline-block;
-      margin-top: 20px;
-      padding: 8px 15px;
-      background-color: #e74c3c;
-      color: white;
+
+    button {
+      padding: 12px 24px;
+      font-size: 1rem;
+      background-color: #007bff;
       border: none;
-      border-radius: 4px;
-      text-decoration: none;
+      border-radius: 8px;
+      color: white;
       cursor: pointer;
+    }
+
+    button:hover {
+      background-color: #0056b3;
+    }
+
+    .logout {
+      margin-top: 20px;
+      color: red;
+      cursor: pointer;
+      font-size: 0.9em;
     }
   </style>
 </head>
 <body>
-
-  <header>
-    <h1>SmartTalk Dashboard</h1>
-  </header>
-
-  <div class="container">
-    <nav>
-      <h3>Navigation</h3>
-      <a href="dashboard.html">Dashboard</a>
-      <a href="chat.html">Chat</a>
-      <a href="notification.html">Notifications</a>
-      <a href="profile.html">Profile</a>
-      <a href="index.html">Home</a>
-      <a href="login.html" class="logout-btn">Logout</a>
-    </nav>
-
-    <main>
-      <div class="card">
-        <h2>Welcome, User!</h2>
-        <p>You are now logged in to your dashboard. From here, you can navigate through different SmartTalk features.</p>
-      </div>
-    </main>
+  <div class="dashboard">
+    <h2>Welcome, <span class="username" id="usernameDisplay">User</span> 👋</h2>
+    <button onclick="goToChat()">Go to Chat Room</button>
+    <div class="logout" onclick="logout()">Logout</div>
   </div>
 
+  <script>
+    // Decode token to get username
+    function getUsernameFromToken(token) {
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        return payload.username;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    const token = localStorage.getItem('token');
+    if (!token) {
+      window.location.href = "login.html";
+    } else {
+      const username = getUsernameFromToken(token);
+      document.getElementById("usernameDisplay").textContent = username || "User";
+    }
+
+    function goToChat() {
+      window.location.href = "chat.html";
+    }
+
+    function logout() {
+      localStorage.removeItem("token");
+      window.location.href = "login.html";
+    }
+  </script>
 </body>
 </html>
