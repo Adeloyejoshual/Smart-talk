@@ -1,63 +1,94 @@
-require("dotenv").config();
 const express = require("express");
+const mongoose = require("mongoose");
+const dotenv = require("dotenv");
+const cors = require("cors");
 const http = require("http");
 const { Server } = require("socket.io");
-const path = require("path");
-const jwt = require("jsonwebtoken");
+const authRoutes = require("./routes/auth");
+const messageRoutes = require("./routes/messages");
+const { verifyTokenSocket } = require("./middleware/auth");
+
+dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: "*" } });
 
-const authRoutes = require("./routes/auth");
-app.use("/api", authRoutes);
-app.use(express.static(path.join(__dirname, "public")));
+// Create Socket.IO instance
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"],
+  },
+});
 
-let onlineUsers = new Map();
+// Middlewares
+app.use(cors());
+app.use(express.json());
+app.use("/api/auth", authRoutes);     // Register/Login
+app.use("/api/messages", messageRoutes); // Messages API
 
-io.on("connection", socket => {
-  let currentUser = "";
+// MongoDB Connection
+mongoose
+  .connect(process.env.MONGO_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  })
+  .then(() => console.log("✅ MongoDB connected"))
+  .catch((err) => console.error("❌ MongoDB Error:", err));
 
-  socket.on("user-connected", username => {
-    currentUser = username;
-    onlineUsers.set(socket.id, username);
-    io.emit("online-users", onlineUsers.size);
+// Socket.IO events
+let onlineUsers = {};
+
+io.use(verifyTokenSocket); // Check JWT on socket connection
+
+io.on("connection", (socket) => {
+  const userId = socket.user.id;
+  onlineUsers[userId] = socket.id;
+
+  console.log(`✅ ${userId} connected`);
+
+  // Notify all clients about online users
+  io.emit("onlineUsers", Object.keys(onlineUsers));
+
+  // Handle chat message
+  socket.on("sendMessage", (msg) => {
+    io.emit("receiveMessage", {
+      user: socket.user.username,
+      message: msg,
+    });
   });
 
-  socket.on("message", data => {
-    io.emit("message", data);
+  // Typing indicator
+  socket.on("typing", () => {
+    socket.broadcast.emit("typing", socket.user.username);
   });
 
-  socket.on("typing", username => {
-    socket.broadcast.emit("show-typing", username);
+  // Private message
+  socket.on("privateMessage", ({ toUserId, message }) => {
+    const targetSocket = onlineUsers[toUserId];
+    if (targetSocket) {
+      io.to(targetSocket).emit("receivePrivateMessage", {
+        from: socket.user.id,
+        message,
+      });
+    }
   });
 
-  socket.on("stop-typing", () => {
-    socket.broadcast.emit("hide-typing");
-  });
-
-  socket.on("broadcast", msg => {
-    io.emit("broadcast", msg);
-  });
-
-  socket.on("kick", socketId => {
-    io.to(socketId).emit("kick", "You were kicked by admin");
-    io.sockets.sockets.get(socketId)?.disconnect(true);
-  });
-
-  socket.on("registerId", token => {
-    try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      onlineUsers.set(socket.id, decoded.username);
-    } catch (err) {}
-  });
-
+  // Disconnect
   socket.on("disconnect", () => {
-    onlineUsers.delete(socket.id);
-    io.emit("online-users", onlineUsers.size);
+    console.log(`❌ ${userId} disconnected`);
+    delete onlineUsers[userId];
+    io.emit("onlineUsers", Object.keys(onlineUsers));
   });
 });
 
-server.listen(3000, () => {
-  console.log("Server running on port 3000");
+// Serve static frontend files if needed
+app.get("/", (req, res) => {
+  res.send("✅ SmartTalk backend is running");
+});
+
+// Start server
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
 });
