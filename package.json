@@ -1,17 +1,25 @@
 {
   "name": "smart-talk",
   "version": "1.0.0",
+  "description": "A Node.js chat backend using Express, Socket.IO, and MongoDB",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
+  "keywords": [
+    "chat",
+    "express",
+    "socket.io",
+    "mongodb",
+    "nodejs"
+  ],
+  "author": "Adeloye Joshua",
+  "license": "MIT",
   "dependencies": {
-  "express": "^4.18.2",
-  "socket.io": "^4.7.2"
-  }
     "bcryptjs": "^2.4.3",
-    "dotenv": "^16.0.3",
     "express": "^4.18.2",
-    "mongoose": "^7.5.0"
+    "jsonwebtoken": "^9.0.0",
+    "mongoose": "^7.5.0",
+    "socket.io": "^4.7.2"
   }
 }
