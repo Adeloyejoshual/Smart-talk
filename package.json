@@ -1,7 +1,7 @@
 {
   "name": "smart-talk",
   "version": "1.0.0",
-  "description": "SmartTalk backend with real-time chat and authentication",
+  "description": "SmartTalk backend with real-time messaging and authentication",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -11,10 +11,11 @@
   "author": "Adeloye Joshua",
   "license": "MIT",
   "dependencies": {
+    "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
-    "dotenv": "^16.3.1",
+    "dotenv": "^16.4.5",
     "express": "^4.18.2",
-    "mongoose": "^7.5.0",
+    "mongoose": "^7.6.0",
     "socket.io": "^4.7.2"
   },
   "devDependencies": {
