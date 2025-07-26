@@ -2,41 +2,51 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SmartTalk Login</title>
-  <link rel="stylesheet" href="style.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Login | SmartTalk</title>
 </head>
 <body>
-  <div class="form-container">
-    <h2>Login</h2>
-    <form id="loginForm">
-      <input type="email" id="email" placeholder="Email" required /><br />
-      <input type="password" id="password" placeholder="Password" required /><br />
-      <button type="submit">Login</button>
-    </form>
-    <p id="message"></p>
-    <p>Don't have an account? <a href="register.html">Register here</a></p>
-  </div>
+  <h2>SmartTalk - Login</h2>
+
+  <form id="loginForm">
+    <input type="text" name="username" placeholder="Enter username" required /><br><br>
+    <input type="password" name="password" placeholder="Enter password" required /><br><br>
+    <button type="submit">Login</button>
+  </form>
+
+  <p>Don't have an account? <a href="/register.html">Register here</a></p>
 
   <script>
     const form = document.getElementById('loginForm');
+
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const email = document.getElementById('email').value;
-      const password = document.getElementById('password').value;
 
-      const res = await fetch('/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
-      });
+      const formData = new FormData(form);
+      const data = Object.fromEntries(formData.entries());
 
-      const data = await res.json();
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data),
+        });
 
-      if (res.ok) {
-        window.location.href = '/dashboard.html';
-      } else {
-        document.getElementById('message').textContent = data.message || 'Login failed.';
+        const result = await res.json();
+
+        if (res.ok) {
+          alert(result.message || 'Login successful');
+          localStorage.setItem('token', result.token);
+          localStorage.setItem('username', data.username);
+          window.location.href = '/chat.html';
+        } else {
+          alert(result.message || 'Login failed');
+        }
+      } catch (err) {
+        alert('An error occurred while logging in.');
+        console.error(err);
       }
     });
   </script>
