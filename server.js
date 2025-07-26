@@ -1,41 +1,63 @@
-
-const express = require('express');
-const http = require('http');
-const path = require('path');
-const mongoose = require('mongoose');
-const dotenv = require('dotenv');
-const socketIo = require('socket.io');
-const authRoutes = require('./routes/auth');
-const { verifyToken } = require('./middleware/auth');
-const handleChatSockets = require('./sockets/chat');
-
-dotenv.config();
+require("dotenv").config();
+const express = require("express");
+const http = require("http");
+const { Server } = require("socket.io");
+const path = require("path");
+const jwt = require("jsonwebtoken");
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server);
+const io = new Server(server, { cors: { origin: "*" } });
 
-mongoose.connect(process.env.MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-}).then(() => console.log("✅ MongoDB connected"))
-  .catch(err => console.error("❌ MongoDB connection error:", err));
+const authRoutes = require("./routes/auth");
+app.use("/api", authRoutes);
+app.use(express.static(path.join(__dirname, "public")));
 
-app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
-app.use('/api/auth', authRoutes);
+let onlineUsers = new Map();
 
-// Protected dashboard and chat pages
-app.get('/dashboard.html', verifyToken, (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
+io.on("connection", socket => {
+  let currentUser = "";
+
+  socket.on("user-connected", username => {
+    currentUser = username;
+    onlineUsers.set(socket.id, username);
+    io.emit("online-users", onlineUsers.size);
+  });
+
+  socket.on("message", data => {
+    io.emit("message", data);
+  });
+
+  socket.on("typing", username => {
+    socket.broadcast.emit("show-typing", username);
+  });
+
+  socket.on("stop-typing", () => {
+    socket.broadcast.emit("hide-typing");
+  });
+
+  socket.on("broadcast", msg => {
+    io.emit("broadcast", msg);
+  });
+
+  socket.on("kick", socketId => {
+    io.to(socketId).emit("kick", "You were kicked by admin");
+    io.sockets.sockets.get(socketId)?.disconnect(true);
+  });
+
+  socket.on("registerId", token => {
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      onlineUsers.set(socket.id, decoded.username);
+    } catch (err) {}
+  });
+
+  socket.on("disconnect", () => {
+    onlineUsers.delete(socket.id);
+    io.emit("online-users", onlineUsers.size);
+  });
 });
 
-app.get('/chat.html', verifyToken, (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'chat.html'));
+server.listen(3000, () => {
+  console.log("Server running on port 3000");
 });
-
-// Socket.IO handler
-handleChatSockets(io);
-
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));
