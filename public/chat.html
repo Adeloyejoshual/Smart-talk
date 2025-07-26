@@ -133,6 +133,19 @@
   socket.on('removeTyping', () => {
     typingStatus.innerText = '';
   });
-</script>
+<// Send username when connecting
+const username = localStorage.getItem('username'); // or however you're storing it
+socket.emit('userOnline', username);
+
+// Update online user list
+socket.on('updateOnlineUsers', (users) => {
+    const userList = document.getElementById('online-users');
+    userList.innerHTML = '';
+    users.forEach(user => {
+        const li = document.createElement('li');
+        li.textContent = user;
+        userList.appendChild(li);
+    });
+});>
 </body>
 </html>
