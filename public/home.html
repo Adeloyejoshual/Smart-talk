@@ -1,0 +1,86 @@
+<!-- public/home.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>SmartTalk Home</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', sans-serif;
+      background: #f4f4f4;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+
+    .dashboard {
+      background: white;
+      padding: 40px;
+      border-radius: 15px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+      text-align: center;
+      max-width: 400px;
+      width: 90%;
+    }
+
+    h1 {
+      margin-bottom: 20px;
+      font-size: 24px;
+    }
+
+    button {
+      margin-top: 15px;
+      padding: 12px 20px;
+      font-size: 16px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      width: 100%;
+    }
+
+    #joinChatBtn {
+      background-color: #4CAF50;
+      color: white;
+    }
+
+    #logoutBtn {
+      background-color: #f44336;
+      color: white;
+    }
+
+    button:hover {
+      opacity: 0.9;
+    }
+  </style>
+</head>
+<body>
+  <div class="dashboard">
+    <h1>Welcome, <span id="usernameDisplay">User</span> 👋</h1>
+    <button id="joinChatBtn">Join Chat</button>
+    <button id="logoutBtn">Logout</button>
+  </div>
+
+  <script>
+    const username = localStorage.getItem("username");
+    const usernameDisplay = document.getElementById("usernameDisplay");
+
+    if (!username) {
+      window.location.href = "/login.html";
+    } else {
+      usernameDisplay.textContent = username;
+    }
+
+    document.getElementById("joinChatBtn").addEventListener("click", () => {
+      window.location.href = "/chat.html";
+    });
+
+    document.getElementById("logoutBtn").addEventListener("click", () => {
+      localStorage.removeItem("username");
+      window.location.href = "/login.html";
+    });
+  </script>
+</body>
+</html>
