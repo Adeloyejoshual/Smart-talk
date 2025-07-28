@@ -5,7 +5,7 @@ const socketIO = require('socket.io');
 const mongoose = require('mongoose');
 const path = require('path');
 const Message = require('./models/Message');
-const messageRoutes = require('./routes/messages');
+// const messageRoutes = require('./routes/messages'); // Removed
 require('dotenv').config();
 
 const app = express();
@@ -25,7 +25,7 @@ mongoose.connect(process.env.MONGO_URI, {
 .catch(err => console.error('❌ MongoDB connection error:', err));
 
 // Routes
-app.use('/messages', messageRoutes);
+// app.use('/messages', messageRoutes); // Removed
 
 // Serve default index page
 app.get('/', (req, res) => {
