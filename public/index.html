@@ -6,29 +6,136 @@
   <title>SmartTalk - Welcome</title>
   <link rel="stylesheet" href="styles/home.css" />
   <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: linear-gradient(to bottom right, #007BFF, #3399FF); /* Blue gradient */
+      color: #ffffff;
+      transition: background-color 0.3s, color 0.3s;
+    }
+
     body.dark-mode {
-      background-color: #121212;
+      background: linear-gradient(to bottom right, #0d1117, #1c1f26); /* Dark mode background */
       color: #ffffff;
     }
-    header.dark-mode,
-    footer.dark-mode {
-      background-color: #1e1e1e;
-      color: #ffffff;
+
+    header, footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1rem 2rem;
+      background-color: rgba(0, 0, 0, 0.2);
+      color: white;
     }
-    button#darkToggle {
-      font-size: 1.2rem;
-      background: none;
+
+    header.dark-mode, footer.dark-mode {
+      background-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .logo img {
+      height: 40px;
+      vertical-align: middle;
+    }
+
+    .logo span {
+      font-size: 1.5rem;
+      font-weight: bold;
+      margin-left: 0.5rem;
+    }
+
+    nav button {
+      margin-left: 1rem;
+      padding: 8px 16px;
+      font-size: 1rem;
       border: none;
+      border-radius: 5px;
       cursor: pointer;
+      background-color: white;
+      color: #007BFF;
+      font-weight: bold;
+    }
+
+    body.dark-mode nav button {
+      background-color: #1e1e1e;
+      color: #66b0ff;
+    }
+
+    button#darkToggle {
+      background: none;
+      font-size: 1.2rem;
       color: inherit;
+    }
+
+    .hero {
+      text-align: center;
+      padding: 5rem 2rem;
+      position: relative;
+    }
+
+    .hero h1 {
+      font-size: 4rem;
+      margin-bottom: 1rem;
+      font-weight: bold;
+      text-shadow: 2px 2px 6px rgba(0, 0, 0, 0.3);
+    }
+
+    .hero p {
+      font-size: 1.25rem;
+      color: #e0e0e0;
+    }
+
+    body.dark-mode .hero p {
+      color: #cccccc;
+    }
+
+    .hero-img {
+      max-width: 100%;
+      margin-top: 2rem;
+    }
+
+    footer {
+      flex-wrap: wrap;
+      justify-content: center;
+      text-align: center;
+    }
+
+    .footer-links {
+      margin-top: 0.5rem;
+    }
+
+    .footer-links a {
+      color: white;
+      margin: 0 10px;
+      text-decoration: none;
+      font-weight: bold;
+    }
+
+    .footer-links a:hover {
+      text-decoration: underline;
+    }
+
+    /* Large SmartTalk Background Label */
+    .background-label {
+      position: absolute;
+      top: 30%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 8vw;
+      font-weight: 900;
+      color: rgba(255, 255, 255, 0.1);
+      pointer-events: none;
+      user-select: none;
+      z-index: 0;
+      white-space: nowrap;
     }
   </style>
 </head>
 <body>
   <header>
     <div class="logo">
-      <img src="images/logo.png" alt="SmartTalk Logo" style="height: 40px; vertical-align: middle;">
-      <span style="font-size: 1.5rem; font-weight: bold;">SmartTalk</span>
+      <img src="images/logo.png" alt="SmartTalk Logo">
+      <span>SmartTalk</span>
     </div>
     <nav>
       <button onclick="location.href='login.html'">Login</button>
@@ -38,6 +145,7 @@
   </header>
 
   <section class="hero">
+    <div class="background-label">SmartTalk</div>
     <h1>Welcome to SmartTalk</h1>
     <p>Real-time chat. Anywhere. Anytime.</p>
     <img src="images/chat-illustration.png" alt="Chat Illustration" class="hero-img"/>
