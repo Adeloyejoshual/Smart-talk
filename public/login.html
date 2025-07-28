@@ -3,117 +3,43 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Login | SmartTalk</title>
-  <style>
-    body {
-      margin: 0;
-      font-family: Arial, sans-serif;
-      background: #eef2f7;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-    }
-
-    .login-container {
-      background: white;
-      padding: 40px;
-      border-radius: 16px;
-      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
-      width: 320px;
-      text-align: center;
-    }
-
-    h2 {
-      margin-bottom: 20px;
-      color: #333;
-    }
-
-    input {
-      width: 100%;
-      padding: 12px;
-      margin: 8px 0;
-      border: 1px solid #ccc;
-      border-radius: 8px;
-      font-size: 1rem;
-    }
-
-    button {
-      width: 100%;
-      padding: 12px;
-      margin-top: 10px;
-      background-color: #007bff;
-      color: white;
-      border: none;
-      border-radius: 8px;
-      font-size: 1rem;
-      cursor: pointer;
-    }
-
-    button:hover {
-      background-color: #0056b3;
-    }
-
-    .link {
-      margin-top: 10px;
-      display: block;
-      font-size: 0.9em;
-      color: #007bff;
-      text-decoration: none;
-    }
-
-    .link:hover {
-      text-decoration: underline;
-    }
-
-    .error {
-      color: red;
-      font-size: 0.85em;
-      margin-top: 5px;
-    }
-  </style>
+  <title>Login - SmartTalk</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="login-container">
-    <h2>Login</h2>
-    <input type="text" id="username" placeholder="Username" required />
+  <form id="loginForm">
+    <h2>Login to SmartTalk</h2>
+    <input type="email" id="email" placeholder="Email" required />
     <input type="password" id="password" placeholder="Password" required />
-    <div class="error" id="errorMessage"></div>
-    <button onclick="login()">Login</button>
-    <a href="register.html" class="link">Don't have an account? Register</a>
-  </div>
+    <button type="submit">Login</button>
+    <div id="message"></div>
+    <p>Don't have an account? <a href="register.html">Register</a></p>
+  </form>
 
   <script>
-    async function login() {
-      const username = document.getElementById("username").value.trim();
-      const password = document.getElementById("password").value;
-      const errorBox = document.getElementById("errorMessage");
-      errorBox.textContent = "";
+    document.getElementById("loginForm").addEventListener("submit", async function (e) {
+      e.preventDefault();
 
-      if (!username || !password) {
-        errorBox.textContent = "Please fill all fields.";
-        return;
-      }
+      const email = document.getElementById("email").value;
+      const password = document.getElementById("password").value;
 
       try {
-        const res = await fetch("/api/auth/login", {
+        const res = await fetch("https://smart-talk-ko5m.onrender.com/auth/login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username, password }),
+          body: JSON.stringify({ email, password }),
         });
 
-        if (!res.ok) {
-          const text = await res.text();
-          throw new Error(text || "Login failed.");
-        }
-
         const data = await res.json();
+
+        if (!res.ok) throw new Error(data.msg || "Login failed");
+
         localStorage.setItem("token", data.token);
-        window.location.href = "dashboard.html";
+        window.location.href = "chat.html";
       } catch (err) {
-        errorBox.textContent = err.message;
+        document.getElementById("message").innerText = err.message;
       }
-    }
+    });
   </script>
 </body>
 </html>
