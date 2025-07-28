@@ -1,115 +1,140 @@
+<!-- public/chat.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Login | SmartTalk</title>
+  <title>SmartTalk Chat</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
     body {
       margin: 0;
       font-family: Arial, sans-serif;
-      background: #eef2f7;
+      background: #f4f4f4;
+    }
+
+    .chat-container {
       display: flex;
-      justify-content: center;
-      align-items: center;
       height: 100vh;
     }
-    .login-container {
-      background: white;
-      padding: 40px;
-      border-radius: 16px;
-      box-shadow: 0 8px 20px rgba(0,0,0,0.1);
-      width: 320px;
-      text-align: center;
-    }
-    h2 {
-      margin-bottom: 20px;
-      color: #333;
-    }
-    input {
-      width: 100%;
-      padding: 12px;
-      margin: 8px 0;
-      border: 1px solid #ccc;
-      border-radius: 8px;
-      font-size: 1rem;
-    }
-    button {
-      width: 100%;
-      padding: 12px;
-      margin-top: 10px;
-      background-color: #007bff;
+
+    .users-list {
+      width: 25%;
+      background: #333;
       color: white;
+      padding: 20px;
+      overflow-y: auto;
+    }
+
+    .chat-box {
+      width: 75%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .messages {
+      flex: 1;
+      padding: 20px;
+      overflow-y: auto;
+      background: #fff;
+    }
+
+    .message {
+      margin-bottom: 10px;
+    }
+
+    .message span {
+      font-weight: bold;
+    }
+
+    form {
+      display: flex;
+      padding: 10px;
+      background: #eee;
+    }
+
+    input {
+      flex: 1;
+      padding: 10px;
       border: none;
-      border-radius: 8px;
-      font-size: 1rem;
+      outline: none;
+    }
+
+    button {
+      padding: 10px 20px;
+      border: none;
+      background: #333;
+      color: white;
       cursor: pointer;
     }
+
     button:hover {
-      background-color: #0056b3;
-    }
-    .link {
-      margin-top: 10px;
-      display: block;
-      font-size: 0.9em;
-      color: #007bff;
-      text-decoration: none;
-    }
-    .link:hover {
-      text-decoration: underline;
-    }
-    .error {
-      color: red;
-      font-size: 0.85em;
-      margin-top: 5px;
+      background: #555;
     }
   </style>
 </head>
 <body>
-  <div class="login-container">
-    <h2>Login</h2>
-    <input type="text" id="username" placeholder="Username" required />
-    <input type="password" id="password" placeholder="Password" required />
-    <div class="error" id="errorMessage"></div>
-    <button id="loginBtn">Login</button>
-    <a href="register.html" class="link">Don't have an account? Register</a>
+
+<div class="chat-container">
+  <div class="users-list">
+    <h3>Online Users</h3>
+    <ul id="onlineUsers"></ul>
   </div>
 
-  <script>
-    // Change this to your backend URL (use full URL if frontend/backend on different domains)
-    const BACKEND_URL = ""; // Example: "https://your-backend-url.onrender.com"
+  <div class="chat-box">
+    <div class="messages" id="messages"></div>
+    <form id="chatForm">
+      <input type="text" id="messageInput" placeholder="Type a message..." autocomplete="off" required />
+      <button type="submit">Send</button>
+    </form>
+  </div>
+</div>
 
-    document.getElementById('loginBtn').addEventListener('click', async () => {
-      const username = document.getElementById('username').value.trim();
-      const password = document.getElementById('password').value;
-      const errorBox = document.getElementById('errorMessage');
-      errorBox.textContent = '';
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  const socket = io();
 
-      if (!username || !password) {
-        errorBox.textContent = 'Please fill all fields.';
-        return;
-      }
+  const messagesDiv = document.getElementById("messages");
+  const onlineUsersList = document.getElementById("onlineUsers");
+  const messageInput = document.getElementById("messageInput");
+  const chatForm = document.getElementById("chatForm");
 
-      try {
-        const res = await fetch(`${BACKEND_URL}/api/auth/login`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, password }),
-        });
+  const username = prompt("Enter your username:");
+  socket.emit("userOnline", username);
 
-        if (!res.ok) {
-          // Try to get text response for errors
-          const text = await res.text();
-          throw new Error(text || 'Login failed.');
-        }
+  // Display new messages
+  socket.on("chatMessage", ({ sender, content, timestamp }) => {
+    const msgEl = document.createElement("div");
+    msgEl.classList.add("message");
+    msgEl.innerHTML = `<span>${sender}</span>: ${content}`;
+    messagesDiv.appendChild(msgEl);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+  });
 
-        const data = await res.json();
-        localStorage.setItem('token', data.token);
-        window.location.href = 'dashboard.html';
-      } catch (err) {
-        errorBox.textContent = err.message;
-      }
+  // Update online users
+  socket.on("updateOnlineUsers", (users) => {
+    onlineUsersList.innerHTML = "";
+    users.forEach(user => {
+      const li = document.createElement("li");
+      li.textContent = user;
+      onlineUsersList.appendChild(li);
     });
-  </script>
+  });
+
+  // Send new message
+  chatForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const content = messageInput.value.trim();
+    if (content === "") return;
+
+    const msg = {
+      sender: username,
+      content,
+    };
+
+    socket.emit("chatMessage", msg);
+    messageInput.value = "";
+  });
+</script>
+
 </body>
 </html>
