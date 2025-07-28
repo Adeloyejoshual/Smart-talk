@@ -1,38 +1,41 @@
+// routes/profile.js
+
 const express = require('express');
-const router = express.Router();
+const authMiddleware = require('../middleware/auth');
 const User = require('../models/User');
 
-// Temporary user ID for testing
-const tempUserId = 'PUT_YOUR_USER_ID_HERE';
+const router = express.Router();
 
-// GET profile
-router.get('/profile', async (req, res) => {
+// GET: Public user profile by user ID
+router.get('/:id', async (req, res) => {
   try {
-    const user = await User.findById(tempUserId);
-    if (!user) return res.status(404).json({ message: 'User not found' });
-
-    res.json({ username: user.username, email: user.email });
+    const user = await User.findById(req.params.id).select('-password');
+    if (!user) return res.status(404).json({ msg: 'User not found' });
+    res.json(user);
   } catch (err) {
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ msg: 'Server error' });
   }
 });
 
-// PUT update profile
-router.put('/profile', async (req, res) => {
+// PUT: Update current user's profile
+router.put('/update', authMiddleware, async (req, res) => {
   try {
-    const { username, email, password } = req.body;
+    const { username, bio, avatar } = req.body;
 
-    const user = await User.findById(tempUserId);
-    if (!user) return res.status(404).json({ message: 'User not found' });
+    const updateFields = {};
+    if (username) updateFields.username = username;
+    if (bio) updateFields.bio = bio;
+    if (avatar) updateFields.avatar = avatar;
 
-    if (username) user.username = username;
-    if (email) user.email = email;
-    if (password) user.password = password; // Password hashing will happen automatically if you set up pre-save hooks
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      { $set: updateFields },
+      { new: true }
+    ).select('-password');
 
-    await user.save();
-    res.json({ message: 'Profile updated successfully!' });
+    res.json(user);
   } catch (err) {
-    res.status(500).json({ message: 'Update failed' });
+    res.status(500).json({ msg: 'Failed to update profile' });
   }
 });
 
