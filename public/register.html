@@ -9,45 +9,76 @@
     body {
       background: linear-gradient(to right, #0066cc, #3399ff);
       display: flex;
-      flex-direction: column;
       align-items: center;
       justify-content: center;
       height: 100vh;
       margin: 0;
       font-family: 'Segoe UI', sans-serif;
-      color: white;
     }
+
     .register-box {
-      background: rgba(255,255,255,0.1);
-      padding: 30px;
-      border-radius: 15px;
-      box-shadow: 0 0 15px rgba(0,0,0,0.3);
+      background: rgba(255, 255, 255, 0.1);
+      padding: 25px 30px;
+      border-radius: 14px;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
       width: 90%;
-      max-width: 400px;
-    }
-    .register-box h2 {
+      max-width: 320px;
       text-align: center;
+    }
+
+    .register-box img {
+      width: 80px;
+      margin-bottom: 15px;
+    }
+
+    .register-box h2 {
+      font-size: 20px;
+      color: #fff;
       margin-bottom: 20px;
     }
+
     .register-box input {
       width: 100%;
-      padding: 12px;
-      margin: 10px 0;
+      padding: 10px;
+      margin: 8px 0;
       border: none;
-      border-radius: 8px;
-      background: white;
+      border-radius: 6px;
+      background: #fff;
       color: #333;
+      font-size: 14px;
     }
+
+    .password-wrapper {
+      position: relative;
+    }
+
+    .password-wrapper input[type="password"],
+    .password-wrapper input[type="text"] {
+      padding-right: 40px;
+    }
+
+    .toggle-password {
+      position: absolute;
+      top: 50%;
+      right: 10px;
+      transform: translateY(-50%);
+      cursor: pointer;
+      font-size: 14px;
+      color: #0077ff;
+    }
+
     .register-box button {
       width: 100%;
-      padding: 12px;
+      padding: 10px;
       background: #003366;
-      color: white;
+      color: #fff;
       border: none;
-      border-radius: 8px;
-      font-size: 16px;
+      border-radius: 6px;
+      font-size: 15px;
+      margin-top: 10px;
       cursor: pointer;
     }
+
     .register-box button:hover {
       background: #0055aa;
     }
@@ -55,13 +86,37 @@
 </head>
 <body>
   <div class="register-box">
-    <h2>Create a SmartTalk Account</h2>
+    <img src="/images/logo.png" alt="SmartTalk Logo" />
+    <h2>Create Your SmartTalk Account</h2>
     <form action="/register" method="POST">
       <input type="text" name="username" placeholder="Username" required />
       <input type="email" name="email" placeholder="Email" required />
-      <input type="password" name="password" placeholder="Password" required />
+
+      <div class="password-wrapper">
+        <input type="password" name="password" id="password" placeholder="Password" required />
+        <span class="toggle-password" onclick="togglePassword('password', this)">Show</span>
+      </div>
+
+      <div class="password-wrapper">
+        <input type="password" name="confirmPassword" id="confirmPassword" placeholder="Confirm Password" required />
+        <span class="toggle-password" onclick="togglePassword('confirmPassword', this)">Show</span>
+      </div>
+
       <button type="submit">Register</button>
     </form>
   </div>
+
+  <script>
+    function togglePassword(id, el) {
+      const input = document.getElementById(id);
+      if (input.type === "password") {
+        input.type = "text";
+        el.textContent = "Hide";
+      } else {
+        input.type = "password";
+        el.textContent = "Show";
+      }
+    }
+  </script>
 </body>
 </html>
