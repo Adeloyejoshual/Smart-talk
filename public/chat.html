@@ -1,106 +1,75 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>SmartTalk Chat</title>
+  <meta charset="UTF-8">
+  <title>SmartTalk Live Chat</title>
   <style>
-    body { font-family: Arial; padding: 20px; display: flex; gap: 20px; }
-    #chat-area { flex: 3; }
-    #messages { border: 1px solid #ccc; padding: 10px; height: 300px; overflow-y: scroll; }
-    #online-users { border: 1px solid #ccc; padding: 10px; height: 300px; overflow-y: scroll; flex: 1; }
-    .private { color: green; font-style: italic; }
+    body { font-family: Arial; padding: 20px; background: #f4f4f4; }
+    #messages { border: 1px solid #ccc; padding: 10px; height: 300px; overflow-y: scroll; background: white; }
+    input, button { margin-top: 10px; padding: 10px; width: 100%; box-sizing: border-box; }
   </style>
 </head>
 <body>
-  <div id="chat-area">
-    <h2>SmartTalk Live Chat</h2>
-    <div id="messages"></div>
-    <input id="message" placeholder="Type your message" />
-    <select id="recipient">
-      <option value="">Public</option>
-    </select>
-    <button onclick="sendMessage()">Send</button>
-  </div>
-
-  <div id="online-users">
-    <h3>Online Users</h3>
-    <ul id="users-list"></ul>
-  </div>
+  <h2>SmartTalk Live Chat</h2>
+  <div id="messages"></div>
+  <input id="sender" placeholder="Your name" />
+  <input id="message" placeholder="Type your message" />
+  <button onclick="sendMessage()">Send</button>
 
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <script>
-    const socket = io();
-    const username = sessionStorage.getItem('username');
-
-    if (!username) {
+    // Step 1: Require login
+    const token = localStorage.getItem('token');
+    if (!token) {
       alert('You must log in first.');
       window.location.href = '/login.html';
     }
 
-    socket.emit('userOnline', username);
+    // Step 2: Connect to socket.io
+    const socket = io({ auth: { token } });
 
+    // Step 3: Send message
     function sendMessage() {
+      const sender = document.getElementById('sender').value;
       const content = document.getElementById('message').value;
-      const recipient = document.getElementById('recipient').value;
-
-      if (content) {
-        if (recipient === '') {
-          socket.emit('sendMessage', { sender: username, content });
-        } else {
-          socket.emit('sendPrivateMessage', {
-            from: username,
-            to: recipient,
-            content
-          });
-          // Show sent private message in your UI
-          addMessage(`To ${recipient} (private): ${content}`, true);
-        }
+      if (sender && content) {
+        socket.emit('sendMessage', { sender, content });
         document.getElementById('message').value = '';
       }
     }
 
-    function addMessage(text, isPrivate = false) {
-      const div = document.createElement('div');
-      div.innerText = text;
-      if (isPrivate) div.classList.add('private');
-      document.getElementById('messages').appendChild(div);
-      document.getElementById('messages').scrollTop = messages.scrollHeight;
-    }
-
+    // Step 4: Receive messages
     socket.on('receiveMessage', (msg) => {
-      addMessage(`${msg.sender}: ${msg.content}`);
+      const messagesDiv = document.getElementById('messages');
+      const messageElement = document.createElement('div');
+      messageElement.innerText = `${msg.sender}: ${msg.content}`;
+      messagesDiv.appendChild(messageElement);
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
     });
 
-    socket.on('receivePrivateMessage', ({ from, content }) => {
-      addMessage(`From ${from} (private): ${content}`, true);
-    });
-
-    socket.on('onlineUsers', (users) => {
-      const list = document.getElementById('users-list');
-      const select = document.getElementById('recipient');
-      list.innerHTML = '';
-      select.innerHTML = '<option value="">Public</option>';
-      users.forEach(user => {
-        if (user !== username) {
-          const li = document.createElement('li');
-          li.textContent = user;
-          list.appendChild(li);
-
-          const option = document.createElement('option');
-          option.value = user;
-          option.textContent = user;
-          select.appendChild(option);
+    // Step 5: Load chat history
+    fetch('/messages', {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    })
+      .then(res => {
+        if (res.status === 401) {
+          throw new Error('Unauthorized');
         }
-      });
-    });
-
-    // Load public chat history
-    fetch('/messages')
-      .then(res => res.json())
+        return res.json();
+      })
       .then(data => {
         data.forEach(msg => {
-          addMessage(`${msg.sender}: ${msg.content}`);
+          const div = document.createElement('div');
+          div.innerText = `${msg.sender}: ${msg.content}`;
+          document.getElementById('messages').appendChild(div);
         });
+      })
+      .catch(err => {
+        alert('Unauthorized. Redirecting to login...');
+        localStorage.removeItem('token');
+        window.location.href = '/login.html';
       });
   </script>
 </body>
