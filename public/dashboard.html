@@ -12,6 +12,7 @@
       justify-content: center;
       align-items: center;
       height: 100vh;
+      margin: 0;
     }
 
     .dashboard {
@@ -39,6 +40,7 @@
       border-radius: 8px;
       color: white;
       cursor: pointer;
+      margin-top: 20px;
     }
 
     button:hover {
@@ -51,6 +53,24 @@
       cursor: pointer;
       font-size: 0.9em;
     }
+
+    nav {
+      margin-top: 30px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    nav a {
+      text-decoration: none;
+      color: #333;
+      font-size: 0.95em;
+    }
+
+    nav a:hover {
+      text-decoration: underline;
+      color: #007bff;
+    }
   </style>
 </head>
 <body>
@@ -58,15 +78,20 @@
     <h2>Welcome, <span class="username" id="usernameDisplay">User</span> 👋</h2>
     <button onclick="goToChat()">Go to Chat Room</button>
     <div class="logout" onclick="logout()">Logout</div>
+
+    <nav>
+      <a href="profile.html">Profile</a>
+      <a href="notification.html">Notifications</a>
+      <a href="about.html">About</a>
+    </nav>
   </div>
 
   <script>
-    // Decode token to get username
     function getUsernameFromToken(token) {
       try {
-        const payload = JSON.parse(atob(token.split('.')[1]));
+        const payload = JSON.parse(atob(token?.split('.')[1] || ''));
         return payload.username;
-      } catch (e) {
+      } catch {
         return null;
       }
     }
@@ -75,8 +100,14 @@
     if (!token) {
       window.location.href = "login.html";
     } else {
-      const username = getUsernameFromToken(token);
-      document.getElementById("usernameDisplay").textContent = username || "User";
+      try {
+        const username = getUsernameFromToken(token);
+        if (!username) throw new Error("Invalid token");
+        document.getElementById("usernameDisplay").textContent = username;
+      } catch {
+        localStorage.removeItem("token");
+        window.location.href = "login.html";
+      }
     }
 
     function goToChat() {
