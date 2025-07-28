@@ -5,7 +5,24 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>SmartTalk - Welcome</title>
   <link rel="stylesheet" href="styles/home.css" />
-  <script defer src="scripts/home.js"></script>
+  <style>
+    body.dark-mode {
+      background-color: #121212;
+      color: #ffffff;
+    }
+    header.dark-mode,
+    footer.dark-mode {
+      background-color: #1e1e1e;
+      color: #ffffff;
+    }
+    button#darkToggle {
+      font-size: 1.2rem;
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: inherit;
+    }
+  </style>
 </head>
 <body>
   <header>
@@ -16,7 +33,7 @@
     <nav>
       <button onclick="location.href='login.html'">Login</button>
       <button onclick="location.href='register.html'">Register</button>
-      <button id="darkToggle">🌙</button>
+      <button id="darkToggle" title="Toggle Dark Mode">🌙</button>
     </nav>
   </header>
 
@@ -35,5 +52,15 @@
       <a href="#">Terms of Use</a>
     </div>
   </footer>
+
+  <script>
+    const toggleBtn = document.getElementById('darkToggle');
+    toggleBtn.addEventListener('click', () => {
+      document.body.classList.toggle('dark-mode');
+      document.querySelector('header').classList.toggle('dark-mode');
+      document.querySelector('footer').classList.toggle('dark-mode');
+      toggleBtn.textContent = document.body.classList.contains('dark-mode') ? '☀️' : '🌙';
+    });
+  </script>
 </body>
 </html>
