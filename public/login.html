@@ -2,112 +2,112 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>SmartTalk - Login</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Login | SmartTalk</title>
   <style>
     body {
+      margin: 0;
       font-family: Arial, sans-serif;
-      background: #f7f9fc;
+      background: #eef2f7;
       display: flex;
       justify-content: center;
       align-items: center;
       height: 100vh;
     }
-
     .login-container {
-      background: #ffffff;
-      padding: 30px;
-      border-radius: 12px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-      width: 350px;
-    }
-
-    h2 {
+      background: white;
+      padding: 40px;
+      border-radius: 16px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+      width: 320px;
       text-align: center;
+    }
+    h2 {
       margin-bottom: 20px;
       color: #333;
     }
-
-    input[type="email"],
-    input[type="password"] {
+    input {
       width: 100%;
       padding: 12px;
-      margin: 10px 0;
+      margin: 8px 0;
       border: 1px solid #ccc;
       border-radius: 8px;
-      box-sizing: border-box;
+      font-size: 1rem;
     }
-
     button {
       width: 100%;
       padding: 12px;
+      margin-top: 10px;
       background-color: #007bff;
       color: white;
       border: none;
       border-radius: 8px;
+      font-size: 1rem;
       cursor: pointer;
-      font-size: 16px;
     }
-
     button:hover {
       background-color: #0056b3;
     }
-
     .link {
-      margin-top: 15px;
-      text-align: center;
-      font-size: 14px;
-    }
-
-    .link a {
+      margin-top: 10px;
+      display: block;
+      font-size: 0.9em;
       color: #007bff;
       text-decoration: none;
     }
-
-    .link a:hover {
+    .link:hover {
       text-decoration: underline;
+    }
+    .error {
+      color: red;
+      font-size: 0.85em;
+      margin-top: 5px;
     }
   </style>
 </head>
 <body>
   <div class="login-container">
-    <h2>SmartTalk Login</h2>
-    <form id="login-form">
-      <input type="email" id="email" placeholder="Email" required />
-      <input type="password" id="password" placeholder="Password" required />
-      <button type="submit">Login</button>
-    </form>
-    <div class="link">
-      Don't have an account? <a href="/register.html">Register</a>
-    </div>
+    <h2>Login</h2>
+    <input type="text" id="username" placeholder="Username" required />
+    <input type="password" id="password" placeholder="Password" required />
+    <div class="error" id="errorMessage"></div>
+    <button id="loginBtn">Login</button>
+    <a href="register.html" class="link">Don't have an account? Register</a>
   </div>
 
   <script>
-    const form = document.getElementById('login-form');
+    // Change this to your backend URL (use full URL if frontend/backend on different domains)
+    const BACKEND_URL = ""; // Example: "https://your-backend-url.onrender.com"
 
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-
-      const email = document.getElementById('email').value;
+    document.getElementById('loginBtn').addEventListener('click', async () => {
+      const username = document.getElementById('username').value.trim();
       const password = document.getElementById('password').value;
+      const errorBox = document.getElementById('errorMessage');
+      errorBox.textContent = '';
+
+      if (!username || !password) {
+        errorBox.textContent = 'Please fill all fields.';
+        return;
+      }
 
       try {
-        const res = await fetch('/auth/login', {
+        const res = await fetch(`${BACKEND_URL}/api/auth/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password })
+          body: JSON.stringify({ username, password }),
         });
 
-        const data = await res.json();
-
-        if (res.ok) {
-          localStorage.setItem('token', data.token);
-          window.location.href = '/chat.html';
-        } else {
-          alert(data.msg || 'Login failed');
+        if (!res.ok) {
+          // Try to get text response for errors
+          const text = await res.text();
+          throw new Error(text || 'Login failed.');
         }
+
+        const data = await res.json();
+        localStorage.setItem('token', data.token);
+        window.location.href = 'dashboard.html';
       } catch (err) {
-        alert('Network error. Please try again.');
+        errorBox.textContent = err.message;
       }
     });
   </script>
