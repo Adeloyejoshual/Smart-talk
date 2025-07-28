@@ -5,35 +5,53 @@ const socketIO = require('socket.io');
 const mongoose = require('mongoose');
 const path = require('path');
 const cors = require('cors');
-require('dotenv').config();
-
-// Models
+const dotenv = require('dotenv');
+const authRoutes = require('./routes/auth');
 const Message = require('./models/Message');
 
-// Routes
-const authRoutes = require('./routes/auth'); // 🔥 Must exist
+dotenv.config();
 
-// App setup
 const app = express();
 const server = http.createServer(app);
-const io = socketIO(server);
+const io = socketIO(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// API Routes
-app.use('/api/auth', authRoutes); // ✅ Login/Register working now
+// MongoDB connection
+mongoose.connect(process.env.MONGO_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+})
+.then(() => console.log('✅ Connected to MongoDB'))
+.catch(err => console.error('❌ MongoDB connection error:', err));
 
-// Serve static HTML
+// Routes
+app.use('/api/auth', authRoutes);
+
+// Serve home page
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
-// Socket.IO
+// Socket.IO setup
+const onlineUsers = new Set();
+
 io.on('connection', (socket) => {
-  console.log('🔌 New client connected');
+  console.log('🟢 New user connected');
+
+  socket.on('userOnline', (username) => {
+    socket.username = username;
+    onlineUsers.add(username);
+    io.emit('updateOnlineUsers', Array.from(onlineUsers));
+  });
 
   socket.on('chatMessage', async ({ sender, content }) => {
     const newMessage = new Message({ sender, content });
@@ -42,12 +60,16 @@ io.on('connection', (socket) => {
     io.emit('chatMessage', {
       sender,
       content,
-      timestamp: newMessage.timestamp,
+      timestamp: newMessage.timestamp
     });
   });
 
   socket.on('disconnect', () => {
-    console.log('❌ Client disconnected');
+    console.log('🔴 User disconnected');
+    if (socket.username) {
+      onlineUsers.delete(socket.username);
+      io.emit('updateOnlineUsers', Array.from(onlineUsers));
+    }
   });
 });
 
