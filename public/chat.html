@@ -146,6 +146,20 @@
       localStorage.removeItem('username');
       window.location.href = "login.html";
     }
+<script>
+  const username = localStorage.getItem('username');
+  if (!username) {
+    // Redirect back to login if no username
+    window.location.href = '/login.html';
+  } else {
+    document.getElementById('usernameDisplay').textContent = username;
+  }
+
+  const socket = io();
+
+  // Send username to server
+  socket.emit('join', username);
+
   </script>
 </body>
 </html>
