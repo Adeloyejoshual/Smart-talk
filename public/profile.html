@@ -1,152 +1,106 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>SmartTalk - Profile</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Profile | SmartTalk</title>
   <style>
     body {
-      background-color: #121212;
-      color: #e0e0e0;
-      font-family: Arial, sans-serif;
+      font-family: sans-serif;
+      background-color: #eef2f5;
       display: flex;
-      flex-direction: column;
+      justify-content: center;
       align-items: center;
-      padding: 30px;
+      height: 100vh;
     }
 
-    h2, h3 {
-      margin-bottom: 10px;
+    .profile {
+      background: white;
+      padding: 40px;
+      border-radius: 16px;
+      box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
       text-align: center;
+      width: 350px;
     }
 
-    .section {
-      background-color: #1e1e1e;
-      padding: 20px;
-      margin: 15px;
-      border-radius: 10px;
-      width: 90%;
-      max-width: 400px;
-      box-shadow: 0 0 10px rgba(0,0,0,0.5);
+    h2 {
+      margin-bottom: 16px;
     }
 
-    input {
-      width: 100%;
-      padding: 10px;
-      margin: 8px 0;
-      border: none;
-      border-radius: 5px;
+    .info {
+      margin: 10px 0;
+      font-size: 1rem;
+    }
+
+    .username {
+      color: #007bff;
+      font-weight: bold;
+    }
+
+    .email {
+      color: #333;
     }
 
     button {
-      padding: 10px 20px;
-      border: none;
-      border-radius: 5px;
-      margin: 10px 5px;
-      cursor: pointer;
-    }
-
-    .btn-blue {
+      margin-top: 20px;
+      padding: 12px 24px;
       background-color: #007bff;
       color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 1rem;
     }
 
-    .btn-red {
-      background-color: #dc3545;
-      color: white;
+    button:hover {
+      background-color: #0056b3;
     }
 
-    .hidden {
-      display: none;
-    }
-
-    p {
-      font-size: 14px;
+    .logout {
+      margin-top: 16px;
+      color: red;
+      font-size: 0.9em;
+      cursor: pointer;
     }
   </style>
 </head>
 <body>
-
-  <h2 id="usernameDisplay">Username: Loading...</h2>
-
-  <div class="section">
-    <h3>Edit Profile</h3>
-    <button class="btn-blue" onclick="toggleEdit()">Edit Profile</button>
-
-    <div id="editForm" class="hidden">
-      <input type="text" id="newUsername" placeholder="New Username">
-      <input type="email" id="newEmail" placeholder="New Email">
-      <input type="password" id="newPassword" placeholder="New Password">
-      <button class="btn-blue" onclick="updateProfile()">Update Profile</button>
-    </div>
-  </div>
-
-  <div class="section">
-    <h3>Settings</h3>
-    <p>Settings options will be available soon.</p>
-  <div class="section">
-  <h3>Settings</h3>
-  <ul>
-    <li><a href="/settings.html" style="color: #4da6ff;">Open Full Settings</a></li>
-    <li><a href="/notifications.html" style="color: #4da6ff;">Notifications</a></li>
-    <li><a href="/privacy.html" style="color: #4da6ff;">Privacy</a></li>
-    <li><a href="/account.html" style="color: #4da6ff;">Account Preferences</a></li>
-  </ul>
-  </div>
-
-  <div class="section">
-    <h3>Customer Service</h3>
-    <p>Need help? Email us at <strong>smarttalkgit@gmail.com</strong></p>
-  </div>
-
-  <div class="section" style="text-align: center;">
-    <button class="btn-blue" onclick="reportAccount()">Report This Account</button>
-    <button class="btn-red" onclick="deleteAccount()">Delete My Account</button>
+  <div class="profile">
+    <h2>Your Profile</h2>
+    <div class="info">Username: <span class="username" id="username">User</span></div>
+    <div class="info">Email: <span class="email" id="email">user@example.com</span></div>
+    <button onclick="goToDashboard()">Back to Dashboard</button>
+    <div class="logout" onclick="logout()">Logout</div>
   </div>
 
   <script>
-    // Fetch and display user profile
-    async function fetchProfile() {
-      const res = await fetch('/api/profile');
-      const data = await res.json();
-      document.getElementById('usernameDisplay').innerText = "Username: " + (data.username || 'N/A');
-    }
-
-    fetchProfile();
-
-    // Toggle Edit Profile form visibility
-    function toggleEdit() {
-      const form = document.getElementById('editForm');
-      form.classList.toggle('hidden');
-    }
-
-    // Update user profile
-    async function updateProfile() {
-      const username = document.getElementById('newUsername').value;
-      const email = document.getElementById('newEmail').value;
-      const password = document.getElementById('newPassword').value;
-
-      const res = await fetch('/api/profile', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, email, password })
-      });
-
-      const data = await res.json();
-      alert(data.message || 'Profile updated!');
-      fetchProfile();
-    }
-
-    function reportAccount() {
-      alert("Your report has been submitted. We'll review it shortly.");
-    }
-
-    function deleteAccount() {
-      const confirmed = confirm("Are you sure you want to delete your account?");
-      if (confirmed) {
-        alert("Account deletion request submitted.");
+    function getPayloadFromToken(token) {
+      try {
+        return JSON.parse(atob(token.split('.')[1]));
+      } catch (e) {
+        return null;
       }
     }
-  </script>
 
+    const token = localStorage.getItem("token");
+    if (!token) {
+      window.location.href = "login.html";
+    } else {
+      const payload = getPayloadFromToken(token);
+      if (payload) {
+        document.getElementById("username").textContent = payload.username || "User";
+        document.getElementById("email").textContent = payload.email || "user@example.com";
+      }
+    }
+
+    function goToDashboard() {
+      window.location.href = "dashboard.html";
+    }
+
+    function logout() {
+      localStorage.removeItem("token");
+      window.location.href = "login.html";
+    }
+  </script>
 </body>
 </html>
