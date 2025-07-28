@@ -1,165 +1,162 @@
+<!-- public/chat.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>SmartTalk | Chat</title>
-  <script src="/socket.io/socket.io.js"></script>
+  <title>SmartTalk Chat</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
     body {
-      font-family: sans-serif;
-      background: #f4f6f8;
       margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f4f4f4;
     }
 
     .chat-container {
-      display: none; /* hidden until login is verified */
-      max-width: 700px;
-      margin: 40px auto;
-      background: white;
-      border-radius: 12px;
-      box-shadow: 0 0 20px rgba(0,0,0,0.1);
-      overflow: hidden;
+      display: flex;
+      height: 100vh;
     }
 
-    .header {
-      background: #007bff;
+    .users-list {
+      width: 25%;
+      background: #333;
       color: white;
-      padding: 16px;
+      padding: 20px;
+      overflow-y: auto;
+    }
+
+    .chat-box {
+      width: 75%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .top-bar {
+      background: #eee;
+      padding: 10px;
       display: flex;
       justify-content: space-between;
       align-items: center;
     }
 
-    .header span {
+    .messages {
+      flex: 1;
+      padding: 20px;
+      overflow-y: auto;
+      background: #fff;
+    }
+
+    .message {
+      margin-bottom: 10px;
+    }
+
+    .message span {
       font-weight: bold;
     }
 
-    .logout-btn {
-      background: transparent;
-      border: 1px solid white;
-      padding: 6px 12px;
-      color: white;
-      cursor: pointer;
-      border-radius: 5px;
-    }
-
-    .online-users {
-      background: #f1f1f1;
-      padding: 10px;
-      font-size: 0.9em;
-      color: #333;
-    }
-
-    .chat-box {
-      padding: 20px;
-      height: 400px;
-      overflow-y: auto;
-      border-top: 1px solid #ccc;
-      border-bottom: 1px solid #ccc;
-    }
-
-    .input-area {
+    form {
       display: flex;
       padding: 10px;
+      background: #eee;
     }
 
-    .input-area input {
+    input {
       flex: 1;
       padding: 10px;
-      font-size: 1em;
-      border: 1px solid #ccc;
-      border-radius: 6px;
+      border: none;
+      outline: none;
     }
 
-    .input-area button {
-      margin-left: 10px;
-      padding: 10px 16px;
-      font-size: 1em;
-      background: #007bff;
-      color: white;
+    button {
+      padding: 10px 20px;
       border: none;
-      border-radius: 6px;
+      background: #333;
+      color: white;
       cursor: pointer;
+    }
+
+    button:hover {
+      background: #555;
     }
   </style>
 </head>
 <body>
 
-  <div class="chat-container" id="chatContainer">
-    <div class="header">
-      <span>Welcome, <span id="usernameDisplay">User</span></span>
-      <button class="logout-btn" onclick="logout()">Logout</button>
-    </div>
-
-    <div class="online-users" id="onlineUsers">Online Users: Loading...</div>
-
-    <div class="chat-box" id="chatBox"></div>
-
-    <div class="input-area">
-      <input type="text" id="messageInput" placeholder="Type your message..." />
-      <button onclick="sendMessage()">Send</button>
-    </div>
+<div class="chat-container">
+  <div class="users-list">
+    <h3>Online Users</h3>
+    <ul id="onlineUsers"></ul>
   </div>
 
-  <script>
-    const token = localStorage.getItem('token');
-    const username = localStorage.getItem('username');
+  <div class="chat-box">
+    <div class="top-bar">
+      <span>Welcome, <strong id="usernameDisplay"></strong></span>
+      <button onclick="logout()">Logout</button>
+    </div>
 
-    if (!token || !username) {
-      window.location.href = "login.html";
-    } else {
-      document.getElementById('chatContainer').style.display = 'block';
-      document.getElementById('usernameDisplay').textContent = username;
+    <div class="messages" id="messages"></div>
 
-      const socket = io();
+    <form id="chatForm">
+      <input type="text" id="messageInput" placeholder="Type a message..." autocomplete="off" required />
+      <button type="submit">Send</button>
+    </form>
+  </div>
+</div>
 
-      socket.emit('userOnline', username);
-
-      const chatBox = document.getElementById('chatBox');
-      const onlineUsersDiv = document.getElementById('onlineUsers');
-
-      socket.on('receiveMessage', (msg) => {
-        const div = document.createElement('div');
-        div.textContent = `${msg.sender}: ${msg.content}`;
-        chatBox.appendChild(div);
-        chatBox.scrollTop = chatBox.scrollHeight;
-      });
-
-      socket.on('updateOnlineUsers', (users) => {
-        onlineUsersDiv.textContent = `Online Users: ${users.join(', ')}`;
-      });
-
-      function sendMessage() {
-        const input = document.getElementById('messageInput');
-        const content = input.value.trim();
-        if (!content) return;
-        socket.emit('sendMessage', { sender: username, content });
-        input.value = '';
-      }
-
-      window.sendMessage = sendMessage;
-    }
-
-    function logout() {
-      localStorage.removeItem('token');
-      localStorage.removeItem('username');
-      window.location.href = "login.html";
-    }
+<script src="/socket.io/socket.io.js"></script>
 <script>
-  const username = localStorage.getItem('username');
+  const username = localStorage.getItem("username");
   if (!username) {
-    // Redirect back to login if no username
-    window.location.href = '/login.html';
+    window.location.href = "/login.html";
   } else {
-    document.getElementById('usernameDisplay').textContent = username;
+    document.getElementById("usernameDisplay").textContent = username;
   }
 
   const socket = io();
+  const messagesDiv = document.getElementById("messages");
+  const onlineUsersList = document.getElementById("onlineUsers");
+  const messageInput = document.getElementById("messageInput");
+  const chatForm = document.getElementById("chatForm");
 
-  // Send username to server
-  socket.emit('join', username);
+  // Notify server that user joined
+  socket.emit("userOnline", username);
 
-  </script>
+  // Display new message
+  socket.on("chatMessage", ({ sender, content, timestamp }) => {
+    const msgEl = document.createElement("div");
+    msgEl.classList.add("message");
+    msgEl.innerHTML = `<span>${sender}</span>: ${content}`;
+    messagesDiv.appendChild(msgEl);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+  });
+
+  // Update list of online users
+  socket.on("updateOnlineUsers", (users) => {
+    onlineUsersList.innerHTML = "";
+    users.forEach(user => {
+      const li = document.createElement("li");
+      li.textContent = user;
+      onlineUsersList.appendChild(li);
+    });
+  });
+
+  // Handle message form
+  chatForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const content = messageInput.value.trim();
+    if (content === "") return;
+
+    const msg = { sender: username, content };
+    socket.emit("chatMessage", msg);
+    messageInput.value = "";
+  });
+
+  // Logout function
+  function logout() {
+    localStorage.removeItem("username");
+    window.location.href = "/login.html";
+  }
+</script>
+
 </body>
 </html>
