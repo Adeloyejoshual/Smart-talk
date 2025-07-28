@@ -87,9 +87,11 @@
     async function login() {
       const username = document.getElementById("username").value.trim();
       const password = document.getElementById("password").value;
+      const errorBox = document.getElementById("errorMessage");
+      errorBox.textContent = "";
 
       if (!username || !password) {
-        document.getElementById("errorMessage").textContent = "Please fill all fields.";
+        errorBox.textContent = "Please fill all fields.";
         return;
       }
 
@@ -100,16 +102,16 @@
           body: JSON.stringify({ username, password }),
         });
 
-        const data = await res.json();
-
         if (!res.ok) {
-          throw new Error(data.message || "Login failed");
+          const text = await res.text();
+          throw new Error(text || "Login failed.");
         }
 
+        const data = await res.json();
         localStorage.setItem("token", data.token);
         window.location.href = "dashboard.html";
       } catch (err) {
-        document.getElementById("errorMessage").textContent = err.message;
+        errorBox.textContent = err.message;
       }
     }
   </script>
