@@ -1,49 +1,92 @@
-const express = require("express");
+// routes/auth.js
+
+const express = require('express');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const User = require('../models/User');
+const authMiddleware = require('../middleware/auth');
+
 const router = express.Router();
-const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
-const User = require("../models/User");
-const authenticate = require("../middleware/auth");
 
-router.post("/register", async (req, res) => {
+// Register
+router.post('/register', async (req, res) => {
   try {
-    const { username, password } = req.body;
+    const { username, email, password } = req.body;
 
-    const existingUser = await User.findOne({ username });
-    if (existingUser) return res.status(400).json({ message: "Username already taken" });
+    // Validate input
+    if (!username || !email || !password) {
+      return res.status(400).json({ msg: 'Please enter all fields' });
+    }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    // Check existing user
+    const existingUser = await User.findOne({ email });
+    if (existingUser) return res.status(400).json({ msg: 'User already exists' });
 
-    const user = new User({ username, password: hashedPassword });
+    // Hash password
+    const salt = await bcrypt.genSalt(10);
+    const hash = await bcrypt.hash(password, salt);
+
+    const user = new User({ username, email, password: hash });
     await user.save();
 
-    res.status(201).json({ message: "User registered successfully" });
+    // Create token
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+
+    res.json({
+      token,
+      user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+      },
+    });
   } catch (err) {
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ msg: 'Server error' });
   }
 });
 
-router.post("/login", async (req, res) => {
+// Login
+router.post('/login', async (req, res) => {
   try {
-    const { username, password } = req.body;
+    const { email, password } = req.body;
 
-    const user = await User.findOne({ username });
-    if (!user) return res.status(400).json({ message: "Invalid credentials" });
+    // Validate input
+    if (!email || !password) {
+      return res.status(400).json({ msg: 'Please enter all fields' });
+    }
 
+    // Find user
+    const user = await User.findOne({ email });
+    if (!user) return res.status(400).json({ msg: 'User does not exist' });
+
+    // Compare password
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(400).json({ message: "Invalid credentials" });
+    if (!isMatch) return res.status(400).json({ msg: 'Invalid credentials' });
 
-    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: "1h" });
+    // Create token
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
-    res.json({ token, username: user.username });
+    res.json({
+      token,
+      user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+      },
+    });
   } catch (err) {
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ msg: 'Server error' });
   }
 });
 
-// Example protected route
-router.get("/profile", authenticate, async (req, res) => {
-  res.json({ message: "Welcome to your profile", userId: req.userId });
+// Protected route - get user info
+router.get('/me', authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('-password');
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ msg: 'Server error' });
+  }
 });
 
 module.exports = router;
