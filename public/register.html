@@ -3,53 +3,65 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Register - SmartTalk</title>
-  <link rel="stylesheet" href="style.css" />
+  <title>Register – SmartTalk</title>
+  <link rel="stylesheet" href="styles/home.css" />
+  <style>
+    body {
+      background: linear-gradient(to right, #0066cc, #3399ff);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+      font-family: 'Segoe UI', sans-serif;
+      color: white;
+    }
+    .register-box {
+      background: rgba(255,255,255,0.1);
+      padding: 30px;
+      border-radius: 15px;
+      box-shadow: 0 0 15px rgba(0,0,0,0.3);
+      width: 90%;
+      max-width: 400px;
+    }
+    .register-box h2 {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .register-box input {
+      width: 100%;
+      padding: 12px;
+      margin: 10px 0;
+      border: none;
+      border-radius: 8px;
+      background: white;
+      color: #333;
+    }
+    .register-box button {
+      width: 100%;
+      padding: 12px;
+      background: #003366;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    .register-box button:hover {
+      background: #0055aa;
+    }
+  </style>
 </head>
 <body>
-  <form id="registerForm">
+  <div class="register-box">
     <h2>Create a SmartTalk Account</h2>
-    <input type="text" id="username" placeholder="Username" required />
-    <input type="email" id="email" placeholder="Email" required />
-    <input type="password" id="password" placeholder="Password" required />
-    <button type="submit">Register</button>
-    <div id="message"></div>
-    <p>Already have an account? <a href="login.html">Login</a></p>
-  </form>
-
-  <script>
-    const form = document.getElementById("registerForm");
-    const message = document.getElementById("message");
-
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const username = form.username.value;
-      const email = form.email.value;
-      const password = form.password.value;
-
-      try {
-        const res = await fetch("https://smart-talk-ko5m.onrender.com/auth/register", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username, email, password })
-        });
-
-        const data = await res.json();
-
-        if (res.ok) {
-          message.style.color = "green";
-          message.textContent = "Registered successfully!";
-          setTimeout(() => {
-            window.location.href = "login.html";
-          }, 1500);
-        } else {
-          message.style.color = "red";
-          message.textContent = data.error || "Registration failed.";
-        }
-      } catch (err) {
-        message.textContent = "Network error. Please try again.";
-      }
-    });
-  </script>
+    <form action="/register" method="POST">
+      <input type="text" name="username" placeholder="Username" required />
+      <input type="email" name="email" placeholder="Email" required />
+      <input type="password" name="password" placeholder="Password" required />
+      <button type="submit">Register</button>
+    </form>
+  </div>
 </body>
 </html>
