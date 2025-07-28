@@ -3,139 +3,38 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>SmartTalk – Real-Time Chat</title>
-  <link rel="stylesheet" href="style.css" />
-  <style>
-    body {
-      margin: 0;
-      font-family: 'Segoe UI', sans-serif;
-      background: #f5f7fa;
-      color: #333;
-    }
-
-    header {
-      background-color: #4CAF50;
-      color: white;
-      padding: 1rem 2rem;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    header h1 {
-      margin: 0;
-    }
-
-    .hero {
-      text-align: center;
-      padding: 3rem 1rem;
-      background: #e8f5e9;
-    }
-
-    .hero h2 {
-      font-size: 2rem;
-      margin-bottom: 0.5rem;
-    }
-
-    .hero p {
-      font-size: 1.1rem;
-      margin-bottom: 2rem;
-    }
-
-    .cta-buttons a {
-      display: inline-block;
-      margin: 0.5rem;
-      padding: 0.75rem 1.5rem;
-      font-size: 1rem;
-      border-radius: 5px;
-      text-decoration: none;
-      color: white;
-      background-color: #4CAF50;
-      transition: background 0.3s ease;
-    }
-
-    .cta-buttons a:hover {
-      background-color: #388e3c;
-    }
-
-    .features {
-      padding: 2rem;
-      background: white;
-      text-align: center;
-    }
-
-    .features h3 {
-      margin-bottom: 1rem;
-    }
-
-    .features ul {
-      list-style: none;
-      padding: 0;
-    }
-
-    .features li {
-      margin: 0.5rem 0;
-      font-size: 1.05rem;
-    }
-
-    footer {
-      background-color: #2e7d32;
-      color: white;
-      text-align: center;
-      padding: 1rem;
-      font-size: 0.9rem;
-      margin-top: 3rem;
-    }
-
-    footer a {
-      color: #b2dfdb;
-      text-decoration: none;
-      margin: 0 10px;
-    }
-
-    footer a:hover {
-      text-decoration: underline;
-    }
-  </style>
+  <title>SmartTalk - Welcome</title>
+  <link rel="stylesheet" href="styles/home.css" />
+  <script defer src="scripts/home.js"></script>
 </head>
 <body>
   <header>
-    <h1>SmartTalk</h1>
+    <div class="logo">💬 SmartTalk</div>
     <nav>
-      <a href="login.html" style="color: white; margin-right: 1rem;">Login</a>
-      <a href="register.html" style="color: white;">Register</a>
+      <button onclick="location.href='login.html'">Login</button>
+      <button onclick="location.href='register.html'">Register</button>
+      <button id="darkToggle">🌙</button>
     </nav>
   </header>
 
   <section class="hero">
-    <h2>👋 Welcome to SmartTalk</h2>
-    <p>Connect Instantly. Chat Freely. Anywhere. Anytime.</p>
+    <h1>Welcome to SmartTalk</h1>
+    <p>Real-time chat. Anywhere. Anytime.</p>
     <div class="cta-buttons">
-      <a href="login.html">🔐 Login</a>
-      <a href="register.html">📝 Register</a>
-      <!-- <a href="#">Try Demo</a> -->
+      <button onclick="location.href='login.html'">Login</button>
+      <button onclick="location.href='register.html'">Register</button>
     </div>
+    <img src="images/chat-illustration.png" alt="Chat Illustration" class="hero-img"/>
   </section>
-
-  <section class="features">
-    <h3>🚀 Features</h3>
-    <ul>
-      <li>✅ Real-time messaging</li>
-      <li>🔒 End-to-End encryption</li>
-      <li>👥 Private & Group Chats</li>
-      <li>📁 File Sharing</li>
-      <li>🌐 Accessible Anywhere</li>
-      <li>👤 Custom User Profiles</li>
-    </ul>
-  </section>
-
-  <!-- Optional: screenshots or testimonials -->
 
   <footer>
-    &copy; 2025 SmartTalk |
-    <a href="mailto:smarttalkgit@gmail.com">Contact Us</a> |
-    <a href="#">Privacy Policy</a> |
-    <a href="#">Terms of Use</a>
+    <p>&copy; 2025 SmartTalk</p>
+    <div class="footer-links">
+      <a href="#">About</a>
+      <a href="mailto:smarttalkgit@gmail.com">Contact</a>
+      <a href="#">Privacy Policy</a>
+      <a href="#">Terms of Use</a>
+    </div>
   </footer>
 </body>
 </html>
