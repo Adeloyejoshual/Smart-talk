@@ -6,8 +6,9 @@
   <title>Login | SmartTalk</title>
   <style>
     body {
-      font-family: sans-serif;
-      background-color: #f4f4f4;
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #eef2f7;
       display: flex;
       justify-content: center;
       align-items: center;
@@ -15,110 +16,102 @@
     }
 
     .login-container {
-      background-color: white;
-      padding: 30px;
-      border-radius: 12px;
-      box-shadow: 0 0 15px rgba(0,0,0,0.1);
-      width: 300px;
+      background: white;
+      padding: 40px;
+      border-radius: 16px;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+      width: 320px;
+      text-align: center;
     }
 
     h2 {
-      text-align: center;
       margin-bottom: 20px;
+      color: #333;
     }
 
     input {
       width: 100%;
-      padding: 10px;
-      margin: 10px 0;
+      padding: 12px;
+      margin: 8px 0;
       border: 1px solid #ccc;
       border-radius: 8px;
+      font-size: 1rem;
     }
 
     button {
       width: 100%;
-      padding: 10px;
-      background-color: #4CAF50;
+      padding: 12px;
+      margin-top: 10px;
+      background-color: #007bff;
       color: white;
       border: none;
       border-radius: 8px;
+      font-size: 1rem;
       cursor: pointer;
     }
 
     button:hover {
-      background-color: #45a049;
+      background-color: #0056b3;
+    }
+
+    .link {
+      margin-top: 10px;
+      display: block;
+      font-size: 0.9em;
+      color: #007bff;
+      text-decoration: none;
+    }
+
+    .link:hover {
+      text-decoration: underline;
     }
 
     .error {
       color: red;
-      text-align: center;
-      font-size: 0.9em;
-    }
-
-    .link {
-      text-align: center;
-      margin-top: 10px;
-    }
-
-    .link a {
-      color: #333;
-      text-decoration: none;
-    }
-
-    .link a:hover {
-      text-decoration: underline;
+      font-size: 0.85em;
+      margin-top: 5px;
     }
   </style>
 </head>
 <body>
   <div class="login-container">
     <h2>Login</h2>
-    <form id="loginForm">
-      <input type="text" id="username" placeholder="Username" required />
-      <input type="password" id="password" placeholder="Password" required />
-      <button type="submit">Login</button>
-      <p class="error" id="errorMsg"></p>
-    </form>
-    <div class="link">
-      Don’t have an account? <a href="register.html">Register</a>
-    </div>
+    <input type="text" id="username" placeholder="Username" required />
+    <input type="password" id="password" placeholder="Password" required />
+    <div class="error" id="errorMessage"></div>
+    <button onclick="login()">Login</button>
+    <a href="register.html" class="link">Don't have an account? Register</a>
   </div>
 
   <script>
-    const form = document.getElementById("loginForm");
-    const errorMsg = document.getElementById("errorMsg");
-
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      errorMsg.textContent = "";
-
+    async function login() {
       const username = document.getElementById("username").value.trim();
       const password = document.getElementById("password").value;
 
+      if (!username || !password) {
+        document.getElementById("errorMessage").textContent = "Please fill all fields.";
+        return;
+      }
+
       try {
-        const res = await fetch("/api/login", {
+        const res = await fetch("/api/auth/login", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ username, password }),
         });
 
         const data = await res.json();
 
         if (!res.ok) {
-          errorMsg.textContent = data.error || "Login failed";
-          return;
+          throw new Error(data.message || "Login failed");
         }
 
-        // Store token and redirect
         localStorage.setItem("token", data.token);
         window.location.href = "dashboard.html";
       } catch (err) {
-        console.error(err);
-        errorMsg.textContent = "An error occurred. Try again.";
+        document.getElementById("errorMessage").textContent = err.message;
       }
-    });
+    }
   </script>
 </body>
 </html>
