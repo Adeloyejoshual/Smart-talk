@@ -22,7 +22,7 @@
       border-radius: 14px;
       box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
       width: 90%;
-      max-width: 320px;
+      max-width: 340px;
       text-align: center;
     }
 
@@ -40,7 +40,7 @@
     .register-box input {
       width: 100%;
       padding: 10px;
-      margin: 8px 0;
+      margin: 10px 0;
       border: none;
       border-radius: 6px;
       background: #fff;
@@ -50,21 +50,22 @@
 
     .password-wrapper {
       position: relative;
+      display: flex;
+      align-items: center;
     }
 
-    .password-wrapper input[type="password"],
-    .password-wrapper input[type="text"] {
-      padding-right: 40px;
+    .password-wrapper input {
+      width: 100%;
+      padding-right: 55px;
     }
 
     .toggle-password {
       position: absolute;
-      top: 50%;
       right: 10px;
-      transform: translateY(-50%);
+      color: #0066cc;
+      font-size: 13px;
       cursor: pointer;
-      font-size: 14px;
-      color: #0077ff;
+      user-select: none;
     }
 
     .register-box button {
