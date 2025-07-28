@@ -36,23 +36,26 @@ mongoose.connect(process.env.MONGO_URI, {
 // Routes
 app.use('/api/auth', authRoutes);
 
-// Serve home page
+// Default route to login page
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
-// Socket.IO setup
-const onlineUsers = new Set();
+// Track online users
+const onlineUsers = new Map();
 
+// Socket.IO logic
 io.on('connection', (socket) => {
-  console.log('🟢 New user connected');
+  console.log('🟢 User connected');
 
+  // Receive and register online user
   socket.on('userOnline', (username) => {
     socket.username = username;
-    onlineUsers.add(username);
-    io.emit('updateOnlineUsers', Array.from(onlineUsers));
+    onlineUsers.set(socket.id, username);
+    io.emit('updateOnlineUsers', Array.from(onlineUsers.values()));
   });
 
+  // Handle public chat messages
   socket.on('chatMessage', async ({ sender, content }) => {
     const newMessage = new Message({ sender, content });
     await newMessage.save();
@@ -64,16 +67,17 @@ io.on('connection', (socket) => {
     });
   });
 
+  // Handle disconnection
   socket.on('disconnect', () => {
     console.log('🔴 User disconnected');
     if (socket.username) {
-      onlineUsers.delete(socket.username);
-      io.emit('updateOnlineUsers', Array.from(onlineUsers));
+      onlineUsers.delete(socket.id);
+      io.emit('updateOnlineUsers', Array.from(onlineUsers.values()));
     }
   });
 });
 
-// Start server
+// Start the server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
