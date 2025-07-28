@@ -3,119 +3,47 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Register | SmartTalk</title>
-  <style>
-    body {
-      margin: 0;
-      font-family: Arial, sans-serif;
-      background: #eef2f7;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-    }
-
-    .register-container {
-      background: white;
-      padding: 40px;
-      border-radius: 16px;
-      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
-      width: 320px;
-      text-align: center;
-    }
-
-    h2 {
-      margin-bottom: 20px;
-      color: #333;
-    }
-
-    input {
-      width: 100%;
-      padding: 12px;
-      margin: 8px 0;
-      border: 1px solid #ccc;
-      border-radius: 8px;
-      font-size: 1rem;
-    }
-
-    button {
-      width: 100%;
-      padding: 12px;
-      margin-top: 10px;
-      background-color: #28a745;
-      color: white;
-      border: none;
-      border-radius: 8px;
-      font-size: 1rem;
-      cursor: pointer;
-    }
-
-    button:hover {
-      background-color: #218838;
-    }
-
-    .link {
-      margin-top: 10px;
-      display: block;
-      font-size: 0.9em;
-      color: #007bff;
-      text-decoration: none;
-    }
-
-    .link:hover {
-      text-decoration: underline;
-    }
-
-    .error {
-      color: red;
-      font-size: 0.85em;
-      margin-top: 5px;
-    }
-  </style>
+  <title>Register - SmartTalk</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="register-container">
-    <h2>Register</h2>
+  <form id="registerForm">
+    <h2>Create Account</h2>
     <input type="text" id="username" placeholder="Username" required />
     <input type="email" id="email" placeholder="Email" required />
     <input type="password" id="password" placeholder="Password" required />
-    <div class="error" id="errorMessage"></div>
-    <button onclick="register()">Register</button>
-    <a href="login.html" class="link">Already have an account? Login</a>
-  </div>
+    <button type="submit">Register</button>
+    <div id="message"></div>
+    <p>Already have an account? <a href="login.html">Login</a></p>
+  </form>
 
   <script>
-    async function register() {
-      const username = document.getElementById("username").value.trim();
-      const email = document.getElementById("email").value.trim();
-      const password = document.getElementById("password").value;
-      const errorBox = document.getElementById("errorMessage");
-      errorBox.textContent = "";
+    document.getElementById("registerForm").addEventListener("submit", async function (e) {
+      e.preventDefault();
 
-      if (!username || !email || !password) {
-        errorBox.textContent = "Please fill all fields.";
-        return;
-      }
+      const username = document.getElementById("username").value;
+      const email = document.getElementById("email").value;
+      const password = document.getElementById("password").value;
 
       try {
-        const res = await fetch("/api/auth/register", {
+        const res = await fetch("https://smart-talk-ko5m.onrender.com/auth/register", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ username, email, password }),
         });
 
-        if (!res.ok) {
-          const text = await res.text();
-          throw new Error(text || "Registration failed.");
-        }
-
         const data = await res.json();
-        alert("Registration successful! Please log in.");
-        window.location.href = "login.html";
+
+        if (!res.ok) throw new Error(data.msg || "Registration failed");
+
+        document.getElementById("message").style.color = "green";
+        document.getElementById("message").innerText = "Registration successful!";
+        setTimeout(() => window.location.href = "login.html", 2000);
       } catch (err) {
-        errorBox.textContent = err.message;
+        document.getElementById("message").style.color = "red";
+        document.getElementById("message").innerText = err.message;
       }
-    }
+    });
   </script>
 </body>
 </html>
