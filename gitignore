@@ -1,18 +1,19 @@
-# Node.js
+# Node modules
 node_modules/
+
+# Environment variables
 .env
-.DS_Store
-npm-debug.log
-dist/
-build/
 
 # Logs
 logs
 *.log
 
-# IDEs
+# OS files
+.DS_Store
+
+# Optional npm cache directory
+.npm
+
+# IDE settings
 .vscode/
 .idea/
-
-# OS
-Thumbs.db
