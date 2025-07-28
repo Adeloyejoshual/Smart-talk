@@ -1,109 +1,108 @@
+<!-- File: settings.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Settings | SmartTalk</title>
+  <link rel="stylesheet" href="style.css" />
   <style>
-    body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background: linear-gradient(to right, #f0f4f8, #d9e2ec);
-      margin: 0;
-      padding: 0;
-    }
-
-    .container {
+    .settings-container {
       max-width: 600px;
       margin: 50px auto;
-      background: #ffffff;
       padding: 30px;
+      background: #fff;
       border-radius: 12px;
-      box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
     }
 
-    h2 {
+    .settings-container h2 {
       text-align: center;
       color: #007bff;
-      margin-bottom: 20px;
+      margin-bottom: 25px;
     }
 
-    label {
+    .setting {
+      margin: 20px 0;
+    }
+
+    .setting label {
       display: block;
-      margin-top: 15px;
+      font-weight: bold;
+      margin-bottom: 8px;
       color: #333;
-      font-weight: 500;
     }
 
-    input[type="text"],
-    input[type="email"],
-    select {
+    .setting input[type="checkbox"] {
+      transform: scale(1.3);
+      margin-right: 10px;
+    }
+
+    .setting select, .setting input[type="color"] {
       width: 100%;
-      padding: 12px;
-      margin-top: 8px;
+      padding: 10px;
+      border-radius: 8px;
       border: 1px solid #ccc;
-      border-radius: 8px;
-      font-size: 16px;
     }
 
-    button {
+    .save-btn {
       width: 100%;
-      margin-top: 25px;
       padding: 12px;
-      background-color: #007bff;
-      border: none;
+      background: #007bff;
       color: white;
-      font-size: 16px;
+      border: none;
       border-radius: 8px;
+      font-size: 16px;
+      margin-top: 20px;
       cursor: pointer;
-      transition: background-color 0.3s ease;
+      transition: background 0.3s ease;
     }
 
-    button:hover {
-      background-color: #0056b3;
-    }
-
-    .back-link {
-      display: block;
-      margin-top: 30px;
-      text-align: center;
-      text-decoration: none;
-      color: #555;
-      font-size: 14px;
-    }
-
-    .back-link:hover {
-      text-decoration: underline;
+    .save-btn:hover {
+      background: #0056b3;
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h2>Account Settings</h2>
+  <div class="settings-container">
+    <h2>Settings</h2>
 
-    <form>
-      <label for="username">Username</label>
-      <input type="text" id="username" placeholder="Enter your username" />
-
-      <label for="email">Email</label>
-      <input type="email" id="email" placeholder="Enter your email" />
-
+    <div class="setting">
       <label for="theme">Theme</label>
       <select id="theme">
         <option value="light">Light</option>
         <option value="dark">Dark</option>
+        <option value="auto">Auto</option>
       </select>
+    </div>
 
-      <label for="language">Language</label>
-      <select id="language">
-        <option value="en">English</option>
-        <option value="fr">French</option>
-        <option value="es">Spanish</option>
-      </select>
+    <div class="setting">
+      <label for="message-sound">
+        <input type="checkbox" id="message-sound" checked />
+        Enable Message Sound
+      </label>
+    </div>
 
-      <button type="submit">Save Settings</button>
-    </form>
+    <div class="setting">
+      <label for="color">Accent Color</label>
+      <input type="color" id="color" value="#007bff" />
+    </div>
 
-    <a href="dashboard.html" class="back-link">← Back to Dashboard</a>
+    <button class="save-btn" onclick="saveSettings()">Save Changes</button>
   </div>
+
+  <script>
+    function saveSettings() {
+      const theme = document.getElementById("theme").value;
+      const sound = document.getElementById("message-sound").checked;
+      const color = document.getElementById("color").value;
+
+      localStorage.setItem("theme", theme);
+      localStorage.setItem("messageSound", sound);
+      localStorage.setItem("accentColor", color);
+
+      alert("Settings saved!");
+    }
+  </script>
 </body>
 </html>
