@@ -1,140 +1,103 @@
-<!-- public/chat.html -->
+<!-- public/login.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>SmartTalk Chat</title>
+  <title>SmartTalk Login</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
     body {
       margin: 0;
       font-family: Arial, sans-serif;
-      background: #f4f4f4;
-    }
-
-    .chat-container {
+      background: #f9f9f9;
       display: flex;
+      justify-content: center;
+      align-items: center;
       height: 100vh;
     }
 
-    .users-list {
-      width: 25%;
-      background: #333;
-      color: white;
-      padding: 20px;
-      overflow-y: auto;
+    .login-container {
+      background: white;
+      padding: 40px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      width: 100%;
+      max-width: 400px;
     }
 
-    .chat-box {
-      width: 75%;
-      display: flex;
-      flex-direction: column;
+    h2 {
+      text-align: center;
+      margin-bottom: 20px;
     }
 
-    .messages {
-      flex: 1;
-      padding: 20px;
-      overflow-y: auto;
-      background: #fff;
-    }
-
-    .message {
-      margin-bottom: 10px;
-    }
-
-    .message span {
-      font-weight: bold;
-    }
-
-    form {
-      display: flex;
-      padding: 10px;
-      background: #eee;
-    }
-
-    input {
-      flex: 1;
-      padding: 10px;
-      border: none;
-      outline: none;
+    input, button {
+      width: 100%;
+      padding: 12px;
+      margin: 10px 0;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+      font-size: 16px;
     }
 
     button {
-      padding: 10px 20px;
-      border: none;
-      background: #333;
+      background-color: #007bff;
       color: white;
       cursor: pointer;
+      border: none;
     }
 
     button:hover {
-      background: #555;
+      background-color: #0056b3;
+    }
+
+    .error {
+      color: red;
+      text-align: center;
     }
   </style>
 </head>
 <body>
 
-<div class="chat-container">
-  <div class="users-list">
-    <h3>Online Users</h3>
-    <ul id="onlineUsers"></ul>
-  </div>
-
-  <div class="chat-box">
-    <div class="messages" id="messages"></div>
-    <form id="chatForm">
-      <input type="text" id="messageInput" placeholder="Type a message..." autocomplete="off" required />
-      <button type="submit">Send</button>
+  <div class="login-container">
+    <h2>SmartTalk Login</h2>
+    <form id="loginForm">
+      <input type="email" name="email" placeholder="Email" required />
+      <input type="password" name="password" placeholder="Password" required />
+      <button type="submit">Login</button>
+      <p class="error" id="errorMsg"></p>
     </form>
   </div>
-</div>
 
-<script src="/socket.io/socket.io.js"></script>
-<script>
-  const socket = io();
+  <script>
+    const form = document.getElementById("loginForm");
+    const errorMsg = document.getElementById("errorMsg");
 
-  const messagesDiv = document.getElementById("messages");
-  const onlineUsersList = document.getElementById("onlineUsers");
-  const messageInput = document.getElementById("messageInput");
-  const chatForm = document.getElementById("chatForm");
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const email = form.email.value;
+      const password = form.password.value;
 
-  const username = prompt("Enter your username:");
-  socket.emit("userOnline", username);
+      try {
+        const res = await fetch("https://smart-talk-ko5m.onrender.com/api/auth/login", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ email, password }),
+        });
 
-  // Display new messages
-  socket.on("chatMessage", ({ sender, content, timestamp }) => {
-    const msgEl = document.createElement("div");
-    msgEl.classList.add("message");
-    msgEl.innerHTML = `<span>${sender}</span>: ${content}`;
-    messagesDiv.appendChild(msgEl);
-    messagesDiv.scrollTop = messagesDiv.scrollHeight;
-  });
+        if (!res.ok) {
+          throw new Error("Invalid credentials");
+        }
 
-  // Update online users
-  socket.on("updateOnlineUsers", (users) => {
-    onlineUsersList.innerHTML = "";
-    users.forEach(user => {
-      const li = document.createElement("li");
-      li.textContent = user;
-      onlineUsersList.appendChild(li);
+        const data = await res.json();
+        localStorage.setItem("token", data.token);
+        localStorage.setItem("username", data.username); // Save username
+        window.location.href = "chat.html";
+      } catch (err) {
+        errorMsg.textContent = err.message;
+      }
     });
-  });
-
-  // Send new message
-  chatForm.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const content = messageInput.value.trim();
-    if (content === "") return;
-
-    const msg = {
-      sender: username,
-      content,
-    };
-
-    socket.emit("chatMessage", msg);
-    messageInput.value = "";
-  });
-</script>
-
+  </script>
 </body>
 </html>
