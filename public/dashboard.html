@@ -6,41 +6,47 @@
   <title>Dashboard | SmartTalk</title>
   <style>
     body {
-      font-family: sans-serif;
-      background-color: #f4f6f8;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f0f2f5;
+      margin: 0;
+      padding: 0;
       display: flex;
       justify-content: center;
       align-items: center;
       height: 100vh;
-      margin: 0;
     }
 
     .dashboard {
-      background: white;
-      padding: 40px;
-      border-radius: 16px;
-      box-shadow: 0 0 15px rgba(0, 0, 0, 0.15);
+      background-color: #ffffff;
+      padding: 40px 30px;
+      border-radius: 20px;
+      box-shadow: 0 0 30px rgba(0, 0, 0, 0.08);
+      max-width: 400px;
+      width: 100%;
       text-align: center;
-      width: 320px;
     }
 
     h2 {
-      margin-bottom: 20px;
+      margin-bottom: 10px;
+      font-size: 1.5rem;
+      color: #333;
     }
 
     .username {
       color: #007bff;
+      font-weight: bold;
     }
 
     button {
-      padding: 12px 24px;
-      font-size: 1rem;
+      margin-top: 25px;
+      padding: 12px 20px;
       background-color: #007bff;
-      border: none;
-      border-radius: 8px;
       color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
       cursor: pointer;
-      margin-top: 20px;
+      width: 100%;
     }
 
     button:hover {
@@ -48,28 +54,28 @@
     }
 
     .logout {
-      margin-top: 20px;
-      color: red;
+      margin-top: 15px;
+      font-size: 0.9rem;
+      color: #e53935;
       cursor: pointer;
-      font-size: 0.9em;
     }
 
     nav {
       margin-top: 30px;
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 12px;
     }
 
     nav a {
+      color: #444;
       text-decoration: none;
-      color: #333;
-      font-size: 0.95em;
+      font-size: 0.95rem;
     }
 
     nav a:hover {
-      text-decoration: underline;
       color: #007bff;
+      text-decoration: underline;
     }
   </style>
 </head>
@@ -80,32 +86,34 @@
     <div class="logout" onclick="logout()">Logout</div>
 
     <nav>
-      <a href="profile.html">Profile</a>
-      <a href="notification.html">Notifications</a>
-      <a href="about.html">About</a>
+      <a href="profile.html">👤 Profile</a>
+      <a href="notification.html">🔔 Notifications</a>
+      <a href="about.html">ℹ️ About</a>
     </nav>
   </div>
 
   <script>
     function getUsernameFromToken(token) {
       try {
-        const payload = JSON.parse(atob(token?.split('.')[1] || ''));
+        const payload = JSON.parse(atob(token.split('.')[1]));
         return payload.username;
       } catch {
         return null;
       }
     }
 
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem("token");
+
     if (!token) {
+      alert("You must be logged in first.");
       window.location.href = "login.html";
     } else {
-      try {
-        const username = getUsernameFromToken(token);
-        if (!username) throw new Error("Invalid token");
+      const username = getUsernameFromToken(token);
+      if (username) {
         document.getElementById("usernameDisplay").textContent = username;
-      } catch {
+      } else {
         localStorage.removeItem("token");
+        alert("Session expired. Please login again.");
         window.location.href = "login.html";
       }
     }
