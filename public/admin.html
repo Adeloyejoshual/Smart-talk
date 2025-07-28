@@ -1,75 +1,48 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Admin Dashboard – SmartTalk</title>
-  <style>
-    body { font-family: sans-serif; padding: 20px; background: #f5f5f5; }
-    .box { border: 1px solid #ccc; padding: 20px; border-radius: 10px; background: #fff; max-width: 600px; margin: auto; }
-    button { padding: 10px; margin-top: 10px; width: 100%; }
-    textarea, input { width: 100%; margin-top: 10px; padding: 8px; border-radius: 5px; border: 1px solid #aaa; }
-  </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Admin Panel - SmartTalk</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="box">
-    <h2>🔐 Admin Control Panel</h2>
+  <div class="container">
+    <header>
+      <h2>SmartTalk Admin Panel</h2>
+    </header>
 
-    <button onclick="loadUsers()">🔍 View All Users</button>
-    <ul id="userList"></ul>
+    <section style="margin-top: 20px;">
+      <h3>Manage Users</h3>
+      <p>View and control all registered users here.</p>
 
-    <input type="text" id="kickId" placeholder="User ID to kick" />
-    <button onclick="kickUser()">🚫 Kick User</button>
+      <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+        <thead>
+          <tr style="background-color: #007bff; color: white;">
+            <th style="padding: 10px; border: 1px solid #ddd;">Username</th>
+            <th style="padding: 10px; border: 1px solid #ddd;">Email</th>
+            <th style="padding: 10px; border: 1px solid #ddd;">Role</th>
+            <th style="padding: 10px; border: 1px solid #ddd;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding: 10px; border: 1px solid #ddd;">JohnDoe</td>
+            <td style="padding: 10px; border: 1px solid #ddd;">john@example.com</td>
+            <td style="padding: 10px; border: 1px solid #ddd;">User</td>
+            <td style="padding: 10px; border: 1px solid #ddd;">
+              <button style="width: auto; padding: 5px 10px;">Ban</button>
+              <button style="width: auto; padding: 5px 10px;">Promote</button>
+            </td>
+          </tr>
+          <!-- Add more user rows as needed -->
+        </tbody>
+      </table>
+    </section>
 
-    <textarea id="broadcastMsg" placeholder="Broadcast message to all..."></textarea>
-    <button onclick="broadcast()">📢 Broadcast</button>
-
-    <p id="adminMsg" style="color: green; font-weight: bold;"></p>
-    <br>
-    <a href="/chat.html">⬅ Back to Chat</a>
+    <footer>
+      <p>&copy; 2025 SmartTalk. Admin access only.</p>
+    </footer>
   </div>
-
-  <script>
-    const token = localStorage.getItem("token");
-
-    function loadUsers() {
-      fetch('/api/users', {
-        headers: { Authorization: `Bearer ${token}` }
-      }).then(res => res.json())
-        .then(data => {
-          const list = document.getElementById('userList');
-          list.innerHTML = '';
-          data.forEach(u => {
-            const li = document.createElement('li');
-            li.textContent = `🧑 ${u.username} – ID: ${u._id}`;
-            list.appendChild(li);
-          });
-        });
-    }
-
-    function kickUser() {
-      const id = document.getElementById('kickId').value;
-      fetch(`/api/kick/${id}`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` }
-      }).then(res => res.json())
-        .then(data => {
-          document.getElementById('adminMsg').textContent = data.message;
-        });
-    }
-
-    function broadcast() {
-      const msg = document.getElementById('broadcastMsg').value;
-      fetch('/api/broadcast', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ message: msg })
-      }).then(res => res.json())
-        .then(data => {
-          document.getElementById('adminMsg').textContent = data.message;
-        });
-    }
-  </script>
 </body>
 </html>
