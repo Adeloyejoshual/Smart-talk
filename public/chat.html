@@ -3,144 +3,115 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Chat Room | SmartTalk</title>
+  <title>SmartTalk Live Chat</title>
+  <link rel="stylesheet" href="/css/style.css" />
   <style>
-    * {
-      box-sizing: border-box;
-    }
-
     body {
-      margin: 0;
-      font-family: sans-serif;
-      background-color: #f4f6f8;
-      display: flex;
-      flex-direction: column;
-      height: 100vh;
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background: #f0f2f5;
     }
 
-    header {
-      background-color: #007bff;
-      color: white;
-      padding: 16px;
-      text-align: center;
-      font-size: 1.2rem;
-    }
-
-    .chat-container {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      padding: 16px;
-      overflow-y: auto;
-    }
-
-    .message {
-      margin: 8px 0;
-      padding: 12px;
-      background-color: white;
-      border-radius: 10px;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-      max-width: 80%;
-    }
-
-    .message.you {
-      background-color: #dcf8c6;
-      align-self: flex-end;
-    }
-
-    .message.other {
-      background-color: #fff;
-      align-self: flex-start;
-    }
-
-    .input-container {
-      display: flex;
-      padding: 16px;
-      background-color: white;
-      border-top: 1px solid #ccc;
-    }
-
-    input[type="text"] {
-      flex: 1;
-      padding: 12px;
-      border: 1px solid #ccc;
+    #chat-container {
+      max-width: 600px;
+      margin: auto;
+      background: #fff;
       border-radius: 8px;
-      font-size: 1rem;
+      padding: 20px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+
+    h2 {
+      text-align: center;
+    }
+
+    #messages {
+      border: 1px solid #ccc;
+      padding: 10px;
+      height: 300px;
+      overflow-y: scroll;
+      margin-bottom: 15px;
+      border-radius: 5px;
+      background: #f9f9f9;
+    }
+
+    .input-row {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    input {
+      flex: 1;
+      padding: 10px;
+      border-radius: 5px;
+      border: 1px solid #ddd;
     }
 
     button {
-      padding: 12px 16px;
-      margin-left: 8px;
-      background-color: #007bff;
+      padding: 10px 15px;
+      background: #007bff;
       color: white;
       border: none;
-      border-radius: 8px;
+      border-radius: 5px;
       cursor: pointer;
-      font-size: 1rem;
     }
 
     button:hover {
-      background-color: #0056b3;
+      background: #0056b3;
     }
   </style>
 </head>
 <body>
-  <header>SmartTalk - Chat Room</header>
+  <div id="chat-container">
+    <h2>SmartTalk Live Chat</h2>
+    <div id="messages"></div>
 
-  <div class="chat-container" id="chatBox">
-    <!-- Messages will appear here -->
+    <div class="input-row">
+      <input id="sender" placeholder="Your name" />
+      <input id="message" placeholder="Type your message" />
+      <button onclick="sendMessage()">Send</button>
+    </div>
+
+    <!-- 🔊 Notification Sound -->
+    <audio id="message-sound" src="/sounds/message.mp3" preload="auto"></audio>
   </div>
 
-  <div class="input-container">
-    <input type="text" id="messageInput" placeholder="Type your message..." />
-    <button onclick="sendMessage()">Send</button>
-  </div>
-
-  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <script>
     const socket = io();
-    const token = localStorage.getItem('token');
-    const chatBox = document.getElementById('chatBox');
-    const input = document.getElementById('messageInput');
-
-    let username = "Anonymous";
-
-    function getUsernameFromToken(token) {
-      try {
-        return JSON.parse(atob(token.split('.')[1])).username;
-      } catch (e) {
-        return "Anonymous";
-      }
-    }
-
-    if (token) {
-      username = getUsernameFromToken(token);
-    } else {
-      window.location.href = "login.html";
-    }
-
-    function appendMessage(text, isYou = false) {
-      const msgDiv = document.createElement('div');
-      msgDiv.className = 'message ' + (isYou ? 'you' : 'other');
-      msgDiv.textContent = text;
-      chatBox.appendChild(msgDiv);
-      chatBox.scrollTop = chatBox.scrollHeight;
-    }
 
     function sendMessage() {
-      const message = input.value.trim();
-      if (message) {
-        socket.emit('chat message', { username, message });
-        appendMessage("You: " + message, true);
-        input.value = "";
+      const sender = document.getElementById('sender').value.trim();
+      const content = document.getElementById('message').value.trim();
+      if (sender && content) {
+        socket.emit('sendMessage', { sender, content });
+        document.getElementById('message').value = '';
       }
     }
 
-    socket.on('chat message', (data) => {
-      if (data.username !== username) {
-        appendMessage(data.username + ": " + data.message);
-      }
+    socket.on('receiveMessage', (msg) => {
+      const messagesDiv = document.getElementById('messages');
+      const messageElement = document.createElement('div');
+      messageElement.innerText = `${msg.sender}: ${msg.content}`;
+      messagesDiv.appendChild(messageElement);
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+      // 🔊 Play sound on receiving message
+      const sound = document.getElementById('message-sound');
+      sound.play().catch(() => {});
     });
+
+    // 📜 Load message history
+    fetch('/messages')
+      .then(res => res.json())
+      .then(data => {
+        data.forEach(msg => {
+          const div = document.createElement('div');
+          div.innerText = `${msg.sender}: ${msg.content}`;
+          document.getElementById('messages').appendChild(div);
+        });
+      });
   </script>
 </body>
 </html>
