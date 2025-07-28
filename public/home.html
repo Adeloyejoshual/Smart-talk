@@ -1,86 +1,176 @@
-<!-- public/home.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>SmartTalk Home</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Home | SmartTalk</title>
   <style>
     body {
-      margin: 0;
-      font-family: 'Segoe UI', sans-serif;
-      background: #f4f4f4;
+      font-family: sans-serif;
+      background-color: #f4f6f8;
       display: flex;
       justify-content: center;
       align-items: center;
       height: 100vh;
+      margin: 0;
     }
 
     .dashboard {
       background: white;
       padding: 40px;
-      border-radius: 15px;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+      border-radius: 16px;
+      box-shadow: 0 0 15px rgba(0, 0, 0, 0.15);
       text-align: center;
-      max-width: 400px;
-      width: 90%;
+      width: 320px;
     }
 
-    h1 {
+    h2 {
       margin-bottom: 20px;
-      font-size: 24px;
+    }
+
+    .username {
+      color: #007bff;
     }
 
     button {
-      margin-top: 15px;
-      padding: 12px 20px;
-      font-size: 16px;
+      padding: 12px 24px;
+      font-size: 1rem;
+      background-color: #007bff;
       border: none;
       border-radius: 8px;
+      color: white;
       cursor: pointer;
-      width: 100%;
-    }
-
-    #joinChatBtn {
-      background-color: #4CAF50;
-      color: white;
-    }
-
-    #logoutBtn {
-      background-color: #f44336;
-      color: white;
+      margin-top: 20px;
     }
 
     button:hover {
-      opacity: 0.9;
+      background-color: #0056b3;
+    }
+
+    .logout {
+      margin-top: 20px;
+      color: red;
+      cursor: pointer;
+      font-size: 0.9em;
+    }
+
+    nav {
+      margin-top: 30px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    nav a {
+      text-decoration: none;
+      color: #333;
+      font-size: 0.95em;
+    }
+
+    nav a:hover {
+      text-decoration: underline;
+      color: #007bff;
+    }
+
+    .search-bar {
+      margin-top: 30px;
+    }
+
+    .search-bar input {
+      width: 90%;
+      padding: 10px;
+      font-size: 1em;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+    }
+
+    .search-results {
+      margin-top: 10px;
+      text-align: left;
+    }
+
+    .search-results div {
+      padding: 5px;
+      border-bottom: 1px solid #eee;
     }
   </style>
 </head>
 <body>
   <div class="dashboard">
-    <h1>Welcome, <span id="usernameDisplay">User</span> 👋</h1>
-    <button id="joinChatBtn">Join Chat</button>
-    <button id="logoutBtn">Logout</button>
+    <h2>Welcome, <span class="username" id="usernameDisplay">User</span> 👋</h2>
+    <button onclick="goToChat()">Go to Chat Room</button>
+    <div class="logout" onclick="logout()">Logout</div>
+
+    <nav>
+      <a href="profile.html">Profile</a>
+      <a href="notification.html">Notifications</a>
+      <a href="about.html">About</a>
+    </nav>
+
+    <div class="search-bar">
+      <input type="text" id="searchInput" placeholder="Search usernames..." oninput="searchUser()" />
+      <div class="search-results" id="results"></div>
+    </div>
   </div>
 
   <script>
-    const username = localStorage.getItem("username");
-    const usernameDisplay = document.getElementById("usernameDisplay");
-
-    if (!username) {
-      window.location.href = "/login.html";
-    } else {
-      usernameDisplay.textContent = username;
+    function getUsernameFromToken(token) {
+      try {
+        const payload = JSON.parse(atob(token?.split('.')[1] || ''));
+        return payload.username;
+      } catch {
+        return null;
+      }
     }
 
-    document.getElementById("joinChatBtn").addEventListener("click", () => {
-      window.location.href = "/chat.html";
-    });
+    const token = localStorage.getItem('token');
+    if (!token) {
+      window.location.href = "login.html";
+    } else {
+      try {
+        const username = getUsernameFromToken(token);
+        if (!username) throw new Error("Invalid token");
+        document.getElementById("usernameDisplay").textContent = username;
+      } catch {
+        localStorage.removeItem("token");
+        window.location.href = "login.html";
+      }
+    }
 
-    document.getElementById("logoutBtn").addEventListener("click", () => {
-      localStorage.removeItem("username");
-      window.location.href = "/login.html";
-    });
+    function goToChat() {
+      window.location.href = "chat.html";
+    }
+
+    function logout() {
+      localStorage.removeItem("token");
+      window.location.href = "login.html";
+    }
+
+    async function searchUser() {
+      const query = document.getElementById("searchInput").value;
+      const resultBox = document.getElementById("results");
+      resultBox.innerHTML = "";
+
+      if (!query.trim()) return;
+
+      try {
+        const res = await fetch(`/api/search?username=${query}`);
+        const users = await res.json();
+
+        if (res.ok && users.length > 0) {
+          users.forEach(user => {
+            const div = document.createElement("div");
+            div.textContent = user.username;
+            resultBox.appendChild(div);
+          });
+        } else {
+          resultBox.innerHTML = "<div>No users found</div>";
+        }
+      } catch (err) {
+        console.error(err);
+        resultBox.innerHTML = "<div>Error searching users</div>";
+      }
+    }
   </script>
 </body>
 </html>
