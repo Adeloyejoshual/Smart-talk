@@ -4,11 +4,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Register - SmartTalk</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <form id="registerForm">
-    <h2>Create Account</h2>
+    <h2>Create a SmartTalk Account</h2>
     <input type="text" id="username" placeholder="Username" required />
     <input type="email" id="email" placeholder="Email" required />
     <input type="password" id="password" placeholder="Password" required />
@@ -18,30 +18,36 @@
   </form>
 
   <script>
-    document.getElementById("registerForm").addEventListener("submit", async function (e) {
-      e.preventDefault();
+    const form = document.getElementById("registerForm");
+    const message = document.getElementById("message");
 
-      const username = document.getElementById("username").value;
-      const email = document.getElementById("email").value;
-      const password = document.getElementById("password").value;
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const username = form.username.value;
+      const email = form.email.value;
+      const password = form.password.value;
 
       try {
         const res = await fetch("https://smart-talk-ko5m.onrender.com/auth/register", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username, email, password }),
+          body: JSON.stringify({ username, email, password })
         });
 
         const data = await res.json();
 
-        if (!res.ok) throw new Error(data.msg || "Registration failed");
-
-        document.getElementById("message").style.color = "green";
-        document.getElementById("message").innerText = "Registration successful!";
-        setTimeout(() => window.location.href = "login.html", 2000);
+        if (res.ok) {
+          message.style.color = "green";
+          message.textContent = "Registered successfully!";
+          setTimeout(() => {
+            window.location.href = "login.html";
+          }, 1500);
+        } else {
+          message.style.color = "red";
+          message.textContent = data.error || "Registration failed.";
+        }
       } catch (err) {
-        document.getElementById("message").style.color = "red";
-        document.getElementById("message").innerText = err.message;
+        message.textContent = "Network error. Please try again.";
       }
     });
   </script>
