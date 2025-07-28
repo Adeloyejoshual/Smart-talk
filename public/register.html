@@ -39,29 +39,29 @@
 
     .register-box input {
       width: 100%;
-      padding: 10px;
+      padding: 10px 12px;
       margin: 10px 0;
       border: none;
       border-radius: 6px;
       background: #fff;
       color: #333;
       font-size: 14px;
+      box-sizing: border-box;
     }
 
     .password-wrapper {
       position: relative;
-      display: flex;
-      align-items: center;
     }
 
     .password-wrapper input {
-      width: 100%;
-      padding-right: 55px;
+      padding-right: 50px;
     }
 
     .toggle-password {
       position: absolute;
       right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
       color: #0066cc;
       font-size: 13px;
       cursor: pointer;
@@ -94,13 +94,8 @@
       <input type="email" name="email" placeholder="Email" required />
 
       <div class="password-wrapper">
-        <input type="password" name="password" id="password" placeholder="Password" required />
-        <span class="toggle-password" onclick="togglePassword('password', this)">Show</span>
-      </div>
-
-      <div class="password-wrapper">
-        <input type="password" name="confirmPassword" id="confirmPassword" placeholder="Confirm Password" required />
-        <span class="toggle-password" onclick="togglePassword('confirmPassword', this)">Show</span>
+        <input type="password" name="password" id="reg-password" placeholder="Password" required />
+        <span class="toggle-password" onclick="togglePassword('reg-password', this)">Show</span>
       </div>
 
       <button type="submit">Register</button>
