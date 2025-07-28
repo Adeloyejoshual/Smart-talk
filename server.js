@@ -1,70 +1,60 @@
+// server.js
 const express = require('express');
 const http = require('http');
-const cors = require('cors');
-const mongoose = require('mongoose');
-const dotenv = require('dotenv');
 const socketIO = require('socket.io');
+const mongoose = require('mongoose');
+const path = require('path');
 const Message = require('./models/Message');
-
-dotenv.config();
+const messageRoutes = require('./routes/messages');
+require('dotenv').config();
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIO(server, {
-  cors: {
-    origin: '*',
-    methods: ['GET', 'POST']
-  }
-});
+const io = socketIO(server);
 
-// Middlewares
-app.use(cors());
+// Middleware
 app.use(express.json());
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
 
-// MongoDB Connection
+// MongoDB connection
 mongoose.connect(process.env.MONGO_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true
-}).then(() => console.log('✅ MongoDB connected successfully'))
-  .catch((err) => console.error('❌ MongoDB connection error:', err));
+})
+.then(() => console.log('✅ Connected to MongoDB'))
+.catch(err => console.error('❌ MongoDB connection error:', err));
 
 // Routes
-const authRoutes = require('./routes/auth');
-const contactRoutes = require('./routes/contact');
-const profileRoutes = require('./routes/profile');
-const messageRoutes = require('./routes/messages');
-
-app.use('/auth', authRoutes);
-app.use('/contact', contactRoutes);
-app.use('/profile', profileRoutes);
 app.use('/messages', messageRoutes);
 
-// Socket.IO
+// Serve default index page
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Socket.IO setup
 io.on('connection', (socket) => {
-  console.log(`🟢 User connected: ${socket.id}`);
+  console.log('🔌 New client connected');
 
-  socket.on('sendMessage', async ({ sender, content }) => {
-    const message = new Message({ sender, content });
-    await message.save();
+  socket.on('sendMessage', async (data) => {
+    const { sender, content } = data;
+    const newMessage = new Message({ sender, content });
+    await newMessage.save();
 
-    io.emit('receiveMessage', message); // broadcast to all users
+    io.emit('receiveMessage', {
+      sender,
+      content,
+      timestamp: newMessage.timestamp
+    });
   });
 
   socket.on('disconnect', () => {
-    console.log(`🔴 User disconnected: ${socket.id}`);
+    console.log('❌ Client disconnected');
   });
 });
 
-// Fallback route
-app.get('*', (req, res) => {
-  res.sendFile(__dirname + '/public/index.html');
-});
-
-// Start Server
+// Start the server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`==> Your service is live 🎉`);
-  console.log(`==> Available at your primary URL https://smart-talk-ko5m.onrender.com`);
 });
