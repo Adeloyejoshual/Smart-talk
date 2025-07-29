@@ -1,162 +1,63 @@
-<!-- public/chat.html -->
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
-  <title>SmartTalk Chat</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <style>
-    body {
-      margin: 0;
-      font-family: Arial, sans-serif;
-      background: #f4f4f4;
-    }
-
-    .chat-container {
-      display: flex;
-      height: 100vh;
-    }
-
-    .users-list {
-      width: 25%;
-      background: #333;
-      color: white;
-      padding: 20px;
-      overflow-y: auto;
-    }
-
-    .chat-box {
-      width: 75%;
-      display: flex;
-      flex-direction: column;
-    }
-
-    .top-bar {
-      background: #eee;
-      padding: 10px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .messages {
-      flex: 1;
-      padding: 20px;
-      overflow-y: auto;
-      background: #fff;
-    }
-
-    .message {
-      margin-bottom: 10px;
-    }
-
-    .message span {
-      font-weight: bold;
-    }
-
-    form {
-      display: flex;
-      padding: 10px;
-      background: #eee;
-    }
-
-    input {
-      flex: 1;
-      padding: 10px;
-      border: none;
-      outline: none;
-    }
-
-    button {
-      padding: 10px 20px;
-      border: none;
-      background: #333;
-      color: white;
-      cursor: pointer;
-    }
-
-    button:hover {
-      background: #555;
-    }
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SmartTalk - Chat</title>
+  <link rel="stylesheet" href="/styles/chat.css">
+  <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
+  <header>
+    <h2 id="chatWith">Chat with </h2>
+    <button id="backBtn">⬅ Back</button>
+  </header>
 
-<div class="chat-container">
-  <div class="users-list">
-    <h3>Online Users</h3>
-    <ul id="onlineUsers"></ul>
-  </div>
+  <main id="chatBox">
+    <ul id="messages"></ul>
+  </main>
 
-  <div class="chat-box">
-    <div class="top-bar">
-      <span>Welcome, <strong id="usernameDisplay"></strong></span>
-      <button onclick="logout()">Logout</button>
-    </div>
+  <form id="chatForm">
+    <input type="text" id="messageInput" autocomplete="off" placeholder="Type a message..." required />
+    <button type="submit">➤</button>
+  </form>
 
-    <div class="messages" id="messages"></div>
+  <script>
+    const socket = io();
+    const messages = document.getElementById('messages');
+    const chatForm = document.getElementById('chatForm');
+    const messageInput = document.getElementById('messageInput');
+    const chatWith = document.getElementById('chatWith');
+    const backBtn = document.getElementById('backBtn');
 
-    <form id="chatForm">
-      <input type="text" id="messageInput" placeholder="Type a message..." autocomplete="off" required />
-      <button type="submit">Send</button>
-    </form>
-  </div>
-</div>
+    const urlParams = new URLSearchParams(window.location.search);
+    const to = urlParams.get('to');
+    const from = localStorage.getItem('userId');
+    const toName = urlParams.get('name');
 
-<script src="/socket.io/socket.io.js"></script>
-<script>
-  const username = localStorage.getItem("username");
-  if (!username) {
-    window.location.href = "/login.html";
-  } else {
-    document.getElementById("usernameDisplay").textContent = username;
-  }
+    chatWith.textContent = 'Chat with ' + toName;
 
-  const socket = io();
-  const messagesDiv = document.getElementById("messages");
-  const onlineUsersList = document.getElementById("onlineUsers");
-  const messageInput = document.getElementById("messageInput");
-  const chatForm = document.getElementById("chatForm");
+    socket.emit('userOnline', from);
 
-  // Notify server that user joined
-  socket.emit("userOnline", username);
-
-  // Display new message
-  socket.on("chatMessage", ({ sender, content, timestamp }) => {
-    const msgEl = document.createElement("div");
-    msgEl.classList.add("message");
-    msgEl.innerHTML = `<span>${sender}</span>: ${content}`;
-    messagesDiv.appendChild(msgEl);
-    messagesDiv.scrollTop = messagesDiv.scrollHeight;
-  });
-
-  // Update list of online users
-  socket.on("updateOnlineUsers", (users) => {
-    onlineUsersList.innerHTML = "";
-    users.forEach(user => {
-      const li = document.createElement("li");
-      li.textContent = user;
-      onlineUsersList.appendChild(li);
+    socket.on('privateMessage', ({ from: sender, message }) => {
+      const li = document.createElement('li');
+      li.textContent = sender === from ? `You: ${message}` : `${toName}: ${message}`;
+      li.className = sender === from ? 'sent' : 'received';
+      messages.appendChild(li);
+      messages.scrollTop = messages.scrollHeight;
     });
-  });
 
-  // Handle message form
-  chatForm.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const content = messageInput.value.trim();
-    if (content === "") return;
+    chatForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const message = messageInput.value.trim();
+      if (!message) return;
+      socket.emit('privateMessage', { from, to, message });
+      messageInput.value = '';
+    });
 
-    const msg = { sender: username, content };
-    socket.emit("chatMessage", msg);
-    messageInput.value = "";
-  });
-
-  // Logout function
-  function logout() {
-    localStorage.removeItem("username");
-    window.location.href = "/login.html";
-  }
-</script>
-
+    backBtn.onclick = () => {
+      window.location.href = '/';
+    };
+  </script>
 </body>
 </html>
