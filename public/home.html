@@ -1,119 +1,126 @@
 <!DOCTYPE html>
-<html lang="en" class="bg-white text-gray-900 dark:bg-gray-900 dark:text-white">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SmartTalk – Secure Real-Time Chat</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            primary: '#1D4ED8',
-          }
-        }
-      }
-    };
-  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Home | SmartTalk</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f7f9fb;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+
+    .container {
+      background-color: #fff;
+      padding: 30px;
+      border-radius: 20px;
+      box-shadow: 0 0 15px rgba(0,0,0,0.1);
+      max-width: 400px;
+      width: 100%;
+      text-align: center;
+    }
+
+    h1 {
+      font-size: 1.8rem;
+      margin-bottom: 10px;
+    }
+
+    .username {
+      color: #007bff;
+    }
+
+    button, .nav a {
+      display: block;
+      width: 100%;
+      margin: 12px 0;
+      padding: 12px;
+      font-size: 1rem;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      background-color: #007bff;
+      color: white;
+      text-decoration: none;
+      transition: background-color 0.2s;
+    }
+
+    button:hover, .nav a:hover {
+      background-color: #0056b3;
+    }
+
+    .logout {
+      background-color: #e53935;
+    }
+
+    .logout:hover {
+      background-color: #c62828;
+    }
+
+    .nav a {
+      background-color: #6c757d;
+    }
+
+    .nav a:hover {
+      background-color: #5a6268;
+    }
+  </style>
 </head>
-<body class="flex flex-col min-h-screen">
+<body>
+  <div class="container">
+    <h1>Welcome, <span class="username" id="usernameDisplay">User</span> 👋</h1>
 
-  <!-- Navbar -->
-  <header class="flex items-center justify-between px-6 py-4 shadow bg-primary text-white">
-    <div class="flex items-center gap-2">
-      <img src="/images/logo.png" alt="SmartTalk Logo" class="h-10 w-10" />
-      <span class="text-xl font-bold">SmartTalk</span>
+    <button onclick="goToChat()">💬 Enter Chat Room</button>
+
+    <div class="nav">
+      <a href="profile.html">👤 Profile</a>
+      <a href="notification.html">🔔 Notifications</a>
+      <a href="about.html">ℹ️ About</a>
     </div>
-    <nav class="space-x-4 hidden md:block">
-      <a href="#features" class="hover:underline">Features</a>
-      <a href="#faq" class="hover:underline">FAQ</a>
-      <a href="#download" class="hover:underline">Download</a>
-      <a href="/login.html" class="hover:underline">Login</a>
-    </nav>
-    <button id="dark-toggle" class="ml-4 bg-white text-primary px-3 py-1 rounded hidden md:inline-block">
-      🌙
-    </button>
-  </header>
 
-  <!-- Hero Section -->
-  <section class="flex flex-col items-center text-center px-6 py-16 bg-gradient-to-b from-blue-100 to-blue-200 dark:from-gray-800 dark:to-gray-900">
-    <h1 class="text-4xl md:text-5xl font-bold mb-4">Welcome to SmartTalk</h1>
-    <p class="text-lg mb-6 max-w-xl">Secure, real-time messaging for private and group chats. Accessible anywhere. Anytime.</p>
-    <div class="flex gap-4">
-      <a href="/login.html" class="px-6 py-3 bg-primary text-white rounded hover:bg-blue-700">Login</a>
-      <a href="/register.html" class="px-6 py-3 bg-white text-primary border border-primary rounded hover:bg-blue-50">Register</a>
-    </div>
-    <img src="/images/chat-preview.png" alt="App Preview" class="w-full max-w-xl mt-12 rounded shadow-lg" />
-  </section>
+    <button class="logout" onclick="logout()">🚪 Logout</button>
+  </div>
 
-  <!-- Features -->
-  <section id="features" class="px-6 py-16 bg-white dark:bg-gray-900">
-    <h2 class="text-3xl font-bold text-center mb-10">Why SmartTalk?</h2>
-    <div class="grid gap-8 md:grid-cols-3 text-center">
-      <div>
-        <h3 class="text-xl font-semibold">⚡ Real-Time Messaging</h3>
-        <p>Send and receive messages instantly.</p>
-      </div>
-      <div>
-        <h3 class="text-xl font-semibold">🔐 End-to-End Encryption</h3>
-        <p>Your privacy is our top priority.</p>
-      </div>
-      <div>
-        <h3 class="text-xl font-semibold">🧑‍🤝‍🧑 Private & Group Chats</h3>
-        <p>Chat one-on-one or with friends.</p>
-      </div>
-      <div>
-        <h3 class="text-xl font-semibold">📁 File Sharing</h3>
-        <p>Send images, videos, documents and more.</p>
-      </div>
-      <div>
-        <h3 class="text-xl font-semibold">🌍 Access Anywhere</h3>
-        <p>Use it on web, mobile, or desktop.</p>
-      </div>
-      <div>
-        <h3 class="text-xl font-semibold">👤 Custom Profiles</h3>
-        <p>Personalize your chatting experience.</p>
-      </div>
-    </div>
-  </section>
-
-  <!-- Download Section -->
-  <section id="download" class="px-6 py-16 bg-blue-50 dark:bg-gray-800 text-center">
-    <h2 class="text-3xl font-bold mb-8">Download SmartTalk</h2>
-    <div class="flex flex-wrap justify-center gap-4">
-      <a href="#" class="px-6 py-3 bg-primary text-white rounded hover:bg-blue-700">Android</a>
-      <a href="#" class="px-6 py-3 bg-primary text-white rounded hover:bg-blue-700">iOS</a>
-      <a href="#" class="px-6 py-3 bg-primary text-white rounded hover:bg-blue-700">Windows</a>
-      <a href="#" class="px-6 py-3 bg-primary text-white rounded hover:bg-blue-700">Web</a>
-    </div>
-  </section>
-
-  <!-- FAQ (Placeholder) -->
-  <section id="faq" class="px-6 py-16 bg-white dark:bg-gray-900 text-center">
-    <h2 class="text-3xl font-bold mb-6">Frequently Asked Questions</h2>
-    <p class="text-gray-600 dark:text-gray-300">Coming soon...</p>
-  </section>
-
-  <!-- Footer -->
-  <footer class="mt-auto px-6 py-6 bg-primary text-white text-center">
-    <p>© 2025 SmartTalk. All rights reserved.</p>
-    <div class="mt-2 space-x-4">
-      <a href="#" class="hover:underline">About</a>
-      <a href="mailto:smarttalkgit@gmail.com" class="hover:underline">Contact</a>
-      <a href="#" class="hover:underline">Privacy Policy</a>
-      <a href="#" class="hover:underline">Terms of Use</a>
-    </div>
-  </footer>
-
-  <!-- Dark Mode Toggle Script -->
   <script>
-    const toggle = document.getElementById('dark-toggle');
-    toggle?.addEventListener('click', () => {
-      document.documentElement.classList.toggle('dark');
-    });
-  </script>
+    // Decode JWT to get username
+    function getUsernameFromToken(token) {
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        return payload.username;
+      } catch {
+        return null;
+      }
+    }
 
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      alert("You must be logged in first.");
+      window.location.href = "login.html";
+    } else {
+      const username = getUsernameFromToken(token);
+      if (username) {
+        document.getElementById("usernameDisplay").textContent = username;
+      } else {
+        localStorage.removeItem("token");
+        alert("Session expired. Please login again.");
+        window.location.href = "login.html";
+      }
+    }
+
+    function goToChat() {
+      window.location.href = "chat.html";
+    }
+
+    function logout() {
+      localStorage.removeItem("token");
+      window.location.href = "login.html";
+    }
+  </script>
 </body>
 </html>
