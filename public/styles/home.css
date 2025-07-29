@@ -74,14 +74,53 @@ header {
 .user {
   background-color: rgba(255, 255, 255, 0.07);
   margin-bottom: 10px;
-  padding: 10px;
+  padding: 12px;
   border-radius: 8px;
   transition: background 0.2s ease;
   cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .user:hover {
   background-color: rgba(255, 255, 255, 0.15);
+}
+
+.user .info {
+  display: flex;
+  flex-direction: column;
+}
+
+.user .name {
+  font-size: 1rem;
+  font-weight: bold;
+}
+
+.user .email {
+  font-size: 0.85rem;
+  color: #bbb;
+}
+
+/* Hide if user is already in chat or blocked */
+.user.hidden-user {
+  display: none !important;
+}
+
+/* Friend/Follow Button */
+.user .follow-btn {
+  background-color: #0984e3;
+  color: white;
+  border: none;
+  padding: 6px 10px;
+  font-size: 0.9rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.user .follow-btn:hover {
+  background-color: #74b9ff;
 }
 
 /* Floating + Button */
@@ -130,6 +169,7 @@ header {
   width: 90%;
   max-width: 400px;
   color: #fff;
+  position: relative;
 }
 
 .modal-content h2 {
@@ -187,5 +227,15 @@ header {
 
   .modal-content {
     width: 95%;
+  }
+
+  .user {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .user .follow-btn {
+    margin-top: 10px;
+    align-self: flex-end;
   }
 }
