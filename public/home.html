@@ -1,162 +1,114 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>SmartTalk Dashboard</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <meta charset="UTF-8">
+  <title>SmartTalk - Home</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="/styles/home.css">
   <style>
     body {
-      margin: 0;
-      font-family: 'Inter', sans-serif;
-      background: url('https://images.unsplash.com/photo-1557682250-33bd709cbe85?auto=format&fit=crop&w=1650&q=80') no-repeat center center fixed;
-      background-size: cover;
+      background-color: #111;
       color: #fff;
-      min-height: 100vh;
-      position: relative;
-    }
-
-    body::before {
-      content: '';
-      position: absolute;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      background-color: rgba(0, 0, 0, 0.7);
-      z-index: 0;
-    }
-
-    .container {
-      position: relative;
-      z-index: 1;
-      padding: 16px;
+      font-family: 'Segoe UI', sans-serif;
+      margin: 0;
+      padding: 0;
     }
 
     header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .logo {
+      padding: 1rem;
+      background: #222;
+      text-align: center;
       font-size: 1.5rem;
       font-weight: bold;
+      border-bottom: 1px solid #333;
     }
 
-    .settings-icon {
-      cursor: pointer;
-      font-size: 1.4rem;
+    #searchContainer {
+      margin: 1rem;
+      text-align: center;
     }
 
-    .search-bar {
-      margin-top: 20px;
-      display: flex;
-    }
-
-    .search-bar input {
-      flex: 1;
-      padding: 10px;
-      border-radius: 8px;
+    #searchInput {
+      padding: 0.5rem;
+      width: 80%;
+      max-width: 400px;
       border: none;
-      background: #1e1e1e;
-      color: #fff;
+      border-radius: 6px;
+      font-size: 1rem;
     }
 
-    .chat-section {
-      margin-top: 30px;
+    #searchResults {
+      margin-top: 1rem;
+      list-style: none;
+      padding: 0;
+      text-align: center;
     }
 
-    .chat-user {
-      padding: 12px;
-      background: #1e1e1e;
+    #searchResults li {
+      background: #1a1a1a;
+      margin: 0.3rem auto;
+      padding: 0.6rem;
+      width: 80%;
+      max-width: 400px;
       border-radius: 8px;
-      margin-bottom: 10px;
+      border: 1px solid #333;
       cursor: pointer;
-      transition: 0.2s;
+      transition: background 0.2s;
     }
 
-    .chat-user:hover {
-      background-color: #2c2c2c;
+    #searchResults li:hover {
+      background: #333;
     }
 
-    .floating-btn {
-      position: fixed;
-      bottom: 24px;
-      right: 24px;
-      width: 55px;
-      height: 55px;
-      background-color: #007bff;
-      color: white;
-      font-size: 28px;
-      border: none;
-      border-radius: 50%;
-      cursor: pointer;
-      box-shadow: 0 4px 8px rgba(0,0,0,0.3);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 2;
-    }
-
-    @media (max-width: 600px) {
-      .search-bar input {
-        font-size: 14px;
-      }
+    .footer {
+      text-align: center;
+      padding: 1rem;
+      color: #666;
+      font-size: 0.9rem;
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <header>
-      <div class="logo">SmartTalk</div>
-      <div class="settings-icon" onclick="goToSettings()">⚙️</div>
-    </header>
 
-    <div class="search-bar">
-      <input type="text" placeholder="Search users by username or Gmail..." onkeyup="searchUsers(this.value)" />
-    </div>
+  <header>
+    SmartTalk 🔍
+  </header>
 
-    <div class="chat-section" id="chatList">
-      <!-- Searched users will be shown here -->
-      <div class="chat-user">Loading users...</div>
-    </div>
+  <div id="searchContainer">
+    <input type="text" id="searchInput" placeholder="Search by username or Gmail..." />
+    <ul id="searchResults"></ul>
   </div>
 
-  <button class="floating-btn" onclick="addNewUser()">+</button>
+  <div class="footer">
+    &copy; 2025 SmartTalk. All rights reserved.
+  </div>
 
-  <!-- ✅ Socket.IO Client -->
-  <script src="/socket.io/socket.io.js"></script>
   <script>
-    const socket = io(); // auto-connects to your server
+    const searchInput = document.getElementById('searchInput');
+    const searchResults = document.getElementById('searchResults');
 
-    function goToSettings() {
-      window.location.href = "settings.html";
-    }
+    searchInput.addEventListener('input', async () => {
+      const query = searchInput.value.trim();
+      searchResults.innerHTML = '';
 
-    function addNewUser() {
-      alert("Feature coming soon: Add new user.");
-    }
+      if (query === '') return;
 
-    function searchUsers(query) {
-      socket.emit("search-users", query);
-    }
+      try {
+        const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+        const users = await response.json();
 
-    socket.on("search-results", users => {
-      const chatList = document.getElementById("chatList");
-      chatList.innerHTML = '';
-
-      if (users.length === 0) {
-        chatList.innerHTML = '<div class="chat-user">No users found</div>';
-        return;
+        if (Array.isArray(users)) {
+          users.forEach(user => {
+            const li = document.createElement('li');
+            li.textContent = `${user.username} (${user.email})`;
+            searchResults.appendChild(li);
+          });
+        }
+      } catch (err) {
+        console.error('Search failed:', err);
       }
-
-      users.forEach(user => {
-        const div = document.createElement("div");
-        div.className = "chat-user";
-        div.textContent = user.username + " (" + user.email + ")";
-        chatList.appendChild(div);
-      });
     });
   </script>
+
 </body>
 </html>
