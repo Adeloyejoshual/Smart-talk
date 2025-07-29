@@ -1,3 +1,4 @@
+// models/User.js
 const mongoose = require('mongoose');
 
 const UserSchema = new mongoose.Schema({
@@ -5,27 +6,19 @@ const UserSchema = new mongoose.Schema({
     type: String,
     required: true,
     unique: true,
-    trim: true,
+    trim: true
   },
   email: {
     type: String,
     required: true,
     unique: true,
-    trim: true,
+    trim: true
   },
   password: {
     type: String,
-    required: true,
-  },
-  profileImage: {
-    type: String,
-    default: '/images/default-avatar.png'  // Optional default image
+    required: true
   },
   friends: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
-  }],
-  blocked: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   }]
