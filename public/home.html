@@ -1,38 +1,27 @@
-<!DOCTYPE html><html lang="en">
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SmartTalk Home</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SmartTalk - Home</title>
   <link rel="stylesheet" href="/styles/home.css" />
-  <script defer src="/scripts/home.js"></script>
 </head>
-<body class="dark">
-  <header>
-    <div class="top-bar">
-      <input type="text" id="search" placeholder="Search by username or Gmail..." />
-      <button id="toggle-theme">🌙</button>
-      <button id="open-settings">⚙️</button>
-    </div>
-  </header>  <main>
-    <section class="user-info">
-      <p>Welcome, <span id="logged-in-user">Username</span>!</p>
-    </section><section id="chat-section">
-  <!-- Messages will appear here -->
-</section>
+<body>
+  <div class="container">
+    <header>
+      <h1>Welcome, <span id="username">User</span></h1>
+      <input type="text" id="searchInput" placeholder="Search by username or Gmail..." />
+      <button id="toggleTheme">🌙</button>
+    </header>
 
-<button id="add-user-btn">+</button>
+    <main id="chatSection">
+      <!-- Chat messages will go here -->
+      <p class="placeholder-text">Start chatting with a user...</p>
+    </main>
 
-  </main>  <!-- Settings Modal -->  <div id="settings-modal" class="hidden">
-    <div class="modal-content">
-      <h2>Settings</h2>
-      <ul>
-        <li><a href="/profile.html">Edit Profile</a></li>
-        <li><a href="/support.html">Customer Service</a></li>
-        <li><a href="/contact.html">Contact</a></li>
-        <li><a href="/logout">Logout</a></li>
-      </ul>
-      <button id="close-settings">Close</button>
-    </div>
+    <button id="addUserBtn">+</button>
   </div>
+
+  <script src="/scripts/home.js"></script>
 </body>
 </html>
