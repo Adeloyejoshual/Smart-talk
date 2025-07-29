@@ -1,53 +1,119 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="bg-white text-gray-900 dark:bg-gray-900 dark:text-white">
 <head>
-  <meta charset="UTF-8">
-  <title>SmartTalk Home</title>
-  <style>
-    body { font-family: Arial, sans-serif; padding: 20px; }
-    input { padding: 8px; width: 300px; }
-    ul { list-style: none; padding: 0; margin-top: 10px; }
-    li {
-      padding: 8px;
-      margin: 4px 0;
-      background: #f0f0f0;
-      cursor: pointer;
-    }
-    li:hover {
-      background-color: #d8f2ff;
-    }
-  </style>
-</head>
-<body>
-  <h2>Search for users to chat with</h2>
-  <input type="text" id="searchInput" placeholder="Search by username" />
-  <ul id="results"></ul>
-
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SmartTalk – Secure Real-Time Chat</title>
+  <script src="https://cdn.tailwindcss.com"></script>
   <script>
-    const searchInput = document.getElementById("searchInput");
-    const resultsList = document.getElementById("results");
-
-    searchInput.addEventListener("input", async () => {
-      const query = searchInput.value.trim();
-      if (!query) {
-        resultsList.innerHTML = '';
-        return;
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            primary: '#1D4ED8',
+          }
+        }
       }
+    };
+  </script>
+</head>
+<body class="flex flex-col min-h-screen">
 
-      const res = await fetch(`/api/search?username=${query}`);
-      const users = await res.json();
+  <!-- Navbar -->
+  <header class="flex items-center justify-between px-6 py-4 shadow bg-primary text-white">
+    <div class="flex items-center gap-2">
+      <img src="/images/logo.png" alt="SmartTalk Logo" class="h-10 w-10" />
+      <span class="text-xl font-bold">SmartTalk</span>
+    </div>
+    <nav class="space-x-4 hidden md:block">
+      <a href="#features" class="hover:underline">Features</a>
+      <a href="#faq" class="hover:underline">FAQ</a>
+      <a href="#download" class="hover:underline">Download</a>
+      <a href="/login.html" class="hover:underline">Login</a>
+    </nav>
+    <button id="dark-toggle" class="ml-4 bg-white text-primary px-3 py-1 rounded hidden md:inline-block">
+      🌙
+    </button>
+  </header>
 
-      resultsList.innerHTML = '';
-      users.forEach(user => {
-        const li = document.createElement("li");
-        li.textContent = user.username;
-        li.addEventListener("click", () => {
-          // Redirect to private chat with selected username
-          window.location.href = `/chat.html?user=${user.username}`;
-        });
-        resultsList.appendChild(li);
-      });
+  <!-- Hero Section -->
+  <section class="flex flex-col items-center text-center px-6 py-16 bg-gradient-to-b from-blue-100 to-blue-200 dark:from-gray-800 dark:to-gray-900">
+    <h1 class="text-4xl md:text-5xl font-bold mb-4">Welcome to SmartTalk</h1>
+    <p class="text-lg mb-6 max-w-xl">Secure, real-time messaging for private and group chats. Accessible anywhere. Anytime.</p>
+    <div class="flex gap-4">
+      <a href="/login.html" class="px-6 py-3 bg-primary text-white rounded hover:bg-blue-700">Login</a>
+      <a href="/register.html" class="px-6 py-3 bg-white text-primary border border-primary rounded hover:bg-blue-50">Register</a>
+    </div>
+    <img src="/images/chat-preview.png" alt="App Preview" class="w-full max-w-xl mt-12 rounded shadow-lg" />
+  </section>
+
+  <!-- Features -->
+  <section id="features" class="px-6 py-16 bg-white dark:bg-gray-900">
+    <h2 class="text-3xl font-bold text-center mb-10">Why SmartTalk?</h2>
+    <div class="grid gap-8 md:grid-cols-3 text-center">
+      <div>
+        <h3 class="text-xl font-semibold">⚡ Real-Time Messaging</h3>
+        <p>Send and receive messages instantly.</p>
+      </div>
+      <div>
+        <h3 class="text-xl font-semibold">🔐 End-to-End Encryption</h3>
+        <p>Your privacy is our top priority.</p>
+      </div>
+      <div>
+        <h3 class="text-xl font-semibold">🧑‍🤝‍🧑 Private & Group Chats</h3>
+        <p>Chat one-on-one or with friends.</p>
+      </div>
+      <div>
+        <h3 class="text-xl font-semibold">📁 File Sharing</h3>
+        <p>Send images, videos, documents and more.</p>
+      </div>
+      <div>
+        <h3 class="text-xl font-semibold">🌍 Access Anywhere</h3>
+        <p>Use it on web, mobile, or desktop.</p>
+      </div>
+      <div>
+        <h3 class="text-xl font-semibold">👤 Custom Profiles</h3>
+        <p>Personalize your chatting experience.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Download Section -->
+  <section id="download" class="px-6 py-16 bg-blue-50 dark:bg-gray-800 text-center">
+    <h2 class="text-3xl font-bold mb-8">Download SmartTalk</h2>
+    <div class="flex flex-wrap justify-center gap-4">
+      <a href="#" class="px-6 py-3 bg-primary text-white rounded hover:bg-blue-700">Android</a>
+      <a href="#" class="px-6 py-3 bg-primary text-white rounded hover:bg-blue-700">iOS</a>
+      <a href="#" class="px-6 py-3 bg-primary text-white rounded hover:bg-blue-700">Windows</a>
+      <a href="#" class="px-6 py-3 bg-primary text-white rounded hover:bg-blue-700">Web</a>
+    </div>
+  </section>
+
+  <!-- FAQ (Placeholder) -->
+  <section id="faq" class="px-6 py-16 bg-white dark:bg-gray-900 text-center">
+    <h2 class="text-3xl font-bold mb-6">Frequently Asked Questions</h2>
+    <p class="text-gray-600 dark:text-gray-300">Coming soon...</p>
+  </section>
+
+  <!-- Footer -->
+  <footer class="mt-auto px-6 py-6 bg-primary text-white text-center">
+    <p>© 2025 SmartTalk. All rights reserved.</p>
+    <div class="mt-2 space-x-4">
+      <a href="#" class="hover:underline">About</a>
+      <a href="mailto:smarttalkgit@gmail.com" class="hover:underline">Contact</a>
+      <a href="#" class="hover:underline">Privacy Policy</a>
+      <a href="#" class="hover:underline">Terms of Use</a>
+    </div>
+  </footer>
+
+  <!-- Dark Mode Toggle Script -->
+  <script>
+    const toggle = document.getElementById('dark-toggle');
+    toggle?.addEventListener('click', () => {
+      document.documentElement.classList.toggle('dark');
     });
   </script>
+
 </body>
 </html>
