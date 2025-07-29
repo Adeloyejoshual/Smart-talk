@@ -1,92 +1,51 @@
 const express = require('express');
-const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
-// ✅ POST /register
+const router = express.Router();
+
+// REGISTER
 router.post('/register', async (req, res) => {
   const { username, email, password } = req.body;
+  if (!username || !email || !password)
+    return res.status(400).json({ error: 'All fields are required' });
 
   try {
-    if (!username || !email || !password) {
-      return res.status(400).json({ message: 'All fields are required' });
-    }
+    const existing = await User.findOne({ email });
+    if (existing) return res.status(400).json({ error: 'Email already registered' });
 
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(409).json({ message: 'Email already registered' });
-    }
+    const hashed = await bcrypt.hash(password, 10);
+    const user = await User.create({ username, email, password: hashed });
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const newUser = new User({
-      username,
-      email,
-      password: hashedPassword,
-    });
-
-    await newUser.save();
-
-    // ✅ Redirect to login page after successful registration
-    return res.redirect('/login.html');
-
+    res.status(201).json({ message: 'Registered successfully', user: { _id: user._id, username: user.username, email: user.email } });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
-// ✅ POST /login
+// LOGIN
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
+  if (!email || !password)
+    return res.status(400).json({ error: 'All fields are required' });
 
   try {
     const user = await User.findOne({ email });
-    if (!user)
-      return res.status(401).json({ message: 'Invalid credentials' });
+    if (!user) return res.status(401).json({ error: 'Invalid email or password' });
 
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch)
-      return res.status(401).json({ message: 'Invalid credentials' });
+    if (!isMatch) return res.status(401).json({ error: 'Invalid email or password' });
 
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-      expiresIn: '7d',
+    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+
+    res.json({
+      message: 'Login successful',
+      token,
+      user: { _id: user._id, username: user.username, email: user.email }
     });
-
-    res.cookie('token', token, {
-      httpOnly: true,
-      sameSite: 'Lax',
-    });
-
-    // ✅ Redirect to home.html with username in query
-    res.redirect(`/home.html?username=${encodeURIComponent(user.username)}`);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// ✅ POST /forgot-password
-router.post('/forgot-password', async (req, res) => {
-  const { email } = req.body;
-
-  try {
-    if (!email)
-      return res.status(400).json({ message: 'Email is required' });
-
-    const user = await User.findOne({ email });
-    if (!user)
-      return res.status(404).json({ message: 'User not found' });
-
-    // 🔐 TODO: Add email sending with reset link in future
-    return res.status(200).json({
-      message: 'Password reset instructions sent to your email!',
-    });
-
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
