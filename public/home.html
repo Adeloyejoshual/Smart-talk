@@ -1,108 +1,40 @@
+<!-- public/home.html -->
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>SmartTalk - Home</title>
   <link rel="stylesheet" href="/styles/home.css" />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter&display=swap" />
+  <script defer src="/scripts/home.js"></script>
 </head>
-<body>
+<body class="dark-mode">
   <header>
     <div class="search-container">
-      <input type="text" id="searchInput" placeholder="Search username or Gmail..." />
-      <button id="searchBtn" title="Search">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" height="20" viewBox="0 0 24 24" width="20" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-            d="M21 21l-4.35-4.35m0 0A7.5 7.5 0 104.5 4.5a7.5 7.5 0 0012.15 12.15z"/>
-        </svg>
-      </button>
+      <input type="text" id="searchBar" placeholder="Search users by name or Gmail...">
+      <span class="search-icon">🔎</span>
     </div>
-    <button class="settings-btn" onclick="openSettings()">⚙️</button>
-    <div class="dark-toggle">
-      <label class="switch">
-        <input type="checkbox" id="themeToggle" checked>
-        <span class="slider round"></span>
-      </label>
-    </div>
+    <h1>Welcome, <span id="usernameDisplay"></span></h1>
   </header>
 
   <main>
-    <h2>Welcome, <span id="currentUsername"></span></h2>
-    <ul id="userList"></ul>
+    <div id="userList" class="user-list"></div>
   </main>
 
-  <button class="add-user-btn" onclick="openNewUserPrompt()">➕</button>
-
-  <div id="settingsModal" class="modal">
-    <div class="modal-content">
-      <h3>Settings</h3>
-      <ul>
-        <li><a href="/profile.html">Edit Profile</a></li>
-        <li><a href="/contact.html">Customer Service</a></li>
-        <li><a href="mailto:smarttalkgit@gmail.com">Contact</a></li>
-      </ul>
-      <button onclick="closeSettings()">Close</button>
-    </div>
+  <!-- Floating Buttons -->
+  <div class="floating-buttons">
+    <button id="addUserBtn" title="Add New User">➕</button>
+    <button id="settingsBtn" title="Settings">⚙️</button>
   </div>
 
-  <script src="/socket.io/socket.io.js"></script>
-  <script>
-    const socket = io();
-    const currentUser = localStorage.getItem("username");
-    const searchInput = document.getElementById("searchInput");
-    const userList = document.getElementById("userList");
-    const currentUsernameEl = document.getElementById("currentUsername");
-
-    currentUsernameEl.textContent = currentUser || 'Guest';
-
-    socket.emit('userOnline', currentUser);
-
-    // Theme Toggle
-    document.getElementById("themeToggle").addEventListener("change", function () {
-      document.documentElement.setAttribute("data-theme", this.checked ? "dark" : "light");
-    });
-
-    // Settings Modal
-    function openSettings() {
-      document.getElementById("settingsModal").style.display = "block";
-    }
-
-    function closeSettings() {
-      document.getElementById("settingsModal").style.display = "none";
-    }
-
-    // New User Button
-    function openNewUserPrompt() {
-      const target = prompt("Enter username or Gmail of user you want to message:");
-      if (target && target !== currentUser) {
-        window.location.href = `/chat.html?target=${encodeURIComponent(target)}`;
-      }
-    }
-
-    // Live search
-    document.getElementById("searchBtn").addEventListener("click", async () => {
-      const query = searchInput.value.trim();
-      if (!query) return;
-
-      const res = await fetch(`/api/users/search?q=${query}`);
-      const data = await res.json();
-
-      userList.innerHTML = "";
-      if (data.length === 0) {
-        userList.innerHTML = "<li>No users found.</li>";
-        return;
-      }
-
-      data.forEach(user => {
-        const li = document.createElement("li");
-        li.textContent = user.username + " (" + user.email + ")";
-        li.onclick = () => {
-          window.location.href = `/chat.html?target=${encodeURIComponent(user.username)}`;
-        };
-        userList.appendChild(li);
-      });
-    });
-  </script>
+  <!-- Settings Menu -->
+  <div id="settingsMenu" class="hidden">
+    <button onclick="window.location.href='/profile.html'">Edit Profile</button>
+    <button onclick="alert('Contact us at smarttalkgit@gmail.com')">Customer Service</button>
+    <button onclick="window.location.href='/login.html'">Logout</button>
+    <label>
+      <input type="checkbox" id="darkModeToggle" checked>
+      Dark Mode
+    </label>
+  </div>
 </body>
 </html>
