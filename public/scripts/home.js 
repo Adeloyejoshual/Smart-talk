@@ -1,66 +1,56 @@
-// home.js
+// public/scripts/home.js
+document.addEventListener("DOMContentLoaded", () => {
+  const usernameDisplay = document.getElementById("usernameDisplay");
+  const searchBar = document.getElementById("searchBar");
+  const userList = document.getElementById("userList");
+  const addUserBtn = document.getElementById("addUserBtn");
+  const settingsBtn = document.getElementById("settingsBtn");
+  const settingsMenu = document.getElementById("settingsMenu");
+  const darkToggle = document.getElementById("darkModeToggle");
 
-// 1. Dark Mode Toggle
-document.getElementById('toggleTheme').addEventListener('click', () => {
-  const html = document.documentElement;
-  const isDark = html.getAttribute('data-theme') === 'dark';
-  html.setAttribute('data-theme', isDark ? 'light' : 'dark');
-  localStorage.setItem('theme', isDark ? 'light' : 'dark');
-});
+  // Get current user from cookie or localStorage
+  const user = JSON.parse(localStorage.getItem("user"));
+  if (!user) return (window.location.href = "/login.html");
 
-// 2. Load theme from localStorage on page load
-window.addEventListener('DOMContentLoaded', () => {
-  const savedTheme = localStorage.getItem('theme') || 'dark';
-  document.documentElement.setAttribute('data-theme', savedTheme);
-  
-  // Optional: Display logged-in username from localStorage
-  const username = localStorage.getItem('username');
-  if (username) {
-    document.getElementById('username').textContent = username;
-  }
-});
+  usernameDisplay.textContent = user.username;
 
-// 3. Simple Search Functionality (username or Gmail)
-document.getElementById('searchInput').addEventListener('input', async (e) => {
-  const query = e.target.value.toLowerCase();
+  // Load users initially
+  fetchUsers("");
 
-  // Optional: fetch users from API
-  try {
-    const res = await fetch('/api/users');
-    const users = await res.json();
+  // Search bar listener
+  searchBar.addEventListener("input", () => {
+    fetchUsers(searchBar.value.trim());
+  });
 
-    // Filter users based on username or Gmail match
-    const filtered = users.filter(user =>
-      user.username.toLowerCase().includes(query) ||
-      user.email.toLowerCase().includes(query)
-    );
-
-    // Display search results (temporary method: log or render to chatSection)
-    const chatSection = document.getElementById('chatSection');
-    chatSection.innerHTML = '';
-
-    if (filtered.length === 0) {
-      chatSection.innerHTML = `<p class="placeholder-text">No users found.</p>`;
-      return;
-    }
-
-    filtered.forEach(user => {
-      const div = document.createElement('div');
-      div.className = 'user-result';
-      div.textContent = `${user.username} (${user.email})`;
-      div.style.padding = '10px';
-      div.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
-      div.style.cursor = 'pointer';
-
-      // Add click behavior
-      div.addEventListener('click', () => {
-        alert(`Start chat with ${user.username}`); // Replace with real chat logic
+  function fetchUsers(search) {
+    fetch(`/api/users?search=${search}&current=${user.username}`)
+      .then(res => res.json())
+      .then(data => {
+        userList.innerHTML = "";
+        if (data.length === 0) {
+          userList.innerHTML = "<p>No users found</p>";
+        } else {
+          data.forEach(u => {
+            const div = document.createElement("div");
+            div.className = "user";
+            div.textContent = u.username + " (" + u.email + ")";
+            userList.appendChild(div);
+          });
+        }
       });
-
-      chatSection.appendChild(div);
-    });
-
-  } catch (err) {
-    console.error('Search error:', err);
   }
+
+  // Floating buttons
+  addUserBtn.addEventListener("click", () => {
+    window.location.href = "/register.html";
+  });
+
+  settingsBtn.addEventListener("click", () => {
+    settingsMenu.classList.toggle("hidden");
+  });
+
+  // Dark mode toggle
+  darkToggle.addEventListener("change", () => {
+    document.body.classList.toggle("dark-mode", darkToggle.checked);
+  });
 });
