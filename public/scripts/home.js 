@@ -1,3 +1,4 @@
+
 // public/scripts/home.js
 document.addEventListener("DOMContentLoaded", () => {
   const usernameDisplay = document.getElementById("usernameDisplay");
