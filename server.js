@@ -17,7 +17,7 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: '*',
-    methods: ['GET', 'POST'],
+    methods: ['GET', 'POST']
   }
 });
 
@@ -36,28 +36,32 @@ mongoose.connect(process.env.MONGO_URI, {
 
 // Routes
 const authRoutes = require('./routes/auth');
-const userRoutes = require('./routes/users'); // ✅ Add this line
+const userRoutes = require('./routes/users');
+
 app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes); // ✅ Add this line
+app.use('/api/users', userRoutes);
 
 // Serve homepage
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'home.html'));
 });
 
-// Socket.IO logic
+// In-memory map for tracking online users
 const onlineUsers = new Map();
 
+// Socket.IO connection
 io.on('connection', (socket) => {
   console.log('🔌 A user connected:', socket.id);
 
-  // User joins with userId
+  // Handle user coming online
   socket.on('userOnline', (userId) => {
-    onlineUsers.set(userId, socket.id);
-    io.emit('updateOnlineUsers', Array.from(onlineUsers.keys()));
+    if (userId) {
+      onlineUsers.set(userId, socket.id);
+      io.emit('updateOnlineUsers', Array.from(onlineUsers.keys()));
+    }
   });
 
-  // Private message
+  // Private messaging logic
   socket.on('privateMessage', ({ from, to, message }) => {
     const receiverSocket = onlineUsers.get(to);
     if (receiverSocket) {
@@ -65,10 +69,10 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Disconnect
+  // Disconnect handling
   socket.on('disconnect', () => {
-    for (const [userId, id] of onlineUsers.entries()) {
-      if (id === socket.id) {
+    for (const [userId, socketId] of onlineUsers.entries()) {
+      if (socketId === socket.id) {
         onlineUsers.delete(userId);
         break;
       }
@@ -78,7 +82,7 @@ io.on('connection', (socket) => {
   });
 });
 
-// Start server
+// Start the server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
