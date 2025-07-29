@@ -4,24 +4,40 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>SmartTalk - Home</title>
-  <link rel="stylesheet" href="/styles/home.css" />
+  <link rel="stylesheet" href="/styles/home.css">
+  <script defer src="/scripts/home.js"></script>
 </head>
-<body>
-  <div class="container">
-    <header>
-      <h1>Welcome, <span id="username">User</span></h1>
-      <input type="text" id="searchInput" placeholder="Search by username or Gmail..." />
-      <button id="toggleTheme">🌙</button>
-    </header>
+<body class="dark-theme">
+  <header>
+    <div class="top-bar">
+      <span class="logo">SmartTalk</span>
+      <input type="text" id="searchInput" placeholder="Search by username or Gmail">
+      <div class="user-display" id="usernameDisplay">Hello, <span id="username">User</span></div>
+      <div class="settings-menu">
+        <button id="settingsBtn">⚙️</button>
+        <div id="settingsDropdown" class="dropdown-content hidden">
+          <a href="/edit-profile.html">Edit Profile</a>
+          <a href="/customer-service.html">Customer Service</a>
+          <a href="/contact.html">Contact</a>
+          <a href="#" id="logoutBtn">Logout</a>
+        </div>
+      </div>
+    </div>
+  </header>
 
-    <main id="chatSection">
-      <!-- Chat messages will go here -->
-      <p class="placeholder-text">Start chatting with a user...</p>
-    </main>
+  <main class="chat-container">
+    <section id="chatSection">
+      <div id="chatMessages" class="chat-box">
+        <!-- Messages will appear here -->
+      </div>
+      <form id="chatForm">
+        <input type="text" id="chatInput" placeholder="Type a message..." required />
+        <button type="submit">Send</button>
+      </form>
+    </section>
+  </main>
 
-    <button id="addUserBtn">+</button>
-  </div>
+  <button id="addUserBtn" title="Add New User">+</button>
 
-  <script src="/scripts/home.js"></script>
 </body>
 </html>
