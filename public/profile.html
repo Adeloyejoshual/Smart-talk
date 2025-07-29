@@ -6,70 +6,72 @@
   <title>Profile | SmartTalk</title>
   <style>
     body {
-      font-family: sans-serif;
-      background-color: #eef2f5;
+      font-family: 'Segoe UI', sans-serif;
+      background: linear-gradient(to bottom right, #0f2027, #203a43, #2c5364);
+      color: #fff;
       display: flex;
       justify-content: center;
       align-items: center;
       height: 100vh;
+      margin: 0;
     }
 
     .profile {
-      background: white;
+      background: rgba(255, 255, 255, 0.1);
       padding: 40px;
       border-radius: 16px;
-      box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
       text-align: center;
-      width: 350px;
+      width: 360px;
+      backdrop-filter: blur(12px);
     }
 
     h2 {
-      margin-bottom: 16px;
+      margin-bottom: 24px;
+      font-size: 1.8rem;
     }
 
     .info {
-      margin: 10px 0;
-      font-size: 1rem;
+      margin: 12px 0;
+      font-size: 1.1rem;
     }
 
-    .username {
-      color: #007bff;
+    .username, .email {
       font-weight: bold;
-    }
-
-    .email {
-      color: #333;
+      color: #00d9ff;
     }
 
     button {
-      margin-top: 20px;
+      margin-top: 25px;
       padding: 12px 24px;
-      background-color: #007bff;
-      color: white;
+      background-color: #00d9ff;
+      color: black;
       border: none;
       border-radius: 8px;
-      cursor: pointer;
       font-size: 1rem;
+      cursor: pointer;
+      transition: background 0.3s;
     }
 
     button:hover {
-      background-color: #0056b3;
+      background-color: #00aacc;
     }
 
     .logout {
-      margin-top: 16px;
-      color: red;
-      font-size: 0.9em;
+      margin-top: 20px;
+      color: #ff6666;
+      font-size: 0.9rem;
       cursor: pointer;
+      text-decoration: underline;
     }
   </style>
 </head>
 <body>
   <div class="profile">
-    <h2>Your Profile</h2>
-    <div class="info">Username: <span class="username" id="username">User</span></div>
-    <div class="info">Email: <span class="email" id="email">user@example.com</span></div>
-    <button onclick="goToDashboard()">Back to Dashboard</button>
+    <h2>Your SmartTalk Profile</h2>
+    <div class="info">Username: <span class="username" id="username">Loading...</span></div>
+    <div class="info">Email: <span class="email" id="email">Loading...</span></div>
+    <button onclick="goToHome()">Back to Home</button>
     <div class="logout" onclick="logout()">Logout</div>
   </div>
 
@@ -87,14 +89,18 @@
       window.location.href = "login.html";
     } else {
       const payload = getPayloadFromToken(token);
-      if (payload) {
-        document.getElementById("username").textContent = payload.username || "User";
-        document.getElementById("email").textContent = payload.email || "user@example.com";
+      if (payload && payload.username && payload.email) {
+        document.getElementById("username").textContent = payload.username;
+        document.getElementById("email").textContent = payload.email;
+      } else {
+        alert("Invalid session. Please login again.");
+        localStorage.removeItem("token");
+        window.location.href = "login.html";
       }
     }
 
-    function goToDashboard() {
-      window.location.href = "dashboard.html";
+    function goToHome() {
+      window.location.href = "home.html";
     }
 
     function logout() {
