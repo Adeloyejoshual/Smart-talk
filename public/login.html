@@ -1,116 +1,88 @@
+<!-- public/login.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Login – SmartTalk</title>
-  <link rel="stylesheet" href="styles/home.css" />
+  <title>Login | SmartTalk</title>
   <style>
     body {
-      background: linear-gradient(to right, #0066cc, #3399ff);
+      font-family: Arial, sans-serif;
+      background-color: #eef2f7;
       display: flex;
       align-items: center;
       justify-content: center;
       height: 100vh;
       margin: 0;
-      font-family: 'Segoe UI', sans-serif;
     }
-
     .login-box {
-      background: rgba(255, 255, 255, 0.1);
-      padding: 25px 30px;
-      border-radius: 14px;
-      box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
-      width: 90%;
-      max-width: 340px;
+      background: white;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      width: 100%;
+      max-width: 400px;
+    }
+    h2 {
       text-align: center;
-    }
-
-    .login-box img {
-      width: 80px;
-      margin-bottom: 15px;
-    }
-
-    .login-box h2 {
-      font-size: 20px;
-      color: #fff;
       margin-bottom: 20px;
     }
-
-    .login-box input {
-      width: 100%;
-      padding: 10px 12px;
-      margin: 10px 0;
-      border: none;
-      border-radius: 6px;
-      background: #fff;
-      color: #333;
-      font-size: 14px;
-      box-sizing: border-box;
-    }
-
-    .password-wrapper {
-      position: relative;
-    }
-
-    .password-wrapper input {
-      padding-right: 50px; /* Leave space for show/hide */
-    }
-
-    .toggle-password {
-      position: absolute;
-      right: 10px;
-      top: 50%;
-      transform: translateY(-50%);
-      color: #0066cc;
-      font-size: 13px;
-      cursor: pointer;
-      user-select: none;
-    }
-
-    .login-box button {
+    input {
       width: 100%;
       padding: 10px;
-      background: #003366;
-      color: #fff;
+      margin: 12px 0;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+    }
+    button {
+      width: 100%;
+      padding: 12px;
+      background-color: #007bff;
+      color: white;
       border: none;
       border-radius: 6px;
-      font-size: 15px;
-      margin-top: 10px;
+      font-size: 1rem;
       cursor: pointer;
     }
-
-    .login-box button:hover {
-      background: #0055aa;
+    button:hover {
+      background-color: #0056b3;
+    }
+    .link {
+      display: block;
+      margin-top: 15px;
+      text-align: center;
     }
   </style>
 </head>
 <body>
   <div class="login-box">
-    <img src="/images/logo.png" alt="SmartTalk Logo" />
-    <h2>Welcome Back to SmartTalk</h2>
-    <form action="/login" method="POST">
-      <input type="text" name="username" placeholder="Username or Email" required />
-
-      <div class="password-wrapper">
-        <input type="password" name="password" id="password" placeholder="Password" required />
-        <span class="toggle-password" onclick="togglePassword('password', this)">Show</span>
-      </div>
-
-      <button type="submit">Login</button>
-    </form>
+    <h2>Login</h2>
+    <input type="text" id="username" placeholder="Username" />
+    <input type="password" id="password" placeholder="Password" />
+    <button onclick="login()">Login</button>
+    <a href="register.html" class="link">Don't have an account? Register</a>
   </div>
 
   <script>
-    function togglePassword(id, el) {
-      const input = document.getElementById(id);
-      if (input.type === "password") {
-        input.type = "text";
-        el.textContent = "Hide";
-      } else {
-        input.type = "password";
-        el.textContent = "Show";
-      }
+    function login() {
+      const username = document.getElementById("username").value;
+      const password = document.getElementById("password").value;
+
+      fetch("/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.token) {
+          localStorage.setItem("token", data.token);
+          window.location.href = "home.html";
+        } else {
+          alert(data.message || "Login failed.");
+        }
+      })
+      .catch(() => alert("An error occurred."));
     }
   </script>
 </body>
