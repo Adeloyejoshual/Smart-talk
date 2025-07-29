@@ -42,16 +42,32 @@ app.post('/login', async (req, res) => {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
-    // Create token with username included
     const token = jwt.sign(
       { userId: user._id, username: user.username },
       process.env.JWT_SECRET,
       { expiresIn: '1d' }
     );
 
-    // Send token in response (client stores in localStorage)
     res.json({ token });
 
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// 🔹 Forgot Password Route (Dummy handler)
+app.post('/forgot-password', async (req, res) => {
+  const { email } = req.body;
+
+  try {
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: "Email not found." });
+    }
+
+    // Simulate email sending (in production you'd send real email)
+    res.status(200).json({ message: "Password reset instructions sent (not really, demo only)." });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
