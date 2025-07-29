@@ -4,9 +4,13 @@ const router = express.Router();
 const Chat = require('../models/Chat');
 const Message = require('../models/Message');
 
-// Get or create chat between two users
+// ✅ Create or retrieve a chat between two users
 router.post('/chat', async (req, res) => {
   const { user1, user2 } = req.body;
+
+  if (!user1 || !user2) {
+    return res.status(400).json({ error: 'Both user1 and user2 are required' });
+  }
 
   try {
     let chat = await Chat.findOne({
@@ -25,28 +29,52 @@ router.post('/chat', async (req, res) => {
   }
 });
 
-// Send a message
+// ✅ Send a new message in a chat
 router.post('/send', async (req, res) => {
   const { chatId, sender, receiver, message } = req.body;
 
+  if (!chatId || !sender || !receiver || !message) {
+    return res.status(400).json({ error: "chatId, sender, receiver, and message are required" });
+  }
+
   try {
-    const msg = new Message({ chatId, sender, receiver, message });
-    await msg.save();
-    res.json(msg);
+    const newMsg = new Message({
+      chatId,
+      sender,
+      receiver,
+      message,
+    });
+
+    await newMsg.save();
+
+    res.status(201).json(newMsg);
   } catch (err) {
     console.error("Error sending message:", err);
     res.status(500).json({ error: "Failed to send message" });
   }
 });
 
-// Get all messages for a chat
+// ✅ Get all messages for a chat ID
 router.get('/:chatId', async (req, res) => {
+  const { chatId } = req.params;
+
   try {
-    const messages = await Message.find({ chatId: req.params.chatId }).sort({ createdAt: 1 });
+    const messages = await Message.find({ chatId }).sort({ createdAt: 1 });
     res.json(messages);
   } catch (err) {
     console.error("Error getting messages:", err);
     res.status(500).json({ error: "Failed to load messages" });
+  }
+});
+
+// ✅ Get all chats for a user (optional but useful)
+router.get('/user/:userId', async (req, res) => {
+  try {
+    const chats = await Chat.find({ participants: req.params.userId });
+    res.json(chats);
+  } catch (err) {
+    console.error("Error getting user chats:", err);
+    res.status(500).json({ error: "Failed to load user chats" });
   }
 });
 
