@@ -36,14 +36,17 @@ document.addEventListener("DOMContentLoaded", () => {
           data.forEach(u => {
             const div = document.createElement("div");
             div.className = "user";
-            div.textContent = u.username + " (" + u.email + ")";
+            div.textContent = `${u.username} (${u.email})`;
             userList.appendChild(div);
           });
         }
+      })
+      .catch(() => {
+        userList.innerHTML = "<p>Failed to load users</p>";
       });
   }
 
-  // Open Add User modal
+  // Show Add User modal
   addUserBtn.addEventListener("click", () => {
     addUserModal.classList.remove("hidden");
   });
@@ -54,9 +57,10 @@ document.addEventListener("DOMContentLoaded", () => {
     createUserForm.reset();
   });
 
-  // Handle form submission
+  // Handle Add User form
   createUserForm.addEventListener("submit", async (e) => {
     e.preventDefault();
+
     const formData = new FormData(createUserForm);
     const newUser = {
       username: formData.get("username"),
@@ -64,34 +68,37 @@ document.addEventListener("DOMContentLoaded", () => {
       password: formData.get("password")
     };
 
-    const res = await fetch("/api/auth/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(newUser)
-    });
+    try {
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newUser)
+      });
 
-    const data = await res.json();
+      const data = await res.json();
 
-    if (res.ok) {
-      alert("User added successfully!");
-      addUserModal.classList.add("hidden");
-      createUserForm.reset();
-      fetchUsers(""); // Refresh user list
-    } else {
-      alert(data.message || "Error adding user.");
+      if (res.ok) {
+        alert("User added successfully!");
+        addUserModal.classList.add("hidden");
+        createUserForm.reset();
+        fetchUsers(searchBar.value.trim()); // Refresh list
+      } else {
+        alert(data.message || "Failed to add user.");
+      }
+    } catch (error) {
+      alert("Network error. Try again.");
     }
   });
 
   // Dark mode toggle
   darkToggle.addEventListener("change", () => {
-    document.documentElement.setAttribute(
-      "data-theme",
-      darkToggle.checked ? "dark" : "light"
-    );
+    const theme = darkToggle.checked ? "dark" : "light";
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("theme", theme);
   });
 
-  // Optional: auto-set toggle on load
-  if (document.documentElement.getAttribute("data-theme") === "dark") {
-    darkToggle.checked = true;
-  }
+  // Set theme on load
+  const savedTheme = localStorage.getItem("theme") || "dark";
+  document.documentElement.setAttribute("data-theme", savedTheme);
+  darkToggle.checked = savedTheme === "dark";
 });
