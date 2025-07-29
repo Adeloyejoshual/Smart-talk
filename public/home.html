@@ -1,92 +1,38 @@
-<!DOCTYPE html>
-<html lang="en">
+<!DOCTYPE html><html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SmartTalk - Fast, Secure Messaging</title>
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <title>SmartTalk Home</title>
+  <link rel="stylesheet" href="/styles/home.css" />
+  <script defer src="/scripts/home.js"></script>
 </head>
-<body class="bg-white text-gray-800 dark:bg-gray-900 dark:text-white transition duration-300">
-
-  <!-- Navbar -->
-  <header class="flex justify-between items-center px-6 py-4 bg-gray-100 dark:bg-gray-800 shadow-md">
-    <div class="text-2xl font-bold text-blue-600">SmartTalk</div>
-    <nav class="space-x-6 text-sm">
-      <a href="#features" class="hover:text-blue-600">Features</a>
-      <a href="#download" class="hover:text-blue-600">Download</a>
-      <a href="#faq" class="hover:text-blue-600">FAQ</a>
-      <a href="/login.html" class="text-blue-600 font-semibold">Login</a>
-    </nav>
-  </header>
-
-  <!-- Hero Section -->
-  <section class="text-center px-4 py-16 bg-blue-50 dark:bg-gray-800">
-    <h1 class="text-4xl md:text-5xl font-bold mb-4">Fast. Secure. Simple Messaging.</h1>
-    <p class="text-lg mb-8">SmartTalk lets you connect with friends, family, or teams in real-time — anytime, anywhere.</p>
-    <a href="/register.html" class="px-6 py-3 bg-blue-600 text-white rounded-full font-semibold hover:bg-blue-700 transition">Get Started</a>
-
-    <div class="mt-12">
-      <img src="https://dummyimage.com/600x300/cccccc/000&text=Chat+Preview" alt="App Preview" class="mx-auto rounded-xl shadow-xl">
+<body class="dark">
+  <header>
+    <div class="top-bar">
+      <input type="text" id="search" placeholder="Search by username or Gmail..." />
+      <button id="toggle-theme">🌙</button>
+      <button id="open-settings">⚙️</button>
     </div>
-  </section>
+  </header>  <main>
+    <section class="user-info">
+      <p>Welcome, <span id="logged-in-user">Username</span>!</p>
+    </section><section id="chat-section">
+  <!-- Messages will appear here -->
+</section>
 
-  <!-- Features Section -->
-  <section id="features" class="px-6 py-16 bg-white dark:bg-gray-900">
-    <h2 class="text-3xl font-bold text-center mb-10">Why Choose SmartTalk?</h2>
-    <div class="grid md:grid-cols-3 gap-10 text-center">
-      <div>
-        <h3 class="text-xl font-semibold mb-2">⚡ Real-Time Messaging</h3>
-        <p>Experience instant communication with low latency and high performance.</p>
-      </div>
-      <div>
-        <h3 class="text-xl font-semibold mb-2">🔒 Secure & Private</h3>
-        <p>Your chats are protected with end-to-end encryption and secure login.</p>
-      </div>
-      <div>
-        <h3 class="text-xl font-semibold mb-2">📱 Multi-Platform Access</h3>
-        <p>Chat from mobile, tablet, or desktop — stay connected everywhere.</p>
-      </div>
+<button id="add-user-btn">+</button>
+
+  </main>  <!-- Settings Modal -->  <div id="settings-modal" class="hidden">
+    <div class="modal-content">
+      <h2>Settings</h2>
+      <ul>
+        <li><a href="/profile.html">Edit Profile</a></li>
+        <li><a href="/support.html">Customer Service</a></li>
+        <li><a href="/contact.html">Contact</a></li>
+        <li><a href="/logout">Logout</a></li>
+      </ul>
+      <button id="close-settings">Close</button>
     </div>
-  </section>
-
-  <!-- Download Section -->
-  <section id="download" class="px-6 py-16 bg-gray-50 dark:bg-gray-800">
-    <h2 class="text-3xl font-bold text-center mb-8">Download SmartTalk</h2>
-    <div class="flex flex-wrap justify-center gap-6">
-      <a href="#" class="px-6 py-3 bg-black text-white rounded-lg">Download for Android</a>
-      <a href="#" class="px-6 py-3 bg-black text-white rounded-lg">Download for iOS</a>
-      <a href="#" class="px-6 py-3 bg-black text-white rounded-lg">Use Web Version</a>
-    </div>
-  </section>
-
-  <!-- FAQ Section -->
-  <section id="faq" class="px-6 py-16 bg-white dark:bg-gray-900">
-    <h2 class="text-3xl font-bold text-center mb-8">Frequently Asked Questions</h2>
-    <div class="max-w-3xl mx-auto space-y-6">
-      <div>
-        <h4 class="font-semibold">Is SmartTalk free?</h4>
-        <p>Yes! SmartTalk is 100% free to use with no hidden charges.</p>
-      </div>
-      <div>
-        <h4 class="font-semibold">Do you support group chats?</h4>
-        <p>Absolutely. You can create public or private groups easily.</p>
-      </div>
-      <div>
-        <h4 class="font-semibold">Where is my data stored?</h4>
-        <p>Your data is securely stored in encrypted databases on trusted cloud servers.</p>
-      </div>
-    </div>
-  </section>
-
-  <!-- Footer -->
-  <footer class="px-6 py-6 bg-gray-100 dark:bg-gray-800 text-center text-sm">
-    <p>&copy; 2025 SmartTalk. All rights reserved.</p>
-    <div class="mt-2 space-x-4">
-      <a href="/privacy.html" class="hover:text-blue-600">Privacy Policy</a>
-      <a href="/terms.html" class="hover:text-blue-600">Terms</a>
-      <a href="mailto:smarttalkgit@gmail.com" class="hover:text-blue-600">Contact</a>
-    </div>
-  </footer>
-
+  </div>
 </body>
 </html>
