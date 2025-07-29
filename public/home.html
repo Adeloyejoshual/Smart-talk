@@ -3,124 +3,80 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Home | SmartTalk</title>
-  <style>
-    body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background-color: #f7f9fb;
-      margin: 0;
-      padding: 0;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-    }
-
-    .container {
-      background-color: #fff;
-      padding: 30px;
-      border-radius: 20px;
-      box-shadow: 0 0 15px rgba(0,0,0,0.1);
-      max-width: 400px;
-      width: 100%;
-      text-align: center;
-    }
-
-    h1 {
-      font-size: 1.8rem;
-      margin-bottom: 10px;
-    }
-
-    .username {
-      color: #007bff;
-    }
-
-    button, .nav a {
-      display: block;
-      width: 100%;
-      margin: 12px 0;
-      padding: 12px;
-      font-size: 1rem;
-      border: none;
-      border-radius: 10px;
-      cursor: pointer;
-      background-color: #007bff;
-      color: white;
-      text-decoration: none;
-      transition: background-color 0.2s;
-    }
-
-    button:hover, .nav a:hover {
-      background-color: #0056b3;
-    }
-
-    .logout {
-      background-color: #e53935;
-    }
-
-    .logout:hover {
-      background-color: #c62828;
-    }
-
-    .nav a {
-      background-color: #6c757d;
-    }
-
-    .nav a:hover {
-      background-color: #5a6268;
-    }
-  </style>
+  <title>SmartTalk - Home</title>
+  <link rel="stylesheet" href="/styles/home.css" />
+  <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
-  <div class="container">
-    <h1>Welcome, <span class="username" id="usernameDisplay">User</span> 👋</h1>
+  <header class="top-bar">
+    <div class="app-title">SmartTalk</div>
+    <div class="online-users" id="onlineUsers"></div>
+  </header>
 
-    <button onclick="goToChat()">💬 Enter Chat Room</button>
-
-    <div class="nav">
-      <a href="profile.html">👤 Profile</a>
-      <a href="notification.html">🔔 Notifications</a>
-      <a href="about.html">ℹ️ About</a>
+  <main class="chat-section">
+    <div class="chat-box" id="chatBox">
+      <div class="chat-header" id="chatHeader">Private Chat</div>
+      <div class="messages" id="messages"></div>
+      <form id="messageForm">
+        <input type="text" id="messageInput" placeholder="Type a message..." required />
+        <button type="submit">Send</button>
+      </form>
     </div>
-
-    <button class="logout" onclick="logout()">🚪 Logout</button>
-  </div>
+  </main>
 
   <script>
-    // Decode JWT to get username
-    function getUsernameFromToken(token) {
-      try {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        return payload.username;
-      } catch {
-        return null;
+    const socket = io();
+    const username = new URLSearchParams(window.location.search).get("username");
+    let currentReceiver = null;
+
+    socket.emit("join", username);
+
+    // Update online users
+    socket.on("onlineUsers", (users) => {
+      const userList = users.filter(u => u !== username)
+        .map(u => `<button onclick="startPrivateChat('${u}')">${u}</button>`)
+        .join('');
+      document.getElementById("onlineUsers").innerHTML = userList || "No users online";
+    });
+
+    // Start private chat
+    function startPrivateChat(receiver) {
+      currentReceiver = receiver;
+      document.getElementById("chatHeader").innerText = `Chat with ${receiver}`;
+      fetch(`/api/messages?sender=${username}&receiver=${receiver}`)
+        .then(res => res.json())
+        .then(data => {
+          const messagesDiv = document.getElementById("messages");
+          messagesDiv.innerHTML = "";
+          data.forEach(msg => {
+            const div = document.createElement("div");
+            div.textContent = `${msg.sender}: ${msg.text}`;
+            messagesDiv.appendChild(div);
+          });
+        });
+    }
+
+    // Send private message
+    document.getElementById("messageForm").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const text = document.getElementById("messageInput").value;
+      if (!currentReceiver) return alert("Select a user to chat with.");
+      socket.emit("privateMessage", {
+        sender: username,
+        receiver: currentReceiver,
+        text
+      });
+      document.getElementById("messageInput").value = "";
+    });
+
+    // Receive private message
+    socket.on("privateMessage", ({ sender, text }) => {
+      if (sender === currentReceiver) {
+        const div = document.createElement("div");
+        div.textContent = `${sender}: ${text}`;
+        document.getElementById("messages").appendChild(div);
       }
-    }
-
-    const token = localStorage.getItem("token");
-
-    if (!token) {
-      alert("You must be logged in first.");
-      window.location.href = "login.html";
-    } else {
-      const username = getUsernameFromToken(token);
-      if (username) {
-        document.getElementById("usernameDisplay").textContent = username;
-      } else {
-        localStorage.removeItem("token");
-        alert("Session expired. Please login again.");
-        window.location.href = "login.html";
-      }
-    }
-
-    function goToChat() {
-      window.location.href = "chat.html";
-    }
-
-    function logout() {
-      localStorage.removeItem("token");
-      window.location.href = "login.html";
-    }
+    });
   </script>
 </body>
 </html>
