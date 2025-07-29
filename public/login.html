@@ -1,45 +1,152 @@
-<!-- /public/login.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Login - SmartTalk</title>
-  <link rel="stylesheet" href="/styles/login.css" />
+  <title>Login – SmartTalk</title>
+  <link rel="stylesheet" href="styles/home.css" />
+  <style>
+    body {
+      background: linear-gradient(to right, #0066cc, #3399ff);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+      font-family: 'Segoe UI', sans-serif;
+    }
+
+    .login-box {
+      background: rgba(255, 255, 255, 0.1);
+      padding: 25px 30px;
+      border-radius: 14px;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+      width: 90%;
+      max-width: 340px;
+      text-align: center;
+    }
+
+    .login-box img {
+      width: 80px;
+      margin-bottom: 15px;
+    }
+
+    .login-box h2 {
+      font-size: 20px;
+      color: #fff;
+      margin-bottom: 20px;
+    }
+
+    .login-box input {
+      width: 100%;
+      padding: 10px 12px;
+      margin: 10px 0;
+      border: none;
+      border-radius: 6px;
+      background: #fff;
+      color: #333;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+
+    .password-wrapper {
+      position: relative;
+      width: 100%;
+    }
+
+    .password-wrapper input {
+      width: 100%;
+      padding-right: 60px;
+    }
+
+    .toggle-password {
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #0066cc;
+      font-size: 13px;
+      cursor: pointer;
+      user-select: none;
+      background-color: transparent;
+    }
+
+    .login-box button {
+      width: 100%;
+      padding: 10px;
+      background: #003366;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 15px;
+      margin-top: 10px;
+      cursor: pointer;
+    }
+
+    .login-box button:hover {
+      background: #0055aa;
+    }
+
+    .error-msg {
+      color: #ffcccc;
+      font-size: 14px;
+      margin-top: 10px;
+    }
+  </style>
 </head>
 <body>
-  <div class="login-container">
-    <h1>SmartTalk Login</h1>
+  <div class="login-box">
+    <img src="/images/logo.png" alt="SmartTalk Logo" />
+    <h2>Login to SmartTalk</h2>
     <form id="loginForm">
-      <input type="email" id="email" placeholder="Email" required />
-      <input type="password" id="password" placeholder="Password" required />
+      <input type="email" name="email" placeholder="Email" required />
+
+      <div class="password-wrapper">
+        <input type="password" name="password" id="login-password" placeholder="Password" required />
+        <span class="toggle-password" onclick="togglePassword('login-password', this)">Show</span>
+      </div>
+
       <button type="submit">Login</button>
+      <div class="error-msg" id="errorMsg"></div>
     </form>
-    <p id="error" style="color: red;"></p>
   </div>
 
   <script>
-    const form = document.getElementById('loginForm');
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-
-      const email = form.email.value;
-      const password = form.password.value;
-
-      const res = await fetch('/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
-      });
-
-      const data = await res.json();
-
-      if (res.ok) {
-        // Save username and redirect
-        localStorage.setItem('username', data.username);
-        window.location.href = '/home.html';
+    function togglePassword(id, el) {
+      const input = document.getElementById(id);
+      if (input.type === "password") {
+        input.type = "text";
+        el.textContent = "Hide";
       } else {
-        document.getElementById('error').innerText = data.message || 'Login failed';
+        input.type = "password";
+        el.textContent = "Show";
+      }
+    }
+
+    document.getElementById("loginForm").addEventListener("submit", async function(e) {
+      e.preventDefault();
+      const form = e.target;
+      const email = form.email.value.trim();
+      const password = form.password.value.trim();
+      const errorMsg = document.getElementById("errorMsg");
+
+      try {
+        const res = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password })
+        });
+
+        const data = await res.json();
+
+        if (res.ok) {
+          localStorage.setItem("token", data.token);
+          window.location.href = "/home.html";
+        } else {
+          errorMsg.textContent = data.message || "Login failed.";
+        }
+      } catch (err) {
+        errorMsg.textContent = "An error occurred. Try again.";
       }
     });
   </script>
