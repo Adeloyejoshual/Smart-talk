@@ -1,10 +1,13 @@
 // routes/auth.js
 const express = require('express');
-const router = express.Router();
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const User = require('../models/User');
+const router = express.Router(); // initializes the router
 
+// Load dependencies
+const bcrypt = require('bcryptjs'); // for hashing passwords
+const jwt = require('jsonwebtoken'); // for token creation
+const User = require('../models/User'); // user schema/model
+
+// Load secret from environment variables
 const JWT_SECRET = process.env.JWT_SECRET;
 
 // Register
