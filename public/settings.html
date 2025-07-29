@@ -8,19 +8,17 @@
   <link rel="stylesheet" href="/styles/settings.css">
 </head>
 <body>
-  <header>
-    <div style="display: flex; align-items: center; padding: 10px;">
-      <a href="home.html" style="text-decoration: none; color: #fff; font-size: 18px; font-weight: bold;">
-        ⬅️ Home
-      </a>
+  <header class="header">
+    <div class="back-button">
+      <a href="/home.html" title="Go back home">⬅️ Home</a>
     </div>
-    <h2 style="text-align: center;">⚙️ Settings</h2>
+    <h2>⚙️ Settings</h2>
   </header>
 
   <main class="settings-container">
     <ul class="settings-list">
       <li><a href="/profile.html">👤 Edit Profile</a></li>
-      <li><a href="#">💬 Customer Service</a></li>
+      <li><a href="/support.html">💬 Customer Service</a></li>
       <li><a href="mailto:smarttalkgit@gmail.com">📧 Contact</a></li>
       <li>
         <label class="dark-toggle">
@@ -32,15 +30,72 @@
   </main>
 
   <script>
-    // Dark mode toggle logic
+    // Theme toggle logic
     const toggle = document.getElementById('darkToggle');
     toggle.addEventListener('change', () => {
+      const root = document.documentElement;
       if (toggle.checked) {
-        document.documentElement.setAttribute('data-theme', 'dark');
+        root.setAttribute('data-theme', 'dark');
+        localStorage.setItem('theme', 'dark');
       } else {
-        document.documentElement.setAttribute('data-theme', 'light');
+        root.setAttribute('data-theme', 'light');
+        localStorage.setItem('theme', 'light');
+      }
+    });
+
+    // Load theme on page load
+    window.addEventListener('DOMContentLoaded', () => {
+      const savedTheme = localStorage.getItem('theme');
+      if (savedTheme) {
+        document.documentElement.setAttribute('data-theme', savedTheme);
+        document.getElementById('darkToggle').checked = savedTheme === 'dark';
       }
     });
   </script>
+
+  <style>
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1rem;
+      background: var(--primary-bg, #222);
+      color: var(--text-color, #fff);
+      border-bottom: 1px solid #444;
+    }
+
+    .back-button a {
+      color: inherit;
+      text-decoration: none;
+      font-weight: bold;
+      font-size: 1rem;
+    }
+
+    .settings-container {
+      padding: 1.5rem;
+    }
+
+    .settings-list {
+      list-style: none;
+      padding: 0;
+    }
+
+    .settings-list li {
+      margin: 1rem 0;
+    }
+
+    .settings-list a {
+      color: var(--link-color, #0af);
+      text-decoration: none;
+      font-size: 1.1rem;
+    }
+
+    .dark-toggle {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 1.1rem;
+    }
+  </style>
 </body>
 </html>
