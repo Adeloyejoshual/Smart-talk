@@ -4,11 +4,13 @@ document.addEventListener("DOMContentLoaded", () => {
   const searchBar = document.getElementById("searchBar");
   const userList = document.getElementById("userList");
   const addUserBtn = document.getElementById("addUserBtn");
+  const addUserModal = document.getElementById("addUserModal");
+  const closeModal = document.getElementById("closeModal");
+  const createUserForm = document.getElementById("createUserForm");
   const settingsBtn = document.getElementById("settingsBtn");
-  const settingsMenu = document.getElementById("settingsMenu");
   const darkToggle = document.getElementById("darkModeToggle");
 
-  // Get current user from cookie or localStorage
+  // Load current user
   const user = JSON.parse(localStorage.getItem("user"));
   if (!user) return (window.location.href = "/login.html");
 
@@ -17,11 +19,12 @@ document.addEventListener("DOMContentLoaded", () => {
   // Load users initially
   fetchUsers("");
 
-  // Search bar listener
+  // Search listener
   searchBar.addEventListener("input", () => {
     fetchUsers(searchBar.value.trim());
   });
 
+  // Fetch users
   function fetchUsers(search) {
     fetch(`/api/users?search=${search}&current=${user.username}`)
       .then(res => res.json())
@@ -40,17 +43,55 @@ document.addEventListener("DOMContentLoaded", () => {
       });
   }
 
-  // Floating buttons
+  // Open Add User modal
   addUserBtn.addEventListener("click", () => {
-    window.location.href = "/register.html";
+    addUserModal.classList.remove("hidden");
   });
 
-  settingsBtn.addEventListener("click", () => {
-    settingsMenu.classList.toggle("hidden");
+  // Close modal
+  closeModal.addEventListener("click", () => {
+    addUserModal.classList.add("hidden");
+    createUserForm.reset();
+  });
+
+  // Handle form submission
+  createUserForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const formData = new FormData(createUserForm);
+    const newUser = {
+      username: formData.get("username"),
+      email: formData.get("email"),
+      password: formData.get("password")
+    };
+
+    const res = await fetch("/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(newUser)
+    });
+
+    const data = await res.json();
+
+    if (res.ok) {
+      alert("User added successfully!");
+      addUserModal.classList.add("hidden");
+      createUserForm.reset();
+      fetchUsers(""); // Refresh user list
+    } else {
+      alert(data.message || "Error adding user.");
+    }
   });
 
   // Dark mode toggle
   darkToggle.addEventListener("change", () => {
-    document.body.classList.toggle("dark-mode", darkToggle.checked);
+    document.documentElement.setAttribute(
+      "data-theme",
+      darkToggle.checked ? "dark" : "light"
+    );
   });
+
+  // Optional: auto-set toggle on load
+  if (document.documentElement.getAttribute("data-theme") === "dark") {
+    darkToggle.checked = true;
+  }
 });
