@@ -8,11 +8,17 @@ const cookieParser = require('cookie-parser');
 const jwt = require('jsonwebtoken');
 const { Server } = require('socket.io');
 
+// Load environment variables
 dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST'],
+  }
+});
 
 // Middleware
 app.use(cors());
@@ -31,7 +37,7 @@ mongoose.connect(process.env.MONGO_URI, {
 const authRoutes = require('./routes/auth');
 app.use('/api/auth', authRoutes);
 
-// Default route - serve homepage
+// Serve homepage
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'home.html'));
 });
