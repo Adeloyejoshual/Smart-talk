@@ -9,7 +9,12 @@
 </head>
 <body>
   <header>
-    <h2>⚙️ Settings</h2>
+    <div style="display: flex; align-items: center; padding: 10px;">
+      <a href="home.html" style="text-decoration: none; color: #fff; font-size: 18px; font-weight: bold;">
+        ⬅️ Home
+      </a>
+    </div>
+    <h2 style="text-align: center;">⚙️ Settings</h2>
   </header>
 
   <main class="settings-container">
@@ -27,7 +32,7 @@
   </main>
 
   <script>
-    // Theme toggle logic
+    // Dark mode toggle logic
     const toggle = document.getElementById('darkToggle');
     toggle.addEventListener('change', () => {
       if (toggle.checked) {
