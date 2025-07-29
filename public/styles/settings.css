@@ -1,0 +1,73 @@
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  margin: 0;
+  padding: 0;
+  background-color: var(--background);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+header {
+  background-color: var(--primary);
+  color: #fff;
+  padding: 1rem;
+  text-align: center;
+  font-size: 1.5rem;
+}
+
+.settings-container {
+  flex: 1;
+  padding: 2rem;
+  max-width: 600px;
+  margin: auto;
+}
+
+.settings-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.settings-list li {
+  background-color: var(--card);
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border-radius: 12px;
+  font-size: 1.1rem;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+}
+
+.settings-list li a {
+  color: var(--text);
+  text-decoration: none;
+  display: block;
+}
+
+.settings-list li:hover {
+  background-color: var(--hover);
+}
+
+.dark-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem;
+}
+
+:root {
+  --background: #121212;
+  --text: #fff;
+  --primary: #1e1e2f;
+  --card: #1f1f2e;
+  --hover: #2c2c3c;
+}
+
+[data-theme="light"] {
+  --background: #f0f0f0;
+  --text: #111;
+  --primary: #4a90e2;
+  --card: #ffffff;
+  --hover: #e0e0e0;
+}
