@@ -1,3 +1,4 @@
+// server.js
 const express = require('express');
 const http = require('http');
 const path = require('path');
@@ -35,10 +36,9 @@ mongoose.connect(process.env.MONGO_URI, {
 
 // Routes
 const authRoutes = require('./routes/auth');
-const searchRoutes = require('./routes/search');
-
+const userRoutes = require('./routes/users'); // ✅ Add this line
 app.use('/api/auth', authRoutes);
-app.use('/api/search', searchRoutes);
+app.use('/api/users', userRoutes); // ✅ Add this line
 
 // Serve homepage
 app.get('/', (req, res) => {
