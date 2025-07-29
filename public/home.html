@@ -63,15 +63,26 @@
     .search-bar {
       margin-top: 20px;
       display: flex;
+      align-items: center;
     }
 
     .search-bar input {
       flex: 1;
-      padding: 10px;
-      border-radius: 8px;
+      padding: 10px 12px;
+      border-radius: 8px 0 0 8px;
       border: none;
       background: #1e1e1e;
       color: #fff;
+    }
+
+    .search-bar button {
+      padding: 10px;
+      background: #007bff;
+      border: none;
+      color: #fff;
+      border-radius: 0 8px 8px 0;
+      cursor: pointer;
+      font-size: 18px;
     }
 
     .chat-section {
@@ -128,7 +139,8 @@
     </header>
 
     <div class="search-bar">
-      <input type="text" placeholder="Search users by username or Gmail..." onkeyup="searchUsers(this.value)" />
+      <input type="text" id="searchInput" placeholder="Search users by username or Gmail..." onkeyup="searchUsers(this.value)" />
+      <button onclick="searchUsers(document.getElementById('searchInput').value)">🔍</button>
     </div>
 
     <div class="chat-section" id="chatList">
@@ -151,14 +163,14 @@
     }
 
     function searchUsers(query) {
-      socket.emit("search-users", query);
+      socket.emit("search-users", query.trim());
     }
 
     socket.on("search-results", users => {
       const chatList = document.getElementById("chatList");
       chatList.innerHTML = '';
 
-      if (users.length === 0) {
+      if (!users.length) {
         chatList.innerHTML = '<div class="chat-user">No users found</div>';
         return;
       }
@@ -184,6 +196,9 @@
     window.onload = () => {
       const saved = localStorage.getItem('smarttalk-theme');
       if (saved === 'dark') document.body.classList.add('dark');
+
+      // Load initial users
+      searchUsers('');
     };
   </script>
 </body>
