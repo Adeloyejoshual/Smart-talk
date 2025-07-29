@@ -1,84 +1,73 @@
 // server.js
 const express = require('express');
+const mongoose = require('mongoose');
+const dotenv = require('dotenv');
+const cors = require('cors');
+const path = require('path');
 const http = require('http');
 const socketIO = require('socket.io');
-const mongoose = require('mongoose');
-const path = require('path');
-const cors = require('cors');
-const dotenv = require('dotenv');
-const authRoutes = require('./routes/auth');
-const Message = require('./models/Message');
 
 dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIO(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
-});
+const io = socketIO(server);
 
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
 
-// MongoDB connection
+// MongoDB Connection
 mongoose.connect(process.env.MONGO_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true
-})
-.then(() => console.log('✅ Connected to MongoDB'))
-.catch(err => console.error('❌ MongoDB connection error:', err));
+}).then(() => console.log('✅ MongoDB connected'))
+  .catch(err => console.error('❌ MongoDB error:', err));
 
 // Routes
-app.use('/api/auth', authRoutes);
+app.use('/api/auth', require('./routes/auth'));
 
-// Default route to login page
+// Serve static files (HTML, CSS, JS)
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Default route (homepage or login page)
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
-// Track online users
+// Socket.IO logic
 const onlineUsers = new Map();
 
-// Socket.IO logic
-io.on('connection', (socket) => {
-  console.log('🟢 User connected');
+io.on('connection', socket => {
+  console.log('🔌 User connected:', socket.id);
 
-  // Receive and register online user
-  socket.on('userOnline', (username) => {
-    socket.username = username;
-    onlineUsers.set(socket.id, username);
+  socket.on('userOnline', ({ userId, username }) => {
+    onlineUsers.set(userId, { socketId: socket.id, username });
     io.emit('updateOnlineUsers', Array.from(onlineUsers.values()));
   });
 
-  // Handle public chat messages
-  socket.on('chatMessage', async ({ sender, content }) => {
-    const newMessage = new Message({ sender, content });
-    await newMessage.save();
-
-    io.emit('chatMessage', {
-      sender,
-      content,
-      timestamp: newMessage.timestamp
-    });
-  });
-
-  // Handle disconnection
-  socket.on('disconnect', () => {
-    console.log('🔴 User disconnected');
-    if (socket.username) {
-      onlineUsers.delete(socket.id);
-      io.emit('updateOnlineUsers', Array.from(onlineUsers.values()));
+  socket.on('privateMessage', ({ senderId, receiverId, message }) => {
+    const receiver = onlineUsers.get(receiverId);
+    if (receiver) {
+      io.to(receiver.socketId).emit('privateMessage', {
+        senderId,
+        message
+      });
     }
   });
+
+  socket.on('disconnect', () => {
+    for (let [userId, user] of onlineUsers) {
+      if (user.socketId === socket.id) {
+        onlineUsers.delete(userId);
+        break;
+      }
+    }
+    io.emit('updateOnlineUsers', Array.from(onlineUsers.values()));
+    console.log('❌ User disconnected:', socket.id);
+  });
 });
 
-// Start the server
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-});
+// Server port
+const PORT = process.env.PORT || 5000;
+server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
