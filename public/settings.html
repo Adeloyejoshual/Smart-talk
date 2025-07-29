@@ -5,11 +5,18 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Settings | SmartTalk</title>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="styles/home.css" />
   <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f2f2f2;
+    }
+
     .settings-container {
       max-width: 600px;
-      margin: 50px auto;
+      margin: 60px auto;
       padding: 30px;
       background: #fff;
       border-radius: 12px;
@@ -45,21 +52,33 @@
       border: 1px solid #ccc;
     }
 
-    .save-btn {
+    .btn {
       width: 100%;
       padding: 12px;
-      background: #007bff;
-      color: white;
+      margin-top: 20px;
+      font-size: 16px;
       border: none;
       border-radius: 8px;
-      font-size: 16px;
-      margin-top: 20px;
       cursor: pointer;
-      transition: background 0.3s ease;
+      transition: 0.3s ease;
+    }
+
+    .save-btn {
+      background: #007bff;
+      color: white;
     }
 
     .save-btn:hover {
       background: #0056b3;
+    }
+
+    .logout-btn {
+      background: #dc3545;
+      color: white;
+    }
+
+    .logout-btn:hover {
+      background: #c82333;
     }
   </style>
 </head>
@@ -88,7 +107,8 @@
       <input type="color" id="color" value="#007bff" />
     </div>
 
-    <button class="save-btn" onclick="saveSettings()">Save Changes</button>
+    <button class="btn save-btn" onclick="saveSettings()">Save Changes</button>
+    <button class="btn logout-btn" onclick="logout()">Log Out</button>
   </div>
 
   <script>
@@ -103,6 +123,19 @@
 
       alert("Settings saved!");
     }
+
+    function logout() {
+      localStorage.clear();
+      sessionStorage.clear();
+      window.location.href = "/login.html";
+    }
+
+    // Optional: Load saved settings on page load
+    window.onload = () => {
+      document.getElementById("theme").value = localStorage.getItem("theme") || "light";
+      document.getElementById("message-sound").checked = localStorage.getItem("messageSound") === "true";
+      document.getElementById("color").value = localStorage.getItem("accentColor") || "#007bff";
+    };
   </script>
 </body>
 </html>
