@@ -1,0 +1,55 @@
+<!-- public/add-user.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Add New User - SmartTalk</title>
+  <link rel="stylesheet" href="/styles/home.css" />
+</head>
+<body class="dark">
+  <div class="container">
+    <h2>Add New User</h2>
+    <form id="addUserForm">
+      <input type="text" id="username" placeholder="Username" required />
+      <input type="email" id="email" placeholder="Email" required />
+      <input type="password" id="password" placeholder="Password" required />
+      <button type="submit">Create User</button>
+      <p id="responseMsg"></p>
+    </form>
+    <button onclick="window.location.href='/'" class="back-btn">← Back to Home</button>
+  </div>
+
+  <script>
+    const form = document.getElementById('addUserForm');
+    const msg = document.getElementById('responseMsg');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('username').value;
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+
+      try {
+        const res = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, email, password })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          msg.style.color = 'lime';
+          msg.textContent = '✅ User created!';
+          form.reset();
+        } else {
+          msg.style.color = 'red';
+          msg.textContent = data.message || 'Error creating user';
+        }
+      } catch (err) {
+        msg.style.color = 'red';
+        msg.textContent = 'Network error';
+      }
+    });
+  </script>
+</body>
+</html>
