@@ -1,4 +1,4 @@
-/* Basic reset */
+/* Basic Reset */
 * {
   margin: 0;
   padding: 0;
@@ -20,45 +20,68 @@ body[data-theme="dark"] {
   justify-content: space-between;
 }
 
-/* Header */
 header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 10px;
 }
 
-#searchInput {
-  flex: 1;
-  padding: 8px;
-  border: none;
-  border-radius: 8px;
-  background-color: #333;
-  color: #fff;
+/* Username Display */
+#usernameDisplay {
+  font-weight: bold;
+  font-size: 1.2rem;
 }
 
-#toggleTheme {
-  padding: 8px 10px;
+/* Search bar */
+#searchBar {
+  padding: 8px 12px;
+  border-radius: 8px;
   border: none;
+  outline: none;
+  background-color: #222;
+  color: white;
+  flex: 1;
+  max-width: 300px;
+}
+
+/* Dark Mode Toggle */
+#darkModeToggle {
+  cursor: pointer;
+  transform: scale(1.4);
+}
+
+/* Settings Button */
+#settingsBtn {
   background: transparent;
-  font-size: 1.2rem;
+  border: none;
+  color: white;
+  font-size: 1.5rem;
   cursor: pointer;
 }
 
-/* Chat Section */
-#chatSection {
+/* User List */
+#userList {
+  margin-top: 20px;
   flex: 1;
-  margin: 20px 0;
-  padding: 15px;
-  border-radius: 12px;
-  background-color: rgba(0, 0, 0, 0.4);
   overflow-y: auto;
+  padding: 10px;
+  background-color: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
 }
 
-.placeholder-text {
-  opacity: 0.6;
-  text-align: center;
-  margin-top: 50%;
+.user {
+  background-color: rgba(255, 255, 255, 0.07);
+  margin-bottom: 10px;
+  padding: 10px;
+  border-radius: 8px;
+  transition: background 0.2s ease;
+  cursor: pointer;
+}
+
+.user:hover {
+  background-color: rgba(255, 255, 255, 0.15);
 }
 
 /* Floating + Button */
@@ -75,8 +98,94 @@ header {
   height: 50px;
   cursor: pointer;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  z-index: 1000;
 }
 
 #addUserBtn:hover {
   background-color: #00a17a;
+}
+
+/* Add User Modal */
+#addUserModal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(15, 15, 15, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+}
+
+.hidden {
+  display: none;
+}
+
+.modal-content {
+  background-color: #222;
+  padding: 20px;
+  border-radius: 10px;
+  width: 90%;
+  max-width: 400px;
+  color: #fff;
+}
+
+.modal-content h2 {
+  margin-bottom: 15px;
+  text-align: center;
+}
+
+.modal-content input {
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 10px;
+  border: none;
+  border-radius: 6px;
+  background-color: #333;
+  color: white;
+}
+
+.modal-content button {
+  width: 100%;
+  padding: 10px;
+  border: none;
+  border-radius: 6px;
+  background-color: #00b894;
+  color: white;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.modal-content button:hover {
+  background-color: #00a17a;
+}
+
+/* Close Modal */
+#closeModal {
+  position: absolute;
+  top: 15px;
+  right: 20px;
+  font-size: 1.5rem;
+  color: white;
+  cursor: pointer;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  #searchBar {
+    width: 100%;
+    margin-top: 10px;
+  }
+
+  .modal-content {
+    width: 95%;
+  }
 }
