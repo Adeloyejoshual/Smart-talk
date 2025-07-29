@@ -1,145 +1,81 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta charset="UTF-8">
   <title>SmartTalk - Home</title>
-  <link rel="stylesheet" href="/styles/home.css" />
-  <style>
-    body {
-      background-color: #111;
-      color: white;
-      font-family: Arial, sans-serif;
-      margin: 0;
-      padding: 0;
-    }
-
-    .header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 16px;
-      background-color: #222;
-      position: sticky;
-      top: 0;
-      z-index: 10;
-    }
-
-    .search-container {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      background-color: #333;
-      padding: 8px 12px;
-      border-radius: 8px;
-    }
-
-    .search-container input {
-      background: transparent;
-      border: none;
-      color: white;
-      outline: none;
-      width: 200px;
-    }
-
-    .search-container button {
-      background: none;
-      border: none;
-      cursor: pointer;
-    }
-
-    .search-results {
-      padding: 16px;
-    }
-
-    .search-item {
-      padding: 10px;
-      background-color: #222;
-      margin: 8px 0;
-      border-radius: 6px;
-      cursor: pointer;
-    }
-
-    #add-user-btn {
-      position: fixed;
-      bottom: 20px;
-      right: 20px;
-      background-color: #007bff;
-      color: white;
-      border: none;
-      border-radius: 50%;
-      width: 50px;
-      height: 50px;
-      font-size: 24px;
-      cursor: pointer;
-      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
-    }
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="/styles/home.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
-<body>
-  <div class="header">
-    <div class="search-container">
-      <input type="text" id="search-input" placeholder="Search username or Gmail..." />
-      <button id="search-btn" title="Search">
-        <svg xmlns="http://www.w3.org/2000/svg" height="20" width="20" fill="white" viewBox="0 0 24 24">
-          <path d="M10 2a8 8 0 015.293 13.707l4.5 4.5-1.414 1.414-4.5-4.5A8 8 0 1110 2zm0 2a6 6 0 100 12 6 6 0 000-12z"/>
-        </svg>
-      </button>
+<body class="dark-mode">
+  <header>
+    <div class="top-bar">
+      <h1>SmartTalk</h1>
+      <div class="search-bar">
+        <input type="text" id="searchInput" placeholder="Search users by username or Gmail..." onkeyup="searchUsers(this.value)" />
+        <button onclick="searchUsers(document.getElementById('searchInput').value)">
+          <i class="fas fa-search"></i>
+        </button>
+      </div>
+      <div class="toggle-btn">
+        <button onclick="toggleDarkMode()">🌓</button>
+        <a href="settings.html" title="Settings"><i class="fas fa-cog"></i></a>
+      </div>
     </div>
-  </div>
+  </header>
 
-  <div class="search-results" id="results"></div>
+  <main>
+    <h2>Welcome, <span id="currentUsername">User</span></h2>
+    <div class="chat-section" id="userList">
+      <!-- Live users will appear here -->
+    </div>
+  </main>
 
   <!-- Floating + Button -->
-  <button id="add-user-btn" title="Add New User">+</button>
+  <button class="floating-btn" onclick="window.location.href='/add-user.html'" title="Add New User">
+    <i class="fas fa-plus"></i>
+  </button>
 
+  <script src="/socket.io/socket.io.js"></script>
   <script>
-    const searchInput = document.getElementById('search-input');
-    const searchBtn = document.getElementById('search-btn');
-    const resultsDiv = document.getElementById('results');
+    const socket = io();
+    let currentUser = localStorage.getItem('username') || 'Guest';
+    document.getElementById('currentUsername').textContent = currentUser;
 
-    // Search function
-    async function performSearch() {
-      const query = searchInput.value.trim();
-      if (!query) return;
+    socket.emit('userOnline', currentUser);
 
-      try {
-        const res = await fetch(`/api/auth/search?q=${query}`);
-        const users = await res.json();
-        resultsDiv.innerHTML = '';
-
-        if (users.length === 0) {
-          resultsDiv.innerHTML = '<p>No users found.</p>';
-          return;
+    socket.on('updateOnlineUsers', (users) => {
+      const userList = document.getElementById('userList');
+      userList.innerHTML = '';
+      users.forEach(user => {
+        if (user !== currentUser) {
+          const userDiv = document.createElement('div');
+          userDiv.classList.add('user');
+          userDiv.innerHTML = `
+            <span>${user}</span>
+            <button onclick="startChat('${user}')">Chat</button>
+          `;
+          userList.appendChild(userDiv);
         }
+      });
+    });
 
-        users.forEach(user => {
-          const div = document.createElement('div');
-          div.className = 'search-item';
-          div.textContent = `${user.username} (${user.email})`;
-          div.onclick = () => {
-            window.location.href = `/chat.html?user=${user._id}`;
-          };
-          resultsDiv.appendChild(div);
-        });
-      } catch (err) {
-        resultsDiv.innerHTML = '<p style="color:red;">Search failed.</p>';
-        console.error(err);
-      }
+    function searchUsers(query) {
+      const allUsers = document.querySelectorAll('#userList .user');
+      allUsers.forEach(user => {
+        const text = user.textContent.toLowerCase();
+        user.style.display = text.includes(query.toLowerCase()) ? '' : 'none';
+      });
     }
 
-    // Trigger search on button click
-    searchBtn.addEventListener('click', performSearch);
+    function startChat(username) {
+      localStorage.setItem('chatWith', username);
+      window.location.href = '/private-chat.html';
+    }
 
-    // Trigger search on enter key
-    searchInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') performSearch();
-    });
-
-    // Floating + Button Action
-    document.getElementById('add-user-btn').addEventListener('click', () => {
-      window.location.href = '/new-user.html';
-    });
+    function toggleDarkMode() {
+      document.body.classList.toggle('dark-mode');
+    }
   </script>
 </body>
 </html>
