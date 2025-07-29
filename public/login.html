@@ -49,8 +49,14 @@
     }
     .link {
       display: block;
-      margin-top: 15px;
+      margin-top: 12px;
       text-align: center;
+      color: #007bff;
+      text-decoration: none;
+      font-size: 0.95rem;
+    }
+    .link:hover {
+      text-decoration: underline;
     }
   </style>
 </head>
@@ -60,7 +66,9 @@
     <input type="text" id="username" placeholder="Username" />
     <input type="password" id="password" placeholder="Password" />
     <button onclick="login()">Login</button>
+    
     <a href="register.html" class="link">Don't have an account? Register</a>
+    <a href="forgot-password.html" class="link">Forgot password?</a>
   </div>
 
   <script>
