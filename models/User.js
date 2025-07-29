@@ -16,7 +16,19 @@ const UserSchema = new mongoose.Schema({
   password: {
     type: String,
     required: true,
-  }
+  },
+  profileImage: {
+    type: String,
+    default: '/images/default-avatar.png'  // Optional default image
+  },
+  friends: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }],
+  blocked: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }]
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', UserSchema);
