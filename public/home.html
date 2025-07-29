@@ -4,7 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>SmartTalk - Home</title>
-  <link rel="stylesheet" href="/styles/home.css" />
   <style>
     body {
       margin: 0;
@@ -94,6 +93,10 @@
       max-width: 400px;
     }
 
+    body.dark-mode .modal-content {
+      background-color: #1e1e1e;
+    }
+
     .modal-content input {
       padding: 10px;
       border-radius: 5px;
@@ -181,7 +184,6 @@
   </div>
 
   <script>
-    // Dark mode from localStorage
     document.addEventListener("DOMContentLoaded", () => {
       const isDark = localStorage.getItem("darkMode") === "true";
       document.body.classList.toggle("dark-mode", isDark);
