@@ -1,40 +1,213 @@
-<!-- public/home.html -->
-<!DOCTYPE html>
-<html lang="en">
+<!DOCTYPE html><html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>SmartTalk - Home</title>
   <link rel="stylesheet" href="/styles/home.css" />
-  <script defer src="/scripts/home.js"></script>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background-color: #121212;
+      color: #fff;
+    }.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: #1f1f1f;
+  padding: 10px 20px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.header input {
+  flex: 1;
+  padding: 8px 12px;
+  margin-right: 10px;
+  border-radius: 20px;
+  border: none;
+  outline: none;
+  background-color: #333;
+  color: white;
+}
+
+.header .search-icon,
+.header .settings-icon {
+  font-size: 18px;
+  cursor: pointer;
+  padding: 4px 6px;
+}
+
+#userList {
+  padding: 20px;
+}
+
+#addUserBtn {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  font-size: 32px;
+  font-weight: bold;
+  background-color: #6200ee;
+  color: white;
+  border: none;
+  padding: 15px 20px;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  z-index: 100;
+}
+
+.modal.hidden {
+  display: none;
+}
+
+.modal {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+}
+
+.modal-content {
+  background: #222;
+  padding: 20px;
+  border-radius: 10px;
+  color: white;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 90%;
+  max-width: 400px;
+}
+
+.modal-content input {
+  padding: 10px;
+  border-radius: 5px;
+  border: none;
+  background: #333;
+  color: white;
+}
+
+.modal-content button {
+  padding: 10px;
+  background-color: #03dac5;
+  color: black;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.user {
+  background: #292929;
+  padding: 12px;
+  margin-bottom: 10px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.user img {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.user .info {
+  flex-grow: 1;
+}
+
+.user .chat-btn {
+  background: #03dac5;
+  color: #000;
+  padding: 5px 10px;
+  border-radius: 5px;
+  border: none;
+  cursor: pointer;
+}
+
+  </style>
 </head>
-<body class="dark-mode">
-  <header>
-    <div class="search-container">
-      <input type="text" id="searchBar" placeholder="Search users by name or Gmail...">
-      <span class="search-icon">🔎</span>
+<body>  <div class="header">
+    <input type="text" id="searchInput" placeholder="Search by username or Gmail">
+    <span class="search-icon" onclick="searchUsers()">🔎</span>
+    <span class="settings-icon" onclick="window.location.href='settings.html'">⚙️</span>
+  </div>  <div id="userList">
+    <h2>Online Users</h2>
+    <!-- Users will be listed here -->
+  </div>  <!-- Add New User Button --><button id="addUserBtn">+</button>
+
+  <!-- Modal -->  <div id="newUserModal" class="modal hidden">
+    <div class="modal-content">
+      <h2>Add New User</h2>
+      <input type="text" id="newUsername" placeholder="Username">
+      <input type="email" id="newEmail" placeholder="Email">
+      <input type="password" id="newPassword" placeholder="Password">
+      <button onclick="submitNewUser()">Create</button>
+      <button onclick="closeModal()">Cancel</button>
     </div>
-    <h1>Welcome, <span id="usernameDisplay"></span></h1>
-  </header>
+  </div>  <script>
+    document.getElementById('addUserBtn').addEventListener('click', () => {
+      document.getElementById('newUserModal').classList.remove('hidden');
+    });
 
-  <main>
-    <div id="userList" class="user-list"></div>
-  </main>
+    function closeModal() {
+      document.getElementById('newUserModal').classList.add('hidden');
+    }
 
-  <!-- Floating Buttons -->
-  <div class="floating-buttons">
-    <button id="addUserBtn" title="Add New User">➕</button>
-    <button id="settingsBtn" title="Settings">⚙️</button>
-  </div>
+    async function submitNewUser() {
+      const username = document.getElementById('newUsername').value;
+      const email = document.getElementById('newEmail').value;
+      const password = document.getElementById('newPassword').value;
 
-  <!-- Settings Menu -->
-  <div id="settingsMenu" class="hidden">
-    <button onclick="window.location.href='/profile.html'">Edit Profile</button>
-    <button onclick="alert('Contact us at smarttalkgit@gmail.com')">Customer Service</button>
-    <button onclick="window.location.href='/login.html'">Logout</button>
-    <label>
-      <input type="checkbox" id="darkModeToggle" checked>
-      Dark Mode
-    </label>
-  </div>
-</body>
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ username, email, password })
+      });
+
+      const data = await res.json();
+      alert(data.message || 'User created');
+      closeModal();
+      loadUsers();
+    }
+
+    async function searchUsers() {
+      const query = document.getElementById('searchInput').value.trim();
+      const response = await fetch(`/api/users/search?q=${encodeURIComponent(query)}`);
+      const users = await response.json();
+      renderUsers(users, 'Search Results');
+    }
+
+    async function loadUsers() {
+      const res = await fetch('/api/users/online');
+      const users = await res.json();
+      renderUsers(users, 'Online Users');
+    }
+
+    function renderUsers(users, title) {
+      const list = document.getElementById('userList');
+      list.innerHTML = `<h2>${title}</h2>` +
+        users.map(u => `
+          <div class="user">
+            <img src="/avatars/${u.avatar || 'default.png'}" alt="Avatar">
+            <div class="info">
+              <div><strong>${u.username}</strong></div>
+              <div>${u.email}</div>
+            </div>
+            <button class="chat-btn" onclick="window.location.href='/chat/${u.id}'">Chat</button>
+          </div>
+        `).join('');
+    }
+
+    window.addEventListener('DOMContentLoaded', loadUsers);
+  </script></body>
 </html>
