@@ -38,6 +38,7 @@ mongoose.connect(process.env.MONGO_URI, {
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const messageRoutes = require('./routes/messages'); // 📩 Add message route
+app.use('/api/messages', messageRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/messages', messageRoutes); // 📩 Message routes
