@@ -1,41 +1,21 @@
-// routes/profile.js
-
 const express = require('express');
-const authMiddleware = require('../middleware/auth');
+const router = express.Router();
 const User = require('../models/User');
 
-const router = express.Router();
-
-// GET: Public user profile by user ID
-router.get('/:id', async (req, res) => {
+// Search users by email or username
+router.get('/search', async (req, res) => {
+  const query = req.query.q;
   try {
-    const user = await User.findById(req.params.id).select('-password');
-    if (!user) return res.status(404).json({ msg: 'User not found' });
-    res.json(user);
+    const users = await User.find({
+      $or: [
+        { email: { $regex: query, $options: 'i' } },
+        { username: { $regex: query, $options: 'i' } }
+      ]
+    }).select('-password');
+
+    res.json(users);
   } catch (err) {
-    res.status(500).json({ msg: 'Server error' });
-  }
-});
-
-// PUT: Update current user's profile
-router.put('/update', authMiddleware, async (req, res) => {
-  try {
-    const { username, bio, avatar } = req.body;
-
-    const updateFields = {};
-    if (username) updateFields.username = username;
-    if (bio) updateFields.bio = bio;
-    if (avatar) updateFields.avatar = avatar;
-
-    const user = await User.findByIdAndUpdate(
-      req.user.id,
-      { $set: updateFields },
-      { new: true }
-    ).select('-password');
-
-    res.json(user);
-  } catch (err) {
-    res.status(500).json({ msg: 'Failed to update profile' });
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
