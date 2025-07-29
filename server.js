@@ -35,7 +35,10 @@ mongoose.connect(process.env.MONGO_URI, {
 
 // Routes
 const authRoutes = require('./routes/auth');
+const searchRoutes = require('./routes/search');
+
 app.use('/api/auth', authRoutes);
+app.use('/api/search', searchRoutes);
 
 // Serve homepage
 app.get('/', (req, res) => {
