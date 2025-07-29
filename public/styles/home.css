@@ -28,13 +28,11 @@ header {
   gap: 10px;
 }
 
-/* Username Display */
 #usernameDisplay {
   font-weight: bold;
   font-size: 1.2rem;
 }
 
-/* Search bar */
 #searchBar {
   padding: 8px 12px;
   border-radius: 8px;
@@ -46,13 +44,11 @@ header {
   max-width: 300px;
 }
 
-/* Dark Mode Toggle */
 #darkModeToggle {
   cursor: pointer;
   transform: scale(1.4);
 }
 
-/* Settings Button */
 #settingsBtn {
   background: transparent;
   border: none;
@@ -61,7 +57,6 @@ header {
   cursor: pointer;
 }
 
-/* User List */
 #userList {
   margin-top: 20px;
   flex: 1;
@@ -74,13 +69,14 @@ header {
 .user {
   background-color: rgba(255, 255, 255, 0.07);
   margin-bottom: 10px;
-  padding: 12px;
+  padding: 10px;
   border-radius: 8px;
   transition: background 0.2s ease;
   cursor: pointer;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .user:hover {
@@ -88,39 +84,27 @@ header {
 }
 
 .user .info {
+  flex-grow: 1;
+}
+
+.user .action-buttons {
   display: flex;
-  flex-direction: column;
+  gap: 8px;
 }
 
-.user .name {
-  font-size: 1rem;
-  font-weight: bold;
-}
-
-.user .email {
-  font-size: 0.85rem;
-  color: #bbb;
-}
-
-/* Hide if user is already in chat or blocked */
-.user.hidden-user {
-  display: none !important;
-}
-
-/* Friend/Follow Button */
-.user .follow-btn {
-  background-color: #0984e3;
-  color: white;
-  border: none;
+.action-buttons button {
   padding: 6px 10px;
-  font-size: 0.9rem;
+  border: none;
   border-radius: 6px;
+  background-color: #00b894;
+  color: white;
+  font-size: 0.85rem;
   cursor: pointer;
   transition: background 0.2s ease;
 }
 
-.user .follow-btn:hover {
-  background-color: #74b9ff;
+.action-buttons button:hover {
+  background-color: #00a17a;
 }
 
 /* Floating + Button */
@@ -203,7 +187,6 @@ header {
   background-color: #00a17a;
 }
 
-/* Close Modal */
 #closeModal {
   position: absolute;
   top: 15px;
@@ -234,8 +217,9 @@ header {
     align-items: flex-start;
   }
 
-  .user .follow-btn {
+  .action-buttons {
     margin-top: 10px;
-    align-self: flex-end;
+    width: 100%;
+    justify-content: space-between;
   }
 }
