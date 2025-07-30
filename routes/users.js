@@ -1,75 +1,148 @@
-// routes/users.js
 const express = require('express');
 const router = express.Router();
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const Chat = require('../models/Chat');
 
-// GET all users or search by Gmail or username (excluding current user)
-router.get('/', async (req, res) => {
+// Middleware to verify token
+function verifyToken(req, res, next) {
+  const token = req.headers['authorization'];
+  if (!token) return res.status(401).json({ message: 'No token provided' });
+
+  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+    if (err) return res.status(403).json({ message: 'Failed to authenticate token' });
+    req.userId = decoded.id;
+    next();
+  });
+}
+
+// POST /api/users/register
+router.post('/register', async (req, res) => {
   try {
-    const current = req.query.current || "";
-    const search = req.query.search || "";
+    const { username, email, password } = req.body;
 
-    const currentUser = await User.findOne({ username: current });
-    if (!currentUser) {
-      return res.status(404).json({ error: "Current user not found" });
+    const existingUser = await User.findOne({ $or: [{ email }, { username }] });
+    if (existingUser) {
+      return res.status(400).json({ message: 'User already exists' });
     }
 
-    const currentFriends = currentUser.friends.map(id => id.toString());
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const newUser = new User({
+      username,
+      email,
+      password: hashedPassword,
+      friends: [],
+      blocked: []
+    });
 
-    const query = {
-      username: { $ne: current }
-    };
+    await newUser.save();
 
-    if (search) {
-      query.$or = [
-        { username: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } }
-      ];
-    }
-
-    const users = await User.find(query).select('-password');
-    
-    const result = users.map(user => ({
-      _id: user._id,
-      username: user.username,
-      email: user.email,
-      isFriend: currentFriends.includes(user._id.toString())
-    }));
-
-    res.json(result);
+    const token = jwt.sign({ id: newUser._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    res.json({ token, user: { id: newUser._id, username, email } });
   } catch (err) {
-    console.error("Error fetching users:", err);
-    res.status(500).json({ error: 'Failed to fetch users' });
+    res.status(500).json({ message: 'Registration failed', error: err.message });
   }
 });
 
-// POST /add-friend → Add a friend by user ID
-router.post('/add-friend', async (req, res) => {
-  const { currentUserId, friendId } = req.body;
-
+// POST /api/users/login
+router.post('/login', async (req, res) => {
   try {
-    if (!currentUserId || !friendId) {
-      return res.status(400).json({ error: "Missing user IDs" });
-    }
+    const { emailOrUsername, password } = req.body;
 
-    const currentUser = await User.findById(currentUserId);
-    const friendUser = await User.findById(friendId);
+    const user = await User.findOne({
+      $or: [{ email: emailOrUsername }, { username: emailOrUsername }]
+    });
 
-    if (!currentUser || !friendUser) {
-      return res.status(404).json({ error: "User not found" });
-    }
+    if (!user) return res.status(400).json({ message: 'Invalid credentials' });
 
-    if (currentUser.friends.includes(friendId)) {
-      return res.status(409).json({ message: "User already added as friend" });
-    }
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) return res.status(400).json({ message: 'Invalid credentials' });
 
-    currentUser.friends.push(friendId);
-    await currentUser.save();
-
-    res.json({ message: "Friend added successfully" });
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    res.json({ token, user: { id: user._id, username: user.username, email: user.email } });
   } catch (err) {
-    console.error("Error adding friend:", err);
-    res.status(500).json({ error: "Failed to add friend" });
+    res.status(500).json({ message: 'Login failed', error: err.message });
+  }
+});
+
+// GET /api/users/search?q=username
+router.get('/search', verifyToken, async (req, res) => {
+  try {
+    const query = req.query.q;
+    const users = await User.find({
+      $or: [
+        { username: { $regex: query, $options: 'i' } },
+        { email: { $regex: query, $options: 'i' } }
+      ],
+      _id: { $ne: req.userId }
+    }).select('username email profileImage');
+
+    res.json(users);
+  } catch (err) {
+    res.status(500).json({ message: 'Search failed', error: err.message });
+  }
+});
+
+// GET /api/users/list - all users excluding self, blocked, and in chat
+router.get('/list', verifyToken, async (req, res) => {
+  try {
+    const currentUser = await User.findById(req.userId).populate('friends blocked');
+    const friendsIds = currentUser.friends.map(f => f._id.toString());
+    const blockedIds = currentUser.blocked.map(b => b._id.toString());
+
+    const chats = await Chat.find({ 
+      $or: [{ sender: req.userId }, { receiver: req.userId }]
+    });
+
+    const inChatWith = chats.map(chat => (
+      chat.sender.toString() === req.userId ? chat.receiver.toString() : chat.sender.toString()
+    ));
+
+    const excludedIds = [req.userId, ...blockedIds, ...inChatWith];
+
+    const users = await User.find({ _id: { $nin: excludedIds } })
+      .select('username email profileImage');
+
+    res.json(users);
+  } catch (err) {
+    res.status(500).json({ message: 'User list fetch failed', error: err.message });
+  }
+});
+
+// POST /api/users/add-friend/:id
+router.post('/add-friend/:id', verifyToken, async (req, res) => {
+  try {
+    const friendId = req.params.id;
+    const user = await User.findById(req.userId);
+    if (user.friends.includes(friendId)) {
+      return res.status(400).json({ message: 'Already friends' });
+    }
+
+    user.friends.push(friendId);
+    await user.save();
+
+    res.json({ message: 'Friend added successfully' });
+  } catch (err) {
+    res.status(500).json({ message: 'Add friend failed', error: err.message });
+  }
+});
+
+// POST /api/users/block/:id
+router.post('/block/:id', verifyToken, async (req, res) => {
+  try {
+    const blockId = req.params.id;
+    const user = await User.findById(req.userId);
+    if (user.blocked.includes(blockId)) {
+      return res.status(400).json({ message: 'User already blocked' });
+    }
+
+    user.blocked.push(blockId);
+    await user.save();
+
+    res.json({ message: 'User blocked successfully' });
+  } catch (err) {
+    res.status(500).json({ message: 'Block failed', error: err.message });
   }
 });
 
