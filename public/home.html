@@ -5,95 +5,109 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>SmartTalk - Home</title>
   <link rel="stylesheet" href="/styles/home.css" />
-  <script src="/socket.io/socket.io.js" defer></script>
-  <script defer>
-    const socket = io();
-    let selectedUserId = null;
-
-    // Load logged-in user's name
-    fetch("/api/users/me")
-      .then(res => res.json())
-      .then(data => {
-        document.getElementById("usernameDisplay").textContent = data.username;
-      });
-
-    function searchUsers() {
-      const query = document.getElementById("searchInput").value.trim();
-      const results = document.getElementById("searchResults");
-      results.innerHTML = "";
-
-      if (!query) return;
-
-      fetch(`/api/users/search?q=${query}`)
-        .then(res => res.json())
-        .then(users => {
-          if (users.length === 0) {
-            results.innerHTML = "<p>No users found.</p>";
-            selectedUserId = null;
-            return;
-          }
-
-          // Show first match and store ID
-          const user = users[0];
-          selectedUserId = user._id;
-
-          const card = document.createElement("div");
-          card.className = "user-card";
-          card.innerHTML = `
-            <strong>@${user.username}</strong>
-            <p>${user.email}</p>
-          `;
-          results.appendChild(card);
-        });
-    }
-
-    function addFriend() {
-      if (!selectedUserId) return alert("Search and select a user first.");
-
-      fetch(`/api/users/add-friend`, {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    "Authorization": "Bearer " + localStorage.getItem("token") // Make sure token is saved on login
-  },
-  body: JSON.stringify({ userId: selectedUserId })
-      })
-      .then(res => res.json())
-      .then(data => {
-        alert(data.message || "Friend request sent.");
-        document.getElementById("searchResults").innerHTML = "";
-        document.getElementById("searchInput").value = "";
-        selectedUserId = null;
-      });
-    }
-  </script>
 </head>
 <body>
   <header>
-    <h1>Welcome, <span id="usernameDisplay">...</span></h1>
-    <nav>
-      <a href="/home.html">Home</a>
-      <a href="/chat.html">Chat</a>
-      <a href="/notifications.html">Notifications</a>
-      <a href="/profile.html">Profile</a>
-      <button onclick="location.href='/logout'">Logout</button>
-    </nav>
+    <h1>SmartTalk</h1>
+    <button id="logoutBtn">Logout</button>
   </header>
 
   <main>
-    <section class="search-section">
-      <h2>🔍 Find User</h2>
-      <div class="search-row">
-        <input type="text" id="searchInput" placeholder="Enter username or email" />
-        <button onclick="searchUsers()">🔍</button>
-        <button onclick="addFriend()">Add Friend</button>
-      </div>
-      <div id="searchResults"></div>
+    <section id="userSection">
+      <h2>Online Users</h2>
+      <ul id="userList"></ul>
     </section>
+
+    <button id="findUserBtn">🔍 Find User</button>
+
+    <!-- 🔍 Modal -->
+    <div id="modal" class="modal hidden">
+      <div class="modal-content">
+        <h3>🔍 Find User</h3>
+        <input type="text" id="searchInput" placeholder="Enter username or email" />
+        <button id="addFriendBtn">Add Friend</button>
+        <button id="cancelBtn">Cancel</button>
+        <ul id="searchResults"></ul>
+      </div>
+    </div>
   </main>
 
-  <footer>
-    <p>&copy; 2025 Smart Talk</p>
-  </footer>
+  <script>
+    const findUserBtn = document.getElementById("findUserBtn");
+    const modal = document.getElementById("modal");
+    const cancelBtn = document.getElementById("cancelBtn");
+    const searchInput = document.getElementById("searchInput");
+    const searchResults = document.getElementById("searchResults");
+    const addFriendBtn = document.getElementById("addFriendBtn");
+
+    let selectedUsername = null;
+
+    findUserBtn.addEventListener("click", () => {
+      modal.classList.remove("hidden");
+      searchInput.value = "";
+      searchResults.innerHTML = "";
+    });
+
+    cancelBtn.addEventListener("click", () => {
+      modal.classList.add("hidden");
+      selectedUsername = null;
+    });
+
+    searchInput.addEventListener("input", () => {
+      const query = searchInput.value.trim();
+      const token = localStorage.getItem("token");
+      if (query.length < 2) return (searchResults.innerHTML = "");
+
+      fetch(`/api/users/search?q=${query}`, {
+        headers: {
+          Authorization: "Bearer " + token,
+        },
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          searchResults.innerHTML = "";
+          data.forEach((user) => {
+            const li = document.createElement("li");
+            li.textContent = `${user.username} (${user.email})`;
+            li.classList.add("result-item");
+            li.addEventListener("click", () => {
+              selectedUsername = user.username;
+              searchInput.value = `${user.username} (${user.email})`;
+              searchResults.innerHTML = "";
+            });
+            searchResults.appendChild(li);
+          });
+        });
+    });
+
+    addFriendBtn.addEventListener("click", () => {
+      const token = localStorage.getItem("token");
+      if (!selectedUsername) return alert("Select a user first");
+
+      fetch("/api/users/add-friend", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + token,
+        },
+        body: JSON.stringify({ username: selectedUsername }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          alert(data.message || "Friend added");
+          modal.classList.add("hidden");
+          selectedUsername = null;
+        })
+        .catch((err) => {
+          console.error("Error adding friend:", err);
+          alert("Error adding friend");
+        });
+    });
+
+    document.getElementById("logoutBtn").addEventListener("click", () => {
+      localStorage.removeItem("token");
+      location.href = "/login.html";
+    });
+  </script>
 </body>
 </html>
