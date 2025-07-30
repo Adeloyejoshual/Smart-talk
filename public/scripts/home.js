@@ -8,60 +8,50 @@ document.addEventListener("DOMContentLoaded", () => {
   const createUserForm = document.getElementById("createUserForm");
   const settingsBtn = document.getElementById("settingsBtn");
   const darkToggle = document.getElementById("darkModeToggle");
+  const addFriendBtn = document.getElementById("addFriendBtn");
 
   const user = JSON.parse(localStorage.getItem("user"));
   if (!user) return (window.location.href = "/login.html");
 
   usernameDisplay.textContent = user.username;
+
+  let selectedUserId = null;
+
+  // Load users initially
   fetchUsers("");
 
+  // Search listener
   searchBar.addEventListener("input", () => {
     fetchUsers(searchBar.value.trim());
   });
 
+  // Fetch users
   function fetchUsers(search) {
     fetch(`/api/users?search=${search}&current=${user.username}`)
       .then(res => res.json())
       .then(data => {
         userList.innerHTML = "";
+        selectedUserId = null;
+        addFriendBtn.disabled = true;
+
         if (data.length === 0) {
           userList.innerHTML = "<p>No users found</p>";
         } else {
           data.forEach(u => {
             const div = document.createElement("div");
             div.className = "user";
-            div.innerHTML = `
-              <span>${u.username} (${u.email})</span>
-              <button class="add-friend-btn" data-id="${u._id}">Add Friend</button>
-            `;
-            userList.appendChild(div);
-          });
+            div.textContent = `${u.username} (${u.email})`;
+            div.dataset.userId = u._id;
 
-          document.querySelectorAll(".add-friend-btn").forEach(btn => {
-            btn.addEventListener("click", async () => {
-              const targetUserId = btn.getAttribute("data-id");
-              try {
-                const res = await fetch("/api/users/add", {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json"
-                  },
-                  body: JSON.stringify({
-                    currentUserId: user._id,
-                    targetUserId
-                  })
-                });
-
-                const result = await res.json();
-                if (res.ok) {
-                  alert(result.message);
-                } else {
-                  alert(result.message || "Failed to add friend");
-                }
-              } catch (err) {
-                alert("Network error");
-              }
+            div.addEventListener("click", () => {
+              const allUsers = document.querySelectorAll(".user");
+              allUsers.forEach(el => el.classList.remove("selected"));
+              div.classList.add("selected");
+              selectedUserId = u._id;
+              addFriendBtn.disabled = false;
             });
+
+            userList.appendChild(div);
           });
         }
       })
@@ -70,15 +60,47 @@ document.addEventListener("DOMContentLoaded", () => {
       });
   }
 
+  // Handle Add Friend
+  addFriendBtn.addEventListener("click", async () => {
+    if (!selectedUserId) return alert("Select a user first.");
+
+    try {
+      const res = await fetch("/api/users/add-friend", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId: user._id,
+          friendId: selectedUserId,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        alert("Friend added successfully!");
+        fetchUsers(searchBar.value.trim()); // refresh
+      } else {
+        alert(data.message || "Failed to add friend.");
+      }
+    } catch (err) {
+      alert("Network error. Try again.");
+    }
+  });
+
+  // Show Add User modal
   addUserBtn.addEventListener("click", () => {
     addUserModal.classList.remove("hidden");
   });
 
+  // Close modal
   closeModal.addEventListener("click", () => {
     addUserModal.classList.add("hidden");
     createUserForm.reset();
   });
 
+  // Handle Create User
   createUserForm.addEventListener("submit", async (e) => {
     e.preventDefault();
 
@@ -111,6 +133,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  // Theme toggle
   darkToggle.addEventListener("change", () => {
     const theme = darkToggle.checked ? "dark" : "light";
     document.documentElement.setAttribute("data-theme", theme);
