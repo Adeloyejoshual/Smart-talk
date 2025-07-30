@@ -1,20 +1,30 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>SmartTalk - Home</title>
   <link rel="stylesheet" href="/styles/home.css" />
 </head>
-<body>
+<body class="dark-mode">
   <header>
-    <h1>Welcome, <span id="username">User</span></h1>
-    <button id="findUserBtn">➕ Add Friend</button>
+    <h1>SmartTalk</h1>
+    <div class="user-info">
+      <span id="usernameDisplay">👤 Loading...</span>
+      <button id="settingsBtn">⚙</button>
+    </div>
   </header>
 
   <main>
-    <input type="text" id="liveSearchInput" placeholder="🔍 Search users..." />
-    <ul id="friendList"></ul>
+    <input
+      type="text"
+      id="searchBar"
+      placeholder="🔍 Search users by username or email"
+    />
+    <ul id="userList" class="user-list"></ul>
+
+    <!-- ➕ Floating Button -->
+    <button id="findUserBtn" class="floating-btn">+</button>
 
     <!-- 🔍 Modal -->
     <div id="modal" class="modal hidden">
@@ -29,109 +39,143 @@
   </main>
 
   <script>
-    const usernameEl = document.getElementById("username");
     const findUserBtn = document.getElementById("findUserBtn");
     const modal = document.getElementById("modal");
     const cancelBtn = document.getElementById("cancelBtn");
     const searchInput = document.getElementById("searchInput");
     const searchResults = document.getElementById("searchResults");
     const addFriendBtn = document.getElementById("addFriendBtn");
-    const liveSearchInput = document.getElementById("liveSearchInput");
-    const friendList = document.getElementById("friendList");
+    const usernameDisplay = document.getElementById("usernameDisplay");
+    const settingsBtn = document.getElementById("settingsBtn");
+    const userList = document.getElementById("userList");
+    const searchBar = document.getElementById("searchBar");
 
-    const token = localStorage.getItem("token");
+    let selectedIdentifier = null;
 
-    async function loadUsername() {
+    // 🔐 Load current user
+    async function loadCurrentUser() {
       try {
         const res = await fetch("/api/users/me", {
-          headers: {
-            Authorization: token,
-          }
+          headers: { Authorization: localStorage.getItem("token") }
         });
         const data = await res.json();
         if (res.ok) {
-          usernameEl.textContent = data.username;
+          usernameDisplay.textContent = `👤 ${data.username}`;
         } else {
-          alert("Session expired. Please login again.");
-          window.location.href = "/login.html";
+          usernameDisplay.textContent = "Login Required";
         }
       } catch (err) {
-        console.error(err);
+        console.error("Error loading user:", err);
       }
     }
 
+    // 📜 Load Friends
     async function loadFriends() {
       try {
-        const res = await fetch("/api/users/list", {
-          headers: {
-            Authorization: token,
-          }
+        const res = await fetch("/api/users/friends", {
+          headers: { Authorization: localStorage.getItem("token") }
         });
         const data = await res.json();
-        friendList.innerHTML = "";
-        data.friends.forEach(friend => {
-          const li = document.createElement("li");
-          li.textContent = friend.username;
-          friendList.appendChild(li);
-        });
+        if (res.ok) {
+          userList.innerHTML = data.friends.map(friend => `
+            <li class="user-card">
+              <span>${friend.username}</span>
+              <span class="status">🟢</span>
+            </li>
+          `).join("");
+        } else {
+          userList.innerHTML = "<li>No friends found</li>";
+        }
       } catch (err) {
-        console.error(err);
+        console.error("Error loading friends:", err);
       }
     }
 
-    findUserBtn.addEventListener("click", () => {
-      modal.classList.remove("hidden");
-      searchInput.value = "";
+    // 🔍 Search Users
+    searchInput.addEventListener("input", async () => {
+      const query = searchInput.value.trim();
       searchResults.innerHTML = "";
+
+      if (query.length === 0) return;
+
+      try {
+        const res = await fetch(`/api/users/search?query=${query}`, {
+          headers: { Authorization: localStorage.getItem("token") }
+        });
+        const data = await res.json();
+        if (res.ok) {
+          data.results.forEach(user => {
+            const li = document.createElement("li");
+            li.textContent = `${user.username} (${user.email})`;
+            li.addEventListener("click", () => {
+              selectedIdentifier = user.email || user.username;
+              searchInput.value = selectedIdentifier;
+              searchResults.innerHTML = "";
+            });
+            searchResults.appendChild(li);
+          });
+        } else {
+          searchResults.innerHTML = "<li>No user found</li>";
+        }
+      } catch (err) {
+        console.error("Search error:", err);
+      }
     });
 
-    cancelBtn.addEventListener("click", () => {
-      modal.classList.add("hidden");
-    });
-
+    // ➕ Add Friend
     addFriendBtn.addEventListener("click", async () => {
       const identifier = searchInput.value.trim();
-      if (!identifier) {
-        alert("Please enter a username or email.");
-        return;
-      }
+      if (!identifier) return alert("Please enter a valid identifier");
 
       try {
         const res = await fetch("/api/users/add-friend", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": token,
+            Authorization: localStorage.getItem("token")
           },
-          body: JSON.stringify({ identifier }),
+          body: JSON.stringify({ identifier })
         });
-
         const data = await res.json();
+        alert(data.message);
         if (res.ok) {
-          alert(data.message);
           modal.classList.add("hidden");
-          loadFriends(); // refresh list
-        } else {
-          alert(data.message);
+          loadFriends();
         }
       } catch (err) {
-        alert("Failed to add friend.");
-        console.error(err);
+        console.error("Add friend error:", err);
       }
     });
 
-    // Live search
-    liveSearchInput.addEventListener("input", () => {
-      const filter = liveSearchInput.value.toLowerCase();
-      const friends = friendList.querySelectorAll("li");
-      friends.forEach(friend => {
-        const text = friend.textContent.toLowerCase();
-        friend.style.display = text.includes(filter) ? "block" : "none";
+    // 🧭 Open Modal
+    findUserBtn.addEventListener("click", () => {
+      modal.classList.remove("hidden");
+      searchInput.value = "";
+      searchResults.innerHTML = "";
+    });
+
+    // ❌ Cancel Modal
+    cancelBtn.addEventListener("click", () => {
+      modal.classList.add("hidden");
+    });
+
+    // ⚙ Settings button
+    settingsBtn.addEventListener("click", () => {
+      window.location.href = "/settings.html";
+    });
+
+    // 🔍 Filter friends
+    searchBar.addEventListener("input", () => {
+      const filter = searchBar.value.toLowerCase();
+      const users = document.querySelectorAll(".user-card");
+      users.forEach(user => {
+        const text = user.textContent.toLowerCase();
+        user.style.display = text.includes(filter) ? "flex" : "none";
       });
     });
 
-    // Initial load
-    loadUsername();
+    // 🚀 Initial Load
+    loadCurrentUser();
     loadFriends();
   </script>
 </body>
