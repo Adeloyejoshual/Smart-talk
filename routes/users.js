@@ -147,3 +147,43 @@ router.post('/block/:id', verifyToken, async (req, res) => {
 });
 
 module.exports = router;
+const express = require('express');
+const router = express.Router();
+const User = require('../models/User');
+const verifyToken = require('../middleware/verifyToken');
+
+// Add friend (POST /api/users/add-friend)
+router.post('/add-friend', verifyToken, async (req, res) => {
+  const userId = req.user.id; // logged-in user
+  const { userId: friendId } = req.body; // user to add
+
+  if (!friendId || friendId === userId) {
+    return res.status(400).json({ message: "Invalid friend ID" });
+  }
+
+  try {
+    const user = await User.findById(userId);
+    const friend = await User.findById(friendId);
+
+    if (!friend) return res.status(404).json({ message: "User not found" });
+
+    // Prevent duplicate
+    if (user.friends?.includes(friendId)) {
+      return res.status(400).json({ message: "Already added as friend" });
+    }
+
+    // Add each other as friends
+    user.friends = [...(user.friends || []), friendId];
+    friend.friends = [...(friend.friends || []), userId];
+
+    await user.save();
+    await friend.save();
+
+    res.json({ message: `You added ${friend.username} as a friend.` });
+  } catch (err) {
+    console.error("Add Friend Error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+module.exports = router;
