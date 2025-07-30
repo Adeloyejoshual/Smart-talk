@@ -1,97 +1,84 @@
+// server.js
 const express = require('express');
-const cors = require('cors');
 const http = require('http');
+const cors = require('cors');
 const mongoose = require('mongoose');
-const socketIO = require('socket.io');
+const socketIo = require('socket.io');
+const dotenv = require('dotenv');
 const path = require('path');
-require('dotenv').config();
 
-// Route imports
-const authRoutes = require('./routes/auth');
-const profileRoutes = require('./routes/profile');
-const contactRoutes = require('./routes/contact');
-const userExtraRoutes = require('./routes/user'); // ✅ Includes /add-friend
-
-// MongoDB connection
-const MONGO_URI = process.env.MONGO_URI;
-mongoose.connect(MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-})
-.then(() => console.log('✅ MongoDB connected'))
-.catch(err => console.error('❌ MongoDB connection error:', err));
+dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIO(server);
+const io = socketIo(server, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST']
+  }
+});
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Connect to MongoDB
+mongoose.connect(process.env.MONGO_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+})
+.then(() => console.log('✅ MongoDB connected'))
+.catch(err => console.error('MongoDB connection error:', err));
+
+// Import Routes
 const authRoutes = require('./routes/auth');
-const userRoutes = require('./routes/users');       // includes all user endpoints
+const userRoutes = require('./routes/users');
 const messageRoutes = require('./routes/messages');
 
+// Route Middleware
 app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);                  // ✅ all user logic here
+app.use('/api/users', userRoutes);      // Includes search, add-friend, profile, etc.
 app.use('/api/messages', messageRoutes);
 
-// Serve homepage
+// Default page (login)
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'home.html'));
+  res.sendFile(path.join(__dirname, 'public/login.html'));
 });
 
-// Online users map
-const onlineUsers = new Map();
+// Socket.IO for real-time chat
+const users = {};
 
-// Socket.IO chat logic
 io.on('connection', (socket) => {
-  console.log('🔌 Connected:', socket.id);
+  console.log('🟢 A user connected:', socket.id);
 
-  socket.on('userOnline', (userId) => {
-    onlineUsers.set(userId, socket.id);
-    io.emit('updateOnlineUsers', Array.from(onlineUsers.keys()));
+  socket.on('user-online', (userId) => {
+    users[userId] = socket.id;
+    io.emit('online-users', Object.keys(users));
   });
 
-  socket.on('privateMessage', async ({ from, to, message }) => {
-    const Chat = require('./models/Chat');
-    const newMessage = new Chat({ from, to, message });
-    await newMessage.save();
-
-    const receiverSocket = onlineUsers.get(to);
+  socket.on('send-private-message', ({ senderId, receiverId, message }) => {
+    const receiverSocket = users[receiverId];
     if (receiverSocket) {
-      io.to(receiverSocket).emit('privateMessage', { from, message });
+      io.to(receiverSocket).emit('receive-private-message', {
+        senderId,
+        message,
+        timestamp: new Date()
+      });
     }
-  });
-
-  socket.on('typing', ({ from, to }) => {
-    const receiverSocket = onlineUsers.get(to);
-    if (receiverSocket) {
-      io.to(receiverSocket).emit('typing', { from });
-    }
-  });
-
-  socket.on('messageRead', async ({ from, to }) => {
-    const Chat = require('./models/Chat');
-    await Chat.updateMany({ from, to, read: false }, { $set: { read: true } });
   });
 
   socket.on('disconnect', () => {
-    for (const [userId, socketId] of onlineUsers.entries()) {
-      if (socketId === socket.id) {
-        onlineUsers.delete(userId);
+    for (const userId in users) {
+      if (users[userId] === socket.id) {
+        delete users[userId];
         break;
       }
     }
-    io.emit('updateOnlineUsers', Array.from(onlineUsers.keys()));
-    console.log('❌ Disconnected:', socket.id);
+    io.emit('online-users', Object.keys(users));
+    console.log('🔴 A user disconnected:', socket.id);
   });
 });
 
 // Start server
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-});
+server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
