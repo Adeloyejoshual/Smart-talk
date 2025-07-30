@@ -42,6 +42,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);   // includes all user routes like search, profile, add-friend
 app.use('/api/messages', messageRoutes);
 
+
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/users', userExtraRoutes);   // ✅ add-friend, etc.
