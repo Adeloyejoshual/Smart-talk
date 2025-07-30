@@ -49,4 +49,17 @@ router.post('/add-friend', verifyToken, async (req, res) => {
   }
 });
 
+// ✅ GET /api/users/friends - Get list of user's friends
+router.get('/friends', verifyToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.userId).populate('friends', 'username email');
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    res.status(200).json(user.friends);
+  } catch (err) {
+    console.error('Fetch friends error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 module.exports = router;
