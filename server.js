@@ -6,7 +6,6 @@ const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
-const jwt = require('jsonwebtoken');
 const { Server } = require('socket.io');
 
 // Load environment variables
@@ -17,7 +16,7 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: '*',
-    methods: ['GET', 'POST'],
+    methods: ['GET', 'POST']
   }
 });
 
@@ -36,13 +35,13 @@ mongoose.connect(process.env.MONGO_URI, {
 
 // Routes
 const authRoutes = require('./routes/auth');
-const userRoutes = require('./routes/users');
-const userRoute = require('./routes/user');
+const userRoutes = require('./routes/users');      // search, profile, etc
+const userExtraRoutes = require('./routes/user');  // add-friend
 const messageRoutes = require('./routes/messages');
 
 app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes); // Includes search, list, add-friend, etc.
-app.use('/api/users', userRoute);
+app.use('/api/users', userRoutes);
+app.use('/api/users', userExtraRoutes);   // ✅ add-friend, etc.
 app.use('/api/messages', messageRoutes);
 
 // Serve homepage
@@ -50,12 +49,12 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'home.html'));
 });
 
-// Track online users
+// Online users map
 const onlineUsers = new Map();
 
 // Socket.IO chat logic
 io.on('connection', (socket) => {
-  console.log('🔌 New connection:', socket.id);
+  console.log('🔌 Connected:', socket.id);
 
   socket.on('userOnline', (userId) => {
     onlineUsers.set(userId, socket.id);
@@ -86,14 +85,14 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    for (const [userId, id] of onlineUsers.entries()) {
-      if (id === socket.id) {
+    for (const [userId, socketId] of onlineUsers.entries()) {
+      if (socketId === socket.id) {
         onlineUsers.delete(userId);
         break;
       }
     }
     io.emit('updateOnlineUsers', Array.from(onlineUsers.keys()));
-    console.log('❌ User disconnected:', socket.id);
+    console.log('❌ Disconnected:', socket.id);
   });
 });
 
