@@ -37,12 +37,13 @@ mongoose.connect(process.env.MONGO_URI, {
 // Routes
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
-const messageRoutes = require('./routes/messages'); // 📩 Add message route
-app.use('/api/messages', messageRoutes);
+const userRoute = require('./routes/user');
+const messageRoutes = require('./routes/messages');
+
 app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/users', require('./routes/user'));
-app.use('/api/messages', messageRoutes); // 📩 Message routes
+app.use('/api/users', userRoutes); // Includes search, list, add-friend, etc.
+app.use('/api/users', userRoute);
+app.use('/api/messages', messageRoutes);
 
 // Serve homepage
 app.get('/', (req, res) => {
