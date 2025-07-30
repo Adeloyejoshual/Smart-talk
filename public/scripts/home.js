@@ -1,3 +1,4 @@
+// public/scripts/home.js
 document.addEventListener("DOMContentLoaded", () => {
   const usernameDisplay = document.getElementById("usernameDisplay");
   const searchBar = document.getElementById("searchBar");
@@ -8,14 +9,16 @@ document.addEventListener("DOMContentLoaded", () => {
   const createUserForm = document.getElementById("createUserForm");
   const settingsBtn = document.getElementById("settingsBtn");
   const darkToggle = document.getElementById("darkModeToggle");
-  const addFriendBtn = document.getElementById("addFriendBtn");
+  const friendSearchInput = document.getElementById("friendSearch");
+  const addFriendButton = document.getElementById("addFriendBtn");
 
+  let selectedUserId = null;
+
+  // Load current user
   const user = JSON.parse(localStorage.getItem("user"));
   if (!user) return (window.location.href = "/login.html");
 
   usernameDisplay.textContent = user.username;
-
-  let selectedUserId = null;
 
   // Load users initially
   fetchUsers("");
@@ -31,9 +34,6 @@ document.addEventListener("DOMContentLoaded", () => {
       .then(res => res.json())
       .then(data => {
         userList.innerHTML = "";
-        selectedUserId = null;
-        addFriendBtn.disabled = true;
-
         if (data.length === 0) {
           userList.innerHTML = "<p>No users found</p>";
         } else {
@@ -42,15 +42,10 @@ document.addEventListener("DOMContentLoaded", () => {
             div.className = "user";
             div.textContent = `${u.username} (${u.email})`;
             div.dataset.userId = u._id;
-
             div.addEventListener("click", () => {
-              const allUsers = document.querySelectorAll(".user");
-              allUsers.forEach(el => el.classList.remove("selected"));
-              div.classList.add("selected");
               selectedUserId = u._id;
-              addFriendBtn.disabled = false;
+              friendSearchInput.value = `${u.username} (${u.email})`;
             });
-
             userList.appendChild(div);
           });
         }
@@ -59,35 +54,6 @@ document.addEventListener("DOMContentLoaded", () => {
         userList.innerHTML = "<p>Failed to load users</p>";
       });
   }
-
-  // Handle Add Friend
-  addFriendBtn.addEventListener("click", async () => {
-    if (!selectedUserId) return alert("Select a user first.");
-
-    try {
-      const res = await fetch("/api/users/add-friend", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          userId: user._id,
-          friendId: selectedUserId,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (res.ok) {
-        alert("Friend added successfully!");
-        fetchUsers(searchBar.value.trim()); // refresh
-      } else {
-        alert(data.message || "Failed to add friend.");
-      }
-    } catch (err) {
-      alert("Network error. Try again.");
-    }
-  });
 
   // Show Add User modal
   addUserBtn.addEventListener("click", () => {
@@ -100,7 +66,7 @@ document.addEventListener("DOMContentLoaded", () => {
     createUserForm.reset();
   });
 
-  // Handle Create User
+  // Handle Add User form
   createUserForm.addEventListener("submit", async (e) => {
     e.preventDefault();
 
@@ -133,13 +99,40 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Theme toggle
+  // Add Friend Button
+  addFriendButton.addEventListener("click", async () => {
+    if (!selectedUserId) return alert("Select a user to add as friend.");
+
+    try {
+      const res = await fetch("/api/users/add-friend", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          currentUserId: user._id,
+          friendId: selectedUserId
+        })
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        alert("Friend added!");
+      } else {
+        alert(data.message || "Failed to add friend.");
+      }
+    } catch (err) {
+      alert("Error adding friend.");
+    }
+  });
+
+  // Dark mode toggle
   darkToggle.addEventListener("change", () => {
     const theme = darkToggle.checked ? "dark" : "light";
     document.documentElement.setAttribute("data-theme", theme);
     localStorage.setItem("theme", theme);
   });
 
+  // Set theme on load
   const savedTheme = localStorage.getItem("theme") || "dark";
   document.documentElement.setAttribute("data-theme", savedTheme);
   darkToggle.checked = savedTheme === "dark";
