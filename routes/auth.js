@@ -1,152 +1,55 @@
+// routes/auth.js
 const express = require('express');
 const router = express.Router();
-const User = require('../models/User');
-const Chat = require('../models/Chat');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const User = require('../models/User');
 
-// JWT auth middleware
-function verifyToken(req, res, next) {
-  const token = req.headers['authorization'];
-  if (!token) return res.status(401).json({ message: 'No token provided' });
-
-  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
-    if (err) return res.status(403).json({ message: 'Failed to authenticate token' });
-    req.userId = decoded.id;
-    next();
-  });
-}
-
-// ========== REGISTER ==========
+// Register
 router.post('/register', async (req, res) => {
   try {
-    const { username, email, password, profileImage } = req.body;
+    const { username, email, password } = req.body;
 
     const existingUser = await User.findOne({ email });
-    if (existingUser) return res.status(400).json({ message: 'Email already registered' });
+    if (existingUser)
+      return res.status(400).json({ message: 'User already exists' });
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const newUser = new User({
+    const user = new User({
       username,
       email,
       password: hashedPassword,
-      profileImage,
-      friends: [],
-      blocked: []
     });
 
-    await newUser.save();
+    await user.save();
+
     res.status(201).json({ message: 'User registered successfully' });
   } catch (err) {
-    res.status(500).json({ message: 'Registration failed', error: err.message });
+    res.status(500).json({ message: 'Server error', error: err.message });
   }
 });
 
-// ========== LOGIN ==========
+// Login
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
     const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ message: 'Invalid credentials' });
+    if (!user)
+      return res.status(400).json({ message: 'Invalid email or password' });
 
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(400).json({ message: 'Invalid credentials' });
+    if (!isMatch)
+      return res.status(400).json({ message: 'Invalid email or password' });
 
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
-
-    res.json({
-      token,
-      user: {
-        id: user._id,
-        username: user.username,
-        email: user.email,
-        profileImage: user.profileImage
-      }
-    });
-  } catch (err) {
-    res.status(500).json({ message: 'Login failed', error: err.message });
-  }
-});
-
-// ========== SEARCH USERS ==========
-router.get('/search', verifyToken, async (req, res) => {
-  try {
-    const query = req.query.q;
-    const users = await User.find({
-      $or: [
-        { username: { $regex: query, $options: 'i' } },
-        { email: { $regex: query, $options: 'i' } }
-      ],
-      _id: { $ne: req.userId }
-    }).select('username email profileImage');
-
-    res.json(users);
-  } catch (err) {
-    res.status(500).json({ message: 'Search failed', error: err.message });
-  }
-});
-
-// ========== GET ALL USERS (excluding self, blocked, in chat) ==========
-router.get('/list', verifyToken, async (req, res) => {
-  try {
-    const currentUser = await User.findById(req.userId).populate('friends blocked');
-    const friendsIds = currentUser.friends.map(f => f._id.toString());
-    const blockedIds = currentUser.blocked.map(b => b._id.toString());
-
-    const chats = await Chat.find({
-      $or: [{ sender: req.userId }, { receiver: req.userId }]
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+      expiresIn: '1d',
     });
 
-    const inChatWith = chats.map(chat => (
-      chat.sender.toString() === req.userId ? chat.receiver.toString() : chat.sender.toString()
-    ));
-
-    const excludedIds = [req.userId, ...blockedIds, ...inChatWith];
-
-    const users = await User.find({ _id: { $nin: excludedIds } })
-      .select('username email profileImage');
-
-    res.json(users);
+    res.json({ token, user: { id: user._id, username: user.username, email: user.email } });
   } catch (err) {
-    res.status(500).json({ message: 'User list fetch failed', error: err.message });
-  }
-});
-
-// ========== ADD FRIEND ==========
-router.post('/add-friend/:id', verifyToken, async (req, res) => {
-  try {
-    const friendId = req.params.id;
-    const user = await User.findById(req.userId);
-    if (user.friends.includes(friendId)) {
-      return res.status(400).json({ message: 'Already friends' });
-    }
-
-    user.friends.push(friendId);
-    await user.save();
-
-    res.json({ message: 'Friend added successfully' });
-  } catch (err) {
-    res.status(500).json({ message: 'Add friend failed', error: err.message });
-  }
-});
-
-// ========== BLOCK USER ==========
-router.post('/block/:id', verifyToken, async (req, res) => {
-  try {
-    const blockId = req.params.id;
-    const user = await User.findById(req.userId);
-    if (user.blocked.includes(blockId)) {
-      return res.status(400).json({ message: 'User already blocked' });
-    }
-
-    user.blocked.push(blockId);
-    await user.save();
-
-    res.json({ message: 'User blocked successfully' });
-  } catch (err) {
-    res.status(500).json({ message: 'Block failed', error: err.message });
+    res.status(500).json({ message: 'Server error', error: err.message });
   }
 });
 
