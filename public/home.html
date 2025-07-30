@@ -92,10 +92,6 @@
       max-width: 400px;
     }
 
-    body.dark-mode .modal-content {
-      background-color: #1e1e1e;
-    }
-
     .modal-content input {
       padding: 10px;
       border-radius: 5px;
@@ -143,17 +139,37 @@
       cursor: pointer;
     }
 
-    #searchResults li {
-      list-style: none;
-      background: #333;
-      padding: 10px;
-      margin-top: 5px;
-      border-radius: 5px;
+    .search-results {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .user-card {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #1f1f1f;
+      border: 1px solid #333;
+      border-radius: 10px;
+      padding: 0.8rem;
+      color: #fff;
+    }
+
+    .user-card button {
+      padding: 6px 12px;
+      background-color: #4caf50;
+      border: none;
+      border-radius: 6px;
+      color: white;
+      font-weight: bold;
       cursor: pointer;
     }
 
-    #searchResults li:hover {
-      background-color: #444;
+    .user-card button:hover {
+      background-color: #45a049;
     }
   </style>
 </head>
@@ -166,18 +182,15 @@
 
   <div id="userList">
     <h2>Online Users</h2>
-    <!-- Users will be listed here -->
   </div>
 
-  <!-- Add Button -->
   <button id="addUserBtn">+</button>
 
-  <!-- Add/Search User Modal -->
   <div id="newUserModal" class="modal hidden">
     <div class="modal-content">
       <h2>🔍 Find User</h2>
       <input type="text" id="modalSearchInput" placeholder="Enter username or email" oninput="liveSearchUsers()" />
-      <ul id="searchResults"></ul>
+      <div class="search-results" id="searchResults"></div>
       <button onclick="closeModal()">Cancel</button>
     </div>
   </div>
@@ -213,25 +226,49 @@
 
     async function liveSearchUsers() {
       const query = document.getElementById('modalSearchInput').value.trim();
-      const resultsList = document.getElementById('searchResults');
-      resultsList.innerHTML = '';
+      const resultsDiv = document.getElementById('searchResults');
+      resultsDiv.innerHTML = '';
       if (!query) return;
 
       try {
-        const res = await fetch(`/api/users/search?q=${encodeURIComponent(query)}`);
-        const users = await res.json();
-        if (users.length === 0) {
-          resultsList.innerHTML = '<li>No users found</li>';
+        const response = await fetch(`/api/users/search?q=${encodeURIComponent(query)}`);
+        const users = await response.json();
+
+        users.forEach(user => {
+          const card = document.createElement('div');
+          card.classList.add('user-card');
+
+          card.innerHTML = `
+            <div>
+              <strong>${user.username}</strong><br>
+              <small>${user.email}</small>
+            </div>
+            <button onclick="addFriend('${user._id}', this)">Add Friend</button>
+          `;
+
+          resultsDiv.appendChild(card);
+        });
+      } catch (err) {
+        console.error('Search error:', err);
+      }
+    }
+
+    async function addFriend(friendId, btn) {
+      try {
+        const response = await fetch(`/api/users/add-friend/${friendId}`, {
+          method: 'POST',
+          headers: { 'Authorization': localStorage.getItem('token') }
+        });
+
+        const result = await response.json();
+        if (response.ok) {
+          btn.textContent = "Friend Added";
+          btn.disabled = true;
         } else {
-          users.forEach(user => {
-            const li = document.createElement('li');
-            li.textContent = `${user.username} (${user.email})`;
-            li.onclick = () => window.location.href = '/chat/' + user._id;
-            resultsList.appendChild(li);
-          });
+          alert(result.message || 'Failed to add friend.');
         }
       } catch (err) {
-        console.error('Live search error:', err);
+        console.error('Add friend error:', err);
       }
     }
 
