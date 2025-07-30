@@ -4,298 +4,93 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>SmartTalk - Home</title>
-  <style>
-    body {
-      margin: 0;
-      font-family: Arial, sans-serif;
-      transition: background-color 0.3s, color 0.3s;
-    }
-    body.dark-mode {
-      background-color: #121212;
-      color: #ffffff;
-    }
+  <link rel="stylesheet" href="/styles/home.css" />
+  <script src="/socket.io/socket.io.js" defer></script>
+  <script defer>
+    const socket = io();
+    let selectedUserId = null;
 
-    .header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      background-color: #1f1f1f;
-      padding: 10px 20px;
-      position: sticky;
-      top: 0;
-      z-index: 10;
-    }
+    // Load logged-in user's name
+    fetch("/api/users/me")
+      .then(res => res.json())
+      .then(data => {
+        document.getElementById("usernameDisplay").textContent = data.username;
+      });
 
-    .header input {
-      flex: 1;
-      padding: 8px 12px;
-      margin-right: 10px;
-      border-radius: 20px;
-      border: none;
-      outline: none;
-      background-color: #333;
-      color: white;
-    }
+    function searchUsers() {
+      const query = document.getElementById("searchInput").value.trim();
+      const results = document.getElementById("searchResults");
+      results.innerHTML = "";
 
-    .header .search-icon,
-    .header .settings-icon {
-      font-size: 18px;
-      cursor: pointer;
-      padding: 4px 6px;
-    }
-
-    #userList {
-      padding: 20px;
-    }
-
-    #addUserBtn {
-      position: fixed;
-      bottom: 20px;
-      right: 20px;
-      font-size: 32px;
-      font-weight: bold;
-      background-color: #6200ee;
-      color: white;
-      border: none;
-      padding: 15px 20px;
-      border-radius: 50%;
-      cursor: pointer;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-      z-index: 100;
-    }
-
-    .modal.hidden {
-      display: none;
-    }
-
-    .modal {
-      position: fixed;
-      top: 0; left: 0;
-      width: 100vw;
-      height: 100vh;
-      background: rgba(0, 0, 0, 0.6);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 999;
-    }
-
-    .modal-content {
-      background: #222;
-      padding: 20px;
-      border-radius: 10px;
-      color: white;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      width: 90%;
-      max-width: 400px;
-    }
-
-    .modal-content input {
-      padding: 10px;
-      border-radius: 5px;
-      border: none;
-      background: #333;
-      color: white;
-    }
-
-    .modal-content button {
-      padding: 10px;
-      background-color: #03dac5;
-      color: black;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
-    }
-
-    .user {
-      background: #292929;
-      padding: 12px;
-      margin-bottom: 10px;
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .user img {
-      width: 40px;
-      height: 40px;
-      border-radius: 50%;
-      object-fit: cover;
-    }
-
-    .user .info {
-      flex-grow: 1;
-    }
-
-    .user .chat-btn {
-      background: #03dac5;
-      color: #000;
-      padding: 5px 10px;
-      border-radius: 5px;
-      border: none;
-      cursor: pointer;
-    }
-
-    .search-results {
-      display: flex;
-      flex-direction: column;
-      gap: 0.75rem;
-      max-height: 300px;
-      overflow-y: auto;
-    }
-
-    .user-card {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      background: #1f1f1f;
-      border: 1px solid #333;
-      border-radius: 10px;
-      padding: 0.8rem;
-      color: #fff;
-    }
-
-    .user-card button {
-      padding: 6px 12px;
-      background-color: #4caf50;
-      border: none;
-      border-radius: 6px;
-      color: white;
-      font-weight: bold;
-      cursor: pointer;
-    }
-
-    .user-card button:hover {
-      background-color: #45a049;
-    }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <input type="text" id="searchInput" placeholder="Search by username or Gmail">
-    <span class="search-icon" onclick="searchUsers()">🔎</span>
-    <span class="settings-icon" onclick="window.location.href='settings.html'">⚙️</span>
-  </div>
-
-  <div id="userList">
-    <h2>Online Users</h2>
-  </div>
-
-  <button id="addUserBtn">+</button>
-
-  <div id="newUserModal" class="modal hidden">
-    <div class="modal-content">
-      <h2>🔍 Find User</h2>
-      <input type="text" id="modalSearchInput" placeholder="Enter username or email" oninput="liveSearchUsers()" />
-      <div class="search-results" id="searchResults"></div>
-      <button onclick="closeModal()">Cancel</button>
-    </div>
-  </div>
-
-  <script>
-    document.addEventListener("DOMContentLoaded", () => {
-      const isDark = localStorage.getItem("darkMode") === "true";
-      document.body.classList.toggle("dark-mode", isDark);
-      loadUsers();
-    });
-
-    document.getElementById('addUserBtn').addEventListener('click', () => {
-      document.getElementById('newUserModal').classList.remove('hidden');
-    });
-
-    function closeModal() {
-      document.getElementById('newUserModal').classList.add('hidden');
-      document.getElementById('searchResults').innerHTML = '';
-      document.getElementById('modalSearchInput').value = '';
-    }
-
-    async function searchUsers() {
-      const query = document.getElementById('searchInput').value.trim();
-      if (!query) return;
-      try {
-        const response = await fetch(`/api/users/search?q=${encodeURIComponent(query)}`);
-        const users = await response.json();
-        renderUsers(users, 'Search Results');
-      } catch (err) {
-        console.error('Search failed:', err);
-      }
-    }
-
-    async function liveSearchUsers() {
-      const query = document.getElementById('modalSearchInput').value.trim();
-      const resultsDiv = document.getElementById('searchResults');
-      resultsDiv.innerHTML = '';
       if (!query) return;
 
-      try {
-        const response = await fetch(`/api/users/search?q=${encodeURIComponent(query)}`);
-        const users = await response.json();
+      fetch(`/api/users/search?q=${query}`)
+        .then(res => res.json())
+        .then(users => {
+          if (users.length === 0) {
+            results.innerHTML = "<p>No users found.</p>";
+            selectedUserId = null;
+            return;
+          }
 
-        users.forEach(user => {
-          const card = document.createElement('div');
-          card.classList.add('user-card');
+          // Show first match and store ID
+          const user = users[0];
+          selectedUserId = user._id;
 
+          const card = document.createElement("div");
+          card.className = "user-card";
           card.innerHTML = `
-            <div>
-              <strong>${user.username}</strong><br>
-              <small>${user.email}</small>
-            </div>
-            <button onclick="addFriend('${user._id}', this)">Add Friend</button>
+            <strong>@${user.username}</strong>
+            <p>${user.email}</p>
           `;
-
-          resultsDiv.appendChild(card);
+          results.appendChild(card);
         });
-      } catch (err) {
-        console.error('Search error:', err);
-      }
     }
 
-    async function addFriend(friendId, btn) {
-      try {
-        const response = await fetch(`/api/users/add-friend/${friendId}`, {
-          method: 'POST',
-          headers: { 'Authorization': localStorage.getItem('token') }
-        });
+    function addFriend() {
+      if (!selectedUserId) return alert("Search and select a user first.");
 
-        const result = await response.json();
-        if (response.ok) {
-          btn.textContent = "Friend Added";
-          btn.disabled = true;
-        } else {
-          alert(result.message || 'Failed to add friend.');
-        }
-      } catch (err) {
-        console.error('Add friend error:', err);
-      }
-    }
-
-    async function loadUsers() {
-      try {
-        const res = await fetch('/api/users/online');
-        const users = await res.json();
-        renderUsers(users, 'Online Users');
-      } catch (err) {
-        console.error('Load users failed:', err);
-      }
-    }
-
-    function renderUsers(users, title) {
-      const list = document.getElementById('userList');
-      list.innerHTML = `<h2>${title}</h2>` +
-        users.map(u => `
-          <div class="user">
-            <img src="/avatars/${u.profileImage || 'default.png'}" alt="Avatar">
-            <div class="info">
-              <div><strong>${u.username}</strong></div>
-              <div>${u.email}</div>
-            </div>
-            <button class="chat-btn" onclick="window.location.href='/chat/${u._id}'">Chat</button>
-          </div>
-        `).join('');
+      fetch(`/api/users/add-friend`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: selectedUserId })
+      })
+      .then(res => res.json())
+      .then(data => {
+        alert(data.message || "Friend request sent.");
+        document.getElementById("searchResults").innerHTML = "";
+        document.getElementById("searchInput").value = "";
+        selectedUserId = null;
+      });
     }
   </script>
+</head>
+<body>
+  <header>
+    <h1>Welcome, <span id="usernameDisplay">...</span></h1>
+    <nav>
+      <a href="/home.html">Home</a>
+      <a href="/chat.html">Chat</a>
+      <a href="/notifications.html">Notifications</a>
+      <a href="/profile.html">Profile</a>
+      <button onclick="location.href='/logout'">Logout</button>
+    </nav>
+  </header>
+
+  <main>
+    <section class="search-section">
+      <h2>🔍 Find User</h2>
+      <div class="search-row">
+        <input type="text" id="searchInput" placeholder="Enter username or email" />
+        <button onclick="searchUsers()">🔍</button>
+        <button onclick="addFriend()">Add Friend</button>
+      </div>
+      <div id="searchResults"></div>
+    </section>
+  </main>
+
+  <footer>
+    <p>&copy; 2025 Smart Talk</p>
+  </footer>
 </body>
 </html>
