@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -8,17 +8,13 @@
 </head>
 <body>
   <header>
-    <h1>SmartTalk</h1>
-    <button id="logoutBtn">Logout</button>
+    <h1>Welcome, <span id="username">User</span></h1>
+    <button id="findUserBtn">➕ Add Friend</button>
   </header>
 
   <main>
-    <section id="userSection">
-      <h2>Online Users</h2>
-      <ul id="userList"></ul>
-    </section>
-
-    <button id="findUserBtn">🔍 Find User</button>
+    <input type="text" id="liveSearchInput" placeholder="🔍 Search users..." />
+    <ul id="friendList"></ul>
 
     <!-- 🔍 Modal -->
     <div id="modal" class="modal hidden">
@@ -33,12 +29,55 @@
   </main>
 
   <script>
+    const usernameEl = document.getElementById("username");
     const findUserBtn = document.getElementById("findUserBtn");
     const modal = document.getElementById("modal");
     const cancelBtn = document.getElementById("cancelBtn");
     const searchInput = document.getElementById("searchInput");
     const searchResults = document.getElementById("searchResults");
     const addFriendBtn = document.getElementById("addFriendBtn");
+    const liveSearchInput = document.getElementById("liveSearchInput");
+    const friendList = document.getElementById("friendList");
+
+    const token = localStorage.getItem("token");
+
+    async function loadUsername() {
+      try {
+        const res = await fetch("/api/users/me", {
+          headers: {
+            Authorization: token,
+          }
+        });
+        const data = await res.json();
+        if (res.ok) {
+          usernameEl.textContent = data.username;
+        } else {
+          alert("Session expired. Please login again.");
+          window.location.href = "/login.html";
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    async function loadFriends() {
+      try {
+        const res = await fetch("/api/users/list", {
+          headers: {
+            Authorization: token,
+          }
+        });
+        const data = await res.json();
+        friendList.innerHTML = "";
+        data.friends.forEach(friend => {
+          const li = document.createElement("li");
+          li.textContent = friend.username;
+          friendList.appendChild(li);
+        });
+      } catch (err) {
+        console.error(err);
+      }
+    }
 
     findUserBtn.addEventListener("click", () => {
       modal.classList.remove("hidden");
@@ -50,60 +89,50 @@
       modal.classList.add("hidden");
     });
 
-    searchInput.addEventListener("input", () => {
-      const query = searchInput.value.trim();
-      const token = localStorage.getItem("token");
-      if (query.length < 2) return (searchResults.innerHTML = "");
+    addFriendBtn.addEventListener("click", async () => {
+      const identifier = searchInput.value.trim();
+      if (!identifier) {
+        alert("Please enter a username or email.");
+        return;
+      }
 
-      fetch(`/api/users/search?q=${query}`, {
-        headers: {
-          Authorization: "Bearer " + token,
-        },
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          searchResults.innerHTML = "";
-          data.forEach((user) => {
-            const li = document.createElement("li");
-            li.textContent = `${user.username} (${user.email})`;
-            li.classList.add("result-item");
-            li.addEventListener("click", () => {
-              searchInput.value = user.username;
-              searchResults.innerHTML = "";
-            });
-            searchResults.appendChild(li);
-          });
+      try {
+        const res = await fetch("/api/users/add-friend", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": token,
+          },
+          body: JSON.stringify({ identifier }),
         });
-    });
 
-    addFriendBtn.addEventListener("click", () => {
-      const token = localStorage.getItem("token");
-      const input = searchInput.value.trim();
-      if (!input) return alert("Please enter a username or email");
-
-      fetch("/api/users/add-friend", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer " + token,
-        },
-        body: JSON.stringify({ input }), // ← Send either email or username
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          alert(data.message || "Friend added");
+        const data = await res.json();
+        if (res.ok) {
+          alert(data.message);
           modal.classList.add("hidden");
-        })
-        .catch((err) => {
-          console.error("Error adding friend:", err);
-          alert("Error adding friend");
-        });
+          loadFriends(); // refresh list
+        } else {
+          alert(data.message);
+        }
+      } catch (err) {
+        alert("Failed to add friend.");
+        console.error(err);
+      }
     });
 
-    document.getElementById("logoutBtn").addEventListener("click", () => {
-      localStorage.removeItem("token");
-      location.href = "/login.html";
+    // Live search
+    liveSearchInput.addEventListener("input", () => {
+      const filter = liveSearchInput.value.toLowerCase();
+      const friends = friendList.querySelectorAll("li");
+      friends.forEach(friend => {
+        const text = friend.textContent.toLowerCase();
+        friend.style.display = text.includes(filter) ? "block" : "none";
+      });
     });
+
+    // Initial load
+    loadUsername();
+    loadFriends();
   </script>
 </body>
 </html>
