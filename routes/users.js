@@ -50,5 +50,32 @@ router.post('/add-friend', verifyToken, async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 });
+// POST /api/users/add-friend
+router.post('/add-friend', verifyToken, async (req, res) => {
+  try {
+    const identifier = req.body.identifier;
+    if (!identifier) return res.status(400).json({ message: 'No identifier provided' });
 
+    const friend = await User.findOne({
+      $or: [{ email: identifier }, { username: identifier }]
+    });
+
+    if (!friend) return res.status(404).json({ message: 'User not found' });
+
+    const currentUser = await User.findById(req.userId);
+    if (!currentUser) return res.status(404).json({ message: 'Current user not found' });
+
+    if (currentUser.friends.includes(friend._id)) {
+      return res.status(400).json({ message: 'User already added as a friend' });
+    }
+
+    currentUser.friends.push(friend._id);
+    await currentUser.save();
+
+    res.status(200).json({ message: 'Friend added successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Error adding friend' });
+  }
+});
 module.exports = router;
