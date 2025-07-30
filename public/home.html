@@ -26,7 +26,7 @@
         <h3>🔍 Find User</h3>
         <input type="text" id="searchInput" placeholder="Enter username or email" />
         <button id="addFriendBtn">Add Friend</button>
- <button id="cancelBtn">Cancel</button>
+        <button id="cancelBtn">Cancel</button>
         <ul id="searchResults"></ul>
       </div>
     </div>
@@ -40,8 +40,6 @@
     const searchResults = document.getElementById("searchResults");
     const addFriendBtn = document.getElementById("addFriendBtn");
 
-    let selectedUsername = null;
-
     findUserBtn.addEventListener("click", () => {
       modal.classList.remove("hidden");
       searchInput.value = "";
@@ -50,7 +48,6 @@
 
     cancelBtn.addEventListener("click", () => {
       modal.classList.add("hidden");
-      selectedUsername = null;
     });
 
     searchInput.addEventListener("input", () => {
@@ -71,8 +68,7 @@
             li.textContent = `${user.username} (${user.email})`;
             li.classList.add("result-item");
             li.addEventListener("click", () => {
-              selectedUsername = user.username;
-              searchInput.value = `${user.username} (${user.email})`;
+              searchInput.value = user.username;
               searchResults.innerHTML = "";
             });
             searchResults.appendChild(li);
@@ -82,7 +78,9 @@
 
     addFriendBtn.addEventListener("click", () => {
       const token = localStorage.getItem("token");
-      if (!selectedUsername) return alert("Select a user first");
+      const input = searchInput.value.trim();
+
+      if (!input) return alert("Enter username or email");
 
       fetch("/api/users/add-friend", {
         method: "POST",
@@ -90,13 +88,12 @@
           "Content-Type": "application/json",
           Authorization: "Bearer " + token,
         },
-        body: JSON.stringify({ username: selectedUsername }),
+        body: JSON.stringify({ query: input }), // Accepts either email or username
       })
         .then((res) => res.json())
         .then((data) => {
           alert(data.message || "Friend added");
           modal.classList.add("hidden");
-          selectedUsername = null;
         })
         .catch((err) => {
           console.error("Error adding friend:", err);
