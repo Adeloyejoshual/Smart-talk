@@ -30,18 +30,12 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Routes
 const authRoutes = require('./routes/auth');
-const userRoutes = require('./routes/users');
+const userRoutes = require('./routes/users');       // includes all user endpoints
 const messageRoutes = require('./routes/messages');
 
 app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);   // includes all user routes like search, profile, add-friend
-app.use('/api/messages', messageRoutes);
-
-app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/users', userExtraRoutes);   // ✅ add-friend, etc.
+app.use('/api/users', userRoutes);                  // ✅ all user logic here
 app.use('/api/messages', messageRoutes);
 
 // Serve homepage
