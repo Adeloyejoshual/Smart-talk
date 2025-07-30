@@ -3,20 +3,24 @@ const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
 
-// Add friend (mutual)
+// POST /api/users/add-friend
 router.post('/add-friend', async (req, res) => {
-  const { currentUser, targetUser } = req.body;
+  const { currentUserId, targetUsername } = req.body;
 
-  if (!currentUser || !targetUser) {
-    return res.status(400).json({ message: 'Both users are required.' });
+  if (!currentUserId || !targetUsername) {
+    return res.status(400).json({ error: 'Missing user ID or target username.' });
   }
 
   try {
-    const userA = await User.findOne({ username: currentUser });
-    const userB = await User.findOne({ username: targetUser });
+    const currentUser = await User.findById(currentUserId);
+    const targetUser = await User.findOne({ username: targetUsername });
 
-    if (!userA || !userB) {
-      return res.status(404).json({ message: 'One or both users not found.' });
+    if (!currentUser || !targetUser) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    if (currentUser.friends.includes(targetUser._id)) {
+      return res.status(400).json({ error: 'Already friends.' });
     }
 
     // Check if already friends
