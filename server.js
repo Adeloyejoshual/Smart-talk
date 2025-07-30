@@ -35,9 +35,12 @@ mongoose.connect(process.env.MONGO_URI, {
 
 // Routes
 const authRoutes = require('./routes/auth');
-const userRoutes = require('./routes/users');      // search, profile, etc
-const userExtraRoutes = require('./routes/user');  // add-friend
+const userRoutes = require('./routes/users');
 const messageRoutes = require('./routes/messages');
+
+app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);   // includes all user routes like search, profile, add-friend
+app.use('/api/messages', messageRoutes);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
