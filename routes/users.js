@@ -147,10 +147,7 @@ router.post('/block/:id', verifyToken, async (req, res) => {
 });
 
 module.exports = router;
-const express = require('express');
-const router = express.Router();
-const User = require('../models/User');
-const verifyToken = require('../middleware/verifyToken');
+
 
 // Add friend (POST /api/users/add-friend)
 router.post('/add-friend', verifyToken, async (req, res) => {
