@@ -1,55 +1,69 @@
-// routes/user.js
-const express = require("express");
+
+const express = require('express');
 const router = express.Router();
-const User = require("../models/User");
+const User = require('../models/User');
+const verifyToken = require('../middleware/verifyToken');
 
-// Search users (by username or email)
-router.get("/", async (req, res) => {
-  const { search, current } = req.query;
-
+// Search users by username or email
+router.get('/search', verifyToken, async (req, res) => {
+  const { query } = req.query;
   try {
     const users = await User.find({
-      $and: [
-        {
-          $or: [
-            { username: { $regex: search, $options: "i" } },
-            { email: { $regex: search, $options: "i" } }
-          ]
-        },
-        { username: { $ne: current } } // Don't show current user
+      $or: [
+        { username: { $regex: query, $options: 'i' } },
+        { email: { $regex: query, $options: 'i' } }
       ]
-    }).select("-password");
-
+    }).select('username email _id');
     res.json(users);
-  } catch (error) {
-    res.status(500).json({ message: "Server error" });
+  } catch (err) {
+    console.error('Search error:', err);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Add friend
-router.post("/add", async (req, res) => {
-  const { currentUserId, targetUserId } = req.body;
+// Get user list (excluding current user)
+router.get('/list', verifyToken, async (req, res) => {
+  try {
+    const users = await User.find({ _id: { $ne: req.user.id } }).select('username email _id');
+    res.json(users);
+  } catch (err) {
+    console.error('List error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
 
-  if (!currentUserId || !targetUserId) {
-    return res.status(400).json({ message: "Missing user IDs" });
+// Add friend route
+router.post('/add-friend', verifyToken, async (req, res) => {
+  const userId = req.user.id;
+  const { userId: friendId } = req.body;
+
+  if (!friendId || friendId === userId) {
+    return res.status(400).json({ message: "Invalid friend ID" });
   }
 
   try {
-    const user = await User.findById(currentUserId);
-    const target = await User.findById(targetUserId);
+    const user = await User.findById(userId);
+    const friend = await User.findById(friendId);
 
-    if (!user || !target) {
+    if (!friend) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    if (!user.friends.includes(targetUserId)) {
-      user.friends.push(targetUserId);
-      await user.save();
+    if (user.friends?.includes(friendId)) {
+      return res.status(400).json({ message: "Already added as friend" });
     }
 
-    res.json({ message: "Friend added successfully" });
+    // Add each other as friends
+    user.friends = [...(user.friends || []), friendId];
+    friend.friends = [...(friend.friends || []), userId];
+
+    await user.save();
+    await friend.save();
+
+    res.json({ message: `You added ${friend.username} as a friend.` });
   } catch (err) {
-    res.status(500).json({ message: "Failed to add friend" });
+    console.error('Add Friend Error:', err);
+    res.status(500).json({ message: "Server error" });
   }
 });
 
