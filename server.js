@@ -41,6 +41,7 @@ const messageRoutes = require('./routes/messages'); // 📩 Add message route
 app.use('/api/messages', messageRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/users', require('./routes/user'));
 app.use('/api/messages', messageRoutes); // 📩 Message routes
 
 // Serve homepage
