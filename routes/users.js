@@ -4,7 +4,7 @@ const router = express.Router();
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 
-// Middleware to verify JWT
+// Middleware to verify token
 function verifyToken(req, res, next) {
   const token = req.headers['authorization'];
   if (!token) return res.status(401).json({ message: 'No token provided' });
@@ -38,34 +38,16 @@ router.post('/add-friend', verifyToken, async (req, res) => {
     }
 
     if (user.friends.includes(friend._id)) {
-      return res.status(400).json({ message: 'Already added as a friend' });
+      return res.status(400).json({ message: 'User is already your friend' });
     }
 
     user.friends.push(friend._id);
     await user.save();
 
-    return res.status(200).json({ message: 'Friend added successfully' });
+    res.status(200).json({ message: 'Friend added successfully' });
   } catch (err) {
     console.error('Add friend error:', err);
     res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// ✅ Search users (optional)
-router.get('/search', verifyToken, async (req, res) => {
-  const query = req.query.q;
-
-  try {
-    const users = await User.find({
-      $or: [
-        { username: { $regex: query, $options: 'i' } },
-        { email: { $regex: query, $options: 'i' } }
-      ]
-    });
-
-    res.json(users);
-  } catch (err) {
-    res.status(500).json({ message: 'Search error' });
   }
 });
 
