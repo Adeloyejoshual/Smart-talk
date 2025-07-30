@@ -1,4 +1,3 @@
-// 1. Imports and setup
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
@@ -6,7 +5,7 @@ const Chat = require('../models/Chat');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 
-// 2. Token verification middleware
+// JWT auth middleware
 function verifyToken(req, res, next) {
   const token = req.headers['authorization'];
   if (!token) return res.status(401).json({ message: 'No token provided' });
@@ -18,32 +17,42 @@ function verifyToken(req, res, next) {
   });
 }
 
-// 3. POST /api/users/register - User Registration
+// ========== REGISTER ==========
 router.post('/register', async (req, res) => {
-  const { username, email, password } = req.body;
   try {
+    const { username, email, password, profileImage } = req.body;
+
     const existingUser = await User.findOne({ email });
     if (existingUser) return res.status(400).json({ message: 'Email already registered' });
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const newUser = new User({ username, email, password: hashedPassword });
-    await newUser.save();
 
-    res.json({ message: 'User registered successfully' });
+    const newUser = new User({
+      username,
+      email,
+      password: hashedPassword,
+      profileImage,
+      friends: [],
+      blocked: []
+    });
+
+    await newUser.save();
+    res.status(201).json({ message: 'User registered successfully' });
   } catch (err) {
     res.status(500).json({ message: 'Registration failed', error: err.message });
   }
 });
 
-// 4. POST /api/users/login - User Login
+// ========== LOGIN ==========
 router.post('/login', async (req, res) => {
-  const { email, password } = req.body;
   try {
+    const { email, password } = req.body;
+
     const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ message: 'User not found' });
+    if (!user) return res.status(400).json({ message: 'Invalid credentials' });
 
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(401).json({ message: 'Invalid credentials' });
+    if (!isMatch) return res.status(400).json({ message: 'Invalid credentials' });
 
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
@@ -61,7 +70,7 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// 5. GET /api/users/search?q=username - Search users
+// ========== SEARCH USERS ==========
 router.get('/search', verifyToken, async (req, res) => {
   try {
     const query = req.query.q;
@@ -79,14 +88,14 @@ router.get('/search', verifyToken, async (req, res) => {
   }
 });
 
-// 6. GET /api/users/list - All users excluding self, blocked, and in chat
+// ========== GET ALL USERS (excluding self, blocked, in chat) ==========
 router.get('/list', verifyToken, async (req, res) => {
   try {
     const currentUser = await User.findById(req.userId).populate('friends blocked');
     const friendsIds = currentUser.friends.map(f => f._id.toString());
     const blockedIds = currentUser.blocked.map(b => b._id.toString());
 
-    const chats = await Chat.find({ 
+    const chats = await Chat.find({
       $or: [{ sender: req.userId }, { receiver: req.userId }]
     });
 
@@ -105,7 +114,7 @@ router.get('/list', verifyToken, async (req, res) => {
   }
 });
 
-// 7. POST /api/users/add-friend/:id - Add friend by userId
+// ========== ADD FRIEND ==========
 router.post('/add-friend/:id', verifyToken, async (req, res) => {
   try {
     const friendId = req.params.id;
@@ -123,7 +132,7 @@ router.post('/add-friend/:id', verifyToken, async (req, res) => {
   }
 });
 
-// 8. POST /api/users/block/:id - Block user
+// ========== BLOCK USER ==========
 router.post('/block/:id', verifyToken, async (req, res) => {
   try {
     const blockId = req.params.id;
