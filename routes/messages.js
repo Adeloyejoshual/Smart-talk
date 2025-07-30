@@ -1,10 +1,9 @@
-// routes/messages.js
 const express = require('express');
 const router = express.Router();
 const Chat = require('../models/Chat');
 const Message = require('../models/Message');
 
-// ✅ Create or retrieve a chat between two users
+// ✅ Create or retrieve a private chat between two users
 router.post('/chat', async (req, res) => {
   const { user1, user2 } = req.body;
 
@@ -22,19 +21,19 @@ router.post('/chat', async (req, res) => {
       await chat.save();
     }
 
-    res.json(chat);
+    res.status(200).json(chat);
   } catch (err) {
-    console.error("Failed to get/create chat:", err);
-    res.status(500).json({ error: "Server error" });
+    console.error("❌ Failed to get/create chat:", err.message);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
-// ✅ Send a new message in a chat
+// ✅ Send a new message
 router.post('/send', async (req, res) => {
   const { chatId, sender, receiver, message } = req.body;
 
   if (!chatId || !sender || !receiver || !message) {
-    return res.status(400).json({ error: "chatId, sender, receiver, and message are required" });
+    return res.status(400).json({ error: "All fields (chatId, sender, receiver, message) are required" });
   }
 
   try {
@@ -42,39 +41,45 @@ router.post('/send', async (req, res) => {
       chatId,
       sender,
       receiver,
-      message,
+      message
     });
 
     await newMsg.save();
 
     res.status(201).json(newMsg);
   } catch (err) {
-    console.error("Error sending message:", err);
-    res.status(500).json({ error: "Failed to send message" });
+    console.error("❌ Error sending message:", err.message);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
-// ✅ Get all messages for a chat ID
+// ✅ Get all messages in a chat
 router.get('/:chatId', async (req, res) => {
   const { chatId } = req.params;
 
+  if (!chatId) {
+    return res.status(400).json({ error: "chatId is required" });
+  }
+
   try {
     const messages = await Message.find({ chatId }).sort({ createdAt: 1 });
-    res.json(messages);
+    res.status(200).json(messages);
   } catch (err) {
-    console.error("Error getting messages:", err);
-    res.status(500).json({ error: "Failed to load messages" });
+    console.error("❌ Error fetching messages:", err.message);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
-// ✅ Get all chats for a user (optional but useful)
+// ✅ Optional: Get all chats that a user is part of
 router.get('/user/:userId', async (req, res) => {
+  const { userId } = req.params;
+
   try {
-    const chats = await Chat.find({ participants: req.params.userId });
-    res.json(chats);
+    const chats = await Chat.find({ participants: userId });
+    res.status(200).json(chats);
   } catch (err) {
-    console.error("Error getting user chats:", err);
-    res.status(500).json({ error: "Failed to load user chats" });
+    console.error("❌ Error fetching user chats:", err.message);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
