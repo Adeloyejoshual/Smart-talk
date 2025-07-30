@@ -4,23 +4,131 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Smart Talk - Chat</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="/styles/style.css">
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; background: #121212; color: white; margin: 0; }
+    .chat-container { display: flex; height: 90vh; }
+    .user-list { width: 25%; border-right: 1px solid #444; overflow-y: auto; padding: 10px; background: #1e1e1e; }
+    .user { padding: 10px; border-bottom: 1px solid #333; cursor: pointer; }
+    .chat-box { flex: 1; display: flex; flex-direction: column; }
+    .messages { flex: 1; padding: 10px; overflow-y: auto; }
+    .input-area { display: flex; padding: 10px; border-top: 1px solid #444; }
+    input[type="text"] { flex: 1; padding: 10px; background: #222; color: white; border: none; }
+    button { padding: 10px 20px; background: #007bff; border: none; color: white; cursor: pointer; }
+    .friend-btn { background: green; margin-left: 10px; }
+    .message { margin: 5px 0; }
+    .message.you { text-align: right; }
+  </style>
 </head>
 <body>
   <header>
-    <h1>Chat</h1>
+    <h1>Smart Talk - Chat</h1>
     <nav>
-      <a href="index.html">Home</a>
+      <a href="home.html">Home</a>
       <a href="post.html">Post</a>
       <a href="chat.html">Chat</a>
       <a href="notifications.html">Notification</a>
     </nav>
   </header>
-  <main>
-    <p>Welcome to the Chat page! Here you can start conversations with others.</p>
-  </main>
-  <footer>
-    <p>&copy; 2025 Smart Talk. All rights reserved.</p>
-  </footer>
+
+  <div class="chat-container">
+    <div class="user-list" id="userList">Loading users...</div>
+    <div class="chat-box">
+      <div class="messages" id="chatMessages">Select a user to chat</div>
+      <div class="input-area">
+        <input type="text" id="messageInput" placeholder="Type your message..." />
+        <button id="sendBtn">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const socket = io();
+    const userId = localStorage.getItem('userId');
+    const token = localStorage.getItem('token');
+    let currentChatUserId = null;
+
+    // Join socket room
+    socket.emit('user-connected', userId);
+
+    // Fetch users
+    async function loadUsers() {
+      const res = await fetch('/api/users/list', {
+        headers: { 'Authorization': token }
+      });
+      const users = await res.json();
+      const list = document.getElementById('userList');
+      list.innerHTML = '';
+
+      users.forEach(user => {
+        const div = document.createElement('div');
+        div.className = 'user';
+        div.innerHTML = `
+          <strong>${user.username}</strong>
+          <button class="friend-btn" onclick="addFriend('${user._id}')">+</button>
+        `;
+        div.onclick = () => openChat(user._id, user.username);
+        list.appendChild(div);
+      });
+    }
+
+    async function addFriend(friendId) {
+      await fetch(`/api/users/add-friend/${friendId}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': token
+        }
+      });
+      alert('Friend added');
+      loadUsers();
+    }
+
+    async function openChat(id, username) {
+      currentChatUserId = id;
+      document.getElementById('chatMessages').innerHTML = `Chatting with <b>${username}</b><br>Loading...`;
+
+      const res = await fetch(`/api/messages/${id}`, {
+        headers: { 'Authorization': token }
+      });
+      const messages = await res.json();
+
+      const box = document.getElementById('chatMessages');
+      box.innerHTML = '';
+      messages.forEach(msg => {
+        const div = document.createElement('div');
+        div.className = 'message ' + (msg.sender === userId ? 'you' : 'them');
+        div.textContent = msg.text;
+        box.appendChild(div);
+      });
+      box.scrollTop = box.scrollHeight;
+    }
+
+    document.getElementById('sendBtn').onclick = () => {
+      const input = document.getElementById('messageInput');
+      const msg = input.value.trim();
+      if (msg && currentChatUserId) {
+        socket.emit('private-message', {
+          to: currentChatUserId,
+          text: msg,
+          token
+        });
+        input.value = '';
+      }
+    };
+
+    socket.on('private-message', (data) => {
+      if (data.sender === currentChatUserId || data.receiver === currentChatUserId) {
+        const box = document.getElementById('chatMessages');
+        const div = document.createElement('div');
+        div.className = 'message ' + (data.sender === userId ? 'you' : 'them');
+        div.textContent = data.text;
+        box.appendChild(div);
+        box.scrollTop = box.scrollHeight;
+      }
+    });
+
+    loadUsers();
+  </script>
 </body>
 </html>
