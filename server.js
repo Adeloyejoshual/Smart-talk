@@ -1,37 +1,34 @@
-// server.js
 const express = require('express');
-const http = require('http');
-const path = require('path');
-const mongoose = require('mongoose');
-const dotenv = require('dotenv');
 const cors = require('cors');
-const cookieParser = require('cookie-parser');
-const { Server } = require('socket.io');
+const http = require('http');
+const mongoose = require('mongoose');
+const socketIO = require('socket.io');
+const path = require('path');
+require('dotenv').config();
 
-// Load environment variables
-dotenv.config();
+// Route imports
+const authRoutes = require('./routes/auth');
+const profileRoutes = require('./routes/profile');
+const contactRoutes = require('./routes/contact');
+const userExtraRoutes = require('./routes/user'); // ✅ Includes /add-friend
+
+// MongoDB connection
+const MONGO_URI = process.env.MONGO_URI;
+mongoose.connect(MONGO_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+})
+.then(() => console.log('✅ MongoDB connected'))
+.catch(err => console.error('❌ MongoDB connection error:', err));
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, {
-  cors: {
-    origin: '*',
-    methods: ['GET', 'POST']
-  }
-});
+const io = socketIO(server);
 
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
-
-// MongoDB connection
-mongoose.connect(process.env.MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-}).then(() => console.log('✅ MongoDB connected'))
-  .catch(err => console.error('❌ MongoDB connection error:', err));
 
 // Routes
 const authRoutes = require('./routes/auth');
