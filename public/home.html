@@ -51,9 +51,12 @@
       if (!selectedUserId) return alert("Search and select a user first.");
 
       fetch(`/api/users/add-friend`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: selectedUserId })
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "Authorization": "Bearer " + localStorage.getItem("token") // Make sure token is saved on login
+  },
+  body: JSON.stringify({ userId: selectedUserId })
       })
       .then(res => res.json())
       .then(data => {
