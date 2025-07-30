@@ -31,16 +31,16 @@ router.post('/add-friend', async (req, res) => {
     }
 
     // Add each other as friends
-    userA.friends.push(userB._id);
-    userB.friends.push(userA._id);
+    currentUser.friends.push(targetUser._id);
+    targetUser.friends.push(currentUser._id);
 
-    await userA.save();
-    await userB.save();
+    await currentUser.save();
+    await targetUser.save();
 
     res.status(200).json({ message: 'Friend added successfully.' });
   } catch (err) {
-    console.error('Error adding friend:', err);
-    res.status(500).json({ message: 'An error occurred.' });
+    console.error('❌ Add friend error:', err);
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
