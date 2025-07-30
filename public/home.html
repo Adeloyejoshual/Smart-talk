@@ -4,30 +4,181 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>SmartTalk - Home</title>
-  <link rel="stylesheet" href="/styles/home.css" />
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      transition: background-color 0.3s, color 0.3s;
+    }
+    body.dark-mode {
+      background-color: #121212;
+      color: #ffffff;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background-color: #1f1f1f;
+      padding: 10px 20px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .header input {
+      flex: 1;
+      padding: 8px 12px;
+      margin-right: 10px;
+      border-radius: 20px;
+      border: none;
+      outline: none;
+      background-color: #333;
+      color: white;
+    }
+
+    .header .search-icon,
+    .header .settings-icon {
+      font-size: 18px;
+      cursor: pointer;
+      padding: 4px 6px;
+    }
+
+    #userList {
+      padding: 20px;
+    }
+
+    #addUserBtn {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      font-size: 32px;
+      font-weight: bold;
+      background-color: #6200ee;
+      color: white;
+      border: none;
+      padding: 15px 20px;
+      border-radius: 50%;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      z-index: 100;
+    }
+
+    .modal.hidden {
+      display: none;
+    }
+
+    .modal {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0, 0, 0, 0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+    }
+
+    .modal-content {
+      background: #222;
+      padding: 20px;
+      border-radius: 10px;
+      color: white;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      width: 90%;
+      max-width: 400px;
+    }
+
+    body.dark-mode .modal-content {
+      background-color: #1e1e1e;
+    }
+
+    .modal-content input {
+      padding: 10px;
+      border-radius: 5px;
+      border: none;
+      background: #333;
+      color: white;
+    }
+
+    .modal-content button {
+      padding: 10px;
+      background-color: #03dac5;
+      color: black;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    .user {
+      background: #292929;
+      padding: 12px;
+      margin-bottom: 10px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .user img {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      object-fit: cover;
+    }
+
+    .user .info {
+      flex-grow: 1;
+    }
+
+    .user .chat-btn {
+      background: #03dac5;
+      color: #000;
+      padding: 5px 10px;
+      border-radius: 5px;
+      border: none;
+      cursor: pointer;
+    }
+
+    #searchResults li {
+      list-style: none;
+      background: #333;
+      padding: 10px;
+      margin-top: 5px;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    #searchResults li:hover {
+      background-color: #444;
+    }
+  </style>
 </head>
-<body class="dark-mode">
-  <header>
-    <h1>SmartTalk</h1>
-    <div class="top-bar">
-      <input type="text" id="searchInput" placeholder="Search users by username or email" />
-      <button onclick="searchUsers()">Search</button>
-      <button id="addUserBtn">+</button>
-      <button id="settingsBtn">⚙️</button>
-    </div>
-  </header>
+<body>
+  <div class="header">
+    <input type="text" id="searchInput" placeholder="Search by username or Gmail">
+    <span class="search-icon" onclick="searchUsers()">🔎</span>
+    <span class="settings-icon" onclick="window.location.href='settings.html'">⚙️</span>
+  </div>
 
-  <main>
-    <div id="userList"></div>
-  </main>
+  <div id="userList">
+    <h2>Online Users</h2>
+    <!-- Users will be listed here -->
+  </div>
 
-  <!-- Modal for Add New User -->
+  <!-- Add Button -->
+  <button id="addUserBtn">+</button>
+
+  <!-- Add/Search User Modal -->
   <div id="newUserModal" class="modal hidden">
     <div class="modal-content">
-      <h2>Add New User</h2>
-      <input type="text" id="modalSearchInput" placeholder="Search by username or email" oninput="liveSearchUsers()"/>
+      <h2>🔍 Find User</h2>
+      <input type="text" id="modalSearchInput" placeholder="Enter username or email" oninput="liveSearchUsers()" />
       <ul id="searchResults"></ul>
-      <button onclick="closeModal()">Close</button>
+      <button onclick="closeModal()">Cancel</button>
     </div>
   </div>
 
@@ -42,10 +193,6 @@
       document.getElementById('newUserModal').classList.remove('hidden');
     });
 
-    document.getElementById('newUserModal').addEventListener('click', (e) => {
-      if (e.target.id === 'newUserModal') closeModal();
-    });
-
     function closeModal() {
       document.getElementById('newUserModal').classList.add('hidden');
       document.getElementById('searchResults').innerHTML = '';
@@ -55,33 +202,36 @@
     async function searchUsers() {
       const query = document.getElementById('searchInput').value.trim();
       if (!query) return;
-      const response = await fetch(`/api/users/search?q=${encodeURIComponent(query)}`);
-      const users = await response.json();
-      renderUsers(users, 'Search Results');
+      try {
+        const response = await fetch(`/api/users/search?q=${encodeURIComponent(query)}`);
+        const users = await response.json();
+        renderUsers(users, 'Search Results');
+      } catch (err) {
+        console.error('Search failed:', err);
+      }
     }
 
     async function liveSearchUsers() {
       const query = document.getElementById('modalSearchInput').value.trim();
       const resultsList = document.getElementById('searchResults');
       resultsList.innerHTML = '';
-
       if (!query) return;
 
-      const res = await fetch(`/api/users/search?q=${encodeURIComponent(query)}`);
-      const users = await res.json();
-
-      if (users.length === 0) {
-        resultsList.innerHTML = '<li>No users found</li>';
-      } else {
-        users.forEach(user => {
-          const li = document.createElement('li');
-          li.textContent = `${user.username} (${user.email})`;
-          li.onclick = () => {
-            closeModal();
-            window.location.href = `chat.html?userId=${user._id}&username=${encodeURIComponent(user.username)}`;
-          };
-          resultsList.appendChild(li);
-        });
+      try {
+        const res = await fetch(`/api/users/search?q=${encodeURIComponent(query)}`);
+        const users = await res.json();
+        if (users.length === 0) {
+          resultsList.innerHTML = '<li>No users found</li>';
+        } else {
+          users.forEach(user => {
+            const li = document.createElement('li');
+            li.textContent = `${user.username} (${user.email})`;
+            li.onclick = () => window.location.href = '/chat/' + user._id;
+            resultsList.appendChild(li);
+          });
+        }
+      } catch (err) {
+        console.error('Live search error:', err);
       }
     }
 
@@ -90,10 +240,8 @@
         const res = await fetch('/api/users/online');
         const users = await res.json();
         renderUsers(users, 'Online Users');
-      } catch {
-        const fallbackRes = await fetch('/api/users');
-        const fallbackUsers = await fallbackRes.json();
-        renderUsers(fallbackUsers, 'All Users');
+      } catch (err) {
+        console.error('Load users failed:', err);
       }
     }
 
@@ -102,12 +250,12 @@
       list.innerHTML = `<h2>${title}</h2>` +
         users.map(u => `
           <div class="user">
-            <img src="/avatars/${u.avatar || 'default.png'}" alt="Avatar">
+            <img src="/avatars/${u.profileImage || 'default.png'}" alt="Avatar">
             <div class="info">
               <div><strong>${u.username}</strong></div>
               <div>${u.email}</div>
             </div>
-            <button class="chat-btn" onclick="window.location.href='chat.html?userId=${u._id}&username=${encodeURIComponent(u.username)}'">Chat</button>
+            <button class="chat-btn" onclick="window.location.href='/chat/${u._id}'">Chat</button>
           </div>
         `).join('');
     }
