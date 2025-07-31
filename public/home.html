@@ -52,26 +52,51 @@
     </div>
   </main>
 
-  <script>
-    const token = localStorage.getItem('token');
-    const userId = localStorage.getItem('userId');
+<script>
+  const token = localStorage.getItem("token");
 
-    const welcomeUser = document.getElementById("welcomeUser");
-    const findUserBtn = document.getElementById("findUserBtn");
-    const modal = document.getElementById("modal");
-    const cancelBtn = document.getElementById("cancelBtn");
-    const addFriendBtn = document.getElementById("addFriendBtn");
-    const searchInput = document.getElementById("searchInput");
-    const searchMsg = document.getElementById("searchMsg");
-    const friendsList = document.getElementById("friendsList");
+  document.getElementById("addFriendBtn").addEventListener("click", async () => {
+    const input = document.getElementById("searchInput").value.trim();
+    if (!input) return alert("Enter a username or email");
 
-    const settingsBtn = document.getElementById("settingsBtn");
-    const settingsModal = document.getElementById("settingsModal");
-    const closeSettingsBtn = document.getElementById("closeSettingsBtn");
+    try {
+      const res = await fetch("/api/users/add-friend", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ identifier: input }),
+      });
 
-    const themeToggle = document.getElementById("themeToggle");
-    const body = document.body;
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Error adding friend");
 
+      alert("Friend added: " + data.friend.username);
+      loadFriends(); // Reload list
+    } catch (err) {
+      alert("Error: " + err.message);
+    }
+  });
+
+  async function loadFriends() {
+    const res = await fetch("/api/users/list", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    const friends = await res.json();
+    const list = document.getElementById("friendList");
+    list.innerHTML = "";
+    friends.forEach(friend => {
+      const li = document.createElement("li");
+      li.textContent = `${friend.username} (${friend.email})`;
+      list.appendChild(li);
+    });
+  }
+
+  loadFriends(); // Load on page load
+</script>
     // Load username
     fetch("/api/users/me", {
       headers: { Authorization: token }
