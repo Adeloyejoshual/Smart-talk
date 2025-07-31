@@ -17,6 +17,21 @@ function verifyToken(req, res, next) {
   });
 }
 
+// Search users by username or email
+router.get("/search", authenticateToken, async (req, res) => {
+  const { query } = req.query;
+  if (!query) return res.status(400).json({ message: "No query provided" });
+
+  const users = await User.find({
+    $or: [
+      { username: { $regex: query, $options: "i" } },
+      { email: { $regex: query, $options: "i" } }
+    ],
+  }).select("-password");
+
+  res.json(users);
+});
+
 // ✅ Add friend by email or username
 router.post('/add-friend', verifyToken, async (req, res) => {
   try {
