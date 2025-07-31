@@ -9,8 +9,11 @@
 <body class="dark">
   <header>
     <h1 id="welcomeUser">Welcome, User</h1>
-    <button id="themeToggle">🌙</button>
-    <button id="logoutBtn">Logout</button>
+    <div>
+      <button id="themeToggle">🌙</button>
+      <button id="settingsBtn">⚙️</button>
+      <button id="logoutBtn">Logout</button>
+    </div>
   </header>
 
   <main>
@@ -50,16 +53,24 @@
     const token = localStorage.getItem("token");
     const welcomeUser = document.getElementById("welcomeUser");
     const friendsList = document.getElementById("friendsList");
+    const friendMessage = document.getElementById("friendMessage");
+    const themeToggle = document.getElementById("themeToggle");
+    const logoutBtn = document.getElementById("logoutBtn");
+    const settingsBtn = document.getElementById("settingsBtn");
+    const closeSettingsBtn = document.getElementById("closeSettingsBtn");
     const findUserBtn = document.getElementById("findUserBtn");
     const modal = document.getElementById("modal");
     const cancelBtn = document.getElementById("cancelBtn");
     const searchInput = document.getElementById("searchInput");
     const addFriendBtn = document.getElementById("addFriendBtn");
     const searchMsg = document.getElementById("searchMsg");
-    const friendMessage = document.getElementById("friendMessage");
-    const themeToggle = document.getElementById("themeToggle");
-    const logoutBtn = document.getElementById("logoutBtn");
+    const settingsModal = document.getElementById("settingsModal");
     const body = document.body;
+
+    // Redirect if token missing
+    if (!token) {
+      window.location.href = "/login.html";
+    }
 
     // Load current user
     fetch("/api/users/me", {
@@ -70,7 +81,7 @@
       welcomeUser.textContent = `Welcome, ${data.username || "User"}`;
     });
 
-    // Load friend list
+    // Load friends
     function loadFriends() {
       fetch("/api/users/friends", {
         headers: { Authorization: `Bearer ${token}` }
@@ -93,21 +104,9 @@
       });
     }
 
-    loadFriends(); // Initial call
+    loadFriends();
 
-    // Modal open
-    findUserBtn.onclick = () => {
-      modal.classList.remove("hidden");
-      searchInput.value = "";
-      searchMsg.textContent = "";
-    };
-
-    // Modal cancel
-    cancelBtn.onclick = () => {
-      modal.classList.add("hidden");
-    };
-
-    // Add Friend
+    // Add friend
     addFriendBtn.onclick = () => {
       const identifier = searchInput.value.trim();
       if (!identifier) return;
@@ -123,7 +122,7 @@
       .then(res => res.json())
       .then(data => {
         searchMsg.textContent = data.message;
-        loadFriends(); // Refresh friend list
+        loadFriends();
       })
       .catch(() => {
         searchMsg.textContent = "Error adding friend.";
@@ -141,6 +140,18 @@
       localStorage.removeItem("token");
       window.location.href = "/login.html";
     };
+
+    // Modal controls
+    findUserBtn.onclick = () => {
+      modal.classList.remove("hidden");
+      searchInput.value = "";
+      searchMsg.textContent = "";
+    };
+    cancelBtn.onclick = () => modal.classList.add("hidden");
+
+    // Settings modal control
+    settingsBtn.onclick = () => settingsModal.classList.remove("hidden");
+    closeSettingsBtn.onclick = () => settingsModal.classList.add("hidden");
   </script>
 </body>
 </html>
