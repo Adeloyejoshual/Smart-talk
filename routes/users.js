@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const User = require("../models/User");
 
-// Search for users
+// Search users
 router.get("/search", async (req, res) => {
   const query = req.query.q;
   try {
