@@ -14,12 +14,10 @@
       <form id="registerForm">
         <input type="text" name="username" placeholder="Username" required />
         <input type="email" name="email" placeholder="Email" required />
-        
         <div class="password-wrapper">
           <input type="password" name="password" placeholder="Password" id="password" required />
           <span class="toggle-password" onclick="togglePassword()">👁</span>
         </div>
-
         <button type="submit">Register</button>
         <p id="message"></p>
       </form>
@@ -41,7 +39,8 @@
       };
 
       try {
-        const res = await fetch('/register', {
+        // FIXED: Use correct backend route
+        const res = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data)
