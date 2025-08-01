@@ -1,93 +1,109 @@
-const express = require('express');
-const http = require('http');
-const path = require('path');
-const mongoose = require('mongoose');
-const cors = require('cors');
-const dotenv = require('dotenv');
-const socketIO = require('socket.io');
-
-dotenv.config();
-
+// server.js
+const express = require("express");
 const app = express();
-const server = http.createServer(app);
-const io = socketIO(server);
+const http = require("http").createServer(app);
+const io = require("socket.io")(http);
+const mongoose = require("mongoose");
+const cors = require("cors");
+const path = require("path");
+require("dotenv").config();
 
+// Environment variables
+const PORT = process.env.PORT || 3000;
+const MONGO_URI = process.env.MONGO_URI;
+const JWT_SECRET = process.env.JWT_SECRET;
+
+// Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, "public")));
 
-// MongoDB
-mongoose.connect(process.env.MONGO_URI, {
+// MongoDB connection
+mongoose.connect(MONGO_URI, {
   useNewUrlParser: true,
-  useUnifiedTopology: true
-})
-.then(() => console.log('✅ MongoDB connected'))
-.catch(err => console.error('❌ MongoDB error:', err));
+  useUnifiedTopology: true,
+}).then(() => console.log("✅ MongoDB connected"))
+  .catch((err) => console.error("❌ MongoDB connection error:", err));
+
+// Models
+const User = require("./models/User");
+const Message = require("./models/Chat");
 
 // Routes
-app.use('/api/auth', require('./routes/auth'));
-app.use('/api/users', require('./routes/users'));
-app.use('/api/messages', require('./routes/messages'));
+const authRoutes = require("./routes/auth");
+const userRoutes = require("./routes/user");
+const messageRoutes = require("./routes/messages");
 
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public/login.html'));
+app.use("/api/auth", authRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/messages", messageRoutes);
+
+// Serve login.html as default
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "login.html"));
 });
 
-// Socket.IO
-const Chat = require('./models/Chat');
-const User = require('./models/User');
-const onlineUsers = {};
+// ======= SOCKET.IO =======
+const onlineUsers = new Map();
 
-function getRoomId(user1, user2) {
-  return [user1, user2].sort().join('_');
-}
+io.on("connection", (socket) => {
+  console.log("⚡ New user connected:", socket.id);
 
-io.on('connection', (socket) => {
-  console.log("🟢 Connected:", socket.id);
-
-  socket.on('userOnline', (userId) => {
-    onlineUsers[userId] = socket.id;
-    io.emit('online-users', Object.keys(onlineUsers));
+  socket.on("userConnected", ({ userId }) => {
+    onlineUsers.set(userId, socket.id);
+    io.emit("onlineUsers", Array.from(onlineUsers.keys()));
   });
 
-  socket.on('joinRoom', ({ from, to }) => {
-    const room = getRoomId(from, to);
-    socket.join(room);
-    console.log(`📥 User ${from} joined ${room}`);
-  });
+  // Send and save messages
+  socket.on("sendMessage", async ({ senderId, receiverId, message }) => {
+    const newMessage = new Message({
+      sender: senderId,
+      receiver: receiverId,
+      message,
+    });
 
-  socket.on('privateMessage', async ({ from, to, message }) => {
-    const room = getRoomId(from, to);
+    await newMessage.save();
 
-    try {
-      const newMsg = await new Chat({ from, to, message }).save();
-      const sender = await User.findById(from);
-
-      io.to(room).emit('privateMessage', {
-        from,
-        fromName: sender.username,
-        to,
+    const receiverSocketId = onlineUsers.get(receiverId);
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit("receiveMessage", {
+        senderId,
+        receiverId,
         message,
-        timestamp: newMsg.timestamp
+        timestamp: newMessage.createdAt,
       });
+    }
 
-      console.log(`📨 ${sender.username} sent message to ${to}`);
-    } catch (e) {
-      console.error("❌ Message send error:", e.message);
+    // Send back to sender too (for instant display)
+    socket.emit("receiveMessage", {
+      senderId,
+      receiverId,
+      message,
+      timestamp: newMessage.createdAt,
+    });
+  });
+
+  // Typing event
+  socket.on("typing", ({ senderId, receiverId }) => {
+    const receiverSocketId = onlineUsers.get(receiverId);
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit("typing", { senderId });
     }
   });
 
-  socket.on('disconnect', () => {
-    for (let userId in onlineUsers) {
-      if (onlineUsers[userId] === socket.id) {
-        delete onlineUsers[userId];
+  // On disconnect
+  socket.on("disconnect", () => {
+    for (let [userId, sockId] of onlineUsers) {
+      if (sockId === socket.id) {
+        onlineUsers.delete(userId);
         break;
       }
     }
-    io.emit('online-users', Object.keys(onlineUsers));
-    console.log("🔴 Disconnected:", socket.id);
+    io.emit("onlineUsers", Array.from(onlineUsers.keys()));
   });
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+// Start server
+http.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+});
