@@ -3,54 +3,84 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>SmartTalk Chat</title>
-  <link rel="stylesheet" href="/styles/chat.css" />
+  <title>SmartTalk - Chat</title>
+  <link rel="stylesheet" href="/styles/global.css" />
+  <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
   <div class="chat-container">
-    <header>
-      <h2 id="chatHeader">Chat</h2>
-      <div class="settings-icon" onclick="window.location.href='/settings.html'">⚙️</div>
-    </header>
-
+    <div id="chatHeader">SmartTalk Chat</div>
     <div id="chatBox" class="chat-box"></div>
 
-    <form id="chatForm" class="chat-form">
-      <input type="text" id="messageInput" placeholder="Type your message..." autocomplete="off" required />
-      <button type="submit">Send</button>
-    </form>
+    <div class="typing-indicator" id="typingIndicator" style="display: none;">Typing...</div>
+
+    <div class="input-area">
+      <input type="text" id="messageInput" placeholder="Type your message" autocomplete="off" />
+      <button onclick="sendMessage()">Send</button>
+    </div>
   </div>
 
   <script>
     const socket = io();
-    const params = new URLSearchParams(window.location.search);
-    const from = params.get('from');
-    const to = params.get('to');
-    const senderName = localStorage.getItem('senderName') || 'You';
-
-    socket.emit('joinRoom', { from, to });
-
-    const chatBox = document.getElementById("chatBox");
-    const chatForm = document.getElementById("chatForm");
     const messageInput = document.getElementById("messageInput");
+    const chatBox = document.getElementById("chatBox");
+    const typingIndicator = document.getElementById("typingIndicator");
 
-    socket.on("privateMessage", ({ from: sender, message, timestamp }) => {
-      const msg = document.createElement("div");
-      msg.className = sender === from ? "message self" : "message";
-      msg.innerHTML = `<strong>${sender === from ? senderName : "Friend"}:</strong> ${message}<br><small>${new Date(timestamp).toLocaleTimeString()}</small>`;
-      chatBox.appendChild(msg);
+    const currentUserId = localStorage.getItem("userId");
+    const currentUsername = localStorage.getItem("username");
+    const chattingWithId = localStorage.getItem("chattingWithId");
+    const chattingWithName = localStorage.getItem("chattingWithName");
+
+    document.getElementById("chatHeader").innerText = `Chat with ${chattingWithName}`;
+
+    socket.emit("joinRoom", { senderId: currentUserId, receiverId: chattingWithId });
+
+    socket.on("message", (data) => {
+      const div = document.createElement("div");
+      div.className = data.sender === currentUserId ? "my-message" : "their-message";
+      div.textContent = `${data.senderName}: ${data.content}`;
+      chatBox.appendChild(div);
       chatBox.scrollTop = chatBox.scrollHeight;
     });
 
-    chatForm.addEventListener("submit", (e) => {
-      e.preventDefault();
-      const message = messageInput.value;
-      if (!message) return;
-
-      socket.emit("privateMessage", { from, to, message });
-      messageInput.value = "";
+    socket.on("typing", ({ senderId }) => {
+      if (senderId !== currentUserId) {
+        typingIndicator.style.display = "block";
+        setTimeout(() => (typingIndicator.style.display = "none"), 2000);
+      }
     });
+
+    messageInput.addEventListener("input", () => {
+      socket.emit("typing", { senderId: currentUserId, receiverId: chattingWithId });
+    });
+
+    function sendMessage() {
+      const content = messageInput.value.trim();
+      if (!content) return;
+
+      const messageData = {
+        sender: currentUserId,
+        receiver: chattingWithId,
+        content,
+        senderName: currentUsername,
+      };
+
+      socket.emit("message", messageData);
+      messageInput.value = "";
+    }
+
+    // Load chat history
+    fetch(`/api/messages/${currentUserId}/${chattingWithId}`)
+      .then((res) => res.json())
+      .then((messages) => {
+        messages.forEach((msg) => {
+          const div = document.createElement("div");
+          div.className = msg.sender._id === currentUserId ? "my-message" : "their-message";
+          div.textContent = `${msg.sender.username}: ${msg.content}`;
+          chatBox.appendChild(div);
+        });
+        chatBox.scrollTop = chatBox.scrollHeight;
+      });
   </script>
-  <script src="/socket.io/socket.io.js"></script>
 </body>
 </html>
