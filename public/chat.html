@@ -35,6 +35,10 @@
     const from = localStorage.getItem('userId');
     const toName = urlParams.get('name');
 
+    if (!from) {
+      window.location.href = '/login.html';
+    }
+
     chatWith.textContent = 'Chat with ' + toName;
 
     socket.emit('userOnline', from);
@@ -56,7 +60,7 @@
     });
 
     backBtn.onclick = () => {
-      window.location.href = '/';
+      window.location.href = '/home.html';
     };
   </script>
 </body>
