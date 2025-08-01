@@ -39,13 +39,9 @@ mongoose.connect(process.env.MONGO_URI, {
 .catch((err) => console.error("❌ MongoDB connection error:", err));
 
 // Routes
-const authRoutes = require("./routes/auth");
-const userRoutes = require("./routes/user");
-const messageRoutes = require("./routes/messages");
-
-app.use("/api/auth", authRoutes);
-app.use("/api/users", userRoutes);
-app.use("/api/messages", messageRoutes);
+app.use("/api/auth", require("./routes/auth"));
+app.use("/api/users", require("./routes/user"));
+app.use("/api/messages", require("./routes/messages"));
 
 // Serve static pages
 app.get("/", (req, res) => {
@@ -64,19 +60,40 @@ app.get("/settings", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "settings.html"));
 });
 
-// Socket.IO handling
+// Socket.IO setup
 const onlineUsers = new Map();
 
+io.use((socket, next) => {
+  const token = socket.handshake.auth.token;
+  if (!token) {
+    console.log("❌ No token provided");
+    return next(new Error("Authentication error"));
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    socket.userId = decoded.id;
+    next();
+  } catch (err) {
+    console.log("❌ Invalid token");
+    return next(new Error("Authentication error"));
+  }
+});
+
 io.on("connection", (socket) => {
-  console.log("🟢 New socket connected:", socket.id);
+  const userId = socket.userId;
+  console.log(`🟢 User connected: ${userId}`);
 
-  // User goes online
-  socket.on("user-connected", ({ userId }) => {
-    onlineUsers.set(userId, socket.id);
-    io.emit("update-online-users", Array.from(onlineUsers.keys()));
-  });
+  // Add user to onlineUsers map
+  onlineUsers.set(userId, socket.id);
 
-  // Private message
+  // Set user online in DB
+  User.findByIdAndUpdate(userId, { online: true }, { new: true }).exec();
+
+  // Broadcast updated list of online users
+  io.emit("update-online-users", Array.from(onlineUsers.keys()));
+
+  // Private messaging
   socket.on("private-message", async ({ senderId, receiverId, message }) => {
     const receiverSocket = onlineUsers.get(receiverId);
 
@@ -112,16 +129,17 @@ io.on("connection", (socket) => {
     }
   });
 
-  // Disconnect
-  socket.on("disconnect", () => {
-    for (let [userId, sockId] of onlineUsers.entries()) {
-      if (sockId === socket.id) {
-        onlineUsers.delete(userId);
-        break;
-      }
-    }
+  // On disconnect
+  socket.on("disconnect", async () => {
+    console.log(`🔴 User disconnected: ${userId}`);
+    onlineUsers.delete(userId);
     io.emit("update-online-users", Array.from(onlineUsers.keys()));
-    console.log("🔴 Socket disconnected:", socket.id);
+
+    // Update user status in DB
+    await User.findByIdAndUpdate(userId, {
+      online: false,
+      lastSeen: new Date()
+    }).exec();
   });
 });
 
