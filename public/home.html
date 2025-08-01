@@ -6,7 +6,7 @@
   <title>SmartTalk - Home</title>
   <link rel="stylesheet" href="/styles/home.css" />
 </head>
-<body class="dark">
+<body>
   <header>
     <h1 id="welcomeUser">Welcome, User</h1>
     <div>
@@ -19,12 +19,12 @@
   <main>
     <section class="friends-section">
       <h2>Friends List</h2>
-      <ul id="friendsList"></ul>
+      <div id="friendsList" class="friend-list"></div>
       <p id="friendMessage"></p>
       <button id="findUserBtn">➕ Add New Friend</button>
     </section>
 
-    <!-- 🔍 Find/Add Friend Modal -->
+    <!-- 🔍 Add Friend Modal -->
     <div id="modal" class="modal hidden">
       <div class="modal-content">
         <h3>🔍 Find User</h3>
@@ -67,7 +67,6 @@
     const settingsModal = document.getElementById("settingsModal");
     const body = document.body;
 
-    // Redirect if token missing
     if (!token) {
       window.location.href = "/login.html";
     }
@@ -78,10 +77,14 @@
     })
     .then(res => res.json())
     .then(data => {
-      welcomeUser.textContent = `Welcome, ${data.username || "User"}`;
+      welcomeUser.textContent = `Welcome, ${data.username}`;
+    })
+    .catch(() => {
+      localStorage.removeItem("token");
+      window.location.href = "/login.html";
     });
 
-    // Load friends
+    // Load friends list
     function loadFriends() {
       fetch("/api/users/friends", {
         headers: { Authorization: `Bearer ${token}` }
@@ -91,9 +94,24 @@
         friendsList.innerHTML = "";
         if (data.friends && data.friends.length > 0) {
           data.friends.forEach(friend => {
-            const li = document.createElement("li");
-            li.textContent = `${friend.username} (${friend.online ? '🟢 Online' : '⚫ Offline'})`;
-            friendsList.appendChild(li);
+            const div = document.createElement("div");
+            div.className = "friend-item";
+            div.dataset.id = friend._id;
+            div.dataset.username = friend.username;
+
+            div.innerHTML = `
+              <div class="avatar"></div>
+              <div class="info">
+                <div class="username">${friend.username}</div>
+                <div class="start-chat">${friend.online ? "🟢 Online" : "⚫ Offline"} – Tap to chat</div>
+              </div>
+            `;
+
+            div.addEventListener("click", () => {
+              window.location.href = `/chat.html?user=${friend._id}`;
+            });
+
+            friendsList.appendChild(div);
           });
         } else {
           friendMessage.textContent = "No friends added yet.";
@@ -122,18 +140,31 @@
       .then(res => res.json())
       .then(data => {
         searchMsg.textContent = data.message;
-        loadFriends();
+        if (data.success || res.ok) {
+          loadFriends();
+        }
       })
       .catch(() => {
         searchMsg.textContent = "Error adding friend.";
       });
     };
 
-    // Theme toggle
+    // Theme toggle + persist
     themeToggle.onclick = () => {
       body.classList.toggle("dark");
-      themeToggle.textContent = body.classList.contains("dark") ? "🌙" : "☀️";
+      const isDark = body.classList.contains("dark");
+      themeToggle.textContent = isDark ? "🌙" : "☀️";
+      localStorage.setItem("theme", isDark ? "dark" : "light");
     };
+
+    // Apply theme on load
+    if (localStorage.getItem("theme") === "dark") {
+      body.classList.add("dark");
+      themeToggle.textContent = "🌙";
+    } else {
+      body.classList.remove("dark");
+      themeToggle.textContent = "☀️";
+    }
 
     // Logout
     logoutBtn.onclick = () => {
@@ -149,7 +180,7 @@
     };
     cancelBtn.onclick = () => modal.classList.add("hidden");
 
-    // Settings modal control
+    // Settings modal
     settingsBtn.onclick = () => settingsModal.classList.remove("hidden");
     closeSettingsBtn.onclick = () => settingsModal.classList.add("hidden");
   </script>
