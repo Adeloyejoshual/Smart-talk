@@ -62,4 +62,22 @@ router.post('/read', async (req, res) => {
   }
 });
 
+// Get all messages between two users for export
+router.post('/export', async (req, res) => {
+  try {
+    const { userId1, userId2 } = req.body;
+
+    const messages = await Chat.find({
+      $or: [
+        { sender: userId1, receiver: userId2 },
+        { sender: userId2, receiver: userId1 }
+      ]
+    }).sort({ timestamp: 1 });
+
+    res.json({ success: true, messages });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to export chat' });
+  }
+});
+
 module.exports = router;
