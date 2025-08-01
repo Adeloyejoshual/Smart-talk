@@ -1,107 +1,40 @@
 document.addEventListener("DOMContentLoaded", () => {
   const socket = io();
+  const chatMessages = document.getElementById("chatMessages");
+  const messageForm = document.getElementById("messageForm");
   const messageInput = document.getElementById("messageInput");
-  const sendButton = document.getElementById("sendButton");
-  const messagesContainer = document.getElementById("messages");
-  const typingIndicator = document.getElementById("typingIndicator");
-  const chatHeader = document.getElementById("chatHeader");
 
-  const currentUserId = localStorage.getItem("userId");
-  const currentUsername = localStorage.getItem("username");
-  const friendId = localStorage.getItem("friendId");
-  const friendUsername = localStorage.getItem("friendUsername");
+  const displayName = localStorage.getItem("displayName") || "Anonymous";
 
-  if (!currentUserId || !friendId || !currentUsername || !friendUsername) {
-    alert("Missing chat info. Please return to home.");
-    window.location.href = "/home.html";
-  }
+  // Receive new messages
+  socket.on("chat message", (data) => {
+    const messageElement = document.createElement("div");
+    messageElement.classList.add("message");
 
-  // Show friend's name in header
-  chatHeader.textContent = `Chatting with ${friendUsername}`;
+    const timestamp = new Date(data.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-  // Join private room
-  const room = [currentUserId, friendId].sort().join("-");
-  socket.emit("joinRoom", room);
+    messageElement.innerHTML = `
+      <strong>${data.sender}</strong> <span class="time">${timestamp}</span>
+      <p>${data.message}</p>
+    `;
 
-  // Fetch message history
-  fetch(`/api/messages/${friendId}`, {
-    headers: {
-      Authorization: `Bearer ${localStorage.getItem("token")}`,
-    },
-  })
-    .then(res => res.json())
-    .then(data => {
-      data.forEach(msg => addMessage(msg, msg.sender === currentUserId));
-    })
-    .catch(err => console.error("Failed to load messages", err));
+    chatMessages.appendChild(messageElement);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  });
 
-  // Send message
-  sendButton.addEventListener("click", () => {
-    const text = messageInput.value.trim();
-    if (!text) return;
+  // Send messages
+  messageForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const msg = messageInput.value.trim();
+    if (msg === "") return;
 
     const messageData = {
-      sender: currentUserId,
-      receiver: friendId,
-      text,
-      room,
-      timestamp: new Date().toISOString(),
+      sender: displayName,
+      message: msg,
+      timestamp: Date.now()
     };
 
-    socket.emit("privateMessage", messageData);
-    addMessage(messageData, true);
+    socket.emit("chat message", messageData);
     messageInput.value = "";
-    typingIndicator.textContent = "";
   });
-
-  // Listen for incoming messages
-  socket.on("privateMessage", msg => {
-    if (msg.sender === friendId && msg.receiver === currentUserId) {
-      addMessage(msg, false);
-    }
-  });
-
-  // Typing indicator
-  let typingTimeout;
-  messageInput.addEventListener("input", () => {
-    socket.emit("typing", { room, username: currentUsername });
-
-    clearTimeout(typingTimeout);
-    typingTimeout = setTimeout(() => {
-      socket.emit("stopTyping", room);
-    }, 2000);
-  });
-
-  socket.on("typing", ({ username }) => {
-    typingIndicator.textContent = `${username} is typing...`;
-  });
-
-  socket.on("stopTyping", () => {
-    typingIndicator.textContent = "";
-  });
-
-  function addMessage(msg, isSender) {
-    const messageDiv = document.createElement("div");
-    messageDiv.classList.add("message", isSender ? "sent" : "received");
-
-    const usernameLine = document.createElement("div");
-    usernameLine.textContent = isSender ? "You" : friendUsername;
-    usernameLine.style.fontSize = "0.75rem";
-    usernameLine.style.opacity = "0.7";
-
-    const textLine = document.createElement("div");
-    textLine.textContent = msg.text;
-
-    const timestampLine = document.createElement("div");
-    timestampLine.classList.add("meta");
-    const date = new Date(msg.timestamp);
-    timestampLine.textContent = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-    messageDiv.appendChild(usernameLine);
-    messageDiv.appendChild(textLine);
-    messageDiv.appendChild(timestampLine);
-
-    messagesContainer.appendChild(messageDiv);
-    messagesContainer.scrollTop = messagesContainer.scrollHeight;
-  }
 });
