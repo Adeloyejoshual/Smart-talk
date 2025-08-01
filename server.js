@@ -1,11 +1,11 @@
 // server.js
 const express = require('express');
-const mongoose = require('mongoose');
-const cors = require('cors');
-const path = require('path');
 const http = require('http');
-const socketIO = require('socket.io');
+const mongoose = require('mongoose');
 const dotenv = require('dotenv');
+const cors = require('cors');
+const socketIO = require('socket.io');
+const path = require('path');
 
 dotenv.config();
 
@@ -14,76 +14,70 @@ const server = http.createServer(app);
 const io = socketIO(server);
 
 const authRoutes = require('./routes/auth');
-const userRoutes = require('./routes/user'); // ✅ Make sure routes/user.js exists
-const messageRoutes = require('./routes/messages'); // ✅ Only include if you’ve created it
+const userRoutes = require('./routes/user');
+const messageRoutes = require('./routes/messages');
 
-const PORT = process.env.PORT || 3000;
-const MONGO_URI = process.env.MONGO_URI;
-const connectedUsers = {};
+const User = require('./models/User');
+const Chat = require('./models/Chat');
 
-mongoose.connect(MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-}).then(() => console.log('MongoDB connected'))
-  .catch(err => console.log('MongoDB connection error:', err));
-
+// MIDDLEWARE
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// API routes
+// ROUTES
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
-app.use('/api/messages', messageRoutes); // ✅ Only if messages.js exists
+app.use('/api/messages', messageRoutes);
 
-// Serve login page by default
+// Serve login.html by default
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
-// Socket.IO setup
-io.on('connection', socket => {
-  console.log('New client connected');
+// MongoDB Connect
+mongoose.connect(process.env.MONGO_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+})
+.then(() => console.log('✅ MongoDB Connected'))
+.catch((err) => console.error('❌ MongoDB Error:', err));
 
-  socket.on('user-online', userId => {
-    connectedUsers[userId] = socket.id;
-    io.emit('update-user-status', connectedUsers);
+// SOCKET.IO
+const onlineUsers = new Map();
+
+io.on('connection', (socket) => {
+  console.log('🟢 New client connected');
+
+  socket.on('user-online', ({ userId }) => {
+    onlineUsers.set(userId, socket.id);
+    io.emit('online-users', Array.from(onlineUsers.keys()));
   });
 
-  socket.on('private-message', ({ senderId, receiverId, message }) => {
-    const targetSocketId = connectedUsers[receiverId];
-    if (targetSocketId) {
-      io.to(targetSocketId).emit('private-message', { senderId, message });
-    }
-  });
+  socket.on('send-message', async ({ senderId, receiverId, message }) => {
+    const newChat = new Chat({ sender: senderId, receiver: receiverId, message });
+    await newChat.save();
 
-  socket.on('typing', ({ senderId, receiverId }) => {
-    const targetSocketId = connectedUsers[receiverId];
-    if (targetSocketId) {
-      io.to(targetSocketId).emit('typing', { senderId });
-    }
-  });
-
-  socket.on('stop-typing', ({ senderId, receiverId }) => {
-    const targetSocketId = connectedUsers[receiverId];
-    if (targetSocketId) {
-      io.to(targetSocketId).emit('stop-typing', { senderId });
+    const targetSocket = onlineUsers.get(receiverId);
+    if (targetSocket) {
+      io.to(targetSocket).emit('receive-message', { senderId, message });
     }
   });
 
   socket.on('disconnect', () => {
-    for (const userId in connectedUsers) {
-      if (connectedUsers[userId] === socket.id) {
-        delete connectedUsers[userId];
+    for (let [userId, socketId] of onlineUsers.entries()) {
+      if (socketId === socket.id) {
+        onlineUsers.delete(userId);
         break;
       }
     }
-    io.emit('update-user-status', connectedUsers);
-    console.log('Client disconnected');
+    io.emit('online-users', Array.from(onlineUsers.keys()));
+    console.log('🔴 Client disconnected');
   });
 });
 
-// Start the server
+// Start Server
+const PORT = 3000;
 server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
