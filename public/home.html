@@ -3,46 +3,216 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>SmartTalk - Home</title>
-  <link rel="stylesheet" href="/styles/home.css" />
-  <script defer src="/scripts/home.js"></script>
+  <title>SmartTalk – Home</title>
+  <link rel="stylesheet" href="styles/home.css" />
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #111;
+      color: #fff;
+      padding: 20px;
+    }
+
+    #usernameDisplay {
+      font-weight: bold;
+      font-size: 20px;
+    }
+
+    #searchBar {
+      width: 100%;
+      padding: 10px;
+      margin: 10px 0;
+      font-size: 16px;
+    }
+
+    #userList .user-card {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #222;
+      padding: 10px;
+      margin: 5px 0;
+      border-radius: 8px;
+    }
+
+    #userList .user-card button {
+      padding: 5px 10px;
+      background-color: #0066cc;
+      color: white;
+      border: none;
+      border-radius: 5px;
+    }
+
+    #addUserBtn {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: #0a84ff;
+      color: white;
+      font-size: 24px;
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      border: none;
+      cursor: pointer;
+    }
+
+    #addUserModal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.8);
+      justify-content: center;
+      align-items: center;
+      z-index: 10;
+    }
+
+    .modal-content {
+      background: #222;
+      padding: 20px;
+      border-radius: 10px;
+      width: 300px;
+      color: white;
+      position: relative;
+    }
+
+    #closeModal {
+      position: absolute;
+      right: 10px;
+      top: 5px;
+      cursor: pointer;
+      font-size: 20px;
+      color: #aaa;
+    }
+
+    .modal-content input,
+    .modal-content button {
+      width: 100%;
+      margin-top: 10px;
+      padding: 10px;
+      border-radius: 5px;
+      border: none;
+    }
+
+    .modal-content button {
+      background: #0a84ff;
+      color: white;
+    }
+  </style>
 </head>
 <body>
-  <header class="top-bar">
-    <div id="usernameDisplay">Welcome, User</div>
-    <div class="top-actions">
-      <input type="text" id="searchBar" placeholder="Search users..." />
-      <button id="settingsBtn">⚙️</button>
-    </div>
-  </header>
 
-  <main>
-    <section id="userList" class="user-list">
-      <!-- Users will be loaded here -->
-    </section>
-  </main>
+  <!-- Display logged-in user -->
+  <div>Welcome, <span id="usernameDisplay"></span></div>
 
-  <!-- Floating Add Friend Button -->
-  <button id="addUserBtn" class="floating-button">+</button>
+  <!-- Search bar -->
+  <input type="text" id="searchBar" placeholder="Search users..." />
+
+  <!-- User list -->
+  <div id="userList"></div>
 
   <!-- Add Friend Modal -->
-  <div id="addUserModal" class="modal hidden">
+  <div id="addUserModal">
     <div class="modal-content">
-      <span class="close" id="closeModal">&times;</span>
-      <h2>Add New Friend</h2>
-      <input type="text" id="newFriendEmail" placeholder="Enter user's email or username">
+      <span id="closeModal">&times;</span>
+      <h3>Add a Friend</h3>
+      <input type="email" id="newFriendEmail" placeholder="Enter friend's email or username" />
       <button id="addFriendButton">Add Friend</button>
     </div>
   </div>
 
-  <!-- Settings Dropdown -->
-  <div id="settingsMenu" class="settings-menu hidden">
-    <ul>
-      <li id="editProfile">Edit Profile</li>
-      <li id="customerService">Customer Service</li>
-      <li id="contact">Contact</li>
-      <li id="closeSettings">Close</li>
-    </ul>
-  </div>
+  <!-- Add Friend Button -->
+  <button id="addUserBtn">+</button>
+
+  <!-- JS Logic -->
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const usernameDisplay = document.getElementById("usernameDisplay");
+      const searchBar = document.getElementById("searchBar");
+      const userList = document.getElementById("userList");
+      const addUserBtn = document.getElementById("addUserBtn");
+      const addUserModal = document.getElementById("addUserModal");
+      const closeModal = document.getElementById("closeModal");
+      const addFriendButton = document.getElementById("addFriendButton");
+
+      const userId = localStorage.getItem("userId");
+      const username = localStorage.getItem("username");
+      const token = localStorage.getItem("token");
+
+      if (usernameDisplay) usernameDisplay.textContent = username || "Guest";
+
+      // Live Search
+      if (searchBar) {
+        searchBar.addEventListener("input", async () => {
+          const query = searchBar.value.trim();
+          if (query.length === 0) return (userList.innerHTML = "");
+
+          const res = await fetch(`/api/users/search?query=${query}`);
+          const data = await res.json();
+          userList.innerHTML = "";
+
+          data.forEach(user => {
+            const item = document.createElement("div");
+            item.className = "user-card";
+            item.innerHTML = `
+              <div>
+                <strong>${user.username}</strong><br>
+                <small>${user.email}</small>
+              </div>
+              <button class="startChat" data-id="${user._id}">Chat</button>
+            `;
+            userList.appendChild(item);
+          });
+
+          document.querySelectorAll(".startChat").forEach(btn => {
+            btn.addEventListener("click", () => {
+              const friendId = btn.getAttribute("data-id");
+              localStorage.setItem("chatWith", friendId);
+              window.location.href = "/chat.html";
+            });
+          });
+        });
+      }
+
+      // Open Modal
+      addUserBtn.addEventListener("click", () => {
+        addUserModal.style.display = "flex";
+      });
+
+      // Close Modal
+      closeModal.addEventListener("click", () => {
+        addUserModal.style.display = "none";
+      });
+
+      // Add Friend
+      addFriendButton.addEventListener("click", async () => {
+        const friendIdentifier = document.getElementById("newFriendEmail").value.trim();
+        if (!friendIdentifier) return alert("Enter a valid email or username");
+
+        try {
+          const res = await fetch("/api/users/add-friend", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify({ userId, friendIdentifier })
+          });
+
+          const data = await res.json();
+
+          if (res.ok) {
+            alert(data.message || "Friend added!");
+            addUserModal.style.display = "none";
+            document.getElementById("newFriendEmail").value = "";
+          } else {
+            alert(data.message || "Error adding friend");
+          }
+        } catch (err) {
+          alert("Server error. Try again.");
+        }
+      });
+    });
+  </script>
 </body>
 </html>
