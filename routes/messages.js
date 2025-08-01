@@ -1,22 +1,31 @@
 const express = require('express');
 const router = express.Router();
 const Chat = require('../models/Chat');
-const User = require('../models/User');
 
-// Fetch message history between two users
-router.get('/:from/:to', async (req, res) => {
-  const { from, to } = req.params;
+router.post('/save', async (req, res) => {
   try {
-    const chats = await Chat.find({
+    const { from, to, message } = req.body;
+    const newMsg = new Chat({ from, to, message });
+    await newMsg.save();
+    res.status(200).json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to save message' });
+  }
+});
+
+router.get('/history', async (req, res) => {
+  try {
+    const { from, to } = req.query;
+    const history = await Chat.find({
       $or: [
         { from, to },
         { from: to, to: from }
       ]
-    }).sort({ timestamp: 1 }).populate('from', 'username');
+    }).sort({ timestamp: 1 });
 
-    res.json(chats);
+    res.json(history);
   } catch (error) {
-    res.status(500).json({ message: 'Error fetching chats' });
+    res.status(500).json({ error: 'Failed to fetch history' });
   }
 });
 
