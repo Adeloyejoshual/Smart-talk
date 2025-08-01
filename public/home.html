@@ -71,6 +71,10 @@
       window.location.href = "/login.html";
     }
 
+  <!-- Logout Button -->
+<button id="logoutBtn" class="logout-button" style="position: fixed; top: 20px; right: 20px; padding: 10px; background: #e74c3c; color: white; border: none; border-radius: 5px; cursor: pointer;">
+  Logout
+</button>
     // Load current user
     fetch("/api/users/me", {
       headers: { Authorization: `Bearer ${token}` }
