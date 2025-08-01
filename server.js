@@ -38,13 +38,17 @@ mongoose.connect(process.env.MONGO_URI, {
 .catch((err) => console.error("❌ MongoDB connection error:", err));
 
 // Routes
-const authRoutes = require("./routes/auth");
-const userRoutes = require("./routes/user");
-const messageRoutes = require("./routes/messages");
+const authRoutes = require('./routes/auth');
+const userRoutes = require('./routes/user');
+const messageRoutes = require('./routes/messages');
 
-app.use("/api/auth", authRoutes);
-app.use("/api/users", userRoutes);
-app.use("/api/messages", messageRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/messages', messageRoutes);
+
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'login.html'));
+});
 
 // Serve static pages
 app.get("/", (req, res) => {
