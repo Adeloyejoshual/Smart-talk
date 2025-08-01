@@ -1,24 +1,40 @@
-document.getElementById("loginForm").addEventListener("submit", async (e) => {
-  e.preventDefault();
+document.addEventListener("DOMContentLoaded", () => {
+  const loginForm = document.getElementById("loginForm");
 
-  const email = document.getElementById("email").value.trim();
-  const password = document.getElementById("password").value.trim();
+  loginForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
 
-  const response = await fetch("/api/auth/login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value;
+
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ email, password })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        alert(data.message || "Login failed");
+        return;
+      }
+
+      // ✅ STEP 1: Store token properly in localStorage
+      localStorage.setItem("token", data.token);
+
+      // Optional: Also store user info if you want
+      localStorage.setItem("username", data.username);
+      localStorage.setItem("userId", data.userId);
+
+      // ✅ Redirect to homepage
+      window.location.href = "/home.html";
+    } catch (err) {
+      console.error("Login error:", err);
+      alert("Something went wrong. Please try again.");
+    }
   });
-
-  const data = await response.json();
-
-  if (response.ok) {
-    // Save token and redirect
-    localStorage.setItem("token", data.token);
-    localStorage.setItem("userId", data.user._id);
-    localStorage.setItem("username", data.user.username);
-    window.location.href = "/chat.html";
-  } else {
-    alert(data.message || "Login failed");
-  }
 });
