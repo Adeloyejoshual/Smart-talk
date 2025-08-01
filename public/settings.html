@@ -1,48 +1,69 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Settings - SmartTalk</title>
-  <link rel="stylesheet" href="/styles/settings.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SmartTalk Settings</title>
+  <link rel="stylesheet" href="/styles/global.css" />
+  <style>
+    .settings-section {
+      max-width: 600px;
+      margin: 50px auto;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+    }
+    .settings-section h2 {
+      margin-top: 0;
+    }
+    .settings-section label {
+      display: block;
+      margin-top: 15px;
+    }
+    .theme-toggle {
+      margin-top: 20px;
+    }
+  </style>
 </head>
 <body>
-  <div class="settings-container">
-    <h2>Update Your Profile</h2>
-    <form id="settingsForm">
-      <label for="displayName">Display Name</label>
-      <input type="text" id="displayName" name="displayName" placeholder="Enter your name" required />
+  <div class="settings-section">
+    <h2>Settings</h2>
+    <label for="username">Edit Username</label>
+    <input type="text" id="username" placeholder="Enter new username" />
 
-      <button type="submit">Save</button>
-    </form>
-    <p id="statusMsg"></p>
-    <a href="/chat.html">← Back to Chat</a>
+    <label for="email">Edit Email</label>
+    <input type="email" id="email" placeholder="Enter new email" />
+
+    <label for="theme">Theme</label>
+    <select id="theme">
+      <option value="dark">Dark</option>
+      <option value="light">Light</option>
+    </select>
+
+    <button id="saveSettings">Save Changes</button>
   </div>
 
   <script>
-    document.addEventListener('DOMContentLoaded', () => {
-      const displayNameInput = document.getElementById('displayName');
-      const statusMsg = document.getElementById('statusMsg');
+    const themeSelect = document.getElementById("theme");
+    const savedTheme = localStorage.getItem("theme") || "dark";
+    document.documentElement.setAttribute("data-theme", savedTheme);
+    themeSelect.value = savedTheme;
 
-      // Load saved name
-      const savedName = localStorage.getItem('displayName');
-      if (savedName) {
-        displayNameInput.value = savedName;
-      }
+    themeSelect.addEventListener("change", () => {
+      const newTheme = themeSelect.value;
+      document.documentElement.setAttribute("data-theme", newTheme);
+      localStorage.setItem("theme", newTheme);
+    });
 
-      document.getElementById('settingsForm').addEventListener('submit', (e) => {
-        e.preventDefault();
-        const name = displayNameInput.value.trim();
+    document.getElementById("saveSettings").addEventListener("click", () => {
+      const username = document.getElementById("username").value;
+      const email = document.getElementById("email").value;
+      alert(`Changes saved!\nUsername: ${username}\nEmail: ${email}`);
+    });
 
-        if (name) {
-          localStorage.setItem('displayName', name);
-          statusMsg.textContent = '✅ Name saved!';
-          statusMsg.style.color = 'green';
-        } else {
-          statusMsg.textContent = '❌ Name cannot be empty';
-          statusMsg.style.color = 'red';
-        }
-      });
+    // Apply theme when localStorage changes (multi-tab sync)
+    window.addEventListener("storage", () => {
+      const theme = localStorage.getItem("theme") || "dark";
+      document.documentElement.setAttribute("data-theme", theme);
+      themeSelect.value = theme;
     });
   </script>
 </body>
