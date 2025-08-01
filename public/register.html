@@ -1,152 +1,71 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Register – SmartTalk</title>
-  <link rel="stylesheet" href="styles/home.css" />
-  <style>
-    body {
-      background: linear-gradient(to right, #0066cc, #3399ff);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      margin: 0;
-      font-family: 'Segoe UI', sans-serif;
-    }
-
-    .register-box {
-      background: rgba(255, 255, 255, 0.1);
-      padding: 25px 30px;
-      border-radius: 14px;
-      box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
-      width: 90%;
-      max-width: 340px;
-      text-align: center;
-    }
-
-    .register-box img {
-      width: 80px;
-      margin-bottom: 15px;
-    }
-
-    .register-box h2 {
-      font-size: 20px;
-      color: #fff;
-      margin-bottom: 20px;
-    }
-
-    .register-box input {
-      width: 100%;
-      padding: 10px 12px;
-      margin: 10px 0;
-      border: none;
-      border-radius: 6px;
-      background: #fff;
-      color: #333;
-      font-size: 14px;
-      box-sizing: border-box;
-    }
-
-    .password-wrapper {
-      position: relative;
-      width: 100%;
-    }
-
-    .password-wrapper input {
-      width: 100%;
-      padding-right: 60px;
-    }
-
-    .toggle-password {
-      position: absolute;
-      right: 12px;
-      top: 50%;
-      transform: translateY(-50%);
-      color: #0066cc;
-      font-size: 13px;
-      cursor: pointer;
-      user-select: none;
-      background-color: transparent;
-    }
-
-    .register-box button {
-      width: 100%;
-      padding: 10px;
-      background: #003366;
-      color: #fff;
-      border: none;
-      border-radius: 6px;
-      font-size: 15px;
-      margin-top: 10px;
-      cursor: pointer;
-    }
-
-    .register-box button:hover {
-      background: #0055aa;
-    }
-  </style>
+  <title>SmartTalk - Register</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="/styles/auth.css" />
 </head>
 <body>
-  <div class="register-box">
-    <img src="/images/logo.png" alt="SmartTalk Logo" />
-    <h2>Create Your SmartTalk Account</h2>
-    <form id="registerForm">
-      <input type="text" name="username" placeholder="Username" required />
-      <input type="email" name="email" placeholder="Email" required />
+  <div class="auth-container">
+    <div class="auth-card">
+      <img src="/images/logo.png" alt="SmartTalk Logo" class="logo" />
+      <h2>Create Account</h2>
+      <form id="registerForm">
+        <input type="text" name="username" placeholder="Username" required />
+        <input type="email" name="email" placeholder="Email" required />
+        
+        <div class="password-wrapper">
+          <input type="password" name="password" placeholder="Password" id="password" required />
+          <span class="toggle-password" onclick="togglePassword()">👁</span>
+        </div>
 
-      <div class="password-wrapper">
-        <input type="password" name="password" id="reg-password" placeholder="Password" required />
-        <span class="toggle-password" onclick="togglePassword('reg-password', this)">Show</span>
-      </div>
-
-      <button type="submit">Register</button>
-    </form>
+        <button type="submit">Register</button>
+        <p id="message"></p>
+      </form>
+      <p>Already have an account? <a href="/login.html">Login here</a></p>
+    </div>
   </div>
 
   <script>
-    function togglePassword(id, el) {
-      const input = document.getElementById(id);
-      if (input.type === "password") {
-        input.type = "text";
-        el.textContent = "Hide";
-      } else {
-        input.type = "password";
-        el.textContent = "Show";
-      }
-    }
+    const form = document.getElementById('registerForm');
+    const message = document.getElementById('message');
 
-    document.getElementById("registerForm").addEventListener("submit", async (e) => {
+    form.addEventListener('submit', async (e) => {
       e.preventDefault();
-
-      const form = e.target;
-      const username = form.username.value;
-      const email = form.email.value;
-      const password = form.password.value;
+      const formData = new FormData(form);
+      const data = {
+        username: formData.get('username'),
+        email: formData.get('email'),
+        password: formData.get('password')
+      };
 
       try {
-        const res = await fetch("/api/auth/register", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({ username, email, password })
+        const res = await fetch('/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
         });
 
-        const data = await res.json();
-
+        const result = await res.json();
         if (res.ok) {
-          alert("Registration successful! Please login.");
-          window.location.href = "/login.html";
+          message.style.color = 'lightgreen';
+          message.innerText = '✅ Registered! Redirecting...';
+          setTimeout(() => window.location.href = '/login.html', 1500);
         } else {
-          alert(data.message || "Registration failed.");
+          message.style.color = 'red';
+          message.innerText = result.message || 'Registration failed';
         }
       } catch (err) {
-        alert("Something went wrong. Please try again.");
-        console.error(err);
+        message.style.color = 'red';
+        message.innerText = 'Error connecting to server';
       }
     });
+
+    function togglePassword() {
+      const pwd = document.getElementById('password');
+      pwd.type = pwd.type === 'password' ? 'text' : 'password';
+    }
   </script>
 </body>
 </html>
