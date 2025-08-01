@@ -60,18 +60,32 @@ io.on("connection", (socket) => {
   });
 
   // Join private chat room
-  socket.on("joinRoom", ({ from, to }) => {
-    const roomId = getRoomId(from, to);
-    socket.join(roomId);
-    socket.roomId = roomId;
-    console.log(`👥 ${from} joined room ${roomId}`);
+socket.on("joinRoom", ({ from, to }) => {
+  const roomName = [from, to].sort().join("_"); // shared room name for both
+  socket.join(roomName);
+  console.log(`${from} joined room: ${roomName}`);
+});
+
+// Handle private message
+socket.on("privateMessage", async ({ from, to, message }) => {
+  const roomName = [from, to].sort().join("_");
+
+  const newMessage = new Chat({
+    from,
+    to,
+    message,
+    timestamp: new Date(),
   });
 
-  // Handle private message
-  socket.on("privateMessage", async ({ from, to, message }) => {
-    const roomId = getRoomId(from, to);
-    io.to(roomId).emit("privateMessage", { from, message, timestamp: new Date() });
+  await newMessage.save();
 
+  io.to(roomName).emit("privateMessage", {
+    from,
+    to,
+    message,
+    timestamp: newMessage.timestamp,
+  });
+});
     // Save message to DB
     try {
       const Chat = require('./models/Chat');
