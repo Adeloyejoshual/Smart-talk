@@ -22,46 +22,46 @@
     <button type="submit">➤</button>
   </form>
 
-  <script>
-    const socket = io();
-    const messages = document.getElementById('messages');
-    const chatForm = document.getElementById('chatForm');
-    const messageInput = document.getElementById('messageInput');
-    const chatWith = document.getElementById('chatWith');
-    const backBtn = document.getElementById('backBtn');
+ <script>
+  const socket = io();
+  const messages = document.getElementById('messages');
+  const chatForm = document.getElementById('chatForm');
+  const messageInput = document.getElementById('messageInput');
+  const chatWith = document.getElementById('chatWith');
+  const backBtn = document.getElementById('backBtn');
 
-    const urlParams = new URLSearchParams(window.location.search);
-    const to = urlParams.get('to');
-    const from = localStorage.getItem('userId');
-    const toName = urlParams.get('name');
+  const urlParams = new URLSearchParams(window.location.search);
+  const to = urlParams.get('to') || urlParams.get('user');
+  const from = localStorage.getItem('userId');
+  const toName = urlParams.get('name') || 'Friend';
 
-    if (!from) {
-      window.location.href = '/login.html';
-    }
+  if (!from || !to) {
+    window.location.href = '/login.html';
+  }
 
-    chatWith.textContent = 'Chat with ' + toName;
+  chatWith.textContent = 'Chat with ' + toName;
 
-    socket.emit('userOnline', from);
+  socket.emit('userOnline', from);
 
-    socket.on('privateMessage', ({ from: sender, message }) => {
-      const li = document.createElement('li');
-      li.textContent = sender === from ? `You: ${message}` : `${toName}: ${message}`;
-      li.className = sender === from ? 'sent' : 'received';
-      messages.appendChild(li);
-      messages.scrollTop = messages.scrollHeight;
-    });
+  socket.on('privateMessage', ({ from: sender, message }) => {
+    const li = document.createElement('li');
+    li.textContent = sender === from ? `You: ${message}` : `${toName}: ${message}`;
+    li.className = sender === from ? 'sent' : 'received';
+    messages.appendChild(li);
+    messages.scrollTop = messages.scrollHeight;
+  });
 
-    chatForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const message = messageInput.value.trim();
-      if (!message) return;
-      socket.emit('privateMessage', { from, to, message });
-      messageInput.value = '';
-    });
+  chatForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const message = messageInput.value.trim();
+    if (!message) return;
+    socket.emit('privateMessage', { from, to, message });
+    messageInput.value = '';
+  });
 
-    backBtn.onclick = () => {
-      window.location.href = '/home.html';
-    };
-  </script>
+  backBtn.onclick = () => {
+    window.location.href = '/home.html';
+  };
+</script>
 </body>
 </html>
