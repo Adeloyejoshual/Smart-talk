@@ -1,50 +1,110 @@
-const addFriendBtn = document.getElementById("addFriendBtn");
-const addUserModal = document.getElementById("addUserModal");
-const confirmAddFriend = document.getElementById("confirmAddFriend");
-const cancelAddFriend = document.getElementById("cancelAddFriend");
-const friendInput = document.getElementById("friendInput");
+document.addEventListener("DOMContentLoaded", () => {
+  const usernameDisplay = document.getElementById("usernameDisplay");
+  const searchBar = document.getElementById("searchBar");
+  const userList = document.getElementById("userList");
+  const addUserBtn = document.getElementById("addUserBtn");
+  const addUserModal = document.getElementById("addUserModal");
+  const cancelAddUser = document.getElementById("cancelAddUser");
+  const saveAddUser = document.getElementById("saveAddUser");
+  const newUserInput = document.getElementById("newUserInput");
+  const settingsIcon = document.getElementById("settingsIcon");
+  const settingsMenu = document.getElementById("settingsMenu");
 
-// Show modal
-addFriendBtn.addEventListener("click", () => {
-  addUserModal.classList.remove("hidden");
-  friendInput.value = "";
-});
-
-// Cancel modal
-cancelAddFriend.addEventListener("click", () => {
-  addUserModal.classList.add("hidden");
-});
-
-// Add friend logic
-confirmAddFriend.addEventListener("click", async () => {
-  const friendIdentifier = friendInput.value.trim();
-  const token = localStorage.getItem("token");
-
-  if (!friendIdentifier || !token) {
-    alert("Please enter a valid friend and make sure you're logged in.");
-    return;
+  // Display logged-in username from localStorage
+  const storedUser = JSON.parse(localStorage.getItem("user"));
+  if (storedUser && storedUser.username) {
+    usernameDisplay.textContent = storedUser.username;
   }
 
-  try {
-    const res = await fetch("/api/users/add-friend", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`
-      },
-      body: JSON.stringify({ identifier: friendIdentifier })
-    });
-
-    const data = await res.json();
-    if (res.ok) {
-      alert(data.message || "Friend added successfully!");
-      addUserModal.classList.add("hidden");
-      location.reload(); // Reload to update friend list
-    } else {
-      alert(data.message || "Failed to add friend");
+  // Fetch user list from server
+  const fetchUsers = async () => {
+    try {
+      const res = await fetch("/api/users/list");
+      const data = await res.json();
+      displayUsers(data);
+    } catch (err) {
+      console.error("Failed to fetch users:", err);
     }
-  } catch (err) {
-    console.error(err);
-    alert("An error occurred.");
-  }
+  };
+
+  // Show users
+  const displayUsers = (users) => {
+    userList.innerHTML = "";
+    users.forEach((user) => {
+      if (storedUser && storedUser._id === user._id) return;
+
+      const card = document.createElement("div");
+      card.classList.add("user-card");
+      card.innerHTML = `
+        <span>${user.username}</span>
+        <button onclick="startChat('${user._id}', '${user.username}')">Chat</button>
+      `;
+      userList.appendChild(card);
+    });
+  };
+
+  // Filter user list
+  searchBar.addEventListener("input", async () => {
+    const query = searchBar.value.toLowerCase();
+    try {
+      const res = await fetch(`/api/users/search?query=${query}`);
+      const data = await res.json();
+      displayUsers(data);
+    } catch (err) {
+      console.error("Search failed:", err);
+    }
+  });
+
+  // Floating + button opens modal
+  addUserBtn.addEventListener("click", () => {
+    addUserModal.style.display = "block";
+  });
+
+  // Cancel add user modal
+  cancelAddUser.addEventListener("click", () => {
+    addUserModal.style.display = "none";
+    newUserInput.value = "";
+  });
+
+  // Save new user (Add Friend)
+  saveAddUser.addEventListener("click", async () => {
+    const friendEmail = newUserInput.value.trim();
+    if (!friendEmail) return;
+
+    try {
+      const res = await fetch("/api/users/add-friend", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ friendEmail, userId: storedUser._id }),
+      });
+
+      const result = await res.json();
+      if (res.ok) {
+        alert("Friend added!");
+        fetchUsers();
+        addUserModal.style.display = "none";
+        newUserInput.value = "";
+      } else {
+        alert(result.message || "Failed to add friend.");
+      }
+    } catch (err) {
+      console.error("Error adding friend:", err);
+    }
+  });
+
+  // Settings icon toggle
+  settingsIcon.addEventListener("click", () => {
+    settingsMenu.style.display =
+      settingsMenu.style.display === "block" ? "none" : "block";
+  });
+
+  // Start private chat
+  window.startChat = (userId, username) => {
+    localStorage.setItem("chatUser", JSON.stringify({ userId, username }));
+    window.location.href = "/chat.html";
+  };
+
+  fetchUsers();
 });
