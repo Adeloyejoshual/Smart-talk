@@ -26,7 +26,12 @@
       <button onclick="showSection('admin')" id="adminTab" style="display: none;">Admin</button>
     </aside>
 
-    <main class="settings-content">
+    <div class="setting-group">
+  <h3>Change Username</h3>
+  <input type="text" id="newUsernameInput" placeholder="Enter new username" />
+  <button onclick="updateUsername()">Update Username</button>
+  <p id="usernameStatus" style="color: green;"></p>
+</div>
       <section id="profile" class="settings-section">
         <h2>Profile Settings</h2>
         <ul>
