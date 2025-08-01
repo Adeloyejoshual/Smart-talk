@@ -1,170 +1,136 @@
+/* Reset and base */
 body {
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   margin: 0;
-  padding: 0;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
   background-color: #121212;
   color: #fff;
+  display: flex;
+  flex-direction: column;
   min-height: 100vh;
 }
 
+/* Header */
 header {
-  background-color: #1e1e1e;
-  padding: 1rem 1.5rem;
+  background-color: #1f1f1f;
+  padding: 16px;
   display: flex;
-  flex-direction: column;
+  justify-content: space-between;
   align-items: center;
 }
 
-header h1 {
-  margin: 0;
-  font-size: 2rem;
-  color: #0f9d58;
+#usernameDisplay {
+  font-size: 18px;
 }
 
-.top-bar {
-  margin-top: 1rem;
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-  justify-content: center;
-}
-
-.top-bar input[type="text"] {
-  padding: 0.5rem;
-  border-radius: 5px;
+#settingsBtn {
+  background: none;
   border: none;
-  min-width: 250px;
-  outline: none;
-}
-
-.top-bar button {
-  background-color: #0f9d58;
-  color: white;
-  border: none;
-  padding: 0.5rem 1rem;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 1rem;
-}
-
-main {
-  padding: 2rem;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
-  gap: 1rem;
-}
-
-#userList h2 {
-  grid-column: 1 / -1;
-  font-size: 1.5rem;
-  text-align: center;
-  margin-bottom: 1rem;
-  color: #ccc;
-}
-
-.user {
-  background-color: #1e1e1e;
-  padding: 1rem;
-  border-radius: 15px;
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.4);
-  transition: transform 0.2s ease;
-}
-
-.user:hover {
-  transform: scale(1.03);
-}
-
-.user img {
-  width: 50px;
-  height: 50px;
-  border-radius: 50%;
-  object-fit: cover;
-}
-
-.info {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-
-.chat-btn {
-  background-color: #0f9d58;
-  color: white;
-  border: none;
-  padding: 0.5rem 0.8rem;
-  border-radius: 8px;
+  color: #fff;
+  font-size: 24px;
   cursor: pointer;
 }
 
-.chat-btn:hover {
-  background-color: #0c7a44;
-}
-
-/* Modal Styling */
-.modal {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0,0,0,0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+/* Settings dropdown */
+#settingsMenu {
+  position: absolute;
+  top: 60px;
+  right: 20px;
+  background-color: #2c2c2c;
+  border: 1px solid #333;
+  border-radius: 10px;
+  padding: 10px;
+  display: none;
   z-index: 999;
 }
 
-.modal.hidden {
+#settingsMenu.hidden {
   display: none;
 }
 
-.modal-content {
-  background-color: #282828;
-  padding: 2rem;
-  border-radius: 12px;
-  width: 90%;
-  max-width: 400px;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.7);
-}
-
-.modal-content input {
-  width: 100%;
-  padding: 0.7rem;
-  margin-bottom: 1rem;
-  border-radius: 6px;
-  border: none;
-  outline: none;
-  background: #3c3c3c;
-  color: white;
-}
-
-.modal-content button {
-  background-color: #0f9d58;
-  color: white;
-  padding: 0.6rem 1rem;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  width: 100%;
-}
-
-#searchResults {
+#settingsMenu ul {
   list-style: none;
   padding: 0;
   margin: 0;
-  max-height: 200px;
+}
+
+#settingsMenu li {
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #444;
+}
+
+#settingsMenu li:hover {
+  background-color: #3a3a3a;
+}
+
+/* Search bar */
+#searchBar {
+  margin: 16px auto;
+  width: 90%;
+  padding: 10px;
+  font-size: 16px;
+  border-radius: 8px;
+  border: none;
+  outline: none;
+  background-color: #222;
+  color: white;
+}
+
+/* User List */
+#userList {
+  list-style: none;
+  padding: 0;
+  margin: 0 auto;
+  width: 90%;
+  max-height: 60vh;
   overflow-y: auto;
 }
 
-#searchResults li {
-  padding: 0.5rem;
-  border-bottom: 1px solid #444;
+.user-item {
+  background-color: #1e1e1e;
+  padding: 12px 16px;
+  margin: 8px 0;
+  border-radius: 10px;
   cursor: pointer;
+  transition: background-color 0.2s ease-in-out;
 }
 
-#searchResults li:hover {
-  background-color: #3a3a3a;
+.user-item:hover {
+  background-color: #333;
+}
+
+/* Floating Add User Button */
+#addUserBtn {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 56px;
+  height: 56px;
+  background-color: #6200ea;
+  color: #fff;
+  font-size: 28px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+}
+
+#addUserBtn:hover {
+  background-color: #7f39fb;
+}
+
+/* Responsive tweaks */
+@media (max-width: 600px) {
+  #userList {
+    width: 95%;
+  }
+
+  #searchBar {
+    width: 95%;
+  }
+
+  #settingsMenu {
+    right: 10px;
+  }
 }
