@@ -1,84 +1,75 @@
-<!DOCTYPE html>
-<html lang="en">
+<!DOCTYPE html><html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>SmartTalk Chat</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SmartTalk - Private Chat</title>
   <link rel="stylesheet" href="/styles/chat.css" />
 </head>
 <body>
   <div class="chat-container">
-    <header>
-      <h2 id="chatWith"></h2>
-      <a href="/home.html" class="back-btn">⬅ Back</a>
-    </header>
-    <div id="messages" class="messages"></div>
-    <form id="messageForm">
-      <input type="text" id="messageInput" placeholder="Type a message..." required autocomplete="off" />
-      <button type="submit">Send</button>
-    </form>
-  </div>
+    <header class="chat-header">
+      <h2 id="chatWith">Chatting with: <span id="chatPartnerName">...</span></h2>
+      <a href="/settings.html" class="settings-link">Settings</a>
+    </header><div class="messages" id="messages"></div>
 
-  <script src="/socket.io/socket.io.js"></script>
-  <script>
+<form id="messageForm" class="message-form">
+  <input type="text" id="messageInput" placeholder="Type your message..." autocomplete="off" required />
+  <button type="submit">Send</button>
+</form>
+
+  </div>  <script src="/socket.io/socket.io.js"></script>  <script>
     const socket = io();
 
     const urlParams = new URLSearchParams(window.location.search);
-    const from = localStorage.getItem("userId");
-    const to = urlParams.get("to");
-    const toUsername = urlParams.get("username");
+    const from = localStorage.getItem('userId');
+    const to = urlParams.get('to');
+    const chatPartnerName = urlParams.get('name') || 'Unknown';
 
-    document.getElementById("chatWith").innerText = "Chat with " + toUsername;
+    document.getElementById("chatPartnerName").textContent = chatPartnerName;
 
-    // Join room
+    socket.emit("userOnline", from);
     socket.emit("joinRoom", { from, to });
 
-    // Load message history
+    const messagesDiv = document.getElementById("messages");
+    const messageForm = document.getElementById("messageForm");
+    const messageInput = document.getElementById("messageInput");
+
+    function appendMessage({ from: sender, message, timestamp }) {
+      const messageEl = document.createElement("div");
+      const time = new Date(timestamp).toLocaleTimeString();
+      const isMine = sender === from;
+      messageEl.className = isMine ? "message mine" : "message";
+      messageEl.innerHTML = `
+        <p><strong>${isMine ? 'Me' : chatPartnerName}</strong> <span class="time">${time}</span></p>
+        <p>${message}</p>
+      `;
+      messagesDiv.appendChild(messageEl);
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    messageForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const message = messageInput.value.trim();
+      if (message) {
+        socket.emit("privateMessage", { from, to, message });
+        messageInput.value = "";
+      }
+    });
+
+    socket.on("privateMessage", (data) => {
+      appendMessage(data);
+    });
+
     async function loadMessages() {
       try {
-        const res = await fetch(`/api/messages/history/${from}/${to}`);
-        const data = await res.json();
-        if (data && data.messages) {
-          data.messages.forEach(msg => addMessage(msg.from === from ? "You" : toUsername, msg.message, msg.timestamp));
-        }
+        const res = await fetch(`/api/messages/${from}/${to}`);
+        const messages = await res.json();
+        messages.forEach(msg => appendMessage(msg));
       } catch (err) {
-        console.error("Error loading history", err);
+        console.error("Failed to load messages", err);
       }
     }
 
     loadMessages();
-
-    // Send message
-    const form = document.getElementById("messageForm");
-    const input = document.getElementById("messageInput");
-    const messagesDiv = document.getElementById("messages");
-
-    form.addEventListener("submit", (e) => {
-      e.preventDefault();
-      const message = input.value.trim();
-      if (message) {
-        socket.emit("privateMessage", { from, to, message });
-        addMessage("You", message, new Date());
-        input.value = "";
-      }
-    });
-
-    // Receive message
-    socket.on("privateMessage", ({ from: sender, message, timestamp }) => {
-      addMessage(sender === from ? "You" : toUsername, message, timestamp);
-    });
-
-    // Add message to DOM
-    function addMessage(sender, text, time) {
-      const msgDiv = document.createElement("div");
-      msgDiv.classList.add("message");
-      msgDiv.innerHTML = `<strong>${sender}</strong>: ${text} <span class="timestamp">${new Date(time).toLocaleTimeString()}</span>`;
-      messagesDiv.appendChild(msgDiv);
-      messagesDiv.scrollTop = messagesDiv.scrollHeight;
-    }
-  // Display the name or ID of the user you're chatting with
-    const chatWith = localStorage.getItem("chatWithUsername") || "Your Chat Partner";
-    document.getElementById("chatWithDisplay").textContent = "Chatting with: " + chatWith;
-  </script>
-</body>
+  </script></body>
 </html>
