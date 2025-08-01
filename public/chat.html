@@ -3,105 +3,97 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>SmartTalk - Chat</title>
+  <title>SmartTalk Chat</title>
   <link rel="stylesheet" href="/styles/global.css" />
   <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
-  <div class="chat-container">
-    <div id="chatHeader">SmartTalk Chat</div>
+  <div id="chatHeader">Chat with <span id="chattingWithName"></span></div>
+  <div id="chatBox"></div>
+  <div id="typingIndicator" style="display: none;"></div>
 
-    <!-- Chat Messages -->
-    <div id="chatBox" class="chat-box"></div>
-
-    <!-- Typing Indicator -->
-    <div id="typingIndicator" class="typing-indicator" style="display: none;">Typing...</div>
-
-    <!-- Message Input -->
-    <div class="input-area">
-      <input id="messageInput" type="text" placeholder="Type a message..." autocomplete="off" />
-      <button id="sendButton">Send</button>
-    </div>
-  </div>
+  <input type="text" id="messageInput" placeholder="Type a message..." />
+  <button id="sendButton">Send</button>
 
   <script>
     const socket = io();
-    const messageInput = document.getElementById("messageInput");
     const chatBox = document.getElementById("chatBox");
-    const typingIndicator = document.getElementById("typingIndicator");
+    const messageInput = document.getElementById("messageInput");
     const sendButton = document.getElementById("sendButton");
+    const typingIndicator = document.getElementById("typingIndicator");
+    const chattingWithName = document.getElementById("chattingWithName");
 
-    const currentUserId = localStorage.getItem("userId");
-    const currentUsername = localStorage.getItem("username");
-    const chattingWithId = localStorage.getItem("chattingWithId");
-    const chattingWithName = localStorage.getItem("chattingWithName");
+    const senderId = localStorage.getItem("userId");
+    const senderName = localStorage.getItem("username");
+    const receiverId = localStorage.getItem("chatWithId");
+    const receiverName = localStorage.getItem("chatWithName");
 
-    document.getElementById("chatHeader").innerText = `Chat with ${chattingWithName}`;
+    chattingWithName.textContent = receiverName;
 
-    // Join private room
-    socket.emit("joinRoom", {
-      senderId: currentUserId,
-      receiverId: chattingWithId
-    });
+    socket.emit("joinRoom", { senderId, receiverId });
 
-    // Receive message
-    socket.on("message", (data) => {
-      const div = document.createElement("div");
-      div.className = data.sender === currentUserId ? "my-message" : "their-message";
-      div.textContent = `${data.senderName}: ${data.content}`;
-      chatBox.appendChild(div);
+    socket.on("message", ({ message, sender }) => {
+      const msgDiv = document.createElement("div");
+      msgDiv.textContent = message;
+      msgDiv.style.marginBottom = "10px";
+      msgDiv.style.padding = "5px";
+      msgDiv.style.backgroundColor = sender === senderId ? "#d0f0c0" : "#f0f0f0";
+      chatBox.appendChild(msgDiv);
       chatBox.scrollTop = chatBox.scrollHeight;
     });
 
-    // Typing indicator
-    socket.on("typing", ({ senderId }) => {
-      if (senderId !== currentUserId) {
+    socket.on("typing", ({ sender }) => {
+      if (sender !== senderId) {
+        typingIndicator.textContent = `${receiverName} is typing...`;
         typingIndicator.style.display = "block";
-        setTimeout(() => typingIndicator.style.display = "none", 2000);
+        setTimeout(() => {
+          typingIndicator.style.display = "none";
+        }, 2000);
       }
     });
 
-    // Emit typing
     messageInput.addEventListener("input", () => {
-      socket.emit("typing", {
-        senderId: currentUserId,
-        receiverId: chattingWithId
-      });
+      socket.emit("typing", { sender: senderId, receiver: receiverId });
     });
 
-    // Send message
     sendButton.addEventListener("click", sendMessage);
     messageInput.addEventListener("keypress", (e) => {
-      if (e.key === "Enter") sendMessage();
+      if (e.key === "Enter") {
+        sendMessage();
+      }
     });
 
     function sendMessage() {
-      const content = messageInput.value.trim();
-      if (!content) return;
+      const message = messageInput.value.trim();
+      if (message === "") return;
 
       const messageData = {
-        sender: currentUserId,
-        receiver: chattingWithId,
-        content,
-        senderName: currentUsername
+        sender: senderId,
+        receiver: receiverId,
+        message,
       };
 
       socket.emit("message", messageData);
       messageInput.value = "";
     }
 
-    // Load chat history
-    fetch(`/api/messages/${currentUserId}/${chattingWithId}`)
-      .then((res) => res.json())
-      .then((messages) => {
-        messages.forEach((msg) => {
-          const div = document.createElement("div");
-          div.className = msg.sender._id === currentUserId ? "my-message" : "their-message";
-          div.textContent = `${msg.sender.username}: ${msg.content}`;
-          chatBox.appendChild(div);
+    window.addEventListener("DOMContentLoaded", async () => {
+      try {
+        const res = await fetch(`/api/messages/${senderId}/${receiverId}`);
+        const data = await res.json();
+        data.forEach(({ sender, message }) => {
+          const msgDiv = document.createElement("div");
+          msgDiv.textContent = message;
+          msgDiv.style.marginBottom = "10px";
+          msgDiv.style.padding = "5px";
+          msgDiv.style.backgroundColor = sender === senderId ? "#d0f0c0" : "#f0f0f0";
+          chatBox.appendChild(msgDiv);
         });
         chatBox.scrollTop = chatBox.scrollHeight;
-      });
+      } catch (err) {
+        console.error("Error loading messages:", err);
+      }
+    });
   </script>
 </body>
 </html>
