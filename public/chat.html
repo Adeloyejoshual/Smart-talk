@@ -1,75 +1,57 @@
-<!DOCTYPE html><html lang="en">
+<!DOCTYPE html>
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SmartTalk - Private Chat</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SmartTalk - Chat</title>
   <link rel="stylesheet" href="/styles/chat.css" />
 </head>
 <body>
   <div class="chat-container">
     <header class="chat-header">
-      <h2 id="chatWith">Chatting with: <span id="chatPartnerName">...</span></h2>
-      <a href="/settings.html" class="settings-link">Settings</a>
-    </header><div class="messages" id="messages"></div>
+      <h2 id="chatHeader">Chatting...</h2>
+      <div class="actions">
+        <button id="exportBtn">📄 Export</button>
+        <button id="darkToggle">🌙</button>
+      </div>
+    </header>
 
-<form id="messageForm" class="message-form">
-  <input type="text" id="messageInput" placeholder="Type your message..." autocomplete="off" required />
-  <button type="submit">Send</button>
-</form>
+    <div id="messages" class="messages"></div>
 
-  </div>  <script src="/socket.io/socket.io.js"></script>  <script>
-    const socket = io();
+    <div id="typingIndicator" class="typing-indicator"></div>
 
-    const urlParams = new URLSearchParams(window.location.search);
-    const from = localStorage.getItem('userId');
-    const to = urlParams.get('to');
-    const chatPartnerName = urlParams.get('name') || 'Unknown';
+    <div class="chat-input">
+      <input type="text" id="messageInput" placeholder="Type a message..." autocomplete="off"/>
+      <button id="sendButton">Send</button>
+    </div>
+  </div>
 
-    document.getElementById("chatPartnerName").textContent = chatPartnerName;
-
-    socket.emit("userOnline", from);
-    socket.emit("joinRoom", { from, to });
-
-    const messagesDiv = document.getElementById("messages");
-    const messageForm = document.getElementById("messageForm");
-    const messageInput = document.getElementById("messageInput");
-
-    function appendMessage({ from: sender, message, timestamp }) {
-      const messageEl = document.createElement("div");
-      const time = new Date(timestamp).toLocaleTimeString();
-      const isMine = sender === from;
-      messageEl.className = isMine ? "message mine" : "message";
-      messageEl.innerHTML = `
-        <p><strong>${isMine ? 'Me' : chatPartnerName}</strong> <span class="time">${time}</span></p>
-        <p>${message}</p>
-      `;
-      messagesDiv.appendChild(messageEl);
-      messagesDiv.scrollTop = messagesDiv.scrollHeight;
-    }
-
-    messageForm.addEventListener("submit", (e) => {
-      e.preventDefault();
-      const message = messageInput.value.trim();
-      if (message) {
-        socket.emit("privateMessage", { from, to, message });
-        messageInput.value = "";
-      }
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/scripts/chat.js"></script>
+  <script>
+    // Dark Mode Toggle
+    const darkToggle = document.getElementById("darkToggle");
+    darkToggle.addEventListener("click", () => {
+      document.body.classList.toggle("dark");
     });
 
-    socket.on("privateMessage", (data) => {
-      appendMessage(data);
+    // Export Chat
+    document.getElementById("exportBtn").addEventListener("click", () => {
+      const messages = document.querySelectorAll("#messages .message");
+      let exportText = "";
+      messages.forEach(msg => {
+        const name = msg.children[0]?.textContent || "";
+        const text = msg.children[1]?.textContent || "";
+        const time = msg.children[2]?.textContent || "";
+        exportText += `[${time}] ${name}: ${text}\n`;
+      });
+      const blob = new Blob([exportText], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "chat_export.txt";
+      a.click();
     });
-
-    async function loadMessages() {
-      try {
-        const res = await fetch(`/api/messages/${from}/${to}`);
-        const messages = await res.json();
-        messages.forEach(msg => appendMessage(msg));
-      } catch (err) {
-        console.error("Failed to load messages", err);
-      }
-    }
-
-    loadMessages();
-  </script></body>
+  </script>
+</body>
 </html>
