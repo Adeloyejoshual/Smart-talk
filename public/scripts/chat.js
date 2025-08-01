@@ -1,85 +1,124 @@
-const token = localStorage.getItem("token");
-const userId = localStorage.getItem("userId");
-const username = localStorage.getItem("username");
+document.addEventListener("DOMContentLoaded", () => {
+  const token = localStorage.getItem("token");
+  const userId = localStorage.getItem("userId");
+  const username = localStorage.getItem("username");
+  const receiverId = localStorage.getItem("receiverId");
+  const receiverUsername = localStorage.getItem("receiverUsername");
 
-if (!token) {
-  window.location.href = "/login.html";
-}
+  if (!token || !userId || !receiverId) {
+    window.location.href = "/login.html";
+    return;
+  }
 
-// Connect to Socket.IO with userId
-const socket = io({ query: { userId, username } });
+  const socket = io({
+    query: {
+      userId,
+      username
+    }
+  });
 
-// Example: Set your own name in the UI
-document.getElementById("myName").textContent = username;
+  const chatBox = document.getElementById("chatBox");
+  const messageInput = document.getElementById("messageInput");
+  const sendButton = document.getElementById("sendButton");
+  const typingIndicator = document.getElementById("typingIndicator");
 
-  // Load chat history
+  // Load chat history from API
   async function loadChat() {
     try {
-      const res = await fetch(`/api/messages/history?senderId=${currentUser._id}&receiverId=${receiverId}`);
-      const messages = await res.json();
-      messagesContainer.innerHTML = '';
-      messages.forEach(msg => displayMessage(msg));
-    } catch (err) {
-      console.error('Error loading chat history:', err);
+      const res = await fetch(`/api/messages/history/${receiverId}`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      const data = await res.json();
+      if (data && Array.isArray(data.messages)) {
+        data.messages.forEach((msg) => displayMessage(msg));
+      }
+    } catch (error) {
+      console.error("Error loading messages:", error);
     }
   }
 
-  // Display a message in chat
-  function displayMessage(msg) {
-    const div = document.createElement('div');
-    div.classList.add('message');
-    div.classList.add(msg.sender._id === currentUser._id ? 'sent' : 'received');
+  function displayMessage(message) {
+    const messageDiv = document.createElement("div");
+    const isMine = message.sender === userId;
+    const senderName = message.senderName || (isMine ? "You" : receiverUsername);
 
-    const timestamp = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    div.innerHTML = `<strong>${msg.sender.username}:</strong> ${msg.content} <span class="timestamp">${timestamp}</span>`;
-    messagesContainer.appendChild(div);
-    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    messageDiv.className = isMine ? "message mine" : "message theirs";
+    const time = new Date(message.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    messageDiv.innerHTML = `
+      <div class="sender-name">${senderName}</div>
+      <div class="bubble">${message.text}</div>
+      <div class="timestamp">${time}</div>
+    `;
+
+    chatBox.appendChild(messageDiv);
+    chatBox.scrollTop = chatBox.scrollHeight;
   }
 
-  // Send message
-  messageForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const content = messageInput.value.trim();
-    if (!content) return;
+  loadChat();
 
-    const messageData = {
-      senderId: currentUser._id,
-      receiverId,
-      content
+  // Send message
+  sendButton.addEventListener("click", async () => {
+    const text = messageInput.value.trim();
+    if (!text) return;
+
+    const message = {
+      sender: userId,
+      senderName: username,
+      receiver: receiverId,
+      text,
+      timestamp: Date.now()
     };
 
-    // Send to backend
+    // Send to backend to store
     try {
-      const res = await fetch('/api/messages/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(messageData)
+      await fetch("/api/messages/send", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(message)
       });
-
-      const savedMessage = await res.json();
-      displayMessage({
-        ...savedMessage.data,
-        sender: { _id: currentUser._id, username: currentUser.username }
-      });
-
-      // Send via socket
-      socket.emit('private message', {
-        to: receiverId,
-        message: savedMessage.data
-      });
-
-      messageInput.value = '';
     } catch (err) {
-      console.error('Message send error:', err);
+      console.error("Error sending message:", err);
+    }
+
+    // Send via socket
+    socket.emit("private message", {
+      ...message,
+      to: receiverId
+    });
+
+    displayMessage(message);
+    messageInput.value = "";
+  });
+
+  // Typing indicator
+  messageInput.addEventListener("input", () => {
+    socket.emit("typing", { to: receiverId, sender: username });
+  });
+
+  socket.on("typing", (data) => {
+    if (data && data.sender) {
+      typingIndicator.textContent = `${data.sender} is typing...`;
+      setTimeout(() => {
+        typingIndicator.textContent = "";
+      }, 2000);
     }
   });
 
   // Receive message
-  socket.on('private message', (msg) => {
-    if (msg.sender._id === receiverId || msg.receiver === currentUser._id) {
-      displayMessage(msg);
+  socket.on("private message", (message) => {
+    if (message.sender === receiverId) {
+      displayMessage(message);
     }
   });
 
-  loadChat();
+  // Update lastSeen on disconnect
+  window.addEventListener("beforeunload", () => {
+    socket.disconnect();
+  });
 });
