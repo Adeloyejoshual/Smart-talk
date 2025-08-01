@@ -1,4 +1,3 @@
-// routes/messages.js
 const express = require("express");
 const router = express.Router();
 const Chat = require("../models/Chat");
@@ -6,19 +5,19 @@ const jwt = require("jsonwebtoken");
 
 // Middleware to verify token and set req.userId
 const authMiddleware = (req, res, next) => {
-  const token = req.headers.authorization;
+  const token = req.headers.authorization?.split(" ")[1];
   if (!token) return res.status(401).json({ message: "No token provided" });
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.userId = decoded.id;
+    req.userId = decoded.id || decoded.userId;
     next();
   } catch (err) {
     return res.status(403).json({ message: "Invalid token" });
   }
 };
 
-// ✅ Send a message
+// Send a message
 router.post("/send", authMiddleware, async (req, res) => {
   const { receiverId, content } = req.body;
 
@@ -40,7 +39,7 @@ router.post("/send", authMiddleware, async (req, res) => {
   }
 });
 
-// ✅ Get message history with another user
+// Get message history with another user
 router.get("/history/:userId", authMiddleware, async (req, res) => {
   const otherUserId = req.params.userId;
 
@@ -61,7 +60,7 @@ router.get("/history/:userId", authMiddleware, async (req, res) => {
   }
 });
 
-// ✅ Mark messages as read
+// Mark messages as read
 router.post("/read", authMiddleware, async (req, res) => {
   const { senderId } = req.body;
 
@@ -76,25 +75,41 @@ router.post("/read", authMiddleware, async (req, res) => {
   }
 });
 
-// ✅ Export messages
-router.post("/export", authMiddleware, async (req, res) => {
-  const { userId2 } = req.body;
+// Export messages as downloadable text file
+router.get("/export/:userId/:friendId", authMiddleware, async (req, res) => {
+  const { userId, friendId } = req.params;
+
+  // Verify userId matches authenticated user
+  if (req.userId !== userId) {
+    return res.status(403).json({ message: "Unauthorized" });
+  }
 
   try {
     const messages = await Chat.find({
       $or: [
-        { sender: req.userId, receiver: userId2 },
-        { sender: userId2, receiver: req.userId },
-      ],
+        { sender: userId, receiver: friendId },
+        { sender: friendId, receiver: userId }
+      ]
     }).sort({ createdAt: 1 });
 
-    res.json({ success: true, messages });
+    let exportText = "";
+    for (const msg of messages) {
+      const senderLabel = msg.sender.toString() === userId ? "You" : "Them";
+      const timeString = new Date(msg.createdAt).toLocaleString();
+      const content = msg.content || msg.fileUrl || "[File]";
+      exportText += `${senderLabel} [${timeString}]: ${content}\n`;
+    }
+
+    res.setHeader("Content-Disposition", "attachment; filename=chat.txt");
+    res.setHeader("Content-Type", "text/plain");
+    res.send(exportText);
   } catch (err) {
-    res.status(500).json({ message: "Failed to export messages", error: err.message });
+    console.error(err);
+    res.status(500).json({ message: "Error exporting chat" });
   }
 });
 
-// ✅ Delete a specific message (only if user is sender)
+// Delete a specific message (only if user is sender)
 router.delete("/:id", authMiddleware, async (req, res) => {
   try {
     const message = await Chat.findById(req.params.id);
