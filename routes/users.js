@@ -1,140 +1,50 @@
-const express = require("express");
+const express = require('express');
 const router = express.Router();
-const User = require("../models/User");
-const verifyToken = require("../middleware/verifyToken");
+const User = require('../models/User');
 
-// Get current user info
-router.get("/me", verifyToken, async (req, res) => {
-  try {
-    const user = await User.findById(req.userId).select("-password");
-    if (!user) return res.status(404).json({ message: "User not found" });
-    res.json(user);
-  } catch (err) {
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
-// Search for users by username or email
-router.get("/search", verifyToken, async (req, res) => {
-  const query = req.query.q;
-  if (!query) return res.json([]);
-
+// Search users by username or email
+router.get('/search', async (req, res) => {
+  const { query } = req.query;
   try {
     const users = await User.find({
       $or: [
-        { username: { $regex: query, $options: "i" } },
-        { email: { $regex: query, $options: "i" } }
+        { username: { $regex: query, $options: 'i' } },
+        { email: { $regex: query, $options: 'i' } }
       ]
-    }).select("username email");
-
+    }).select('-password');
     res.json(users);
   } catch (err) {
-    res.status(500).json({ message: "Error searching users" });
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Add a friend by username or email
-router.post("/add-friend", verifyToken, async (req, res) => {
-  const { identifier } = req.body;
-
+// Get all users (for list display)
+router.get('/list', async (req, res) => {
   try {
-    const user = await User.findById(req.userId);
-    const friend = await User.findOne({
-      $or: [{ username: identifier }, { email: identifier }]
-    });
-
-    if (!friend) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    if (friend._id.equals(user._id)) {
-      return res.status(400).json({ message: "You cannot add yourself" });
-    }
-
-    if (user.friends.includes(friend._id)) {
-      return res.status(400).json({ message: "Already added as friend" });
-    }
-
-    user.friends.push(friend._id);
-    await user.save();
-
-    res.json({ message: "Friend added successfully" });
+    const users = await User.find().select('-password');
+    res.json(users);
   } catch (err) {
-    res.status(500).json({ message: "Error adding friend" });
+    res.status(500).json({ message: 'Failed to fetch users' });
   }
 });
 
-// Get user's friend list
-router.get("/friends", verifyToken, async (req, res) => {
-  try {
-    const user = await User.findById(req.userId).populate("friends", "username email");
-    res.json({ friends: user.friends });
-  } catch (err) {
-    res.status(500).json({ message: "Error loading friends" });
-  }
-});
-// Update Username
-router.put('/settings/username', async (req, res) => {
+// Update username
+router.post('/update-username', async (req, res) => {
   const { userId, newUsername } = req.body;
-
   try {
-    const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ message: 'User not found' });
+    const existing = await User.findOne({ username: newUsername });
+    if (existing) {
+      return res.status(400).json({ message: 'Username already taken' });
+    }
 
-    user.username = newUsername;
-    await user.save();
+    const user = await User.findByIdAndUpdate(userId, { username: newUsername }, { new: true });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
 
-    res.status(200).json({ message: 'Username updated successfully', username: user.username });
+    res.json({ message: 'Username updated successfully', user });
   } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-// Update Username
-router.put("/update-username", async (req, res) => {
-  try {
-    const token = req.cookies.token;
-    if (!token) return res.status(401).json({ message: "Unauthorized" });
-
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const userId = decoded.id;
-
-    const { username } = req.body;
-    if (!username) return res.status(400).json({ message: "Username required" });
-
-    const user = await User.findByIdAndUpdate(
-      userId,
-      { username },
-      { new: true }
-    );
-
-    res.status(200).json({ message: "Username updated", user });
-  } catch (err) {
-    console.error("Update username error:", err);
-    res.status(500).json({ message: "Internal Server Error" });
-  }
-});
-// Change Username
-router.put("/change-username", async (req, res) => {
-  const { newUsername } = req.body;
-  const userId = req.session.userId;
-
-  if (!userId) return res.status(401).json({ message: "Unauthorized" });
-
-  if (!newUsername || newUsername.trim().length < 3) {
-    return res.status(400).json({ message: "Invalid username" });
-  }
-
-  try {
-    const existing = await User.findOne({ username: newUsername.trim() });
-    if (existing)
-      return res.status(409).json({ message: "Username already taken" });
-
-    await User.findByIdAndUpdate(userId, { username: newUsername.trim() });
-
-    res.json({ message: "Username updated successfully" });
-  } catch (error) {
-    console.error("Update error:", error);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: 'Error updating username' });
   }
 });
 
