@@ -10,13 +10,17 @@
 <body>
   <div class="chat-container">
     <div id="chatHeader">SmartTalk Chat</div>
+
+    <!-- Chat Messages -->
     <div id="chatBox" class="chat-box"></div>
 
-    <div class="typing-indicator" id="typingIndicator" style="display: none;">Typing...</div>
+    <!-- Typing Indicator -->
+    <div id="typingIndicator" class="typing-indicator" style="display: none;">Typing...</div>
 
+    <!-- Message Input -->
     <div class="input-area">
-      <input type="text" id="messageInput" placeholder="Type your message" autocomplete="off" />
-      <button onclick="sendMessage()">Send</button>
+      <input id="messageInput" type="text" placeholder="Type a message..." autocomplete="off" />
+      <button id="sendButton">Send</button>
     </div>
   </div>
 
@@ -25,6 +29,7 @@
     const messageInput = document.getElementById("messageInput");
     const chatBox = document.getElementById("chatBox");
     const typingIndicator = document.getElementById("typingIndicator");
+    const sendButton = document.getElementById("sendButton");
 
     const currentUserId = localStorage.getItem("userId");
     const currentUsername = localStorage.getItem("username");
@@ -33,8 +38,13 @@
 
     document.getElementById("chatHeader").innerText = `Chat with ${chattingWithName}`;
 
-    socket.emit("joinRoom", { senderId: currentUserId, receiverId: chattingWithId });
+    // Join private room
+    socket.emit("joinRoom", {
+      senderId: currentUserId,
+      receiverId: chattingWithId
+    });
 
+    // Receive message
     socket.on("message", (data) => {
       const div = document.createElement("div");
       div.className = data.sender === currentUserId ? "my-message" : "their-message";
@@ -43,15 +53,26 @@
       chatBox.scrollTop = chatBox.scrollHeight;
     });
 
+    // Typing indicator
     socket.on("typing", ({ senderId }) => {
       if (senderId !== currentUserId) {
         typingIndicator.style.display = "block";
-        setTimeout(() => (typingIndicator.style.display = "none"), 2000);
+        setTimeout(() => typingIndicator.style.display = "none", 2000);
       }
     });
 
+    // Emit typing
     messageInput.addEventListener("input", () => {
-      socket.emit("typing", { senderId: currentUserId, receiverId: chattingWithId });
+      socket.emit("typing", {
+        senderId: currentUserId,
+        receiverId: chattingWithId
+      });
+    });
+
+    // Send message
+    sendButton.addEventListener("click", sendMessage);
+    messageInput.addEventListener("keypress", (e) => {
+      if (e.key === "Enter") sendMessage();
     });
 
     function sendMessage() {
@@ -62,7 +83,7 @@
         sender: currentUserId,
         receiver: chattingWithId,
         content,
-        senderName: currentUsername,
+        senderName: currentUsername
       };
 
       socket.emit("message", messageData);
