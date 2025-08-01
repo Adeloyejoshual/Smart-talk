@@ -13,6 +13,23 @@
     <h1>⚙️ SmartTalk Settings</h1>
   </header>
 
+<!-- Change Email -->
+<div class="setting-group">
+  <h3>Change Email</h3>
+  <input type="email" id="newEmailInput" placeholder="Enter new email" />
+  <button onclick="updateEmail()">Update Email</button>
+  <p id="emailStatus" style="color: green;"></p>
+</div>
+
+<!-- Change Password -->
+<div class="setting-group">
+  <h3>Change Password</h3>
+  <input type="password" id="currentPassword" placeholder="Current password" />
+  <input type="password" id="newPassword" placeholder="New password" />
+  <button onclick="updatePassword()">Update Password</button>
+  <p id="passwordStatus" style="color: green;"></p>
+</div>
+
   <div class="setting-group">
   <h3>Change Username</h3>
   <input type="text" id="newUsernameInput" placeholder="Enter new username" />
