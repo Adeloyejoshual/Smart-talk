@@ -22,63 +22,81 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Connect to MongoDB
+// MongoDB Connection
 mongoose.connect(process.env.MONGO_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true
 })
 .then(() => console.log('✅ MongoDB connected'))
-.catch(err => console.error('MongoDB connection error:', err));
+.catch(err => console.error('❌ MongoDB connection error:', err));
 
-// Import Routes
+// Routes
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const messageRoutes = require('./routes/messages');
 
-// Route Middleware
 app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);      // Includes search, add-friend, profile, etc.
+app.use('/api/users', userRoutes);
 app.use('/api/messages', messageRoutes);
 
-// Default page (login)
+// Default route
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public/login.html'));
 });
 
-// Socket.IO for real-time chat
-const users = {};
+// =======================
+// 🔌 Socket.IO Logic
+// =======================
+const onlineUsers = {};
 
-io.on('connection', (socket) => {
-  console.log('🟢 A user connected:', socket.id);
+io.on("connection", (socket) => {
+  console.log("🟢 User connected:", socket.id);
 
-  socket.on('user-online', (userId) => {
-    users[userId] = socket.id;
-    io.emit('online-users', Object.keys(users));
+  // Track user by ID
+  socket.on("userOnline", (userId) => {
+    onlineUsers[userId] = socket.id;
+    console.log("📡 Online Users:", onlineUsers);
+    io.emit('online-users', Object.keys(onlineUsers));
   });
 
-  socket.on('send-private-message', ({ senderId, receiverId, message }) => {
-    const receiverSocket = users[receiverId];
-    if (receiverSocket) {
-      io.to(receiverSocket).emit('receive-private-message', {
-        senderId,
-        message,
-        timestamp: new Date()
-      });
+  // Join private chat room
+  socket.on("joinRoom", ({ from, to }) => {
+    const roomId = [from, to].sort().join("-");
+    socket.join(roomId);
+    socket.roomId = roomId;
+    console.log(`👥 ${from} joined room ${roomId}`);
+  });
+
+  // Handle private messaging
+  socket.on("privateMessage", async ({ from, to, message }) => {
+    const roomId = [from, to].sort().join("-");
+    io.to(roomId).emit("privateMessage", { from, message, timestamp: new Date() });
+
+    // Save message to database
+    try {
+      const Chat = require('./models/Chat'); // Ensure this model exists
+      const newMessage = new Chat({ from, to, message });
+      await newMessage.save();
+    } catch (error) {
+      console.error("💾 Error saving chat message:", error.message);
     }
   });
 
-  socket.on('disconnect', () => {
-    for (const userId in users) {
-      if (users[userId] === socket.id) {
-        delete users[userId];
+  // Disconnect logic
+  socket.on("disconnect", () => {
+    for (let userId in onlineUsers) {
+      if (onlineUsers[userId] === socket.id) {
+        delete onlineUsers[userId];
         break;
       }
     }
-    io.emit('online-users', Object.keys(users));
-    console.log('🔴 A user disconnected:', socket.id);
+    io.emit('online-users', Object.keys(onlineUsers));
+    console.log("🔴 User disconnected:", socket.id);
   });
 });
 
-// Start server
+// =======================
+// Start the Server
+// =======================
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
