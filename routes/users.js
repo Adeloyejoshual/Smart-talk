@@ -89,5 +89,31 @@ router.put('/settings/username', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// Update Username
+router.put("/update-username", async (req, res) => {
+  try {
+    const token = req.cookies.token;
+    if (!token) return res.status(401).json({ message: "Unauthorized" });
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const userId = decoded.id;
+
+    const { username } = req.body;
+    if (!username) return res.status(400).json({ message: "Username required" });
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { username },
+      { new: true }
+    );
+
+    res.status(200).json({ message: "Username updated", user });
+  } catch (err) {
+    console.error("Update username error:", err);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+});
+
+module.exports = router;
 
 module.exports = router;
