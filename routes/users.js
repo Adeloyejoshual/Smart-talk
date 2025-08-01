@@ -1,30 +1,31 @@
-const express = require("express");
+// routes/user.js
+const express = require('express');
 const router = express.Router();
-const User = require("../models/User");
+const User = require('../models/User');
 
-// Search users
-router.get("/search", async (req, res) => {
-  const query = req.query.q;
+// Search users by username or email
+router.get('/search', async (req, res) => {
   try {
+    const query = req.query.q;
     const users = await User.find({
       $or: [
-        { username: { $regex: query, $options: "i" } },
-        { email: { $regex: query, $options: "i" } }
+        { username: { $regex: query, $options: 'i' } },
+        { email: { $regex: query, $options: 'i' } }
       ]
-    }).select("-password");
+    });
     res.json(users);
-  } catch (err) {
-    res.status(500).json({ message: "Error searching users." });
+  } catch (error) {
+    res.status(500).json({ message: 'Error searching users' });
   }
 });
 
-// List all users
-router.get("/list", async (req, res) => {
+// Get all users
+router.get('/list', async (req, res) => {
   try {
-    const users = await User.find().select("-password");
+    const users = await User.find();
     res.json(users);
-  } catch (err) {
-    res.status(500).json({ message: "Error fetching users." });
+  } catch (error) {
+    res.status(500).json({ message: 'Error getting users' });
   }
 });
 
