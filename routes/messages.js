@@ -1,23 +1,50 @@
-// routes/messages.js
-const express = require("express");
+const express = require('express');
 const router = express.Router();
-const Message = require("../models/Chat");
+const Chat = require('../models/Chat');
+const User = require('../models/User');
 
-// Get chat messages between two users
-router.get("/:senderId/:receiverId", async (req, res) => {
-  const { senderId, receiverId } = req.params;
-
+// Send a message
+router.post('/send', async (req, res) => {
   try {
-    const messages = await Message.find({
+    const { senderId, receiverId, content } = req.body;
+
+    if (!senderId || !receiverId || !content) {
+      return res.status(400).json({ message: 'Missing fields' });
+    }
+
+    const message = new Chat({
+      sender: senderId,
+      receiver: receiverId,
+      content
+    });
+
+    await message.save();
+
+    res.status(201).json({ message: 'Message sent', data: message });
+  } catch (err) {
+    res.status(500).json({ message: 'Error sending message', error: err.message });
+  }
+});
+
+// Get chat history between two users
+router.get('/history', async (req, res) => {
+  try {
+    const { senderId, receiverId } = req.query;
+
+    if (!senderId || !receiverId) {
+      return res.status(400).json({ message: 'Missing senderId or receiverId' });
+    }
+
+    const messages = await Chat.find({
       $or: [
         { sender: senderId, receiver: receiverId },
-        { sender: receiverId, receiver: senderId },
-      ],
-    }).sort({ createdAt: 1 });
+        { sender: receiverId, receiver: senderId }
+      ]
+    }).sort({ timestamp: 1 }).populate('sender', 'username').populate('receiver', 'username');
 
-    res.json(messages);
-  } catch (error) {
-    res.status(500).json({ error: "Failed to load messages." });
+    res.status(200).json(messages);
+  } catch (err) {
+    res.status(500).json({ message: 'Error fetching history', error: err.message });
   }
 });
 
