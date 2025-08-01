@@ -43,60 +43,59 @@ app.get('/', (req, res) => {
 // 🔌 Socket.IO Logic
 // =======================
 const onlineUsers = {};
+const Chat = require('./models/Chat');
 
-// Get consistent room ID for 2 users
+// Generate consistent room ID
 function getRoomId(user1, user2) {
-  return [user1, user2].sort().join('-');
+  return [user1, user2].sort().join('_'); // shared ID for both users
 }
 
 io.on("connection", (socket) => {
   console.log("🟢 User connected:", socket.id);
 
-  // Track online users
+  // Save user as online
   socket.on("userOnline", (userId) => {
     onlineUsers[userId] = socket.id;
-    console.log("📡 Online Users:", onlineUsers);
     io.emit('online-users', Object.keys(onlineUsers));
+    console.log("📡 Online users:", onlineUsers);
   });
 
   // Join private chat room
-socket.on("joinRoom", ({ from, to }) => {
-  const roomName = [from, to].sort().join("_"); // shared room name for both
-  socket.join(roomName);
-  console.log(`${from} joined room: ${roomName}`);
-});
-
-// Handle private message
-socket.on("privateMessage", async ({ from, to, message }) => {
-  const roomName = [from, to].sort().join("_");
-
-  const newMessage = new Chat({
-    from,
-    to,
-    message,
-    timestamp: new Date(),
+  socket.on("joinRoom", ({ from, to }) => {
+    const roomName = getRoomId(from, to);
+    socket.join(roomName);
+    console.log(`✅ ${from} joined room ${roomName}`);
   });
 
-  await newMessage.save();
+  // Handle private messages
+  socket.on("privateMessage", async ({ from, to, message }) => {
+    const roomName = getRoomId(from, to);
 
-  io.to(roomName).emit("privateMessage", {
-    from,
-    to,
-    message,
-    timestamp: newMessage.timestamp,
-  });
-});
-    // Save message to DB
     try {
-      const Chat = require('./models/Chat');
-      const newMessage = new Chat({ from, to, message });
+      const newMessage = new Chat({
+        from,
+        to,
+        message,
+        timestamp: new Date(),
+      });
+
       await newMessage.save();
+
+      // Send message to both users in the same room
+      io.to(roomName).emit("privateMessage", {
+        from,
+        to,
+        message,
+        timestamp: newMessage.timestamp,
+      });
+
+      console.log(`📨 Message from ${from} to ${to} in room ${roomName}`);
     } catch (error) {
       console.error("💾 Error saving chat message:", error.message);
     }
   });
 
-  // Disconnect
+  // Handle disconnect
   socket.on("disconnect", () => {
     for (let userId in onlineUsers) {
       if (onlineUsers[userId] === socket.id) {
