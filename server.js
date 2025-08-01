@@ -1,96 +1,77 @@
-const express = require('express');
+const express = require("express");
+const mongoose = require("mongoose");
+const cors = require("cors");
+const http = require("http");
+const { Server } = require("socket.io");
+const path = require("path");
+require("dotenv").config();
+
 const app = express();
-const http = require('http').createServer(app);
-const mongoose = require('mongoose');
-const cors = require('cors');
-const path = require('path');
-const dotenv = require('dotenv');
-const io = require('socket.io')(http);
-const authRoutes = require('./routes/auth');
-const userRoutes = require('./routes/user');
-const messageRoutes = require('./routes/messages');
-const User = require('./models/User');
-const Chat = require('./models/Chat');
+const server = http.createServer(app);
+const io = new Server(server);
 
-dotenv.config();
+const User = require("./models/User");
+const Message = require("./models/Message");
 
-// MIDDLEWARE
+// Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
-app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/messages', messageRoutes);
+app.use(express.static(path.join(__dirname, "public")));
 
-// MONGO DB CONNECT
-mongoose.connect(process.env.MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-})
-.then(() => console.log('✅ MongoDB Connected'))
-.catch(err => console.error('MongoDB Error:', err));
+// Routes
+const authRoutes = require("./routes/auth");
+const userRoutes = require("./routes/user");
+const messageRoutes = require("./routes/messages");
 
-// ROUTE: Default to login.html
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public/login.html'));
+app.use("/api/auth", authRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/messages", messageRoutes);
+
+// Default route
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "login.html"));
 });
 
-// SOCKET.IO
-let onlineUsers = {};
+// Socket.IO logic
+io.on("connection", (socket) => {
+  console.log("New client connected");
 
-io.on('connection', (socket) => {
-  console.log('🟢 A user connected:', socket.id);
-
-  socket.on('userOnline', (userId) => {
-    onlineUsers[userId] = socket.id;
-    io.emit('updateOnlineUsers', Object.keys(onlineUsers));
+  socket.on("joinRoom", ({ senderId, receiverId }) => {
+    const roomName = [senderId, receiverId].sort().join("-");
+    socket.join(roomName);
+    socket.room = roomName;
   });
 
-  socket.on('privateMessage', async ({ senderId, receiverId, content }) => {
-    const sender = await User.findById(senderId);
-    const receiver = await User.findById(receiverId);
+  socket.on("message", async (data) => {
+    const { sender, receiver, content, senderName } = data;
+    const newMessage = await Message.create({ sender, receiver, content });
 
-    const newMessage = new Chat({
-      sender: senderId,
-      receiver: receiverId,
+    const fullMessage = {
+      sender,
+      receiver,
       content,
-      timestamp: new Date(),
-    });
-
-    await newMessage.save();
-
-    const messageData = {
-      senderId,
-      receiverId,
-      content,
-      senderName: sender.username,
-      timestamp: newMessage.timestamp,
+      senderName,
     };
 
-    // Send to sender
-    socket.emit('privateMessage', messageData);
-
-    // Send to receiver if online
-    const receiverSocket = onlineUsers[receiverId];
-    if (receiverSocket) {
-      io.to(receiverSocket).emit('privateMessage', messageData);
-    }
+    const roomName = [sender, receiver].sort().join("-");
+    io.to(roomName).emit("message", fullMessage);
   });
 
-  socket.on('disconnect', () => {
-    console.log('🔴 A user disconnected:', socket.id);
-    for (const userId in onlineUsers) {
-      if (onlineUsers[userId] === socket.id) {
-        delete onlineUsers[userId];
-        break;
-      }
-    }
-    io.emit('updateOnlineUsers', Object.keys(onlineUsers));
+  socket.on("typing", ({ senderId, receiverId }) => {
+    const roomName = [senderId, receiverId].sort().join("-");
+    socket.to(roomName).emit("typing", { senderId });
+  });
+
+  socket.on("disconnect", () => {
+    console.log("Client disconnected");
   });
 });
 
-// START SERVER
-const PORT = process.env.PORT || 3000;
-http.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-});
+// MongoDB connect and server start
+const PORT = process.env.PORT || 5000;
+mongoose
+  .connect(process.env.MONGO_URI)
+  .then(() => {
+    server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+  })
+  .catch((err) => console.error("MongoDB connection error:", err));
