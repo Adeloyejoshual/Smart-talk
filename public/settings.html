@@ -1,70 +1,139 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>SmartTalk Settings</title>
   <link rel="stylesheet" href="/styles/global.css" />
-  <style>
-    .settings-section {
-      max-width: 600px;
-      margin: 50px auto;
-      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
-    }
-    .settings-section h2 {
-      margin-top: 0;
-    }
-    .settings-section label {
-      display: block;
-      margin-top: 15px;
-    }
-    .theme-toggle {
-      margin-top: 20px;
-    }
-  </style>
+  <link rel="stylesheet" href="/styles/settings.css" />
 </head>
-<body>
-  <div class="settings-section">
-    <h2>Settings</h2>
-    <label for="username">Edit Username</label>
-    <input type="text" id="username" placeholder="Enter new username" />
+<body class="dark-mode">
 
-    <label for="email">Edit Email</label>
-    <input type="email" id="email" placeholder="Enter new email" />
+  <header class="settings-header">
+    <h1>⚙️ SmartTalk Settings</h1>
+  </header>
 
-    <label for="theme">Theme</label>
-    <select id="theme">
-      <option value="dark">Dark</option>
-      <option value="light">Light</option>
-    </select>
+  <div class="settings-container">
+    <aside class="settings-sidebar">
+      <button onclick="showSection('profile')">Profile</button>
+      <button onclick="showSection('privacy')">Privacy</button>
+      <button onclick="showSection('chat')">Chat</button>
+      <button onclick="showSection('appearance')">Appearance</button>
+      <button onclick="showSection('notifications')">Notifications</button>
+      <button onclick="showSection('devices')">Devices</button>
+      <button onclick="showSection('security')">Security</button>
+      <button onclick="showSection('support')">Support</button>
+      <button onclick="showSection('admin')" id="adminTab" style="display: none;">Admin</button>
+    </aside>
 
-    <button id="saveSettings">Save Changes</button>
+    <main class="settings-content">
+      <section id="profile" class="settings-section">
+        <h2>Profile Settings</h2>
+        <ul>
+          <li>Change username</li>
+          <li>Change email</li>
+          <li>Update profile picture</li>
+          <li>Change password</li>
+          <li>Edit bio or status</li>
+          <li>View account creation date</li>
+        </ul>
+      </section>
+
+      <section id="privacy" class="settings-section">
+        <h2>Privacy Settings</h2>
+        <ul>
+          <li>Block/unblock users</li>
+          <li>Hide online status</li>
+          <li>Enable/disable last seen</li>
+          <li>Manage who can message you</li>
+        </ul>
+      </section>
+
+      <section id="chat" class="settings-section">
+        <h2>Chat Settings</h2>
+        <ul>
+          <li>Enable/disable message sounds</li>
+          <li>Enable/disable typing indicators</li>
+          <li>Auto-delete messages</li>
+          <li>Export chat history</li>
+        </ul>
+      </section>
+
+      <section id="appearance" class="settings-section">
+        <h2>Appearance</h2>
+        <ul>
+          <li>Dark mode / Light mode toggle</li>
+          <li>Font size options</li>
+          <li>Chat bubble colors</li>
+        </ul>
+      </section>
+
+      <section id="notifications" class="settings-section">
+        <h2>Notifications</h2>
+        <ul>
+          <li>Enable/disable push notifications</li>
+          <li>Vibration on message</li>
+          <li>Mute individual conversations</li>
+        </ul>
+      </section>
+
+      <section id="devices" class="settings-section">
+        <h2>Connection & Devices</h2>
+        <ul>
+          <li>View active sessions/devices</li>
+          <li>Log out from other devices</li>
+          <li>Last login info</li>
+        </ul>
+      </section>
+
+      <section id="security" class="settings-section">
+        <h2>Data & Security</h2>
+        <ul>
+          <li>Request data download</li>
+          <li>Delete account permanently</li>
+          <li>2-Factor Authentication</li>
+          <li>IP Address log</li>
+        </ul>
+      </section>
+
+      <section id="support" class="settings-section">
+        <h2>Support</h2>
+        <ul>
+          <li>Contact customer support</li>
+          <li>Report a bug</li>
+          <li>Terms of service & privacy policy</li>
+          <li>FAQ / Help page</li>
+        </ul>
+      </section>
+
+      <section id="admin" class="settings-section">
+        <h2>Admin Controls</h2>
+        <ul>
+          <li>Manage reported users</li>
+          <li>Broadcast message</li>
+          <li>View user analytics</li>
+        </ul>
+      </section>
+    </main>
   </div>
 
   <script>
-    const themeSelect = document.getElementById("theme");
-    const savedTheme = localStorage.getItem("theme") || "dark";
-    document.documentElement.setAttribute("data-theme", savedTheme);
-    themeSelect.value = savedTheme;
+    function showSection(id) {
+      document.querySelectorAll(".settings-section").forEach(section => {
+        section.style.display = "none";
+      });
+      document.getElementById(id).style.display = "block";
+    }
 
-    themeSelect.addEventListener("change", () => {
-      const newTheme = themeSelect.value;
-      document.documentElement.setAttribute("data-theme", newTheme);
-      localStorage.setItem("theme", newTheme);
-    });
+    // Default show Profile
+    showSection("profile");
 
-    document.getElementById("saveSettings").addEventListener("click", () => {
-      const username = document.getElementById("username").value;
-      const email = document.getElementById("email").value;
-      alert(`Changes saved!\nUsername: ${username}\nEmail: ${email}`);
-    });
-
-    // Apply theme when localStorage changes (multi-tab sync)
-    window.addEventListener("storage", () => {
-      const theme = localStorage.getItem("theme") || "dark";
-      document.documentElement.setAttribute("data-theme", theme);
-      themeSelect.value = theme;
-    });
+    // If user is admin, show admin tab
+    const isAdmin = true; // Replace with actual check later
+    if (isAdmin) {
+      document.getElementById("adminTab").style.display = "block";
+    }
   </script>
+
 </body>
 </html>
