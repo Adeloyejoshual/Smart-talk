@@ -1,15 +1,18 @@
 {
   "name": "smarttalk-backend",
   "version": "1.0.0",
-  "description": "SmartTalk chat app backend with real-time messaging and friend features",
+  "description": "SmartTalk chat app backend with real-time messaging, file uploads, and friend features",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js"
   },
-  "keywords": [],
+  "keywords": ["chat", "realtime", "socket.io", "nodejs", "express", "mongodb"],
   "author": "Adeloye Joshua",
   "license": "MIT",
+  "engines": {
+    "node": ">=16.0.0"
+  },
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
@@ -17,6 +20,7 @@
     "express": "^4.18.2",
     "jsonwebtoken": "^9.0.1",
     "mongoose": "^7.6.1",
+    "multer": "^1.4.5-lts.1",
     "socket.io": "^4.7.2"
   },
   "devDependencies": {
