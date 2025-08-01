@@ -3,25 +3,54 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>SmartTalk - Chat</title>
+  <title>SmartTalk Chat</title>
   <link rel="stylesheet" href="/styles/chat.css" />
 </head>
 <body>
   <div class="chat-container">
     <header>
-      <h2>SmartTalk Chat</h2>
-      <a href="/settings.html" class="settings-link">⚙️ Settings</a>
+      <h2 id="chatHeader">Chat</h2>
+      <div class="settings-icon" onclick="window.location.href='/settings.html'">⚙️</div>
     </header>
 
-    <div id="chatMessages" class="messages"></div>
+    <div id="chatBox" class="chat-box"></div>
 
-    <form id="messageForm" class="message-form">
-      <input type="text" id="messageInput" placeholder="Type a message..." required autocomplete="off" />
+    <form id="chatForm" class="chat-form">
+      <input type="text" id="messageInput" placeholder="Type your message..." autocomplete="off" required />
       <button type="submit">Send</button>
     </form>
   </div>
 
+  <script>
+    const socket = io();
+    const params = new URLSearchParams(window.location.search);
+    const from = params.get('from');
+    const to = params.get('to');
+    const senderName = localStorage.getItem('senderName') || 'You';
+
+    socket.emit('joinRoom', { from, to });
+
+    const chatBox = document.getElementById("chatBox");
+    const chatForm = document.getElementById("chatForm");
+    const messageInput = document.getElementById("messageInput");
+
+    socket.on("privateMessage", ({ from: sender, message, timestamp }) => {
+      const msg = document.createElement("div");
+      msg.className = sender === from ? "message self" : "message";
+      msg.innerHTML = `<strong>${sender === from ? senderName : "Friend"}:</strong> ${message}<br><small>${new Date(timestamp).toLocaleTimeString()}</small>`;
+      chatBox.appendChild(msg);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    });
+
+    chatForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const message = messageInput.value;
+      if (!message) return;
+
+      socket.emit("privateMessage", { from, to, message });
+      messageInput.value = "";
+    });
+  </script>
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/scripts/chat.js"></script>
 </body>
 </html>
