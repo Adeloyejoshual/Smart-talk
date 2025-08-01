@@ -1,44 +1,35 @@
 // public/scripts/settings.js
 
-document.addEventListener("DOMContentLoaded", () => {
-  const usernameDisplay = document.getElementById("usernameDisplay");
-  const storedUsername = localStorage.getItem("username");
+async function updateUsername() {
+  const newUsername = document.getElementById("newUsernameInput").value;
+  const statusEl = document.getElementById("usernameStatus");
 
-  if (usernameDisplay && storedUsername) {
-    usernameDisplay.textContent = storedUsername;
-  }
-});
-
-function updateUsername() {
-  const newUsername = document.getElementById("newUsernameInput").value.trim();
-  const userId = localStorage.getItem("userId");
-
-  if (!newUsername || !userId) {
-    alert("Please enter a valid username.");
+  if (!newUsername.trim()) {
+    statusEl.textContent = "Username cannot be empty.";
+    statusEl.style.color = "red";
     return;
   }
 
-  fetch("/api/users/settings/username", {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ userId, newUsername })
-  })
-    .then((res) => res.json())
-    .then((data) => {
-      const status = document.getElementById("usernameStatus");
-      if (data.username) {
-        localStorage.setItem("username", data.username);
-        status.style.color = "green";
-        status.textContent = "Username updated to: " + data.username;
-        document.getElementById("usernameDisplay").textContent = data.username;
-      } else {
-        status.style.color = "red";
-        status.textContent = data.message || "Failed to update username.";
-      }
-    })
-    .catch((error) => {
-      console.error("Error updating username:", error);
+  try {
+    const res = await fetch("/api/users/update-username", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ username: newUsername }),
     });
+
+    const data = await res.json();
+    if (res.ok) {
+      statusEl.textContent = "Username updated successfully!";
+      statusEl.style.color = "green";
+    } else {
+      statusEl.textContent = data.message || "Failed to update username.";
+      statusEl.style.color = "red";
+    }
+  } catch (error) {
+    console.error("Error updating username:", error);
+    statusEl.textContent = "An error occurred.";
+    statusEl.style.color = "red";
+  }
 }
