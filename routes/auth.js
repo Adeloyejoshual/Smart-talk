@@ -1,55 +1,34 @@
 // routes/auth.js
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs');
-const User = require('../models/User');
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const User = require("../models/User");
 
-// Register
-router.post('/register', async (req, res) => {
+const JWT_SECRET = process.env.JWT_SECRET || "supersecretkey123";
+
+router.post("/login", async (req, res) => {
+  const { email, password } = req.body;
   try {
-    const { username, email, password } = req.body;
-
-    const existingUser = await User.findOne({ email });
-    if (existingUser)
-      return res.status(400).json({ message: 'User already exists' });
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const user = new User({
-      username,
-      email,
-      password: hashedPassword,
-    });
-
-    await user.save();
-
-    res.status(201).json({ message: 'User registered successfully' });
-  } catch (err) {
-    res.status(500).json({ message: 'Server error', error: err.message });
-  }
-});
-
-// Login
-router.post('/login', async (req, res) => {
-  try {
-    const { email, password } = req.body;
-
     const user = await User.findOne({ email });
-    if (!user)
-      return res.status(400).json({ message: 'Invalid email or password' });
+    if (!user) return res.status(400).json({ error: "Invalid email or password" });
 
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch)
-      return res.status(400).json({ message: 'Invalid email or password' });
+    if (!isMatch) return res.status(400).json({ error: "Invalid email or password" });
 
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-      expiresIn: '1d',
-    });
+    const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: "1d" });
 
-    res.json({ token, user: { id: user._id, username: user.username, email: user.email } });
+    res
+      .cookie("token", token, {
+        httpOnly: true,
+        sameSite: "Lax", // or "None" if you're using https and cross-domain
+        secure: process.env.NODE_ENV === "production",
+        maxAge: 24 * 60 * 60 * 1000, // 1 day
+      })
+      .json({ success: true, user: { id: user._id, username: user.username } });
+
   } catch (err) {
-    res.status(500).json({ message: 'Server error', error: err.message });
+    res.status(500).json({ error: "Server error" });
   }
 });
 
