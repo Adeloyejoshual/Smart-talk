@@ -18,39 +18,54 @@ function authenticateToken(req, res, next) {
   });
 }
 
-// Get logged in user's info
+// Get current logged-in user's profile
 router.get('/me', authenticateToken, async (req, res) => {
   const user = await User.findById(req.user.id).select('-password');
   if (!user) return res.status(404).json({ message: 'User not found' });
   res.json(user);
 });
 
-// Get friend list with lastSeen
+// Get friends list
 router.get('/friends', authenticateToken, async (req, res) => {
   const user = await User.findById(req.user.id).populate('friends', 'username email online lastSeen');
   if (!user) return res.status(404).json({ message: 'User not found' });
   res.json(user.friends);
 });
 
-// Add friend by username or email
+// Add friend by username, email, or friendId
 router.post('/add-friend', authenticateToken, async (req, res) => {
-  const { identifier } = req.body;
-  const user = await User.findById(req.user.id);
-  const friend = await User.findOne({
-    $or: [{ username: identifier }, { email: identifier }]
-  });
+  const { identifier, friendId } = req.body;
 
-  if (!friend || friend._id.equals(user._id)) {
-    return res.status(400).json({ message: 'Friend not found or invalid' });
+  try {
+    const user = await User.findById(req.user.id);
+    let friend;
+
+    if (friendId) {
+      friend = await User.findById(friendId);
+    } else if (identifier) {
+      friend = await User.findOne({
+        $or: [{ username: identifier }, { email: identifier }]
+      });
+    } else {
+      return res.status(400).json({ message: 'Identifier or friendId required' });
+    }
+
+    if (!friend || friend._id.equals(user._id)) {
+      return res.status(400).json({ message: 'Friend not found or invalid' });
+    }
+
+    if (user.friends.includes(friend._id)) {
+      return res.status(400).json({ message: 'Already friends' });
+    }
+
+    user.friends.push(friend._id);
+    await user.save();
+
+    res.json({ message: 'Friend added successfully' });
+  } catch (err) {
+    console.error('Error adding friend:', err);
+    res.status(500).json({ message: 'Server error' });
   }
-
-  if (user.friends.includes(friend._id)) {
-    return res.status(400).json({ message: 'Already friends' });
-  }
-
-  user.friends.push(friend._id);
-  await user.save();
-  res.json({ message: 'Friend added successfully' });
 });
 
 module.exports = router;
