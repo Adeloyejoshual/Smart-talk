@@ -1,9 +1,9 @@
 const express = require("express");
 const router = express.Router();
-const User = require("../models/User");
 const jwt = require("jsonwebtoken");
+const User = require("../models/User");
 
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret";
 
 // ------------------ AUTH MIDDLEWARE ------------------
 const authMiddleware = (req, res, next) => {
@@ -12,7 +12,7 @@ const authMiddleware = (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    req.userId = decoded.id || decoded.userId; // Allow flexibility in token field name
+    req.userId = decoded.id || decoded.userId;
     next();
   } catch (err) {
     return res.status(403).json({ message: "Invalid token" });
@@ -21,7 +21,7 @@ const authMiddleware = (req, res, next) => {
 
 // ------------------ PROFILE ------------------
 
-// Get current user's profile
+// Get current user profile
 router.get("/me", authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.userId).select("-password");
@@ -49,19 +49,21 @@ router.post("/edit-profile", authMiddleware, async (req, res) => {
 
 // ------------------ FRIENDS ------------------
 
-// Add friend by identifier (email or username)
+// Add friend by email or username
 router.post("/add-friend", authMiddleware, async (req, res) => {
-  const { identifier, friendId } = req.body;
-
   try {
+    const { identifier, friendId } = req.body;
     const user = await User.findById(req.userId);
-    let friend;
 
+    let friend = null;
     if (friendId) {
       friend = await User.findById(friendId);
     } else if (identifier) {
       friend = await User.findOne({
-        $or: [{ username: identifier }, { email: identifier }],
+        $or: [
+          { username: identifier },
+          { email: identifier }
+        ]
       });
     }
 
@@ -76,9 +78,10 @@ router.post("/add-friend", authMiddleware, async (req, res) => {
     user.friends.push(friend._id);
     await user.save();
 
-    res.json({ message: "Friend added successfully", friends: user.friends });
+    res.json({ message: "Friend added", friend });
   } catch (err) {
-    res.status(500).json({ message: "Error adding friend" });
+    console.error("Add friend error:", err);
+    res.status(500).json({ message: "Server error while adding friend" });
   }
 });
 
@@ -86,9 +89,8 @@ router.post("/add-friend", authMiddleware, async (req, res) => {
 router.put("/remove-friend/:id", authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.userId);
-    user.friends = user.friends.filter((id) => id.toString() !== req.params.id);
+    user.friends = user.friends.filter(id => id.toString() !== req.params.id);
     await user.save();
-
     res.json({ message: "Friend removed", friends: user.friends });
   } catch (err) {
     res.status(500).json({ message: "Error removing friend" });
@@ -98,28 +100,18 @@ router.put("/remove-friend/:id", authMiddleware, async (req, res) => {
 // Get friend list
 router.get("/friends", authMiddleware, async (req, res) => {
   try {
-    const user = await User.findById(req.userId).populate("friends", "username email online lastSeen");
+    const user = await User.findById(req.userId).populate("friends", "username email avatar status");
     res.json(user.friends);
   } catch (err) {
-    res.status(500).json({ message: "Failed to load friends list" });
+    res.status(500).json({ message: "Failed to load friends" });
   }
 });
 
 // ------------------ SEARCH ------------------
 
-// Get all users (except self)
-router.get("/list", authMiddleware, async (req, res) => {
-  try {
-    const users = await User.find({ _id: { $ne: req.userId } }).select("username email");
-    res.json(users);
-  } catch (err) {
-    res.status(500).json({ message: "Error fetching users" });
-  }
-});
-
 // Search users
 router.get("/search", authMiddleware, async (req, res) => {
-  const { query } = req.query;
+  const query = req.query.q || req.query.query;
   try {
     const users = await User.find({
       _id: { $ne: req.userId },
@@ -127,29 +119,40 @@ router.get("/search", authMiddleware, async (req, res) => {
         { username: { $regex: query, $options: "i" } },
         { email: { $regex: query, $options: "i" } },
       ],
-    }).select("username email");
+    }).select("username email avatar");
     res.json(users);
   } catch (err) {
     res.status(500).json({ message: "Search failed" });
   }
 });
 
+// Get all users except self
+router.get("/list", authMiddleware, async (req, res) => {
+  try {
+    const users = await User.find({ _id: { $ne: req.userId } }).select("username email avatar");
+    res.json(users);
+  } catch (err) {
+    res.status(500).json({ message: "Error fetching users" });
+  }
+});
+
 // ------------------ SUPPORT ------------------
 
-// Customer service message
+// Customer Service
 router.post("/customer-service", authMiddleware, async (req, res) => {
   const { message } = req.body;
-  if (!message) return res.status(400).json({ message: "Message required" });
+  if (!message) return res.status(400).json({ message: "Message is required" });
 
-  console.log(`Customer Service from ${req.userId}:`, message);
-  res.json({ message: "Received" });
+  console.log(`Customer Service from ${req.userId}: ${message}`);
+  res.json({ message: "Message received" });
 });
 
 // Contact form
 router.post("/contact", authMiddleware, async (req, res) => {
   const { subject, message } = req.body;
-  if (!subject || !message)
+  if (!subject || !message) {
     return res.status(400).json({ message: "Subject and message required" });
+  }
 
   console.log(`Contact from ${req.userId} - ${subject}: ${message}`);
   res.json({ message: "Contact received" });
