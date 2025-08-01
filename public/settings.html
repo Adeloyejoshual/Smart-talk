@@ -1,103 +1,49 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Settings - SmartTalk</title>
-  <link rel="stylesheet" href="/styles/home.css">
   <link rel="stylesheet" href="/styles/settings.css">
 </head>
 <body>
-  <header class="header">
-    <div class="back-button">
-      <a href="/home.html" title="Go back home">⬅️ Home</a>
-    </div>
-    <h2>⚙️ Settings</h2>
-  </header>
+  <div class="settings-container">
+    <h2>Update Your Profile</h2>
+    <form id="settingsForm">
+      <label for="displayName">Display Name</label>
+      <input type="text" id="displayName" name="displayName" placeholder="Enter your name" required />
 
-  <main class="settings-container">
-    <ul class="settings-list">
-      <li><a href="/profile.html">👤 Edit Profile</a></li>
-      <li><a href="/support.html">💬 Customer Service</a></li>
-      <li><a href="mailto:smarttalkgit@gmail.com">📧 Contact</a></li>
-      <li>
-        <label class="dark-toggle">
-          <span>🌓 Dark Mode</span>
-          <input type="checkbox" id="darkToggle" checked />
-        </label>
-      </li>
-    </ul>
-  </main>
+      <button type="submit">Save</button>
+    </form>
+    <p id="statusMsg"></p>
+    <a href="/chat.html">← Back to Chat</a>
+  </div>
 
   <script>
-    // Theme toggle logic
-    const toggle = document.getElementById('darkToggle');
-    toggle.addEventListener('change', () => {
-      const root = document.documentElement;
-      if (toggle.checked) {
-        root.setAttribute('data-theme', 'dark');
-        localStorage.setItem('theme', 'dark');
-      } else {
-        root.setAttribute('data-theme', 'light');
-        localStorage.setItem('theme', 'light');
-      }
-    });
+    document.addEventListener('DOMContentLoaded', () => {
+      const displayNameInput = document.getElementById('displayName');
+      const statusMsg = document.getElementById('statusMsg');
 
-    // Load theme on page load
-    window.addEventListener('DOMContentLoaded', () => {
-      const savedTheme = localStorage.getItem('theme');
-      if (savedTheme) {
-        document.documentElement.setAttribute('data-theme', savedTheme);
-        document.getElementById('darkToggle').checked = savedTheme === 'dark';
+      // Load saved name
+      const savedName = localStorage.getItem('displayName');
+      if (savedName) {
+        displayNameInput.value = savedName;
       }
+
+      document.getElementById('settingsForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const name = displayNameInput.value.trim();
+
+        if (name) {
+          localStorage.setItem('displayName', name);
+          statusMsg.textContent = '✅ Name saved!';
+          statusMsg.style.color = 'green';
+        } else {
+          statusMsg.textContent = '❌ Name cannot be empty';
+          statusMsg.style.color = 'red';
+        }
+      });
     });
   </script>
-
-  <style>
-    .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 1rem;
-      background: var(--primary-bg, #222);
-      color: var(--text-color, #fff);
-      border-bottom: 1px solid #444;
-    }
-
-    .back-button a {
-      color: inherit;
-      text-decoration: none;
-      font-weight: bold;
-      font-size: 1rem;
-    }
-
-    .settings-container {
-      padding: 1.5rem;
-    }
-
-    .settings-list {
-      list-style: none;
-      padding: 0;
-    }
-
-    .settings-list li {
-      margin: 1rem 0;
-    }
-
-    .settings-list a {
-      color: var(--link-color, #0af);
-      text-decoration: none;
-      font-size: 1.1rem;
-    }
-
-    .dark-toggle {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 1.1rem;
-    }
-  </style>
-<link rel="stylesheet" href="/styles/global.css" />
-<script src="/scripts/theme.js" defer></script>
 </body>
 </html>
