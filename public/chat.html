@@ -107,20 +107,18 @@
   </style>
 </head>
 <body>
-  <div id="chatContainer">
-    <header>
-      <h2 id="chatWith">Chat with <span id="receiverNameSpan"></span></h2>
-      <button id="logoutBtn">Logout</button>
-    </header>
+  <header>
+    <h2 id="chatWith">Chat with <span id="chatUserName">...</span></h2>
+    <button id="logoutBtn">Logout</button>
+  </header>
 
-    <div id="messagesContainer"></div>
-    <div id="typingStatus"></div>
+  <div id="messagesContainer"></div>
+  <div id="typingStatus"></div>
 
-    <form id="messageForm">
-      <input type="text" id="messageInput" placeholder="Type a message..." autocomplete="off" required />
-      <button type="submit">Send</button>
-    </form>
-  </div>
+  <form id="messageForm" autocomplete="off">
+    <input type="text" id="messageInput" placeholder="Type a message..." required />
+    <button type="submit">Send</button>
+  </form>
 
   <script>
     const socket = io();
@@ -135,81 +133,97 @@
     const typingStatus = document.getElementById("typingStatus");
     const messageForm = document.getElementById("messageForm");
     const messageInput = document.getElementById("messageInput");
-    const receiverNameSpan = document.getElementById("receiverNameSpan");
+    const chatUserName = document.getElementById("chatUserName");
 
     if (!senderId || !receiverId || !token) {
       window.location.href = "/login.html";
     }
 
-    receiverNameSpan.textContent = receiverName;
+    chatUserName.textContent = receiverName;
 
-    // Join socket room
-    socket.emit("joinRoom", { senderId, receiverId });
+    const roomId = [senderId, receiverId].sort().join("_");
+    socket.emit("joinPrivateRoom", { roomId });
 
-    // Load message history
+    // Load previous messages
     window.addEventListener("DOMContentLoaded", async () => {
       try {
         const res = await fetch(`/api/messages/${senderId}/${receiverId}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         const data = await res.json();
-        data.forEach(({ sender, message }) => {
-          const div = document.createElement("div");
-          div.classList.add("message");
-          div.classList.add(sender === senderId ? "my-message" : "their-message");
-          div.textContent = message;
-          messagesContainer.appendChild(div);
+        data.forEach(({ sender, content }) => {
+          appendMessage(content, sender === senderId ? "my-message" : "their-message");
         });
-        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        scrollToBottom();
       } catch (err) {
         console.error("History fetch failed:", err);
       }
     });
 
-    // Incoming message
-    socket.on("message", ({ message, sender }) => {
-      const msgDiv = document.createElement("div");
-      msgDiv.classList.add("message");
-      msgDiv.classList.add(sender === senderId ? "my-message" : "their-message");
-      msgDiv.textContent = message;
-      messagesContainer.appendChild(msgDiv);
-      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    // Receive real-time message
+    socket.on("privateMessage", ({ content, senderId: incomingId }) => {
+      const msgClass = incomingId === senderId ? "my-message" : "their-message";
+      appendMessage(content, msgClass);
+      scrollToBottom();
     });
 
-    // Typing event
-    socket.on("typing", ({ sender }) => {
-      if (sender !== senderId) {
-        typingStatus.textContent = `${receiverName} is typing...`;
-        setTimeout(() => {
-          typingStatus.textContent = "";
-        }, 1500);
+    // Typing status
+    socket.on("typing", ({ senderName: typingUser }) => {
+      if (typingUser !== senderName) {
+        typingStatus.innerText = `${typingUser} is typing...`;
+        setTimeout(() => typingStatus.innerText = '', 1500);
       }
     });
 
-    // Emit typing
     messageInput.addEventListener("input", () => {
-      socket.emit("typing", { sender: senderId, receiver: receiverId });
+      socket.emit("typing", { roomId, senderName });
     });
 
     // Send message
-    messageForm.addEventListener("submit", (e) => {
+    messageForm.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const message = messageInput.value.trim();
-      if (!message) return;
+      const content = messageInput.value.trim();
+      if (!content) return;
 
-      socket.emit("message", {
-        sender: senderId,
-        receiver: receiverId,
-        message,
-      });
+      socket.emit("privateMessage", { roomId, senderId, receiverId, content });
 
+      try {
+        await fetch("/api/messages/send", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ senderId, receiverId, content }),
+        });
+      } catch (err) {
+        console.error("DB save failed:", err);
+      }
+
+      appendMessage(content, "my-message");
       messageInput.value = "";
+      scrollToBottom();
     });
 
     // Logout
     document.getElementById("logoutBtn").addEventListener("click", () => {
       localStorage.clear();
       window.location.href = "/login.html";
+    });
+
+    function appendMessage(content, className) {
+      const div = document.createElement("div");
+      div.className = `message ${className}`;
+      div.textContent = content;
+      messagesContainer.appendChild(div);
+    }
+
+    function scrollToBottom() {
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+
+    window.addEventListener("beforeunload", () => {
+      socket.disconnect();
     });
   </script>
 </body>
