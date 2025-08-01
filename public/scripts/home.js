@@ -1,111 +1,105 @@
-document.addEventListener("DOMContentLoaded", async () => {
+document.addEventListener("DOMContentLoaded", () => {
   const usernameDisplay = document.getElementById("usernameDisplay");
   const userList = document.getElementById("userList");
-  const addFriendBtn = document.getElementById("addFriendBtn");
+  const searchBar = document.getElementById("searchBar");
+  const addUserBtn = document.getElementById("addUserBtn");
   const addUserModal = document.getElementById("addUserModal");
-  const addUserInput = document.getElementById("addUserInput");
-  const addUserConfirm = document.getElementById("addUserConfirm");
-  const addUserCancel = document.getElementById("addUserCancel");
+  const addFriendBtn = document.getElementById("addFriendBtn");
+  const cancelAdd = document.getElementById("cancelAdd");
+  const friendIdentifierInput = document.getElementById("friendIdentifierInput");
   const settingsBtn = document.getElementById("settingsBtn");
-  const settingsMenu = document.getElementById("settingsMenu");
+  const settingsPanel = document.getElementById("settingsPanel");
+  const closeSettings = document.getElementById("closeSettings");
 
-  const token = localStorage.getItem("token");
+  const username = localStorage.getItem("username");
   const userId = localStorage.getItem("userId");
 
-  if (!token || !userId) {
-    return (window.location.href = "/login.html");
+  if (usernameDisplay && username) {
+    usernameDisplay.textContent = `Welcome, ${username}`;
   }
 
-  // Display username
-  try {
-    const res = await fetch(`/api/users/${userId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+  // Fetch users
+  async function fetchUsers() {
+    const res = await fetch("/api/users/list");
     const data = await res.json();
-    if (data.username) {
-      usernameDisplay.textContent = data.username;
-    }
-  } catch (err) {
-    console.error("Failed to fetch user info", err);
-  }
+    userList.innerHTML = "";
 
-  // Load friends list
-  async function loadFriends() {
-    try {
-      const res = await fetch(`/api/users/friends/${userId}`);
-      const data = await res.json();
-      userList.innerHTML = "";
-      data.friends.forEach((friend) => {
-        const li = document.createElement("li");
-        li.textContent = friend.username;
-        li.className = "friend-item";
-        li.addEventListener("click", () => {
-          window.location.href = `/chat.html?user=${friend._id}`;
+    data.forEach((user) => {
+      if (user._id !== userId) {
+        const card = document.createElement("div");
+        card.className = "user-card";
+        card.textContent = user.username;
+        card.addEventListener("click", () => {
+          window.location.href = `/chat.html?userId=${user._id}&username=${user.username}`;
         });
-        userList.appendChild(li);
-      });
-    } catch (err) {
-      console.error("Error loading friends", err);
-    }
+        userList.appendChild(card);
+      }
+    });
   }
 
-  loadFriends();
+  fetchUsers();
 
-  // Open modal to add friend
-  addFriendBtn.addEventListener("click", () => {
+  // Search functionality
+  searchBar.addEventListener("input", async () => {
+    const query = searchBar.value.trim();
+    const res = await fetch(`/api/users/search?query=${query}`);
+    const data = await res.json();
+
+    userList.innerHTML = "";
+
+    data.forEach((user) => {
+      if (user._id !== userId) {
+        const card = document.createElement("div");
+        card.className = "user-card";
+        card.textContent = user.username;
+        card.addEventListener("click", () => {
+          window.location.href = `/chat.html?userId=${user._id}&username=${user.username}`;
+        });
+        userList.appendChild(card);
+      }
+    });
+  });
+
+  // Show Add Friend modal
+  addUserBtn.addEventListener("click", () => {
     addUserModal.style.display = "flex";
   });
 
-  addUserCancel.addEventListener("click", () => {
+  // Hide Add Friend modal
+  cancelAdd.addEventListener("click", () => {
     addUserModal.style.display = "none";
-    addUserInput.value = "";
+    friendIdentifierInput.value = "";
   });
 
-  // Confirm adding friend
-  addUserConfirm.addEventListener("click", async () => {
-    const friendIdentifier = addUserInput.value.trim();
-    if (!friendIdentifier) return alert("Please enter a username or email.");
+  // Submit Add Friend
+  addFriendBtn.addEventListener("click", async () => {
+    const friendIdentifier = friendIdentifierInput.value.trim();
+    if (!friendIdentifier || !userId) {
+      return alert("Enter a username or email.");
+    }
 
-    try {
-      const res = await fetch("/api/users/add-friend", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ userId, friendIdentifier }),
-      });
+    const res = await fetch("/api/users/add-friend", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, friendIdentifier })
+    });
 
-      const data = await res.json();
-
-      if (res.ok) {
-        alert(data.message || "Friend added!");
-        addUserModal.style.display = "none";
-        addUserInput.value = "";
-        loadFriends(); // Refresh friend list
-      } else {
-        alert(data.message || "Failed to add friend");
-      }
-    } catch (err) {
-      console.error("Error adding friend", err);
-      alert("Something went wrong");
+    const data = await res.json();
+    if (res.ok) {
+      alert(data.message);
+      addUserModal.style.display = "none";
+      friendIdentifierInput.value = "";
+    } else {
+      alert(data.message || "Failed to add friend");
     }
   });
 
   // Settings toggle
   settingsBtn.addEventListener("click", () => {
-    settingsMenu.style.display =
-      settingsMenu.style.display === "flex" ? "none" : "flex";
+    settingsPanel.style.display = "block";
   });
 
-  // Close settings on click outside
-  document.addEventListener("click", (e) => {
-    if (
-      !settingsMenu.contains(e.target) &&
-      e.target !== settingsBtn &&
-      e.target.closest("#settingsBtn") == null
-    ) {
-      settingsMenu.style.display = "none";
-    }
+  closeSettings.addEventListener("click", () => {
+    settingsPanel.style.display = "none";
   });
 });
