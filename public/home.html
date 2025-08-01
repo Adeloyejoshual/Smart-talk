@@ -22,18 +22,16 @@
     </section>
   </main>
 
-  <!-- Floating Add Button -->
-  <button id="addUserBtn" class="floating-add-btn">+</button>
+  <!-- Floating Add Friend Button -->
+  <button id="addUserBtn" class="floating-button">+</button>
 
   <!-- Add Friend Modal -->
   <div id="addUserModal" class="modal hidden">
     <div class="modal-content">
+      <span class="close" id="closeModal">&times;</span>
       <h2>Add New Friend</h2>
-      <input type="text" id="friendInput" placeholder="Enter email or username" />
-      <div class="modal-actions">
-        <button id="add">Add</button>
-        <button id="cancel">Cancel</button>
-      </div>
+      <input type="text" id="newFriendEmail" placeholder="Enter user's email or username">
+      <button id="addFriendButton">Add Friend</button>
     </div>
   </div>
 
