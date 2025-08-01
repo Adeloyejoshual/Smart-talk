@@ -1,32 +1,46 @@
-// routes/upload.js
-const express = require("express");
-const multer = require("multer");
-const path = require("path");
-const fs = require("fs");
-
+const express = require('express');
 const router = express.Router();
+const multer = require('multer');
+const path = require('path');
+const Chat = require('../models/Chat');
+const authMiddleware = require('../middleware/authMiddleware');
+const fs = require('fs');
 
-const uploadFolder = path.join(__dirname, "../public/uploads");
+// Ensure uploads folder exists
+const uploadFolder = path.join(__dirname, '../public/uploads');
 if (!fs.existsSync(uploadFolder)) {
-  fs.mkdirSync(uploadFolder);
+  fs.mkdirSync(uploadFolder, { recursive: true });
 }
 
+// Configure multer storage
 const storage = multer.diskStorage({
-  destination: uploadFolder,
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + "-" + file.originalname);
+  destination: function(req, file, cb) {
+    cb(null, uploadFolder);
+  },
+  filename: function(req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
   }
 });
-
 const upload = multer({ storage });
 
-router.post("/", upload.single("file"), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+// Upload file route with auth
+router.post('/file', authMiddleware, upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
 
-  const fileUrl = `/uploads/${req.file.filename}`;
-  const fileType = req.file.mimetype;
+  try {
+    const newMessage = new Chat({
+      sender: req.userId,
+      receiver: req.body.receiverId,
+      fileUrl: `/uploads/${req.file.filename}`,
+      content: '', // no text content since it's a file message
+    });
 
-  res.status(200).json({ fileUrl, fileType });
+    await newMessage.save();
+    res.status(201).json({ message: 'File uploaded', data: newMessage });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to save file message', error: err.message });
+  }
 });
 
 module.exports = router;
