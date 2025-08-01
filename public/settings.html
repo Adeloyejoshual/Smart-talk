@@ -4,163 +4,42 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>SmartTalk Settings</title>
-  <link rel="stylesheet" href="/styles/global.css" />
   <link rel="stylesheet" href="/styles/settings.css" />
 </head>
-<body class="dark-mode">
+<body>
+  <div class="settings-container">
+    <h2>Settings</h2>
 
-  <header class="settings-header">
-    <h1>⚙️ SmartTalk Settings</h1>
-  </header>
+    <div class="settings-section">
+      <h3>Edit Profile</h3>
+      <form id="editProfileForm">
+        <input type="text" id="editUsername" placeholder="New Username" required />
+        <input type="email" id="editEmail" placeholder="New Email" required />
+        <button type="submit">Update Profile</button>
+      </form>
+    </div>
 
-<!-- Change Email -->
-<div class="setting-group">
-  <h3>Change Email</h3>
-  <input type="email" id="newEmailInput" placeholder="Enter new email" />
-  <button onclick="updateEmail()">Update Email</button>
-  <p id="emailStatus" style="color: green;"></p>
-</div>
+    <div class="settings-section">
+      <h3>Customer Service</h3>
+      <div id="customerServiceInfo">
+        <p>Loading support details...</p>
+      </div>
+    </div>
 
-<!-- Change Password -->
-<div class="setting-group">
-  <h3>Change Password</h3>
-  <input type="password" id="currentPassword" placeholder="Current password" />
-  <input type="password" id="newPassword" placeholder="New password" />
-  <button onclick="updatePassword()">Update Password</button>
-  <p id="passwordStatus" style="color: green;"></p>
-</div>
+    <div class="settings-section">
+      <h3>Contact Us</h3>
+      <form id="contactForm">
+        <input type="email" id="contactEmail" placeholder="Your Email" required />
+        <textarea id="contactMessage" rows="4" placeholder="Your Message" required></textarea>
+        <button type="submit">Send Message</button>
+      </form>
+    </div>
 
-  <div class="setting-group">
-  <h3>Change Username</h3>
-  <input type="text" id="newUsernameInput" placeholder="Enter new username" />
-  <button onclick="updateUsername()">Update Username</button>
-  <p id="usernameStatus" style="color: green;"></p>
-</div>
-    <aside class="settings-sidebar">
-      <button onclick="showSection('profile')">Profile</button>
-      <button onclick="showSection('privacy')">Privacy</button>
-      <button onclick="showSection('chat')">Chat</button>
-      <button onclick="showSection('appearance')">Appearance</button>
-      <button onclick="showSection('notifications')">Notifications</button>
-      <button onclick="showSection('devices')">Devices</button>
-      <button onclick="showSection('security')">Security</button>
-      <button onclick="showSection('support')">Support</button>
-      <button onclick="showSection('admin')" id="adminTab" style="display: none;">Admin</button>
-    </aside>
-
-    <div class="setting-group">
-  <h3>Change Username</h3>
-  <input type="text" id="newUsernameInput" placeholder="Enter new username" />
-  <button onclick="updateUsername()">Update Username</button>
-  <p id="usernameStatus" style="color: green;"></p>
-</div>
-      <section id="profile" class="settings-section">
-        <h2>Profile Settings</h2>
-        <ul>
-          <li>Change username</li>
-          <li>Change email</li>
-          <li>Update profile picture</li>
-          <li>Change password</li>
-          <li>Edit bio or status</li>
-          <li>View account creation date</li>
-        </ul>
-      </section>
-
-      <section id="privacy" class="settings-section">
-        <h2>Privacy Settings</h2>
-        <ul>
-          <li>Block/unblock users</li>
-          <li>Hide online status</li>
-          <li>Enable/disable last seen</li>
-          <li>Manage who can message you</li>
-        </ul>
-      </section>
-
-      <section id="chat" class="settings-section">
-        <h2>Chat Settings</h2>
-        <ul>
-          <li>Enable/disable message sounds</li>
-          <li>Enable/disable typing indicators</li>
-          <li>Auto-delete messages</li>
-          <li>Export chat history</li>
-        </ul>
-      </section>
-
-      <section id="appearance" class="settings-section">
-        <h2>Appearance</h2>
-        <ul>
-          <li>Dark mode / Light mode toggle</li>
-          <li>Font size options</li>
-          <li>Chat bubble colors</li>
-        </ul>
-      </section>
-
-      <section id="notifications" class="settings-section">
-        <h2>Notifications</h2>
-        <ul>
-          <li>Enable/disable push notifications</li>
-          <li>Vibration on message</li>
-          <li>Mute individual conversations</li>
-        </ul>
-      </section>
-
-      <section id="devices" class="settings-section">
-        <h2>Connection & Devices</h2>
-        <ul>
-          <li>View active sessions/devices</li>
-          <li>Log out from other devices</li>
-          <li>Last login info</li>
-        </ul>
-      </section>
-
-      <section id="security" class="settings-section">
-        <h2>Data & Security</h2>
-        <ul>
-          <li>Request data download</li>
-          <li>Delete account permanently</li>
-          <li>2-Factor Authentication</li>
-          <li>IP Address log</li>
-        </ul>
-      </section>
-
-      <section id="support" class="settings-section">
-        <h2>Support</h2>
-        <ul>
-          <li>Contact customer support</li>
-          <li>Report a bug</li>
-          <li>Terms of service & privacy policy</li>
-          <li>FAQ / Help page</li>
-        </ul>
-      </section>
-
-      <section id="admin" class="settings-section">
-        <h2>Admin Controls</h2>
-        <ul>
-          <li>Manage reported users</li>
-          <li>Broadcast message</li>
-          <li>View user analytics</li>
-        </ul>
-      </section>
-    </main>
+    <div class="settings-section">
+      <button onclick="window.location.href='/home.html'">Back to Home</button>
+    </div>
   </div>
 
-  <script>
-    function showSection(id) {
-      document.querySelectorAll(".settings-section").forEach(section => {
-        section.style.display = "none";
-      });
-      document.getElementById(id).style.display = "block";
-    }
-
-    // Default show Profile
-    showSection("profile");
-
-    // If user is admin, show admin tab
-    const isAdmin = true; // Replace with actual check later
-    if (isAdmin) {
-      document.getElementById("adminTab").style.display = "block";
-    }
-  </script>
-
+  <script src="/scripts/settings.js"></script>
 </body>
 </html>
