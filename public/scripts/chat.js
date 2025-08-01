@@ -1,15 +1,16 @@
-document.addEventListener('DOMContentLoaded', () => {
-  const socket = io();
-  const messageForm = document.getElementById('messageForm');
-  const messageInput = document.getElementById('messageInput');
-  const messagesContainer = document.getElementById('messages');
-  const chatTitle = document.getElementById('chatTitle');
+const token = localStorage.getItem("token");
+const userId = localStorage.getItem("userId");
+const username = localStorage.getItem("username");
 
-  const currentUser = JSON.parse(localStorage.getItem('currentUser'));
-  const receiverId = localStorage.getItem('chatWithUserId');
-  const receiverName = localStorage.getItem('chatWithUsername');
+if (!token) {
+  window.location.href = "/login.html";
+}
 
-  chatTitle.innerText = `Chat with ${receiverName}`;
+// Connect to Socket.IO with userId
+const socket = io({ query: { userId, username } });
+
+// Example: Set your own name in the UI
+document.getElementById("myName").textContent = username;
 
   // Load chat history
   async function loadChat() {
