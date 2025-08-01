@@ -15,15 +15,26 @@ const messageSchema = new mongoose.Schema(
     },
     content: {
       type: String,
-      required: true,
+      required: function () {
+        return this.type === 'text';
+      },
+    },
+    type: {
+      type: String,
+      enum: ['text', 'image', 'file'],
+      default: 'text',
+    },
+    attachmentUrl: {
+      type: String,
+      default: '', // URL to file or image if type is image/file
     },
     read: {
       type: Boolean,
       default: false,
-    }
+    },
   },
   {
-    timestamps: true, // Adds createdAt and updatedAt automatically
+    timestamps: true, // adds createdAt and updatedAt
   }
 );
 
