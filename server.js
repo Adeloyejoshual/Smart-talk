@@ -1,4 +1,3 @@
-// server.js
 const express = require("express");
 const http = require("http");
 const cors = require("cors");
@@ -39,9 +38,13 @@ mongoose.connect(process.env.MONGO_URI, {
 .catch((err) => console.error("❌ MongoDB connection error:", err));
 
 // Routes
-app.use("/api/auth", require("./routes/auth"));
-app.use("/api/users", require("./routes/user"));
-app.use("/api/messages", require("./routes/messages"));
+const authRoutes = require("./routes/auth");
+const userRoutes = require("./routes/user");
+const messageRoutes = require("./routes/messages");
+
+app.use("/api/auth", authRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/messages", messageRoutes);
 
 // Serve static pages
 app.get("/", (req, res) => {
@@ -84,16 +87,14 @@ io.on("connection", (socket) => {
   const userId = socket.userId;
   console.log(`🟢 User connected: ${userId}`);
 
-  // Add user to onlineUsers map
+  // Track online user
   onlineUsers.set(userId, socket.id);
 
-  // Set user online in DB
+  // Update DB
   User.findByIdAndUpdate(userId, { online: true }, { new: true }).exec();
-
-  // Broadcast updated list of online users
   io.emit("update-online-users", Array.from(onlineUsers.keys()));
 
-  // Private messaging
+  // Handle messages
   socket.on("private-message", async ({ senderId, receiverId, message }) => {
     const receiverSocket = onlineUsers.get(receiverId);
 
@@ -129,13 +130,12 @@ io.on("connection", (socket) => {
     }
   });
 
-  // On disconnect
+  // Handle disconnect
   socket.on("disconnect", async () => {
     console.log(`🔴 User disconnected: ${userId}`);
     onlineUsers.delete(userId);
     io.emit("update-online-users", Array.from(onlineUsers.keys()));
 
-    // Update user status in DB
     await User.findByIdAndUpdate(userId, {
       online: false,
       lastSeen: new Date()
