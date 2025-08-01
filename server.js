@@ -1,102 +1,73 @@
-// server.js
-const express = require('express');
-const http = require('http');
-const cors = require('cors');
-const mongoose = require('mongoose');
-const socketIo = require('socket.io');
-const dotenv = require('dotenv');
-const path = require('path');
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SmartTalk - Chat</title>
+  <link rel="stylesheet" href="/styles/chat.css">
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+  <header>
+    <button id="backBtn">⬅ Back</button>
+    <h2 id="chatWith">Chat</h2>
+  </header>
 
-dotenv.config();
+  <main id="chatBox">
+    <ul id="messages"></ul>
+  </main>
 
-const app = express();
-const server = http.createServer(app);
-const io = socketIo(server, {
-  cors: {
-    origin: '*',
-    methods: ['GET', 'POST']
-  }
-});
+  <form id="chatForm">
+    <input type="text" id="messageInput" autocomplete="off" placeholder="Type a message..." required />
+    <button type="submit">➤</button>
+  </form>
 
-app.use(cors());
-app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+  <script>
+    const socket = io();
+    const messages = document.getElementById('messages');
+    const chatForm = document.getElementById('chatForm');
+    const messageInput = document.getElementById('messageInput');
+    const chatWith = document.getElementById('chatWith');
+    const backBtn = document.getElementById('backBtn');
 
-// MongoDB Connection
-mongoose.connect(process.env.MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-})
-.then(() => console.log('✅ MongoDB connected'))
-.catch(err => console.error('❌ MongoDB connection error:', err));
+    const urlParams = new URLSearchParams(window.location.search);
+    const to = urlParams.get('to');
+    const toName = urlParams.get('name');
+    const from = localStorage.getItem('userId');
 
-// Routes
-const authRoutes = require('./routes/auth');
-const userRoutes = require('./routes/users');
-const messageRoutes = require('./routes/messages');
-
-app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/messages', messageRoutes);
-
-// Default route
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public/login.html'));
-});
-
-// =======================
-// 🔌 Socket.IO Logic
-// =======================
-const onlineUsers = {};
-
-io.on("connection", (socket) => {
-  console.log("🟢 User connected:", socket.id);
-
-  // Track user by ID
-  socket.on("userOnline", (userId) => {
-    onlineUsers[userId] = socket.id;
-    console.log("📡 Online Users:", onlineUsers);
-    io.emit('online-users', Object.keys(onlineUsers));
-  });
-
-  // Join private chat room
-  socket.on("joinRoom", ({ from, to }) => {
-    const roomId = [from, to].sort().join("-");
-    socket.join(roomId);
-    socket.roomId = roomId;
-    console.log(`👥 ${from} joined room ${roomId}`);
-  });
-
-  // Handle private messaging
-  socket.on("privateMessage", async ({ from, to, message }) => {
-    const roomId = [from, to].sort().join("-");
-    io.to(roomId).emit("privateMessage", { from, message, timestamp: new Date() });
-
-    // Save message to database
-    try {
-      const Chat = require('./models/Chat'); // Ensure this model exists
-      const newMessage = new Chat({ from, to, message });
-      await newMessage.save();
-    } catch (error) {
-      console.error("💾 Error saving chat message:", error.message);
+    // Redirect to login if not authenticated
+    if (!from) {
+      window.location.href = '/login.html';
     }
-  });
 
-  // Disconnect logic
-  socket.on("disconnect", () => {
-    for (let userId in onlineUsers) {
-      if (onlineUsers[userId] === socket.id) {
-        delete onlineUsers[userId];
-        break;
-      }
-    }
-    io.emit('online-users', Object.keys(onlineUsers));
-    console.log("🔴 User disconnected:", socket.id);
-  });
-});
+    // Show username or fallback
+    chatWith.textContent = 'Chat with ' + (toName || 'User');
 
-// =======================
-// Start the Server
-// =======================
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+    // Back button
+    backBtn.onclick = () => {
+      window.location.href = '/home.html';
+    };
+
+    // Join room for private chat
+    socket.emit('joinRoom', { from, to });
+
+    // Listen for incoming messages
+    socket.on('privateMessage', ({ from: senderId, message }) => {
+      const li = document.createElement('li');
+      li.textContent = senderId === from ? `You: ${message}` : `${toName || 'User'}: ${message}`;
+      li.className = senderId === from ? 'sent' : 'received';
+      messages.appendChild(li);
+      messages.scrollTop = messages.scrollHeight;
+    });
+
+    // Send message
+    chatForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const msg = messageInput.value.trim();
+      if (!msg) return;
+      socket.emit('privateMessage', { from, to, message: msg });
+      messageInput.value = '';
+    });
+  </script>
+</body>
+</html>
