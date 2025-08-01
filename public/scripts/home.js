@@ -1,96 +1,50 @@
-// Connect to socket.io globally
-const socket = io();
+const addFriendBtn = document.getElementById("addFriendBtn");
+const addUserModal = document.getElementById("addUserModal");
+const confirmAddFriend = document.getElementById("confirmAddFriend");
+const cancelAddFriend = document.getElementById("cancelAddFriend");
+const friendInput = document.getElementById("friendInput");
 
-// Disconnect socket on page unload to trigger lastSeen update
-window.addEventListener("beforeunload", () => {
-  socket.disconnect();
+// Show modal
+addFriendBtn.addEventListener("click", () => {
+  addUserModal.classList.remove("hidden");
+  friendInput.value = "";
 });
 
-document.addEventListener("DOMContentLoaded", () => {
-  const userDisplay = document.getElementById("welcomeUser");
-  const userList = document.getElementById("userList");
-  const themeToggle = document.getElementById("themeToggle");
-  const settingsModal = document.getElementById("settingsModal");
-  const addUserModal = document.getElementById("addUserModal");
+// Cancel modal
+cancelAddFriend.addEventListener("click", () => {
+  addUserModal.classList.add("hidden");
+});
 
-  // Load theme from localStorage
-  if (localStorage.getItem("theme") === "light") {
-    document.documentElement.setAttribute("data-theme", "light");
-    themeToggle.textContent = "☀️";
+// Add friend logic
+confirmAddFriend.addEventListener("click", async () => {
+  const friendIdentifier = friendInput.value.trim();
+  const token = localStorage.getItem("token");
+
+  if (!friendIdentifier || !token) {
+    alert("Please enter a valid friend and make sure you're logged in.");
+    return;
   }
 
-  themeToggle.addEventListener("click", () => {
-    const isDark = document.documentElement.getAttribute("data-theme") === "dark";
-    document.documentElement.setAttribute("data-theme", isDark ? "light" : "dark");
-    themeToggle.textContent = isDark ? "☀️" : "🌙";
-    localStorage.setItem("theme", isDark ? "light" : "dark");
-  });
-
-  // Fetch logged-in user
-  fetch("/api/users/me")
-    .then(res => res.json())
-    .then(user => {
-      userDisplay.textContent = `Welcome, ${user.username}`;
-    });
-
-  // Fetch and display user list
-  fetch("/api/users/list")
-    .then(res => res.json())
-    .then(data => {
-      userList.innerHTML = "";
-      data.forEach(friend => {
-        const li = document.createElement("li");
-        li.className = "user-card";
-        li.innerHTML = `
-          <div class="user-info">
-            <div class="user-avatar"></div>
-            <div>
-              <div>${friend.username}</div>
-              <div class="last-seen">${friend.online ? "Online" : "Last seen: " + formatTime(friend.lastSeen)}</div>
-            </div>
-            <span class="online-indicator ${friend.online ? "online" : "offline"}"></span>
-          </div>
-          <a href="/chat.html?user=${friend._id}">Chat</a>
-        `;
-        userList.appendChild(li);
-      });
-    });
-
-  // Time formatter
-  function formatTime(timestamp) {
-    if (!timestamp) return "Unknown";
-    const date = new Date(timestamp);
-    return date.toLocaleString();
-  }
-
-  // Modals
-  document.getElementById("settingsBtn").onclick = () => settingsModal.classList.remove("hidden");
-  document.getElementById("closeSettings").onclick = () => settingsModal.classList.add("hidden");
-
-  document.getElementById("addUserBtn").onclick = () => addUserModal.classList.remove("hidden");
-  document.getElementById("closeAddModal").onclick = () => addUserModal.classList.add("hidden");
-
-  // Add new user
-  document.getElementById("confirmAddUser").onclick = () => {
-    const input = document.getElementById("addUsernameInput").value;
-    fetch("/api/users/add", {
+  try {
+    const res = await fetch("/api/users/add-friend", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ identifier: input }),
-    })
-      .then(res => res.json())
-      .then(() => {
-        alert("User added!");
-        location.reload();
-      })
-      .catch(() => alert("Error adding user"));
-  };
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ identifier: friendIdentifier })
+    });
 
-  // Logout
-  document.getElementById("logoutBtn").onclick = () => {
-    fetch("/api/auth/logout", { method: "POST" })
-      .then(() => {
-        location.href = "/login.html";
-      });
-  };
+    const data = await res.json();
+    if (res.ok) {
+      alert(data.message || "Friend added successfully!");
+      addUserModal.classList.add("hidden");
+      location.reload(); // Reload to update friend list
+    } else {
+      alert(data.message || "Failed to add friend");
+    }
+  } catch (err) {
+    console.error(err);
+    alert("An error occurred.");
+  }
 });
