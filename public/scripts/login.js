@@ -4,16 +4,16 @@ document.addEventListener("DOMContentLoaded", () => {
   loginForm.addEventListener("submit", async (e) => {
     e.preventDefault();
 
-    const email = document.getElementById("email").value.trim();
-    const password = document.getElementById("password").value;
+    const email = loginForm.email.value;
+    const password = loginForm.password.value;
 
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
         },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ email, password }),
       });
 
       const data = await res.json();
@@ -23,18 +23,15 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      // ✅ STEP 1: Store token properly in localStorage
+      // Save token to localStorage
       localStorage.setItem("token", data.token);
+      alert("Login successful!");
 
-      // Optional: Also store user info if you want
-      localStorage.setItem("username", data.username);
-      localStorage.setItem("userId", data.userId);
-
-      // ✅ Redirect to homepage
+      // Redirect to home page
       window.location.href = "/home.html";
     } catch (err) {
       console.error("Login error:", err);
-      alert("Something went wrong. Please try again.");
+      alert("An error occurred. Try again.");
     }
   });
 });
