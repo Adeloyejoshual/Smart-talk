@@ -33,12 +33,12 @@ router.get("/search", authenticateToken, async (req, res) => {
 });
 
 // ✅ Add friend by email or username
-router.post('/add-friend', verifyToken, async (req, res) => {
+router.post('/add-friend', authenticateToken, async (req, res) => {
   try {
     const { identifier } = req.body;
     if (!identifier) return res.status(400).json({ message: 'Please provide email or username' });
 
-    const currentUser = await User.findById(req.userId);
+    const currentUser = await User.findById(req.user.userId);
     if (!currentUser) return res.status(404).json({ message: 'Current user not found' });
 
     const friend = await User.findOne({
