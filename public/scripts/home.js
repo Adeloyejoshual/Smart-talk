@@ -1,9 +1,35 @@
 document.addEventListener("DOMContentLoaded", () => {
-  const usernameDisplay = document.getElementById("usernameDisplay");
-  const searchBar = document.getElementById("searchBar");
-  const userList = document.getElementById("userList");
-  const settingsBtn = document.getElementById("settingsBtn");
-  const settingsSection = document.getElementById("settingsSection");
+  const token = localStorage.getItem("token");
+
+  if (!token) {
+    // No token = user not logged in
+    window.location.href = "/login.html";
+    return;
+  }
+
+  // Optional: validate token with backend
+  fetch("/api/users/profile", {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+    .then(res => {
+      if (!res.ok) {
+        throw new Error("Invalid token");
+      }
+      return res.json();
+    })
+    .then(data => {
+      console.log("Welcome:", data.user.username);
+      document.getElementById("usernameDisplay").textContent = data.user.username;
+    })
+    .catch(err => {
+      console.error("Redirecting due to invalid token:", err);
+      localStorage.removeItem("token");
+      window.location.href = "/login.html";
+    });
+});
 
   // Load username from localStorage or session
   const username = localStorage.getItem("username");
