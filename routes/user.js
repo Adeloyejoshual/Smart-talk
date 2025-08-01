@@ -12,7 +12,7 @@ const authMiddleware = (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    req.userId = decoded.id || decoded.userId; // support both key names
+    req.userId = decoded.id || decoded.userId; // Allow flexibility in token field name
     next();
   } catch (err) {
     return res.status(403).json({ message: "Invalid token" });
@@ -32,13 +32,16 @@ router.get("/me", authMiddleware, async (req, res) => {
   }
 });
 
-// Edit profile (username, email, bio, avatar, status)
+// Edit profile
 router.post("/edit-profile", authMiddleware, async (req, res) => {
   try {
     const { username, email, bio, avatar, status } = req.body;
-    const update = { username, email, bio, avatar, status };
-    const updatedUser = await User.findByIdAndUpdate(req.userId, update, { new: true });
-    res.status(200).json(updatedUser);
+    const updatedUser = await User.findByIdAndUpdate(
+      req.userId,
+      { username, email, bio, avatar, status },
+      { new: true }
+    );
+    res.json(updatedUser);
   } catch (err) {
     res.status(500).json({ message: "Failed to update profile" });
   }
@@ -46,7 +49,7 @@ router.post("/edit-profile", authMiddleware, async (req, res) => {
 
 // ------------------ FRIENDS ------------------
 
-// Add friend by ID, username, or email
+// Add friend by identifier (email or username)
 router.post("/add-friend", authMiddleware, async (req, res) => {
   const { identifier, friendId } = req.body;
 
@@ -63,7 +66,7 @@ router.post("/add-friend", authMiddleware, async (req, res) => {
     }
 
     if (!friend || friend._id.equals(user._id)) {
-      return res.status(400).json({ message: "Friend not found or invalid" });
+      return res.status(400).json({ message: "Invalid friend" });
     }
 
     if (user.friends.includes(friend._id)) {
@@ -83,9 +86,7 @@ router.post("/add-friend", authMiddleware, async (req, res) => {
 router.put("/remove-friend/:id", authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.userId);
-    const friendId = req.params.id;
-
-    user.friends = user.friends.filter((id) => id.toString() !== friendId);
+    user.friends = user.friends.filter((id) => id.toString() !== req.params.id);
     await user.save();
 
     res.json({ message: "Friend removed", friends: user.friends });
@@ -94,14 +95,10 @@ router.put("/remove-friend/:id", authMiddleware, async (req, res) => {
   }
 });
 
-// Get friends list
+// Get friend list
 router.get("/friends", authMiddleware, async (req, res) => {
   try {
-    const user = await User.findById(req.userId).populate(
-      "friends",
-      "username email online lastSeen"
-    );
-    if (!user) return res.status(404).json({ message: "User not found" });
+    const user = await User.findById(req.userId).populate("friends", "username email online lastSeen");
     res.json(user.friends);
   } catch (err) {
     res.status(500).json({ message: "Failed to load friends list" });
@@ -110,28 +107,26 @@ router.get("/friends", authMiddleware, async (req, res) => {
 
 // ------------------ SEARCH ------------------
 
-// List all users except self
+// Get all users (except self)
 router.get("/list", authMiddleware, async (req, res) => {
   try {
-    const users = await User.find({ _id: { $ne: req.userId } }).select(
-      "username email"
-    );
+    const users = await User.find({ _id: { $ne: req.userId } }).select("username email");
     res.json(users);
   } catch (err) {
     res.status(500).json({ message: "Error fetching users" });
   }
 });
 
-// Search users by query (username or email)
+// Search users
 router.get("/search", authMiddleware, async (req, res) => {
   const { query } = req.query;
   try {
     const users = await User.find({
+      _id: { $ne: req.userId },
       $or: [
         { username: { $regex: query, $options: "i" } },
         { email: { $regex: query, $options: "i" } },
       ],
-      _id: { $ne: req.userId },
     }).select("username email");
     res.json(users);
   } catch (err) {
@@ -139,26 +134,25 @@ router.get("/search", authMiddleware, async (req, res) => {
   }
 });
 
-// ------------------ SETTINGS / CONTACT ------------------
+// ------------------ SUPPORT ------------------
 
-// Customer Service Message
+// Customer service message
 router.post("/customer-service", authMiddleware, async (req, res) => {
   const { message } = req.body;
-  if (!message) return res.status(400).json({ message: "Message is required" });
+  if (!message) return res.status(400).json({ message: "Message required" });
 
-  console.log(`Customer Service Message from ${req.userId}:`, message);
-  res.json({ message: "Customer service message received" });
+  console.log(`Customer Service from ${req.userId}:`, message);
+  res.json({ message: "Received" });
 });
 
-// Contact Message
+// Contact form
 router.post("/contact", authMiddleware, async (req, res) => {
   const { subject, message } = req.body;
-  if (!subject || !message) {
+  if (!subject || !message)
     return res.status(400).json({ message: "Subject and message required" });
-  }
 
-  console.log(`Contact message from ${req.userId} - ${subject}: ${message}`);
-  res.json({ message: "Contact form submitted" });
+  console.log(`Contact from ${req.userId} - ${subject}: ${message}`);
+  res.json({ message: "Contact received" });
 });
 
 module.exports = router;
