@@ -24,6 +24,20 @@ const userSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   }],
+  avatar: {
+    type: String,
+    default: '' // You can store a URL or base64 string
+  },
+  bio: {
+    type: String,
+    default: '',
+    maxlength: 160
+  },
+  status: {
+    type: String,
+    default: 'Hey there! I am using SmartTalk.',
+    maxlength: 100
+  },
   online: {
     type: Boolean,
     default: false
