@@ -3,112 +3,43 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Profile | SmartTalk</title>
-  <style>
-    body {
-      font-family: 'Segoe UI', sans-serif;
-      background: linear-gradient(to bottom right, #0f2027, #203a43, #2c5364);
-      color: #fff;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-      margin: 0;
-    }
-
-    .profile {
-      background: rgba(255, 255, 255, 0.1);
-      padding: 40px;
-      border-radius: 16px;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-      text-align: center;
-      width: 360px;
-      backdrop-filter: blur(12px);
-    }
-
-    h2 {
-      margin-bottom: 24px;
-      font-size: 1.8rem;
-    }
-
-    .info {
-      margin: 12px 0;
-      font-size: 1.1rem;
-    }
-
-    .username, .email {
-      font-weight: bold;
-      color: #00d9ff;
-    }
-
-    button {
-      margin-top: 25px;
-      padding: 12px 24px;
-      background-color: #00d9ff;
-      color: black;
-      border: none;
-      border-radius: 8px;
-      font-size: 1rem;
-      cursor: pointer;
-      transition: background 0.3s;
-    }
-
-    button:hover {
-      background-color: #00aacc;
-    }
-
-    .logout {
-      margin-top: 20px;
-      color: #ff6666;
-      font-size: 0.9rem;
-      cursor: pointer;
-      text-decoration: underline;
-    }
-  </style>
+  <title>Edit Profile</title>
+  <link rel="stylesheet" href="/styles/profile.css" />
 </head>
 <body>
-  <div class="profile">
-    <h2>Your SmartTalk Profile</h2>
-    <div class="info">Username: <span class="username" id="username">Loading...</span></div>
-    <div class="info">Email: <span class="email" id="email">Loading...</span></div>
-    <button onclick="goToHome()">Back to Home</button>
-    <div class="logout" onclick="logout()">Logout</div>
+  <div class="container">
+    <h2>Edit Profile</h2>
+    <form id="editProfileForm">
+      <input type="text" id="username" placeholder="New Username" required />
+      <input type="email" id="email" placeholder="New Email" required />
+      <input type="password" id="password" placeholder="New Password" required />
+      <button type="submit">Save Changes</button>
+    </form>
+    <p id="statusMsg"></p>
   </div>
 
   <script>
-    function getPayloadFromToken(token) {
-      try {
-        return JSON.parse(atob(token.split('.')[1]));
-      } catch (e) {
-        return null;
-      }
-    }
+    document.getElementById("editProfileForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
 
-    const token = localStorage.getItem("token");
-    if (!token) {
-      window.location.href = "login.html";
-    } else {
-      const payload = getPayloadFromToken(token);
-      if (payload && payload.username && payload.email) {
-        document.getElementById("username").textContent = payload.username;
-        document.getElementById("email").textContent = payload.email;
-      } else {
-        alert("Invalid session. Please login again.");
-        localStorage.removeItem("token");
-        window.location.href = "login.html";
-      }
-    }
+      const username = document.getElementById("username").value;
+      const email = document.getElementById("email").value;
+      const password = document.getElementById("password").value;
 
-    function goToHome() {
-      window.location.href = "home.html";
-    }
+      const token = localStorage.getItem("token");
 
-    function logout() {
-      localStorage.removeItem("token");
-      window.location.href = "login.html";
-    }
+      const res = await fetch("/api/users/edit", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ username, email, password }),
+      });
+
+      const data = await res.json();
+      document.getElementById("statusMsg").innerText = data.message;
+    });
   </script>
-<link rel="stylesheet" href="/styles/global.css" />
-<script src="/scripts/theme.js" defer></script>
 </body>
 </html>
