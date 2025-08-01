@@ -1,68 +1,50 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>SmartTalk - Home</title>
   <link rel="stylesheet" href="/styles/home.css" />
+  <script defer src="/scripts/home.js"></script>
 </head>
 <body>
-  <header>
-    <h1 id="welcomeUser">Welcome, User</h1>
-    <div class="top-buttons">
-      <button id="themeToggle">🌙</button>
-      <button id="logoutBtn">Logout</button>
+  <header class="top-bar">
+    <div id="usernameDisplay">Welcome, User</div>
+    <div class="top-actions">
+      <input type="text" id="searchBar" placeholder="Search users..." />
+      <button id="settingsBtn">⚙️</button>
     </div>
   </header>
 
   <main>
-    <section class="friends-section">
-      <h2>Friends List</h2>
-      <ul id="userList"></ul>
-      <button id="addUserBtn">＋</button>
+    <section id="userList" class="user-list">
+      <!-- Users will be loaded here -->
     </section>
   </main>
+
+  <!-- Floating Add Button -->
+  <button id="addUserBtn" class="floating-add-btn">+</button>
 
   <!-- Add Friend Modal -->
   <div id="addUserModal" class="modal hidden">
     <div class="modal-content">
-      <h3>Add New Friend</h3>
-      <input type="text" id="addUsernameInput" placeholder="Username or Email" />
-      <button id="confirmAddUser">Add</button>
-      <button id="closeAddModal">Cancel</button>
+      <h2>Add New Friend</h2>
+      <input type="text" id="friendInput" placeholder="Enter email or username" />
+      <div class="modal-actions">
+        <button id="add">Add</button>
+        <button id="cancel">Cancel</button>
+      </div>
     </div>
   </div>
 
-  <!-- Settings Icon (fixed position) -->
-  <div id="settingsIcon" style="position: fixed; top: 10px; right: 10px; cursor: pointer; font-size: 1.5em;">
-    ⚙️
-  </div>
-
-  <!-- Settings Panel (toggle display) -->
-  <div id="settingsPanel" style="display: none; position: fixed; top: 50px; right: 10px; background: #222; color: white; padding: 15px; border-radius: 10px; z-index: 100;">
-    <ul style="list-style: none; padding: 0;">
-      <li><a href="/profile.html" style="color: white; text-decoration: none;">Edit Profile</a></li>
-      <li><a href="/support.html" style="color: white; text-decoration: none;">Customer Service</a></li>
-      <li><a href="/contact.html" style="color: white; text-decoration: none;">Contact</a></li>
-      <li><button id="closeSettings" style="margin-top: 10px;">Close</button></li>
+  <!-- Settings Dropdown -->
+  <div id="settingsMenu" class="settings-menu hidden">
+    <ul>
+      <li id="editProfile">Edit Profile</li>
+      <li id="customerService">Customer Service</li>
+      <li id="contact">Contact</li>
+      <li id="closeSettings">Close</li>
     </ul>
   </div>
-
-  <script src="/socket.io/socket.io.js"></script>
-  <script src="/scripts/home.js" defer></script>
-  <script>
-    // Toggle settings panel
-    const settingsIcon = document.getElementById('settingsIcon');
-    const settingsPanel = document.getElementById('settingsPanel');
-    const closeSettings = document.getElementById('closeSettings');
-
-    settingsIcon.addEventListener('click', () => {
-      settingsPanel.style.display = settingsPanel.style.display === 'none' ? 'block' : 'none';
-    });
-
-    closeSettings.addEventListener('click', () => {
-      settingsPanel.style.display = 'none';
-    });
-  </script>
 </body>
 </html>
