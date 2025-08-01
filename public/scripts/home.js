@@ -1,110 +1,111 @@
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   const usernameDisplay = document.getElementById("usernameDisplay");
-  const searchBar = document.getElementById("searchBar");
   const userList = document.getElementById("userList");
-  const addUserBtn = document.getElementById("addUserBtn");
+  const addFriendBtn = document.getElementById("addFriendBtn");
   const addUserModal = document.getElementById("addUserModal");
-  const cancelAddUser = document.getElementById("cancelAddUser");
-  const saveAddUser = document.getElementById("saveAddUser");
-  const newUserInput = document.getElementById("newUserInput");
-  const settingsIcon = document.getElementById("settingsIcon");
+  const addUserInput = document.getElementById("addUserInput");
+  const addUserConfirm = document.getElementById("addUserConfirm");
+  const addUserCancel = document.getElementById("addUserCancel");
+  const settingsBtn = document.getElementById("settingsBtn");
   const settingsMenu = document.getElementById("settingsMenu");
 
-  // Display logged-in username from localStorage
-  const storedUser = JSON.parse(localStorage.getItem("user"));
-  if (storedUser && storedUser.username) {
-    usernameDisplay.textContent = storedUser.username;
+  const token = localStorage.getItem("token");
+  const userId = localStorage.getItem("userId");
+
+  if (!token || !userId) {
+    return (window.location.href = "/login.html");
   }
 
-  // Fetch user list from server
-  const fetchUsers = async () => {
-    try {
-      const res = await fetch("/api/users/list");
-      const data = await res.json();
-      displayUsers(data);
-    } catch (err) {
-      console.error("Failed to fetch users:", err);
-    }
-  };
-
-  // Show users
-  const displayUsers = (users) => {
-    userList.innerHTML = "";
-    users.forEach((user) => {
-      if (storedUser && storedUser._id === user._id) return;
-
-      const card = document.createElement("div");
-      card.classList.add("user-card");
-      card.innerHTML = `
-        <span>${user.username}</span>
-        <button onclick="startChat('${user._id}', '${user.username}')">Chat</button>
-      `;
-      userList.appendChild(card);
+  // Display username
+  try {
+    const res = await fetch(`/api/users/${userId}`, {
+      headers: { Authorization: `Bearer ${token}` },
     });
-  };
-
-  // Filter user list
-  searchBar.addEventListener("input", async () => {
-    const query = searchBar.value.toLowerCase();
-    try {
-      const res = await fetch(`/api/users/search?query=${query}`);
-      const data = await res.json();
-      displayUsers(data);
-    } catch (err) {
-      console.error("Search failed:", err);
+    const data = await res.json();
+    if (data.username) {
+      usernameDisplay.textContent = data.username;
     }
+  } catch (err) {
+    console.error("Failed to fetch user info", err);
+  }
+
+  // Load friends list
+  async function loadFriends() {
+    try {
+      const res = await fetch(`/api/users/friends/${userId}`);
+      const data = await res.json();
+      userList.innerHTML = "";
+      data.friends.forEach((friend) => {
+        const li = document.createElement("li");
+        li.textContent = friend.username;
+        li.className = "friend-item";
+        li.addEventListener("click", () => {
+          window.location.href = `/chat.html?user=${friend._id}`;
+        });
+        userList.appendChild(li);
+      });
+    } catch (err) {
+      console.error("Error loading friends", err);
+    }
+  }
+
+  loadFriends();
+
+  // Open modal to add friend
+  addFriendBtn.addEventListener("click", () => {
+    addUserModal.style.display = "flex";
   });
 
-  // Floating + button opens modal
-  addUserBtn.addEventListener("click", () => {
-    addUserModal.style.display = "block";
-  });
-
-  // Cancel add user modal
-  cancelAddUser.addEventListener("click", () => {
+  addUserCancel.addEventListener("click", () => {
     addUserModal.style.display = "none";
-    newUserInput.value = "";
+    addUserInput.value = "";
   });
 
-  // Save new user (Add Friend)
-  saveAddUser.addEventListener("click", async () => {
-    const friendEmail = newUserInput.value.trim();
-    if (!friendEmail) return;
+  // Confirm adding friend
+  addUserConfirm.addEventListener("click", async () => {
+    const friendIdentifier = addUserInput.value.trim();
+    if (!friendIdentifier) return alert("Please enter a username or email.");
 
     try {
       const res = await fetch("/api/users/add-friend", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ friendEmail, userId: storedUser._id }),
+        body: JSON.stringify({ userId, friendIdentifier }),
       });
 
-      const result = await res.json();
+      const data = await res.json();
+
       if (res.ok) {
-        alert("Friend added!");
-        fetchUsers();
+        alert(data.message || "Friend added!");
         addUserModal.style.display = "none";
-        newUserInput.value = "";
+        addUserInput.value = "";
+        loadFriends(); // Refresh friend list
       } else {
-        alert(result.message || "Failed to add friend.");
+        alert(data.message || "Failed to add friend");
       }
     } catch (err) {
-      console.error("Error adding friend:", err);
+      console.error("Error adding friend", err);
+      alert("Something went wrong");
     }
   });
 
-  // Settings icon toggle
-  settingsIcon.addEventListener("click", () => {
+  // Settings toggle
+  settingsBtn.addEventListener("click", () => {
     settingsMenu.style.display =
-      settingsMenu.style.display === "block" ? "none" : "block";
+      settingsMenu.style.display === "flex" ? "none" : "flex";
   });
 
-  // Start private chat
-  window.startChat = (userId, username) => {
-    localStorage.setItem("chatUser", JSON.stringify({ userId, username }));
-    window.location.href = "/chat.html";
-  };
-
-  fetchUsers();
+  // Close settings on click outside
+  document.addEventListener("click", (e) => {
+    if (
+      !settingsMenu.contains(e.target) &&
+      e.target !== settingsBtn &&
+      e.target.closest("#settingsBtn") == null
+    ) {
+      settingsMenu.style.display = "none";
+    }
+  });
 });
