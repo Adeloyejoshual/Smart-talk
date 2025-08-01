@@ -1,46 +1,3 @@
-
-const express = require('express');
-const router = express.Router();
-const User = require('../models/User'); // adjust path if needed
-
-// Edit profile route
-router.post('/edit-profile', async (req, res) => {
-  try {
-    const { userId, username, email } = req.body;
-    const updatedUser = await User.findByIdAndUpdate(
-      userId,
-      { username, email },
-      { new: true }
-    );
-    res.status(200).json(updatedUser);
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to update profile' });
-  }
-});
-
-module.exports = router;
-
-// Customer Service Message
-router.post('/customer-service', async (req, res) => {
-  const { userId, message } = req.body;
-  if (!message) return res.status(400).json({ message: 'Message is required' });
-
-  // In real case, you might email support or log to admin panel
-  console.log(`Customer Service Message from ${userId}:`, message);
-  res.json({ message: 'Customer service message received' });
-});
-
-// Contact Message
-router.post('/contact', async (req, res) => {
-  const { userId, subject, message } = req.body;
-  if (!subject || !message) {
-    return res.status(400).json({ message: 'Subject and message required' });
-  }
-
-  console.log(`Contact message from ${userId} - ${subject}: ${message}`);
-  res.json({ message: 'Contact form submitted' });
-});
-
 // routes/user.js
 const express = require('express');
 const router = express.Router();
@@ -61,12 +18,31 @@ function authenticateToken(req, res, next) {
   });
 }
 
-// Get current logged-in user's profile
+// ------------------ PROFILE ------------------
+
+// Edit profile route
+router.post('/edit-profile', authenticateToken, async (req, res) => {
+  try {
+    const { username, email } = req.body;
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user.id,
+      { username, email },
+      { new: true }
+    );
+    res.status(200).json(updatedUser);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update profile' });
+  }
+});
+
+// Get current user's profile
 router.get('/me', authenticateToken, async (req, res) => {
   const user = await User.findById(req.user.id).select('-password');
   if (!user) return res.status(404).json({ message: 'User not found' });
   res.json(user);
 });
+
+// ------------------ FRIENDS ------------------
 
 // Get friends list
 router.get('/friends', authenticateToken, async (req, res) => {
@@ -111,22 +87,24 @@ router.post('/add-friend', authenticateToken, async (req, res) => {
   }
 });
 
+// ------------------ SEARCH ------------------
+
 // GET /api/users/search?query=...
-router.get("/search", async (req, res) => {
-  const { query, userId } = req.query;
+router.get("/search", authenticateToken, async (req, res) => {
+  const { query } = req.query;
 
   try {
-    const user = await User.findById(userId);
+    const user = await User.findById(req.user.id);
 
     let users = await User.find({
       $or: [
         { username: { $regex: query, $options: 'i' } },
         { email: { $regex: query, $options: 'i' } }
       ],
-      _id: { $ne: userId } // exclude self
+      _id: { $ne: req.user.id } // exclude self
     });
 
-    // ❌ Filter out blocked users
+    // Filter out blocked users
     users = users.filter(u => !user.blockedUsers.includes(u._id));
 
     res.json(users);
@@ -136,24 +114,26 @@ router.get("/search", async (req, res) => {
   }
 });
 
-// GET /api/users/friends?userId=...
-router.get("/friends", async (req, res) => {
-  try {
-    const { userId } = req.query;
-    const user = await User.findById(userId).populate("friends");
+// ------------------ SETTINGS OPTIONS ------------------
 
-    if (!user) return res.status(404).json({ message: "User not found" });
+// Customer Service Message
+router.post('/customer-service', authenticateToken, async (req, res) => {
+  const { message } = req.body;
+  if (!message) return res.status(400).json({ message: 'Message is required' });
 
-    // ❌ Remove blocked users from list
-    const filteredFriends = user.friends.filter(
-      friend => !user.blockedUsers.includes(friend._id)
-    );
+  console.log(`Customer Service Message from ${req.user.id}:`, message);
+  res.json({ message: 'Customer service message received' });
+});
 
-    res.json(filteredFriends);
-  } catch (err) {
-    console.error("Friend list error:", err);
-    res.status(500).json({ message: "Server error" });
+// Contact Message
+router.post('/contact', authenticateToken, async (req, res) => {
+  const { subject, message } = req.body;
+  if (!subject || !message) {
+    return res.status(400).json({ message: 'Subject and message required' });
   }
+
+  console.log(`Contact message from ${req.user.id} - ${subject}: ${message}`);
+  res.json({ message: 'Contact form submitted' });
 });
 
 module.exports = router;
