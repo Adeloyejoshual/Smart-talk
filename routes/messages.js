@@ -1,7 +1,7 @@
+// routes/messages.js
 const express = require('express');
 const router = express.Router();
 const Chat = require('../models/Chat');
-const User = require('../models/User');
 
 // Send a message
 router.post('/send', async (req, res) => {
@@ -45,6 +45,20 @@ router.get('/history', async (req, res) => {
     res.status(200).json(messages);
   } catch (err) {
     res.status(500).json({ message: 'Error fetching history', error: err.message });
+  }
+});
+
+// Mark messages as read
+router.post('/read', async (req, res) => {
+  try {
+    const { senderId, receiverId } = req.body;
+    await Chat.updateMany(
+      { sender: senderId, receiver: receiverId, isRead: false },
+      { $set: { isRead: true } }
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Error updating read status' });
   }
 });
 
