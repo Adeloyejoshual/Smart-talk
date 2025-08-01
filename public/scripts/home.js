@@ -1,3 +1,11 @@
+// Connect to socket.io globally
+const socket = io();
+
+// Disconnect socket on page unload to trigger lastSeen update
+window.addEventListener("beforeunload", () => {
+  socket.disconnect();
+});
+
 document.addEventListener("DOMContentLoaded", () => {
   const userDisplay = document.getElementById("welcomeUser");
   const userList = document.getElementById("userList");
@@ -18,14 +26,14 @@ document.addEventListener("DOMContentLoaded", () => {
     localStorage.setItem("theme", isDark ? "light" : "dark");
   });
 
-  // Fetch user info
+  // Fetch logged-in user
   fetch("/api/users/me")
     .then(res => res.json())
     .then(user => {
       userDisplay.textContent = `Welcome, ${user.username}`;
     });
 
-  // Fetch and display friends
+  // Fetch and display user list
   fetch("/api/users/list")
     .then(res => res.json())
     .then(data => {
@@ -48,7 +56,7 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     });
 
-  // Format time from ISO
+  // Time formatter
   function formatTime(timestamp) {
     if (!timestamp) return "Unknown";
     const date = new Date(timestamp);
@@ -62,6 +70,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("addUserBtn").onclick = () => addUserModal.classList.remove("hidden");
   document.getElementById("closeAddModal").onclick = () => addUserModal.classList.add("hidden");
 
+  // Add new user
   document.getElementById("confirmAddUser").onclick = () => {
     const input = document.getElementById("addUsernameInput").value;
     fetch("/api/users/add", {
@@ -77,9 +86,11 @@ document.addEventListener("DOMContentLoaded", () => {
       .catch(() => alert("Error adding user"));
   };
 
+  // Logout
   document.getElementById("logoutBtn").onclick = () => {
-    fetch("/api/auth/logout", { method: "POST" }).then(() => {
-      location.href = "/login.html";
-    });
+    fetch("/api/auth/logout", { method: "POST" })
+      .then(() => {
+        location.href = "/login.html";
+      });
   };
 });
