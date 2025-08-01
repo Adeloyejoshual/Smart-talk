@@ -2,23 +2,50 @@
 <html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>SmartTalk - Home</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="/styles/home.css">
+  <link rel="stylesheet" href="/styles/home.css" />
 </head>
 <body>
   <header>
-    <h2>SmartTalk</h2>
-    <a href="/settings" id="settingsBtn">⚙️</a>
+    <h1 id="welcomeUser">Welcome, User</h1>
+    <div class="top-buttons">
+      <button id="themeToggle">🌙</button>
+      <button id="settingsBtn">⚙️</button>
+      <button id="logoutBtn">Logout</button>
+    </div>
   </header>
 
   <main>
-    <h3>Welcome, <span id="usernameDisplay"></span></h3>
-    <input type="text" id="searchBar" placeholder="Search users by username or email..." />
-    <ul id="userList"></ul>
+    <section class="friends-section">
+      <h2>Friends List</h2>
+      <ul id="userList"></ul>
+      <button id="addUserBtn">＋</button>
+    </section>
   </main>
 
-  <button id="addUserBtn">+</button>
+  <!-- Add Friend Modal -->
+  <div id="addUserModal" class="modal hidden">
+    <div class="modal-content">
+      <h3>Add New Friend</h3>
+      <input type="text" id="addUsernameInput" placeholder="Username or Email" />
+      <button id="confirmAddUser">Add</button>
+      <button id="closeAddModal">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Settings Modal -->
+  <div id="settingsModal" class="modal hidden">
+    <div class="modal-content">
+      <h3>Settings</h3>
+      <ul>
+        <li><a href="/profile.html">Edit Profile</a></li>
+        <li><a href="/support.html">Customer Service</a></li>
+        <li><a href="/contact.html">Contact</a></li>
+      </ul>
+      <button id="closeSettings">Close</button>
+    </div>
+  </div>
 
   <script src="/scripts/home.js"></script>
 </body>
