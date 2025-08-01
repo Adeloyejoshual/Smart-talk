@@ -1,3 +1,41 @@
+
+// Update Profile
+router.post('/edit-profile', async (req, res) => {
+  const { userId, username, email } = req.body;
+  try {
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { username, email },
+      { new: true }
+    );
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    res.json({ message: 'Profile updated successfully', user });
+  } catch (err) {
+    res.status(500).json({ message: 'Error updating profile' });
+  }
+});
+
+// Customer Service Message
+router.post('/customer-service', async (req, res) => {
+  const { userId, message } = req.body;
+  if (!message) return res.status(400).json({ message: 'Message is required' });
+
+  // In real case, you might email support or log to admin panel
+  console.log(`Customer Service Message from ${userId}:`, message);
+  res.json({ message: 'Customer service message received' });
+});
+
+// Contact Message
+router.post('/contact', async (req, res) => {
+  const { userId, subject, message } = req.body;
+  if (!subject || !message) {
+    return res.status(400).json({ message: 'Subject and message required' });
+  }
+
+  console.log(`Contact message from ${userId} - ${subject}: ${message}`);
+  res.json({ message: 'Contact form submitted' });
+});
+
 // routes/user.js
 const express = require('express');
 const router = express.Router();
