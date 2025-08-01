@@ -1,35 +1,65 @@
 // public/scripts/settings.js
 
-async function updateUsername() {
-  const newUsername = document.getElementById("newUsernameInput").value;
-  const statusEl = document.getElementById("usernameStatus");
+document.addEventListener("DOMContentLoaded", () => {
+  const editForm = document.getElementById("editProfileForm");
+  const contactForm = document.getElementById("contactForm");
+  const customerServiceInfo = document.getElementById("customerServiceInfo");
 
-  if (!newUsername.trim()) {
-    statusEl.textContent = "Username cannot be empty.";
-    statusEl.style.color = "red";
-    return;
-  }
-
-  try {
-    const res = await fetch("/api/users/update-username", {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ username: newUsername }),
+  // Load Customer Service Info
+  fetch("/api/settings/customer-service")
+    .then((res) => res.json())
+    .then((data) => {
+      customerServiceInfo.innerHTML = `
+        <p><strong>Email:</strong> ${data.supportEmail}</p>
+        <p><strong>Phone:</strong> ${data.phone}</p>
+        <p><strong>Hours:</strong> ${data.workingHours}</p>
+      `;
     });
 
-    const data = await res.json();
-    if (res.ok) {
-      statusEl.textContent = "Username updated successfully!";
-      statusEl.style.color = "green";
-    } else {
-      statusEl.textContent = data.message || "Failed to update username.";
-      statusEl.style.color = "red";
+  // Handle Edit Profile Form
+  editForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const userId = localStorage.getItem("userId");
+    const username = document.getElementById("editUsername").value;
+    const email = document.getElementById("editEmail").value;
+
+    try {
+      const res = await fetch("/api/settings/edit-profile", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ userId, username, email }),
+      });
+
+      const result = await res.json();
+      alert(result.message);
+    } catch (err) {
+      alert("Failed to update profile.");
     }
-  } catch (error) {
-    console.error("Error updating username:", error);
-    statusEl.textContent = "An error occurred.";
-    statusEl.style.color = "red";
-  }
-}
+  });
+
+  // Handle Contact Form
+  contactForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const email = document.getElementById("contactEmail").value;
+    const message = document.getElementById("contactMessage").value;
+
+    try {
+      const res = await fetch("/api/settings/contact", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, message }),
+      });
+
+      const result = await res.json();
+      alert(result.message);
+    } catch (err) {
+      alert("Failed to send message.");
+    }
+  });
+});
