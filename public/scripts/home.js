@@ -1,89 +1,86 @@
-document.addEventListener("DOMContentLoaded", async () => {
+// public/scripts/home.js
+document.addEventListener("DOMContentLoaded", () => {
   const usernameDisplay = document.getElementById("usernameDisplay");
   const searchBar = document.getElementById("searchBar");
   const userList = document.getElementById("userList");
-  const settingsBtn = document.getElementById("settingsBtn");
-  const settingsMenu = document.getElementById("settingsMenu");
-  const toggleFriendsBtn = document.getElementById("toggleFriendsBtn");
+  const settingsButton = document.getElementById("settingsButton");
+  const addUserBtn = document.getElementById("addUserBtn");
 
-  let allUsers = [];
-  let currentUser = null;
-  let showOnlyFriends = false;
+  // Show logged-in username from localStorage
+  const currentUser = localStorage.getItem("username");
+  const token = localStorage.getItem("token");
 
-  // Fetch current user
-  const fetchCurrentUser = async () => {
+  if (!token) {
+    window.location.href = "/login.html";
+    return;
+  }
+
+  usernameDisplay.textContent = currentUser;
+
+  // Fetch user list
+  async function fetchUsers(query = "") {
     try {
-      const res = await fetch("/api/users/me");
-      if (!res.ok) throw new Error("Failed to fetch current user");
-      const data = await res.json();
-      currentUser = data;
-      usernameDisplay.textContent = currentUser.username;
-    } catch (err) {
-      console.error("Error fetching user:", err);
-      window.location.href = "/login.html"; // Redirect if not logged in
+      const response = await fetch(`/api/users/list?search=${query}`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      const users = await response.json();
+
+      userList.innerHTML = "";
+
+      users.forEach(user => {
+        if (user.username !== currentUser) {
+          const li = document.createElement("li");
+          li.textContent = user.username;
+          li.className = "user-card";
+          li.addEventListener("click", () => {
+            localStorage.setItem("chatWith", user.username);
+            localStorage.setItem("chatWithId", user._id);
+            window.location.href = "/chat.html";
+          });
+          userList.appendChild(li);
+        }
+      });
+
+    } catch (error) {
+      console.error("Error fetching users:", error);
     }
-  };
+  }
 
-  // Fetch all users
-  const fetchUsers = async () => {
-    try {
-      const res = await fetch("/api/users/list");
-      const data = await res.json();
-      allUsers = data.filter(user => user._id !== currentUser._id);
-      renderUserList();
-    } catch (err) {
-      console.error("Error fetching users:", err);
-    }
-  };
+  // Initial fetch
+  fetchUsers();
 
-  const renderUserList = () => {
-    const keyword = searchBar.value.toLowerCase();
-    userList.innerHTML = "";
-
-    const usersToDisplay = showOnlyFriends
-      ? allUsers.filter(user => currentUser.friends.includes(user._id))
-      : allUsers;
-
-    usersToDisplay.forEach(user => {
-      if (!user.username.toLowerCase().includes(keyword)) return;
-
-      const userCard = document.createElement("div");
-      userCard.className = "user-card";
-      userCard.innerHTML = `
-        <span>${user.username}</span>
-        <button class="chat-btn" data-id="${user._id}">Chat</button>
-      `;
-
-      userList.appendChild(userCard);
-    });
-  };
-
-  // Toggle settings menu
-  settingsBtn.addEventListener("click", () => {
-    settingsMenu.classList.toggle("hidden");
+  // Search bar logic
+  searchBar.addEventListener("input", (e) => {
+    const query = e.target.value.trim();
+    fetchUsers(query);
   });
 
-  // Filter friends toggle
-  toggleFriendsBtn.addEventListener("click", () => {
-    showOnlyFriends = !showOnlyFriends;
-    toggleFriendsBtn.textContent = showOnlyFriends ? "Show All" : "My Friends";
-    renderUserList();
+  // Add new user
+  addUserBtn.addEventListener("click", () => {
+    const email = prompt("Enter the email of the user to add:");
+    if (!email) return;
+
+    fetch("/api/users/add-friend", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ email })
+    })
+    .then(res => res.json())
+    .then(data => {
+      alert(data.message || "User added!");
+      fetchUsers(); // Refresh user list
+    })
+    .catch(err => console.error("Error adding user:", err));
   });
 
-  // Handle chat button clicks
-  userList.addEventListener("click", (e) => {
-    if (e.target.classList.contains("chat-btn")) {
-      const userId = e.target.dataset.id;
-      window.location.href = `/chat.html?user=${userId}`;
-    }
+  // Go to settings
+  settingsButton.addEventListener("click", () => {
+    window.location.href = "/settings.html";
   });
-
-  // Handle search bar input
-  searchBar.addEventListener("input", () => {
-    renderUserList();
-  });
-
-  // Load data
-  await fetchCurrentUser();
-  await fetchUsers();
 });
