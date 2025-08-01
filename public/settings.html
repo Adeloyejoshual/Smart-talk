@@ -8,35 +8,24 @@
 </head>
 <body>
   <div class="settings-container">
-    <h2>Settings</h2>
+    <h1>Settings</h1>
+    <ul>
+      <li><button id="editProfileBtn">Edit Profile</button></li>
+      <li><button id="customerServiceBtn">Customer Service</button></li>
+      <li><button id="contactBtn">Contact</button></li>
+      <li><button onclick="window.location.href='/home.html'">Close</button></li>
+    </ul>
 
-    <div class="settings-section">
-      <h3>Edit Profile</h3>
-      <form id="editProfileForm">
-        <input type="text" id="editUsername" placeholder="New Username" required />
-        <input type="email" id="editEmail" placeholder="New Email" required />
-        <button type="submit">Update Profile</button>
-      </form>
-    </div>
-
-    <div class="settings-section">
-      <h3>Customer Service</h3>
-      <div id="customerServiceInfo">
-        <p>Loading support details...</p>
+    <div id="formModal" class="modal hidden">
+      <div class="modal-content">
+        <span id="closeModal">&times;</span>
+        <h2 id="formTitle"></h2>
+        <form id="settingsForm">
+          <input type="text" id="input1" placeholder="" required />
+          <textarea id="input2" placeholder="" rows="4" class="hidden"></textarea>
+          <button type="submit">Submit</button>
+        </form>
       </div>
-    </div>
-
-    <div class="settings-section">
-      <h3>Contact Us</h3>
-      <form id="contactForm">
-        <input type="email" id="contactEmail" placeholder="Your Email" required />
-        <textarea id="contactMessage" rows="4" placeholder="Your Message" required></textarea>
-        <button type="submit">Send Message</button>
-      </form>
-    </div>
-
-    <div class="settings-section">
-      <button onclick="window.location.href='/home.html'">Back to Home</button>
     </div>
   </div>
 
