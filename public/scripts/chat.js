@@ -1,4 +1,4 @@
-<!-- <script src="/socket.io/socket.io.js"></script> should be loaded in HTML -->
+
 <script>
 document.addEventListener("DOMContentLoaded", () => {
   const socket = io();
@@ -14,38 +14,39 @@ document.addEventListener("DOMContentLoaded", () => {
   const messagesContainer = document.getElementById("messagesContainer");
   const typingStatus = document.getElementById("typingStatus");
 
-  // Guard
+  // ✅ Guard: redirect if not logged in
   if (!token || !user || !receiverId) {
     window.location.href = "/login.html";
     return;
   }
 
+  // ✅ Display who you're chatting with
   chatWith.textContent = `Chat with ${receiverName}`;
 
-  // Join private room
+  // ✅ Join a private room for real-time chat
   socket.emit("joinPrivate", {
     senderId: user._id,
     receiverId,
   });
 
-  // Load chat history
-  fetch(`/api/messages/history/${receiverId}`, {
+  // ✅ Load chat history from backend API
+  fetch(`/api/messages/${receiverId}`, {
     headers: {
-      Authorization: `Bearer ${token}`,
+      Authorization: token,
     },
   })
     .then((res) => res.json())
     .then((messages) => {
       if (Array.isArray(messages)) {
         messages.forEach((msg) => {
-          const senderName = msg.sender._id === user._id ? "You" : receiverName;
+          const senderName = msg.sender === user._id ? "You" : receiverName;
           appendMessage(msg.content, senderName);
         });
       }
     })
     .catch((err) => console.error("History load error:", err));
 
-  // Send message
+  // ✅ Handle sending messages
   messageForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     const content = messageInput.value.trim();
@@ -61,14 +62,15 @@ document.addEventListener("DOMContentLoaded", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+          Authorization: token,
         },
         body: JSON.stringify(messageData),
       });
 
       const savedMsg = await res.json();
-      appendMessage(savedMsg.data?.content || content, "You");
+      appendMessage(savedMsg.content || content, "You");
 
+      // Emit the message to the server for real-time delivery
       socket.emit("privateMessage", {
         from: user._id,
         to: receiverId,
@@ -82,7 +84,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Typing indicator
+  // ✅ Show typing indicator when input changes
   messageInput.addEventListener("input", () => {
     socket.emit("typing", {
       from: user._id,
@@ -91,6 +93,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
+  // ✅ Listen for typing event from the other user
   socket.on("typing", (data) => {
     if (data.from === receiverId) {
       typingStatus.textContent = `${receiverName} is typing...`;
@@ -98,14 +101,14 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Receive message
+  // ✅ Receive message in real time
   socket.on("privateMessage", (msg) => {
     if (msg.from === receiverId) {
       appendMessage(msg.content, receiverName);
     }
   });
 
-  // Display message
+  // ✅ Append a message to chat container
   function appendMessage(content, senderName) {
     const msgDiv = document.createElement("div");
     msgDiv.className = "message";
@@ -114,13 +117,13 @@ document.addEventListener("DOMContentLoaded", () => {
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
   }
 
-  // Logout
+  // ✅ Logout and clear session
   document.getElementById("logoutBtn")?.addEventListener("click", () => {
     localStorage.clear();
     window.location.href = "/login.html";
   });
 
-  // Disconnect on unload
+  // ✅ Clean disconnect on page leave
   window.addEventListener("beforeunload", () => {
     socket.disconnect();
   });
