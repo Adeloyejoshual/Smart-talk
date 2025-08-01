@@ -76,6 +76,9 @@
       messagesDiv.appendChild(msgDiv);
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
+  // Display the name or ID of the user you're chatting with
+    const chatWith = localStorage.getItem("chatWithUsername") || "Your Chat Partner";
+    document.getElementById("chatWithDisplay").textContent = "Chatting with: " + chatWith;
   </script>
 </body>
 </html>
