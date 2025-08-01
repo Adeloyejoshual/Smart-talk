@@ -1,135 +1,86 @@
-/* === Global Reset === */
-* {
+body {
+  font-family: Arial, sans-serif;
   margin: 0;
   padding: 0;
-  box-sizing: border-box;
+  background-color: #111;
+  color: #fff;
 }
-
-/* === Base Body Style === */
-body {
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  background: linear-gradient(to right, #f0f4f8, #d9e2ec);
-  color: #333;
-  line-height: 1.6;
-  min-height: 100vh;
+header {
+  background-color: #222;
+  padding: 1rem;
   display: flex;
-  justify-content: center;
+  justify-content: space-between;
   align-items: center;
 }
-
-/* === Container Utility === */
-.container {
-  max-width: 1000px;
-  margin: 20px auto;
-  padding: 20px;
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+.top-buttons button {
+  margin-left: 0.5rem;
 }
-
-/* === Header === */
-header {
-  background-color: #007bff;
-  color: white;
-  padding: 15px 20px;
-  text-align: center;
-  border-radius: 0 0 10px 10px;
+.friends-section {
+  padding: 1rem;
 }
-
-/* === Buttons === */
+#userList {
+  list-style: none;
+  padding: 0;
+}
+.user-card {
+  background-color: #1e1e1e;
+  margin-bottom: 0.5rem;
+  padding: 0.75rem;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.user-info {
+  display: flex;
+  align-items: center;
+}
+.user-avatar {
+  width: 40px;
+  height: 40px;
+  background: gray;
+  border-radius: 50%;
+  margin-right: 1rem;
+}
+.online-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-left: 0.5rem;
+}
+.online {
+  background-color: green;
+}
+.offline {
+  background-color: gray;
+}
+.last-seen {
+  font-size: 0.8rem;
+  color: #bbb;
+}
 button {
-  width: 95%;
-  padding: 12px;
-  background-color: #007bff;
-  color: white;
+  padding: 0.5rem;
+  background-color: #333;
+  color: #fff;
   border: none;
-  border-radius: 8px;
-  font-size: 16px;
-  cursor: pointer;
-  margin-top: 10px;
-  transition: background-color 0.3s ease;
+  border-radius: 5px;
 }
-
-button:hover {
-  background-color: #0056b3;
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-
-/* === Inputs and Forms === */
-form {
-  background-color: #ffffff;
-  padding: 30px 25px;
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-  width: 100%;
-  max-width: 350px;
-  text-align: center;
-  margin: auto;
+.modal-content {
+  background: #222;
+  padding: 2rem;
+  border-radius: 10px;
 }
-
-input[type="email"],
-input[type="password"],
-input[type="text"],
-textarea,
-select {
-  width: 90%;
-  padding: 12px;
-  margin: 10px 0;
-  border: 1px solid #ccc;
-  border-radius: 8px;
-  font-size: 16px;
-  outline: none;
-  transition: border-color 0.3s ease;
-}
-
-input:focus, textarea:focus, select:focus {
-  border-color: #007bff;
-}
-
-/* === Message Text === */
-#message,
-.error {
-  margin-top: 15px;
-  color: red;
-  font-size: 14px;
-}
-
-.success {
-  margin-top: 15px;
-  color: green;
-  font-size: 14px;
-}
-
-/* === Links === */
-a {
-  color: #007bff;
-  text-decoration: none;
-}
-
-a:hover {
-  text-decoration: underline;
-}
-
-/* === Footer === */
-footer {
-  margin-top: 40px;
-  text-align: center;
-  font-size: 0.9em;
-  color: #777;
-}
-
-/* === Headings === */
-h2 {
-  color: #333;
-  margin-bottom: 20px;
-}
-
-/* === Responsive === */
-@media (max-width: 500px) {
-  form {
-    padding: 20px 15px;
-  }
-
-  input, button {
-    font-size: 14px;
-  }
+.hidden {
+  display: none;
 }
