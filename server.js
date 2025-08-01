@@ -1,21 +1,21 @@
+// server.js
 const express = require("express");
 const http = require("http");
 const cors = require("cors");
 const mongoose = require("mongoose");
 const dotenv = require("dotenv");
-const jwt = require("jsonwebtoken");
 const path = require("path");
+const jwt = require("jsonwebtoken");
 const socketIO = require("socket.io");
 
+// Load env
 dotenv.config();
 
-const authRoutes = require("./routes/auth");
-const userRoutes = require("./routes/user");
-const messageRoutes = require("./routes/messages");
-
+// Models
 const User = require("./models/User");
 const Message = require("./models/Chat");
 
+// App setup
 const app = express();
 const server = http.createServer(app);
 const io = socketIO(server, {
@@ -25,65 +25,79 @@ const io = socketIO(server, {
   }
 });
 
-// MIDDLEWARE
+// Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
-// ROUTES
+// MongoDB connection
+mongoose.connect(process.env.MONGO_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+})
+.then(() => console.log("✅ MongoDB connected"))
+.catch((err) => console.error("❌ MongoDB connection error:", err));
+
+// Routes
+const authRoutes = require("./routes/auth");
+const userRoutes = require("./routes/user");
+const messageRoutes = require("./routes/messages");
+
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/messages", messageRoutes);
 
-// Serve login.html by default
+// Serve static pages
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "login.html"));
 });
 
-// Serve home.html after login success
 app.get("/home", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "home.html"));
 });
 
-// Serve chat.html
 app.get("/chat", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "chat.html"));
 });
 
-// Serve settings.html
 app.get("/settings", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "settings.html"));
 });
 
-// DATABASE
-mongoose.connect(process.env.MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-}).then(() => console.log("✅ MongoDB connected"))
-  .catch(err => console.error("❌ MongoDB error:", err));
-
-// SOCKET.IO CONNECTION
+// Socket.IO handling
 const onlineUsers = new Map();
 
 io.on("connection", (socket) => {
   console.log("🟢 New socket connected:", socket.id);
 
-  socket.on("user-connected", async ({ userId }) => {
+  // User goes online
+  socket.on("user-connected", ({ userId }) => {
     onlineUsers.set(userId, socket.id);
     io.emit("update-online-users", Array.from(onlineUsers.keys()));
   });
 
+  // Private message
   socket.on("private-message", async ({ senderId, receiverId, message }) => {
     const receiverSocket = onlineUsers.get(receiverId);
 
-    const newMessage = new Message({ sender: senderId, receiver: receiverId, content: message });
-    await newMessage.save();
+    const newMsg = new Message({
+      sender: senderId,
+      receiver: receiverId,
+      content: message
+    });
+
+    await newMsg.save();
 
     if (receiverSocket) {
-      io.to(receiverSocket).emit("receive-message", { senderId, message });
+      io.to(receiverSocket).emit("receive-message", {
+        senderId,
+        message,
+        timestamp: new Date()
+      });
     }
   });
 
+  // Typing indicator
   socket.on("typing", ({ senderId, receiverId }) => {
     const receiverSocket = onlineUsers.get(receiverId);
     if (receiverSocket) {
@@ -98,6 +112,7 @@ io.on("connection", (socket) => {
     }
   });
 
+  // Disconnect
   socket.on("disconnect", () => {
     for (let [userId, sockId] of onlineUsers.entries()) {
       if (sockId === socket.id) {
@@ -110,8 +125,8 @@ io.on("connection", (socket) => {
   });
 });
 
-// SERVER
+// Start server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🚀 Server running at http://localhost:${PORT}`);
 });
