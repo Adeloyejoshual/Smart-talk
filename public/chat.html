@@ -35,17 +35,14 @@
     const toName = urlParams.get('name');
     const from = localStorage.getItem('userId');
 
-    // If not logged in, go to login
     if (!from) {
       window.location.href = '/login.html';
     }
 
     chatWith.textContent = 'Chat with ' + (toName || 'Unknown');
 
-    // Notify server that user is online
     socket.emit('userOnline', from);
 
-    // Join a unique room for the two users
     socket.emit('joinRoom', { from, to });
 
     // Receive messages
@@ -66,7 +63,7 @@
       messageInput.value = '';
     });
 
-    // Back to homepage
+    // Back button
     backBtn.onclick = () => {
       window.location.href = '/home.html';
     };
