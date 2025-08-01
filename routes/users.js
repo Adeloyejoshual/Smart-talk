@@ -113,7 +113,29 @@ router.put("/update-username", async (req, res) => {
     res.status(500).json({ message: "Internal Server Error" });
   }
 });
+// Change Username
+router.put("/change-username", async (req, res) => {
+  const { newUsername } = req.body;
+  const userId = req.session.userId;
 
-module.exports = router;
+  if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+  if (!newUsername || newUsername.trim().length < 3) {
+    return res.status(400).json({ message: "Invalid username" });
+  }
+
+  try {
+    const existing = await User.findOne({ username: newUsername.trim() });
+    if (existing)
+      return res.status(409).json({ message: "Username already taken" });
+
+    await User.findByIdAndUpdate(userId, { username: newUsername.trim() });
+
+    res.json({ message: "Username updated successfully" });
+  } catch (error) {
+    console.error("Update error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
 
 module.exports = router;
