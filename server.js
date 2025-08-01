@@ -12,91 +12,72 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIO(server);
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// MongoDB Connection
+// MongoDB
 mongoose.connect(process.env.MONGO_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true
 })
 .then(() => console.log('✅ MongoDB connected'))
-.catch(err => console.error('❌ MongoDB connection error:', err));
+.catch(err => console.error('❌ MongoDB error:', err));
 
 // Routes
-const authRoutes = require('./routes/auth');
-const userRoutes = require('./routes/users');
-const messageRoutes = require('./routes/messages');
+app.use('/api/auth', require('./routes/auth'));
+app.use('/api/users', require('./routes/users'));
+app.use('/api/messages', require('./routes/messages'));
 
-app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/messages', messageRoutes);
-
-// Default route
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public/login.html'));
 });
 
-// =======================
-// 🔌 Socket.IO Logic
-// =======================
-const onlineUsers = {};
+// Socket.IO
 const Chat = require('./models/Chat');
+const User = require('./models/User');
+const onlineUsers = {};
 
-// Generate consistent room ID
 function getRoomId(user1, user2) {
-  return [user1, user2].sort().join('_'); // shared ID for both users
+  return [user1, user2].sort().join('_');
 }
 
-io.on("connection", (socket) => {
-  console.log("🟢 User connected:", socket.id);
+io.on('connection', (socket) => {
+  console.log("🟢 Connected:", socket.id);
 
-  // Save user as online
-  socket.on("userOnline", (userId) => {
+  socket.on('userOnline', (userId) => {
     onlineUsers[userId] = socket.id;
     io.emit('online-users', Object.keys(onlineUsers));
-    console.log("📡 Online users:", onlineUsers);
   });
 
-  // Join private chat room
-  socket.on("joinRoom", ({ from, to }) => {
-    const roomName = getRoomId(from, to);
-    socket.join(roomName);
-    console.log(`✅ ${from} joined room ${roomName}`);
+  socket.on('joinRoom', ({ from, to }) => {
+    const room = getRoomId(from, to);
+    socket.join(room);
+    console.log(`📥 User ${from} joined ${room}`);
   });
 
-  // Handle private messages
-  socket.on("privateMessage", async ({ from, to, message }) => {
-    const roomName = getRoomId(from, to);
+  socket.on('privateMessage', async ({ from, to, message }) => {
+    const room = getRoomId(from, to);
 
     try {
-      const newMessage = new Chat({
+      const newMsg = await new Chat({ from, to, message }).save();
+      const sender = await User.findById(from);
+
+      io.to(room).emit('privateMessage', {
         from,
+        fromName: sender.username,
         to,
         message,
-        timestamp: new Date(),
+        timestamp: newMsg.timestamp
       });
 
-      await newMessage.save();
-
-      // Send message to both users in the same room
-      io.to(roomName).emit("privateMessage", {
-        from,
-        to,
-        message,
-        timestamp: newMessage.timestamp,
-      });
-
-      console.log(`📨 Message from ${from} to ${to} in room ${roomName}`);
-    } catch (error) {
-      console.error("💾 Error saving chat message:", error.message);
+      console.log(`📨 ${sender.username} sent message to ${to}`);
+    } catch (e) {
+      console.error("❌ Message send error:", e.message);
     }
   });
 
-  // Handle disconnect
-  socket.on("disconnect", () => {
+  socket.on('disconnect', () => {
     for (let userId in onlineUsers) {
       if (onlineUsers[userId] === socket.id) {
         delete onlineUsers[userId];
@@ -104,12 +85,9 @@ io.on("connection", (socket) => {
       }
     }
     io.emit('online-users', Object.keys(onlineUsers));
-    console.log("🔴 User disconnected:", socket.id);
+    console.log("🔴 Disconnected:", socket.id);
   });
 });
 
-// =======================
-// 🚀 Start the Server
-// =======================
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
