@@ -1,19 +1,22 @@
-const express = require("express");
+const express = require('express');
 const router = express.Router();
-const Chat = require("../models/Chat");
+const Chat = require('../models/Chat');
+const User = require('../models/User');
 
-router.get("/history/:from/:to", async (req, res) => {
+// Fetch message history between two users
+router.get('/:from/:to', async (req, res) => {
   const { from, to } = req.params;
   try {
-    const messages = await Chat.find({
+    const chats = await Chat.find({
       $or: [
         { from, to },
         { from: to, to: from }
       ]
-    }).sort("timestamp");
-    res.json({ messages });
+    }).sort({ timestamp: 1 }).populate('from', 'username');
+
+    res.json(chats);
   } catch (error) {
-    res.status(500).json({ error: "Failed to load chat history" });
+    res.status(500).json({ message: 'Error fetching chats' });
   }
 });
 
