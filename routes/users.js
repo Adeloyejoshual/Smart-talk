@@ -1,50 +1,47 @@
-const express = require('express');
+// routes/user.js
+const express = require("express");
 const router = express.Router();
-const User = require('../models/User');
+const User = require("../models/User");
 
 // Search users by username or email
-router.get('/search', async (req, res) => {
-  const { query } = req.query;
+router.get("/search", async (req, res) => {
   try {
+    const query = req.query.q;
     const users = await User.find({
       $or: [
-        { username: { $regex: query, $options: 'i' } },
-        { email: { $regex: query, $options: 'i' } }
-      ]
-    }).select('-password');
+        { username: { $regex: query, $options: "i" } },
+        { email: { $regex: query, $options: "i" } },
+      ],
+    }).select("-password");
     res.json(users);
   } catch (err) {
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ error: "Server error" });
   }
 });
 
-// Get all users (for list display)
-router.get('/list', async (req, res) => {
+// List all users
+router.get("/list", async (req, res) => {
   try {
-    const users = await User.find().select('-password');
+    const users = await User.find().select("-password");
     res.json(users);
   } catch (err) {
-    res.status(500).json({ message: 'Failed to fetch users' });
+    res.status(500).json({ error: "Server error" });
   }
 });
 
 // Update username
-router.post('/update-username', async (req, res) => {
+router.put("/update-username", async (req, res) => {
   const { userId, newUsername } = req.body;
   try {
-    const existing = await User.findOne({ username: newUsername });
-    if (existing) {
-      return res.status(400).json({ message: 'Username already taken' });
-    }
-
-    const user = await User.findByIdAndUpdate(userId, { username: newUsername }, { new: true });
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    res.json({ message: 'Username updated successfully', user });
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { username: newUsername },
+      { new: true }
+    );
+    if (!user) return res.status(404).json({ error: "User not found" });
+    res.json({ message: "Username updated", user });
   } catch (err) {
-    res.status(500).json({ message: 'Error updating username' });
+    res.status(500).json({ error: "Failed to update username" });
   }
 });
 
