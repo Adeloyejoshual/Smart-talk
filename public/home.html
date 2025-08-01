@@ -5,14 +5,129 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>SmartTalk - Home</title>
   <link rel="stylesheet" href="/styles/home.css" />
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #1e1e2f;
+      color: #fff;
+      margin: 0;
+      padding: 0;
+    }
+
+    header {
+      background-color: #2c2c3c;
+      padding: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    h1 {
+      font-size: 24px;
+    }
+
+    .logout-button {
+      padding: 10px 15px;
+      background-color: #e74c3c;
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    .friend-list, .friend-item {
+      margin-top: 10px;
+    }
+
+    .friend-item {
+      background-color: #2e2e3e;
+      padding: 12px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+      margin-bottom: 10px;
+    }
+
+    .friend-item:hover {
+      background-color: #3a3a4e;
+    }
+
+    .avatar {
+      width: 40px;
+      height: 40px;
+      background-color: #666;
+      border-radius: 50%;
+      margin-right: 12px;
+    }
+
+    .info {
+      flex-grow: 1;
+    }
+
+    .start-chat {
+      font-size: 12px;
+      color: #aaa;
+    }
+
+    .modal {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.6);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+
+    .modal.hidden {
+      display: none;
+    }
+
+    .modal-content {
+      background: #2e2e3e;
+      padding: 20px;
+      border-radius: 10px;
+      width: 300px;
+    }
+
+    .modal-content input {
+      width: 100%;
+      padding: 8px;
+      margin-bottom: 10px;
+      border: none;
+      border-radius: 4px;
+    }
+
+    .modal-content button {
+      margin-right: 10px;
+      padding: 8px 12px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    .modal-content button:last-child {
+      background-color: #e74c3c;
+    }
+
+    .dark {
+      background-color: #121212;
+      color: white;
+    }
+  </style>
 </head>
 <body>
+
   <header>
     <h1 id="welcomeUser">Welcome, User</h1>
     <div>
       <button id="themeToggle">🌙</button>
       <button id="settingsBtn">⚙️</button>
-      <button id="logoutBtn">Logout</button>
+      <button id="logoutBtn" class="logout-button">Logout</button>
     </div>
   </header>
 
@@ -71,10 +186,6 @@
       window.location.href = "/login.html";
     }
 
-  <!-- Logout Button -->
-<button id="logoutBtn" class="logout-button" style="position: fixed; top: 20px; right: 20px; padding: 10px; background: #e74c3c; color: white; border: none; border-radius: 5px; cursor: pointer;">
-  Logout
-</button>
     // Load current user
     fetch("/api/users/me", {
       headers: { Authorization: `Bearer ${token}` }
@@ -112,7 +223,7 @@
             `;
 
             div.addEventListener("click", () => {
-              window.location.href = `/chat.html?user=${friend._id}`;
+              window.location.href = \`/chat.html?user=\${friend._id}\`;
             });
 
             friendsList.appendChild(div);
@@ -161,7 +272,6 @@
       localStorage.setItem("theme", isDark ? "dark" : "light");
     };
 
-    // Apply theme on load
     if (localStorage.getItem("theme") === "dark") {
       body.classList.add("dark");
       themeToggle.textContent = "🌙";
@@ -184,7 +294,6 @@
     };
     cancelBtn.onclick = () => modal.classList.add("hidden");
 
-    // Settings modal
     settingsBtn.onclick = () => settingsModal.classList.remove("hidden");
     closeSettingsBtn.onclick = () => settingsModal.classList.add("hidden");
   </script>
