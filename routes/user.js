@@ -106,4 +106,49 @@ router.post('/add-friend', authenticateToken, async (req, res) => {
   }
 });
 
+// GET /api/users/search?query=...
+router.get("/search", async (req, res) => {
+  const { query, userId } = req.query;
+
+  try {
+    const user = await User.findById(userId);
+
+    let users = await User.find({
+      $or: [
+        { username: { $regex: query, $options: 'i' } },
+        { email: { $regex: query, $options: 'i' } }
+      ],
+      _id: { $ne: userId } // exclude self
+    });
+
+    // ❌ Filter out blocked users
+    users = users.filter(u => !user.blockedUsers.includes(u._id));
+
+    res.json(users);
+  } catch (err) {
+    console.error("Search error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// GET /api/users/friends?userId=...
+router.get("/friends", async (req, res) => {
+  try {
+    const { userId } = req.query;
+    const user = await User.findById(userId).populate("friends");
+
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // ❌ Remove blocked users from list
+    const filteredFriends = user.friends.filter(
+      friend => !user.blockedUsers.includes(friend._id)
+    );
+
+    res.json(filteredFriends);
+  } catch (err) {
+    console.error("Friend list error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
 module.exports = router;
