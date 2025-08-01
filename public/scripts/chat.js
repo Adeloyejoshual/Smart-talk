@@ -1,70 +1,46 @@
-// public/scripts/chat.js
+const socket = io();
+let from = localStorage.getItem('userId'); // from settings or login
+let to = localStorage.getItem('chatWith'); // selected user ID
+let fromUsername = localStorage.getItem('username'); // your display name
 
-document.addEventListener("DOMContentLoaded", () => {
-  const socket = io();
+const chatBox = document.getElementById('chatBox');
+const messageInput = document.getElementById('messageInput');
+const sendBtn = document.getElementById('sendBtn');
 
-  const messagesContainer = document.getElementById("messages");
-  const messageForm = document.getElementById("messageForm");
-  const messageInput = document.getElementById("messageInput");
+// Join room
+socket.emit('joinRoom', { from, to });
 
-  // User info from session/localStorage (set after login)
-  const currentUser = localStorage.getItem("userId");
-  const chatPartner = localStorage.getItem("chatWith"); // ID of the person you're chatting with
-
-  if (!currentUser || !chatPartner) {
-    window.location.href = "/"; // Redirect to login if info is missing
-    return;
-  }
-
-  // Join the room for private chat
-  socket.emit("joinRoom", { from: currentUser, to: chatPartner });
-
-  // Receive messages
-  socket.on("privateMessage", ({ from, message, timestamp }) => {
-    const isOwn = from === currentUser;
-    const msgEl = document.createElement("div");
-    msgEl.className = isOwn ? "my-message" : "their-message";
-    msgEl.innerHTML = `
-      <div class="message-bubble">
-        <strong>${isOwn ? "You" : "Them"}:</strong> ${message}
-        <div class="timestamp">${new Date(timestamp).toLocaleTimeString()}</div>
-      </div>
-    `;
-    messagesContainer.appendChild(msgEl);
-    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+// Load message history
+fetch(`/api/messages/${from}/${to}`)
+  .then(res => res.json())
+  .then(messages => {
+    messages.forEach(msg => {
+      const sender = msg.from._id === from ? 'You' : msg.from.username;
+      appendMessage(sender, msg.message);
+    });
   });
 
-  // Send message
-  messageForm.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const message = messageInput.value.trim();
-    if (!message) return;
+// Send message
+sendBtn.addEventListener('click', () => {
+  const message = messageInput.value.trim();
+  if (!message) return;
 
-    socket.emit("privateMessage", {
-      from: currentUser,
-      to: chatPartner,
-      message,
-    });
-
-    messageInput.value = "";
-  });
-
-  // Optional: Load previous messages
-  fetch(`/api/messages/${currentUser}/${chatPartner}`)
-    .then((res) => res.json())
-    .then((data) => {
-      data.messages.forEach(({ from, message, timestamp }) => {
-        const isOwn = from === currentUser;
-        const msgEl = document.createElement("div");
-        msgEl.className = isOwn ? "my-message" : "their-message";
-        msgEl.innerHTML = `
-          <div class="message-bubble">
-            <strong>${isOwn ? "You" : "Them"}:</strong> ${message}
-            <div class="timestamp">${new Date(timestamp).toLocaleTimeString()}</div>
-          </div>
-        `;
-        messagesContainer.appendChild(msgEl);
-      });
-      messagesContainer.scrollTop = messagesContainer.scrollHeight;
-    });
+  socket.emit('privateMessage', { from, to, message });
+  appendMessage("You", message);
+  messageInput.value = "";
 });
+
+// Receive messages
+socket.on('privateMessage', ({ from: senderId, fromName, message }) => {
+  if (senderId !== from) {
+    appendMessage(fromName, message);
+  }
+});
+
+function appendMessage(sender, message) {
+  const div = document.createElement('div');
+  div.classList.add('message');
+  div.innerHTML = `<strong>${sender}:</strong> ${message}`;
+  chatBox.appendChild(div);
+  chatBox.scrollTop = chatBox.scrollHeight;
+}
