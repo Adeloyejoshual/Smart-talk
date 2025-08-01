@@ -1,4 +1,3 @@
-// server.js
 const express = require("express");
 const http = require("http");
 const cors = require("cors");
@@ -8,17 +7,8 @@ const dotenv = require("dotenv");
 const jwt = require("jsonwebtoken");
 const socketIo = require("socket.io");
 
+// Load environment variables
 dotenv.config();
-
-// Models
-const User = require("./models/User");
-const Message = require("./models/Chat");
-
-// Routes
-const authRoutes = require("./routes/auth");
-const userRoutes = require("./routes/user");
-const messageRoutes = require("./routes/messages");
-const uploadRoutes = require("./routes/upload"); // For file uploads
 
 const app = express();
 const server = http.createServer(app);
@@ -29,20 +19,23 @@ const io = socketIo(server, {
   },
 });
 
+// Models
+const User = require("./models/User");
+const Message = require("./models/Chat");
+
 // Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
-// Serve uploads folder to serve uploaded files
 app.use("/uploads", express.static(path.join(__dirname, "public/uploads")));
 
 // API Routes
-app.use("/api/auth", authRoutes);
-app.use("/api/users", userRoutes);
-app.use("/api/messages", messageRoutes);
-app.use("/api/upload", uploadRoutes); // Upload endpoint
+app.use("/api/auth", require("./routes/auth"));
+app.use("/api/users", require("./routes/user"));
+app.use("/api/messages", require("./routes/messages"));
+app.use("/api/upload", require("./routes/upload"));
 
-// Static HTML routes
+// Static page routes
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "login.html"));
 });
@@ -59,65 +52,50 @@ app.get("/settings", (req, res) => {
 // Online users map
 const onlineUsers = new Map();
 
-// Socket.IO JWT auth middleware
+// Socket.IO JWT Authentication Middleware
 io.use((socket, next) => {
   const token = socket.handshake.auth.token;
-  if (!token) return next(new Error("Token required"));
+  if (!token) return next(new Error("Authentication token required"));
 
-  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
     if (err) return next(new Error("Invalid token"));
-    socket.user = user;
+    socket.user = decoded;
     next();
   });
 });
 
-// Socket.IO events
+// Socket.IO Events
 io.on("connection", (socket) => {
   const userId = socket.user.id;
-  console.log(`🔌 User connected: ${userId}`);
+  console.log(`✅ Socket connected: ${userId}`);
   onlineUsers.set(userId, socket.id);
 
-  // Mark user online and update lastSeen
+  // Mark user online
   User.findByIdAndUpdate(userId, { online: true, lastSeen: new Date() }).catch(console.error);
 
-  // Join private room (optional for group/private chat segregation)
+  // Join private chat room
   socket.on("joinPrivateRoom", ({ sender, receiverId }) => {
     const roomId = [sender, receiverId].sort().join("_");
     socket.join(roomId);
     socket.data.roomId = roomId;
   });
 
-  // Handle private message (text or file)
+  // Handle private messages
   socket.on("private message", async ({ to, message, fileUrl, fileType }) => {
     const from = userId;
 
-    const newMsg = new Message({
+    const newMsg = await Message.create({
       sender: from,
       receiver: to,
       content: message || "",
       fileUrl: fileUrl || null,
       fileType: fileType || null,
-      status: "sent", // Initial status
+      status: "sent",
       createdAt: new Date(),
     });
 
-    await newMsg.save();
-
     const toSocketId = onlineUsers.get(to);
-    if (toSocketId) {
-      io.to(toSocketId).emit("private message", {
-        from,
-        message: newMsg.content,
-        fileUrl: newMsg.fileUrl,
-        fileType: newMsg.fileType,
-        status: newMsg.status,
-        timestamp: newMsg.createdAt.toISOString(),
-        messageId: newMsg._id.toString(),
-      });
-    }
-
-    // Echo to sender as well
-    socket.emit("private message", {
+    const payload = {
       from,
       message: newMsg.content,
       fileUrl: newMsg.fileUrl,
@@ -125,51 +103,43 @@ io.on("connection", (socket) => {
       status: newMsg.status,
       timestamp: newMsg.createdAt.toISOString(),
       messageId: newMsg._id.toString(),
-    });
+    };
+
+    if (toSocketId) io.to(toSocketId).emit("private message", payload);
+    socket.emit("private message", payload);
   });
 
-  // Handle message status update (e.g., read)
+  // Message status update
   socket.on("message status update", async ({ messageId, status }) => {
-    if (!messageId || !status) return;
-
     try {
       const msg = await Message.findById(messageId);
       if (!msg) return;
-
-      msg.status = status; // e.g., "read"
+      msg.status = status;
       await msg.save();
 
-      // Notify sender if online
       const senderSocketId = onlineUsers.get(msg.sender.toString());
       if (senderSocketId) {
-        io.to(senderSocketId).emit("message status update", {
-          messageId,
-          status,
-        });
+        io.to(senderSocketId).emit("message status update", { messageId, status });
       }
     } catch (err) {
-      console.error("Error updating message status:", err.message);
+      console.error("Status update error:", err.message);
     }
   });
 
-  // Typing indicators
+  // Typing indicator
   socket.on("typing", ({ to }) => {
     const toSocketId = onlineUsers.get(to);
-    if (toSocketId) {
-      io.to(toSocketId).emit("typing", { from: userId });
-    }
+    if (toSocketId) io.to(toSocketId).emit("typing", { from: userId });
   });
 
   socket.on("stop typing", ({ to }) => {
     const toSocketId = onlineUsers.get(to);
-    if (toSocketId) {
-      io.to(toSocketId).emit("stop typing", { from: userId });
-    }
+    if (toSocketId) io.to(toSocketId).emit("stop typing", { from: userId });
   });
 
   // Disconnect
   socket.on("disconnect", async () => {
-    console.log(`❌ User disconnected: ${userId}`);
+    console.log(`❌ Disconnected: ${userId}`);
     onlineUsers.delete(userId);
     await User.findByIdAndUpdate(userId, {
       online: false,
@@ -190,5 +160,5 @@ mongoose
 // Start server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`🚀 SmartTalk server running on port ${PORT}`);
+  console.log(`🚀 Server running at http://localhost:${PORT}`);
 });
