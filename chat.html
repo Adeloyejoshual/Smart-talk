@@ -25,6 +25,8 @@
         <span id="typingIndicator"></span>
       </div>
 
+      <button id="exportChatBtn">📁 Export Chat</button>
+
       <div id="chatMessages" class="chat-messages"></div>
 
       <form id="chatForm" class="chat-form">
@@ -44,11 +46,10 @@
     const urlParams = new URLSearchParams(window.location.search);
     const receiverId = urlParams.get("id");
     const chatUsername = urlParams.get("username");
-    document.getElementById("chatUsername").textContent = chatUsername || "Unknown";
-
+    const senderId = localStorage.getItem("userId");
     const token = localStorage.getItem("token");
 
-    let typingTimeout;
+    document.getElementById("chatUsername").textContent = chatUsername || "Unknown";
 
     socket.emit("joinPrivateRoom", receiverId);
 
@@ -60,7 +61,7 @@
       }, 1000);
     });
 
-    socket.on("typing", (data) => {
+    socket.on("typing", () => {
       typingIndicator.textContent = "Typing...";
     });
 
@@ -100,6 +101,39 @@
         appendMessage(msg.sender === receiverId ? chatUsername : "You", msg.text);
       });
     });
+
+    // Export Chat
+    document.getElementById("exportChatBtn").addEventListener("click", async () => {
+      const res = await fetch('/api/messages/export', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ userId1: senderId, userId2: receiverId })
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        let text = '';
+        data.messages.forEach(msg => {
+          const time = new Date(msg.timestamp).toLocaleString();
+          const direction = msg.sender === senderId ? 'You' : 'Them';
+          text += `[${time}] ${direction}: ${msg.message}\n`;
+        });
+
+        const blob = new Blob([text], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'chat_export.txt';
+        a.click();
+      } else {
+        alert("Failed to export chat");
+      }
+    });
+
+    let typingTimeout;
   </script>
 </body>
 </html>
