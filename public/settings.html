@@ -13,7 +13,12 @@
     <h1>⚙️ SmartTalk Settings</h1>
   </header>
 
-  <div class="settings-container">
+  <div class="setting-group">
+  <h3>Change Username</h3>
+  <input type="text" id="newUsernameInput" placeholder="Enter new username" />
+  <button onclick="updateUsername()">Update Username</button>
+  <p id="usernameStatus" style="color: green;"></p>
+</div>
     <aside class="settings-sidebar">
       <button onclick="showSection('profile')">Profile</button>
       <button onclick="showSection('privacy')">Privacy</button>
