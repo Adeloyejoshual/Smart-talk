@@ -1,136 +1,169 @@
-/* Reset and base */
 body {
   margin: 0;
-  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   background-color: #121212;
   color: #fff;
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
 }
 
-/* Header */
-header {
-  background-color: #1f1f1f;
-  padding: 16px;
+.top-bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  background-color: #1e1e1e;
+  padding: 10px 20px;
+  border-bottom: 1px solid #333;
 }
 
 #usernameDisplay {
-  font-size: 18px;
+  font-size: 1.2rem;
+  font-weight: bold;
+}
+
+.top-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#searchBar {
+  padding: 8px;
+  border-radius: 5px;
+  border: none;
+  width: 180px;
 }
 
 #settingsBtn {
+  font-size: 1.2rem;
   background: none;
   border: none;
-  color: #fff;
-  font-size: 24px;
   cursor: pointer;
-}
-
-/* Settings dropdown */
-#settingsMenu {
-  position: absolute;
-  top: 60px;
-  right: 20px;
-  background-color: #2c2c2c;
-  border: 1px solid #333;
-  border-radius: 10px;
-  padding: 10px;
-  display: none;
-  z-index: 999;
-}
-
-#settingsMenu.hidden {
-  display: none;
-}
-
-#settingsMenu ul {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-
-#settingsMenu li {
-  padding: 8px 12px;
-  cursor: pointer;
-  border-bottom: 1px solid #444;
-}
-
-#settingsMenu li:hover {
-  background-color: #3a3a3a;
-}
-
-/* Search bar */
-#searchBar {
-  margin: 16px auto;
-  width: 90%;
-  padding: 10px;
-  font-size: 16px;
-  border-radius: 8px;
-  border: none;
-  outline: none;
-  background-color: #222;
   color: white;
 }
 
-/* User List */
-#userList {
-  list-style: none;
-  padding: 0;
-  margin: 0 auto;
-  width: 90%;
-  max-height: 60vh;
-  overflow-y: auto;
+.user-list {
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
 }
 
-.user-item {
-  background-color: #1e1e1e;
-  padding: 12px 16px;
-  margin: 8px 0;
+.user-card {
+  background-color: #1f1f1f;
+  padding: 15px;
   border-radius: 10px;
+  margin-bottom: 10px;
   cursor: pointer;
-  transition: background-color 0.2s ease-in-out;
+  transition: background 0.3s;
 }
 
-.user-item:hover {
+.user-card:hover {
   background-color: #333;
 }
 
-/* Floating Add User Button */
-#addUserBtn {
+.floating-add-btn {
   position: fixed;
-  bottom: 20px;
-  right: 20px;
-  width: 56px;
-  height: 56px;
-  background-color: #6200ea;
-  color: #fff;
-  font-size: 28px;
-  border-radius: 50%;
+  bottom: 25px;
+  right: 25px;
+  font-size: 2rem;
+  background-color: #3a8ddf;
+  color: white;
   border: none;
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
   cursor: pointer;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
   z-index: 1000;
 }
 
-#addUserBtn:hover {
-  background-color: #7f39fb;
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
 }
 
-/* Responsive tweaks */
-@media (max-width: 600px) {
-  #userList {
-    width: 95%;
-  }
+.modal.hidden {
+  display: none;
+}
 
-  #searchBar {
-    width: 95%;
-  }
+.modal-content {
+  background-color: #1f1f1f;
+  padding: 30px;
+  border-radius: 10px;
+  width: 90%;
+  max-width: 400px;
+  box-shadow: 0 2px 15px rgba(0, 0, 0, 0.4);
+}
 
-  #settingsMenu {
-    right: 10px;
-  }
+.modal-content h2 {
+  margin-top: 0;
+}
+
+.modal-content input {
+  width: 100%;
+  padding: 10px;
+  margin: 15px 0;
+  border: none;
+  border-radius: 5px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.modal-actions button {
+  padding: 8px 15px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+#add {
+  background-color: #4caf50;
+  color: white;
+}
+
+#cancel {
+  background-color: #f44336;
+  color: white;
+}
+
+.settings-menu {
+  position: fixed;
+  top: 60px;
+  right: 20px;
+  background-color: #2a2a2a;
+  border-radius: 8px;
+  padding: 10px 0;
+  z-index: 1001;
+  width: 180px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+}
+
+.settings-menu ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.settings-menu li {
+  padding: 10px 20px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.settings-menu li:hover {
+  background-color: #3c3c3c;
+}
+
+.settings-menu.hidden {
+  display: none;
 }
