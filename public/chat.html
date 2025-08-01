@@ -1,73 +1,81 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>SmartTalk - Chat</title>
-  <link rel="stylesheet" href="/styles/chat.css">
-  <script src="/socket.io/socket.io.js"></script>
+  <title>SmartTalk Chat</title>
+  <link rel="stylesheet" href="/styles/chat.css" />
 </head>
 <body>
-  <header>
-    <button id="backBtn">⬅ Back</button>
-    <h2 id="chatWith">Chat</h2>
-  </header>
+  <div class="chat-container">
+    <header>
+      <h2 id="chatWith"></h2>
+      <a href="/home.html" class="back-btn">⬅ Back</a>
+    </header>
+    <div id="messages" class="messages"></div>
+    <form id="messageForm">
+      <input type="text" id="messageInput" placeholder="Type a message..." required autocomplete="off" />
+      <button type="submit">Send</button>
+    </form>
+  </div>
 
-  <main id="chatBox">
-    <ul id="messages"></ul>
-  </main>
-
-  <form id="chatForm">
-    <input type="text" id="messageInput" autocomplete="off" placeholder="Type a message..." required />
-    <button type="submit">➤</button>
-  </form>
-
+  <script src="/socket.io/socket.io.js"></script>
   <script>
     const socket = io();
-    const messages = document.getElementById('messages');
-    const chatForm = document.getElementById('chatForm');
-    const messageInput = document.getElementById('messageInput');
-    const chatWith = document.getElementById('chatWith');
-    const backBtn = document.getElementById('backBtn');
 
     const urlParams = new URLSearchParams(window.location.search);
-    const to = urlParams.get('to');
-    const toName = urlParams.get('name');
-    const from = localStorage.getItem('userId');
+    const from = localStorage.getItem("userId");
+    const to = urlParams.get("to");
+    const toUsername = urlParams.get("username");
 
-    // Redirect to login if not authenticated
-    if (!from) {
-      window.location.href = '/login.html';
+    document.getElementById("chatWith").innerText = "Chat with " + toUsername;
+
+    // Join room
+    socket.emit("joinRoom", { from, to });
+
+    // Load message history
+    async function loadMessages() {
+      try {
+        const res = await fetch(`/api/messages/history/${from}/${to}`);
+        const data = await res.json();
+        if (data && data.messages) {
+          data.messages.forEach(msg => addMessage(msg.from === from ? "You" : toUsername, msg.message, msg.timestamp));
+        }
+      } catch (err) {
+        console.error("Error loading history", err);
+      }
     }
 
-    // Show username or fallback
-    chatWith.textContent = 'Chat with ' + (toName || 'User');
-
-    // Back button
-    backBtn.onclick = () => {
-      window.location.href = '/home.html';
-    };
-
-    // Join room for private chat
-    socket.emit('joinRoom', { from, to });
-
-    // Listen for incoming messages
-    socket.on('privateMessage', ({ from: senderId, message }) => {
-      const li = document.createElement('li');
-      li.textContent = senderId === from ? `You: ${message}` : `${toName || 'User'}: ${message}`;
-      li.className = senderId === from ? 'sent' : 'received';
-      messages.appendChild(li);
-      messages.scrollTop = messages.scrollHeight;
-    });
+    loadMessages();
 
     // Send message
-    chatForm.addEventListener('submit', (e) => {
+    const form = document.getElementById("messageForm");
+    const input = document.getElementById("messageInput");
+    const messagesDiv = document.getElementById("messages");
+
+    form.addEventListener("submit", (e) => {
       e.preventDefault();
-      const msg = messageInput.value.trim();
-      if (!msg) return;
-      socket.emit('privateMessage', { from, to, message: msg });
-      messageInput.value = '';
+      const message = input.value.trim();
+      if (message) {
+        socket.emit("privateMessage", { from, to, message });
+        addMessage("You", message, new Date());
+        input.value = "";
+      }
     });
+
+    // Receive message
+    socket.on("privateMessage", ({ from: sender, message, timestamp }) => {
+      addMessage(sender === from ? "You" : toUsername, message, timestamp);
+    });
+
+    // Add message to DOM
+    function addMessage(sender, text, time) {
+      const msgDiv = document.createElement("div");
+      msgDiv.classList.add("message");
+      msgDiv.innerHTML = `<strong>${sender}</strong>: ${text} <span class="timestamp">${new Date(time).toLocaleTimeString()}</span>`;
+      messagesDiv.appendChild(msgDiv);
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
   </script>
 </body>
 </html>
