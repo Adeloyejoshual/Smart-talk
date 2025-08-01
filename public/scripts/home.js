@@ -1,84 +1,89 @@
-document.addEventListener("DOMContentLoaded", () => {
-  const token = localStorage.getItem("token");
+document.addEventListener("DOMContentLoaded", async () => {
+  const usernameDisplay = document.getElementById("usernameDisplay");
+  const searchBar = document.getElementById("searchBar");
+  const userList = document.getElementById("userList");
+  const settingsBtn = document.getElementById("settingsBtn");
+  const settingsMenu = document.getElementById("settingsMenu");
+  const toggleFriendsBtn = document.getElementById("toggleFriendsBtn");
 
-  if (!token) {
-    // No token = user not logged in
-    window.location.href = "/login.html";
-    return;
-  }
+  let allUsers = [];
+  let currentUser = null;
+  let showOnlyFriends = false;
 
-  // Optional: validate token with backend
-  fetch("/api/users/profile", {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  })
-    .then(res => {
-      if (!res.ok) {
-        throw new Error("Invalid token");
-      }
-      return res.json();
-    })
-    .then(data => {
-      console.log("Welcome:", data.user.username);
-      document.getElementById("usernameDisplay").textContent = data.user.username;
-    })
-    .catch(err => {
-      console.error("Redirecting due to invalid token:", err);
-      localStorage.removeItem("token");
-      window.location.href = "/login.html";
+  // Fetch current user
+  const fetchCurrentUser = async () => {
+    try {
+      const res = await fetch("/api/users/me");
+      if (!res.ok) throw new Error("Failed to fetch current user");
+      const data = await res.json();
+      currentUser = data;
+      usernameDisplay.textContent = currentUser.username;
+    } catch (err) {
+      console.error("Error fetching user:", err);
+      window.location.href = "/login.html"; // Redirect if not logged in
+    }
+  };
+
+  // Fetch all users
+  const fetchUsers = async () => {
+    try {
+      const res = await fetch("/api/users/list");
+      const data = await res.json();
+      allUsers = data.filter(user => user._id !== currentUser._id);
+      renderUserList();
+    } catch (err) {
+      console.error("Error fetching users:", err);
+    }
+  };
+
+  const renderUserList = () => {
+    const keyword = searchBar.value.toLowerCase();
+    userList.innerHTML = "";
+
+    const usersToDisplay = showOnlyFriends
+      ? allUsers.filter(user => currentUser.friends.includes(user._id))
+      : allUsers;
+
+    usersToDisplay.forEach(user => {
+      if (!user.username.toLowerCase().includes(keyword)) return;
+
+      const userCard = document.createElement("div");
+      userCard.className = "user-card";
+      userCard.innerHTML = `
+        <span>${user.username}</span>
+        <button class="chat-btn" data-id="${user._id}">Chat</button>
+      `;
+
+      userList.appendChild(userCard);
     });
-});
+  };
 
-  // Load username from localStorage or session
-  const username = localStorage.getItem("username");
-  if (username) {
-    usernameDisplay.textContent = username;
-  }
-
-  // Toggle settings
+  // Toggle settings menu
   settingsBtn.addEventListener("click", () => {
-    settingsSection.classList.toggle("show");
+    settingsMenu.classList.toggle("hidden");
   });
 
-  // Hide settings if clicked outside
-  document.addEventListener("click", (e) => {
-    if (!settingsBtn.contains(e.target) && !settingsSection.contains(e.target)) {
-      settingsSection.classList.remove("show");
+  // Filter friends toggle
+  toggleFriendsBtn.addEventListener("click", () => {
+    showOnlyFriends = !showOnlyFriends;
+    toggleFriendsBtn.textContent = showOnlyFriends ? "Show All" : "My Friends";
+    renderUserList();
+  });
+
+  // Handle chat button clicks
+  userList.addEventListener("click", (e) => {
+    if (e.target.classList.contains("chat-btn")) {
+      const userId = e.target.dataset.id;
+      window.location.href = `/chat.html?user=${userId}`;
     }
   });
 
-  // Load users
-  async function loadUsers() {
-    const res = await fetch("/api/users/list");
-    const users = await res.json();
-    displayUsers(users);
-  }
-
-  function displayUsers(users) {
-    userList.innerHTML = "";
-    users.forEach(user => {
-      if (user.username !== username) {
-        const li = document.createElement("li");
-        li.textContent = user.username;
-        li.style.padding = "10px";
-        li.style.borderBottom = "1px solid #333";
-        li.style.cursor = "pointer";
-        li.addEventListener("click", () => {
-          window.location.href = `/chat.html?to=${user.username}`;
-        });
-        userList.appendChild(li);
-      }
-    });
-  }
-
-  searchBar.addEventListener("input", async () => {
-    const term = searchBar.value.trim();
-    const res = await fetch(`/api/users/search?term=${term}`);
-    const users = await res.json();
-    displayUsers(users);
+  // Handle search bar input
+  searchBar.addEventListener("input", () => {
+    renderUserList();
   });
 
-  loadUsers();
+  // Load data
+  await fetchCurrentUser();
+  await fetchUsers();
 });
