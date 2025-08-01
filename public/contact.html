@@ -1,68 +1,39 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Contact Us | SmartTalk</title>
-  <style>
-    body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background-color: #f0f2f5;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-      margin: 0;
-    }
-
-    .contact-container {
-      background-color: #fff;
-      padding: 30px;
-      border-radius: 12px;
-      box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
-      width: 90%;
-      max-width: 400px;
-    }
-
-    h2 {
-      text-align: center;
-      margin-bottom: 20px;
-      color: #333;
-    }
-
-    p {
-      text-align: center;
-      font-size: 16px;
-      color: #444;
-      margin-bottom: 20px;
-    }
-
-    .email {
-      text-align: center;
-      font-size: 18px;
-      font-weight: bold;
-      color: #007bff;
-    }
-
-    .back-link {
-      display: block;
-      text-align: center;
-      margin-top: 20px;
-      text-decoration: none;
-      color: #333;
-    }
-
-    .back-link:hover {
-      text-decoration: underline;
-    }
-  </style>
+  <meta charset="UTF-8"/>
+  <title>Contact Us</title>
+  <link rel="stylesheet" href="/styles/profile.css"/>
 </head>
 <body>
-  <div class="contact-container">
-    <h2>Contact SmartTalk</h2>
-    <p>Need help or have suggestions?</p>
-    <p class="email">Email: <a href="mailto:smarttalkgit@gmail.com">smarttalkgit@gmail.com</a></p>
-    <a class="back-link" href="dashboard.html">← Back to Dashboard</a>
+  <div class="container">
+    <h2>Contact Us</h2>
+    <form id="contactForm">
+      <input type="text" id="name" placeholder="Your Name" required />
+      <input type="email" id="email" placeholder="Your Email" required />
+      <textarea id="message" placeholder="Your Message..." required></textarea>
+      <button type="submit">Send Message</button>
+    </form>
+    <p id="statusMsg"></p>
   </div>
+
+  <script>
+    document.getElementById("contactForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      const name = document.getElementById("name").value;
+      const email = document.getElementById("email").value;
+      const message = document.getElementById("message").value;
+
+      const res = await fetch("/api/users/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email, message }),
+      });
+
+      const data = await res.json();
+      document.getElementById("statusMsg").innerText = data.message;
+    });
+  </script>
 </body>
 </html>
