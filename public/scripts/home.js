@@ -1,145 +1,85 @@
 document.addEventListener("DOMContentLoaded", () => {
-  const usernameDisplay = document.getElementById("usernameDisplay");
+  const userDisplay = document.getElementById("welcomeUser");
   const userList = document.getElementById("userList");
-  const addUserBtn = document.getElementById("addUserBtn");
+  const themeToggle = document.getElementById("themeToggle");
+  const settingsModal = document.getElementById("settingsModal");
   const addUserModal = document.getElementById("addUserModal");
-  const closeModal = document.getElementById("closeModal");
-  const searchBar = document.getElementById("searchBar");
-  const searchResults = document.getElementById("searchResults");
-  const logoutBtn = document.getElementById("logoutBtn");
-  const settingsIcon = document.getElementById("settingsIcon");
 
-  const token = localStorage.getItem("token");
-  if (!token) {
-    return (window.location.href = "/login.html");
+  // Load theme from localStorage
+  if (localStorage.getItem("theme") === "light") {
+    document.documentElement.setAttribute("data-theme", "light");
+    themeToggle.textContent = "☀️";
   }
 
-  // Load profile
-  fetch("/api/users/profile", {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-    .then((res) => res.json())
-    .then((data) => {
-      usernameDisplay.textContent = data.username || "Unknown";
-      loadFriends(data.friends);
+  themeToggle.addEventListener("click", () => {
+    const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+    document.documentElement.setAttribute("data-theme", isDark ? "light" : "dark");
+    themeToggle.textContent = isDark ? "☀️" : "🌙";
+    localStorage.setItem("theme", isDark ? "light" : "dark");
+  });
+
+  // Fetch user info
+  fetch("/api/users/me")
+    .then(res => res.json())
+    .then(user => {
+      userDisplay.textContent = `Welcome, ${user.username}`;
     });
 
-  // Load friend list
-  function loadFriends(friendIds) {
-    userList.innerHTML = "";
-
-    friendIds.forEach((friendId) => {
-      fetch(`/api/users/${friendId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-        .then((res) => res.json())
-        .then((friend) => {
-          const li = document.createElement("li");
-          li.className = "user-card";
-          li.innerHTML = `
+  // Fetch and display friends
+  fetch("/api/users/list")
+    .then(res => res.json())
+    .then(data => {
+      userList.innerHTML = "";
+      data.forEach(friend => {
+        const li = document.createElement("li");
+        li.className = "user-card";
+        li.innerHTML = `
+          <div class="user-info">
+            <div class="user-avatar"></div>
             <div>
-              <strong>${friend.username}</strong><br>
-              <small>${friend.email}</small>
+              <div>${friend.username}</div>
+              <div class="last-seen">${friend.online ? "Online" : "Last seen: " + formatTime(friend.lastSeen)}</div>
             </div>
-            <div>
-              <button class="chatBtn" data-id="${friend._id}">Chat</button>
-              <button class="removeBtn" data-id="${friend._id}">Remove</button>
-            </div>
-          `;
-          userList.appendChild(li);
-        });
-    });
-  }
-
-  // Handle logout
-  logoutBtn.addEventListener("click", () => {
-    localStorage.removeItem("token");
-    window.location.href = "/login.html";
-  });
-
-  // Settings icon navigation
-  settingsIcon.addEventListener("click", () => {
-    window.location.href = "/settings.html";
-  });
-
-  // Show add user modal
-  addUserBtn.addEventListener("click", () => {
-    addUserModal.style.display = "block";
-    searchBar.value = "";
-    searchResults.innerHTML = "";
-  });
-
-  closeModal.addEventListener("click", () => {
-    addUserModal.style.display = "none";
-  });
-
-  // Search user
-  searchBar.addEventListener("input", () => {
-    const query = searchBar.value.trim();
-    if (query.length === 0) {
-      searchResults.innerHTML = "";
-      return;
-    }
-
-    fetch(`/api/users/search?q=${query}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => res.json())
-      .then((results) => {
-        searchResults.innerHTML = "";
-        results.forEach((user) => {
-          const li = document.createElement("li");
-          li.className = "user-card";
-          li.innerHTML = `
-            <div>
-              <strong>${user.username}</strong><br>
-              <small>${user.email}</small>
-            </div>
-            <button class="addBtn" data-id="${user._id}">Add</button>
-          `;
-          searchResults.appendChild(li);
-        });
+            <span class="online-indicator ${friend.online ? "online" : "offline"}"></span>
+          </div>
+          <a href="/chat.html?user=${friend._id}">Chat</a>
+        `;
+        userList.appendChild(li);
       });
-  });
+    });
 
-  // Add friend
-  searchResults.addEventListener("click", (e) => {
-    if (e.target.classList.contains("addBtn")) {
-      const friendId = e.target.dataset.id;
-      fetch("/api/users/add-friend", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ friendId }),
+  // Format time from ISO
+  function formatTime(timestamp) {
+    if (!timestamp) return "Unknown";
+    const date = new Date(timestamp);
+    return date.toLocaleString();
+  }
+
+  // Modals
+  document.getElementById("settingsBtn").onclick = () => settingsModal.classList.remove("hidden");
+  document.getElementById("closeSettings").onclick = () => settingsModal.classList.add("hidden");
+
+  document.getElementById("addUserBtn").onclick = () => addUserModal.classList.remove("hidden");
+  document.getElementById("closeAddModal").onclick = () => addUserModal.classList.add("hidden");
+
+  document.getElementById("confirmAddUser").onclick = () => {
+    const input = document.getElementById("addUsernameInput").value;
+    fetch("/api/users/add", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ identifier: input }),
+    })
+      .then(res => res.json())
+      .then(() => {
+        alert("User added!");
+        location.reload();
       })
-        .then((res) => res.json())
-        .then(() => location.reload());
-    }
-  });
+      .catch(() => alert("Error adding user"));
+  };
 
-  // Remove friend
-  userList.addEventListener("click", (e) => {
-    if (e.target.classList.contains("removeBtn")) {
-      const friendId = e.target.dataset.id;
-      fetch("/api/users/remove-friend", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ friendId }),
-      })
-        .then((res) => res.json())
-        .then(() => location.reload());
-    }
-
-    // Start private chat
-    if (e.target.classList.contains("chatBtn")) {
-      const receiverId = e.target.dataset.id;
-      localStorage.setItem("receiverId", receiverId);
-      window.location.href = "/chat.html";
-    }
-  });
+  document.getElementById("logoutBtn").onclick = () => {
+    fetch("/api/auth/logout", { method: "POST" }).then(() => {
+      location.href = "/login.html";
+    });
+  };
 });
