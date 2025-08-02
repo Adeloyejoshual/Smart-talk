@@ -1,5 +1,4 @@
 // server.js
-
 const express = require("express");
 const http = require("http");
 const cors = require("cors");
@@ -51,13 +50,12 @@ const messageRoutes = require("./routes/messages");
 const settingsRoutes = require("./routes/settings");
 const verifyToken = require("./middleware/verifyToken");
 
-// API Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/users", verifyToken, userRoutes);
 app.use("/api/messages", verifyToken, messageRoutes);
 app.use("/api/settings", verifyToken, settingsRoutes);
 
-// Protect HTML pages from unauthorized access
+// HTML token protection
 function verifyHTMLToken(req, res, next) {
   const token = req.headers.authorization?.split(" ")[1];
   if (!token) return res.redirect("/");
@@ -69,34 +67,31 @@ function verifyHTMLToken(req, res, next) {
   }
 }
 
-// Serve protected pages
-app.get("/home.html", verifyHTMLToken, (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "home.html"));
-});
+// Protected pages
+app.get("/home.html", verifyHTMLToken, (req, res) =>
+  res.sendFile(path.join(__dirname, "public", "home.html"))
+);
+app.get("/chat.html", verifyHTMLToken, (req, res) =>
+  res.sendFile(path.join(__dirname, "public", "chat.html"))
+);
+app.get("/profile.html", verifyHTMLToken, (req, res) =>
+  res.sendFile(path.join(__dirname, "public", "profile.html"))
+);
+app.get("/settings.html", verifyHTMLToken, (req, res) =>
+  res.sendFile(path.join(__dirname, "public", "settings.html"))
+);
+app.get("/notification.html", verifyHTMLToken, (req, res) =>
+  res.sendFile(path.join(__dirname, "public", "notification.html"))
+);
 
-app.get("/chat.html", verifyHTMLToken, (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "chat.html"));
-});
-
-app.get("/profile.html", verifyHTMLToken, (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "profile.html"));
-});
-
-app.get("/settings.html", verifyHTMLToken, (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "settings.html"));
-});
-
-app.get("/notification.html", verifyHTMLToken, (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "notification.html"));
-});
-
-// Default route (login page)
+// Default route
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "login.html"));
 });
 
-// Online users tracking
+// Online users
 const onlineUsers = new Map();
+const Chat = require("./models/Chat");
 
 io.on("connection", (socket) => {
   console.log("🔌 A user connected:", socket.id);
@@ -104,6 +99,7 @@ io.on("connection", (socket) => {
   socket.on("userOnline", (userId) => {
     if (!userId) return;
     onlineUsers.set(userId, socket.id);
+    socket.userId = userId;
     console.log(`✅ User online: ${userId}`);
     io.emit("updateOnlineUsers", Array.from(onlineUsers.keys()));
   });
@@ -119,31 +115,57 @@ io.on("connection", (socket) => {
     io.emit("updateOnlineUsers", Array.from(onlineUsers.keys()));
   });
 
-  socket.on("privateMessage", async (data) => {
-    const { senderId, receiverId, content, fileUrl } = data;
+  // 📤 Send message
+  socket.on("privateMessage", async ({ senderId, receiverId, content, fileUrl }) => {
     if (!senderId || !receiverId || (!content && !fileUrl)) return;
 
-    const message = {
-      senderId,
-      receiverId,
-      content,
+    const chat = new Chat({
+      sender: senderId,
+      receiver: receiverId,
+      message: content,
       fileUrl,
+      status: "sent",
       timestamp: new Date()
-    };
+    });
 
-    const receiverSocketId = onlineUsers.get(receiverId);
-    if (receiverSocketId) {
-      io.to(receiverSocketId).emit("privateMessage", message);
+    await chat.save();
+
+    const receiverSocket = onlineUsers.get(receiverId);
+    const senderSocket = onlineUsers.get(senderId);
+
+    if (receiverSocket) {
+      io.to(receiverSocket).emit("newMessage", {
+        ...chat._doc,
+        status: "delivered"
+      });
+
+      // Update to 'delivered'
+      await Chat.findByIdAndUpdate(chat._id, { status: "delivered" });
     }
 
-    socket.emit("privateMessage", message);
+    // Send to sender
+    if (senderSocket) {
+      io.to(senderSocket).emit("newMessage", {
+        ...chat._doc,
+        status: receiverSocket ? "delivered" : "sent"
+      });
+    }
+  });
 
-    try {
-      const MessageModel = require("./models/Chat");
-      const newMessage = new MessageModel(message);
-      await newMessage.save();
-    } catch (err) {
-      console.error("💾 Failed to save message:", err.message);
+  // ✅ Read receipt when user opens the chat
+  socket.on("markAsRead", async ({ senderId, receiverId }) => {
+    await Chat.updateMany(
+      {
+        sender: senderId,
+        receiver: receiverId,
+        status: { $ne: "read" }
+      },
+      { status: "read" }
+    );
+
+    const senderSocket = onlineUsers.get(senderId);
+    if (senderSocket) {
+      io.to(senderSocket).emit("messagesRead", { by: receiverId });
     }
   });
 
@@ -158,7 +180,7 @@ io.on("connection", (socket) => {
   });
 });
 
-// Server start
+// Start server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
