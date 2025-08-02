@@ -18,16 +18,13 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   welcomeUser.textContent = `Welcome, ${user.username}`;
-
   const socket = io();
 
-  // Load users
+  // === Load all users from server ===
   async function loadUsers() {
     try {
       const res = await fetch("/api/users/list", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       const data = await res.json();
@@ -38,12 +35,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const userCard = document.createElement("div");
         userCard.className = "user-card";
-        userCard.textContent = u.username;
+        userCard.innerHTML = `
+          <span>${u.username}</span>
+          <small>${u.email}</small>
+        `;
+
         userCard.addEventListener("click", () => {
           localStorage.setItem("receiverId", u._id);
           localStorage.setItem("receiverUsername", u.username);
           window.location.href = "/chat.html";
         });
+
         userList.appendChild(userCard);
       });
     } catch (err) {
@@ -54,17 +56,14 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // Search
+  // === User search ===
   searchInput.addEventListener("input", async (e) => {
     const keyword = e.target.value.trim();
-
     if (keyword === "") return loadUsers();
 
     try {
       const res = await fetch(`/api/users/search?query=${keyword}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       const result = await res.json();
@@ -75,12 +74,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const userCard = document.createElement("div");
         userCard.className = "user-card";
-        userCard.textContent = u.username;
+        userCard.innerHTML = `
+          <span>${u.username}</span>
+          <small>${u.email}</small>
+        `;
+
         userCard.addEventListener("click", () => {
           localStorage.setItem("receiverId", u._id);
           localStorage.setItem("receiverUsername", u.username);
           window.location.href = "/chat.html";
         });
+
         userList.appendChild(userCard);
       });
     } catch (err) {
@@ -88,7 +92,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Theme toggle
+  // === Toggle dark/light theme ===
   themeToggle.addEventListener("click", () => {
     const html = document.documentElement;
     const isDark = html.getAttribute("data-theme") === "dark";
@@ -96,7 +100,7 @@ document.addEventListener("DOMContentLoaded", () => {
     themeToggle.innerHTML = `<i class="fas fa-${isDark ? "moon" : "sun"}"></i>`;
   });
 
-  // Settings toggle
+  // === Open/close settings panel ===
   settingsBtn.addEventListener("click", () => {
     settingsPanel.classList.remove("hidden");
   });
@@ -105,17 +109,17 @@ document.addEventListener("DOMContentLoaded", () => {
     settingsPanel.classList.add("hidden");
   });
 
-  // Logout
+  // === Logout and clear session ===
   logoutBtn.addEventListener("click", () => {
     localStorage.clear();
     window.location.href = "/login.html";
   });
 
-  // Add new user
+  // === Add new user click event ===
   addUserBtn.addEventListener("click", () => {
-    alert("This would open Add New User functionality.");
-    // Add your logic here if needed
+    alert("Feature: Add New User (not implemented yet).");
   });
 
+  // Initial load
   loadUsers();
 });
