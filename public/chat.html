@@ -11,6 +11,9 @@
       margin: 0;
       background: #111;
       color: #eee;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
     }
 
     header {
@@ -36,20 +39,25 @@
     }
 
     main {
+      flex: 1;
       padding: 10px;
+      display: flex;
+      flex-direction: column;
     }
 
     #messages {
       list-style: none;
       padding: 0;
       margin: 0;
-      max-height: 70vh;
+      flex: 1;
       overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
     }
 
     #messages li {
-      margin-bottom: 10px;
-      padding: 8px 12px;
+      padding: 10px 14px;
       border-radius: 10px;
       max-width: 70%;
       word-wrap: break-word;
@@ -65,18 +73,22 @@
     .received {
       background-color: #333;
       color: #eee;
+      align-self: flex-start;
       margin-right: auto;
     }
 
     #typingStatus {
-      margin: 10px;
       font-style: italic;
       color: #aaa;
+      padding: 5px 10px;
+      min-height: 20px;
     }
 
     #messageForm {
       display: flex;
       margin-top: 10px;
+      border-top: 1px solid #333;
+      padding-top: 10px;
     }
 
     #messageInput {
@@ -95,6 +107,10 @@
       color: white;
       border-radius: 0 5px 5px 0;
       cursor: pointer;
+    }
+
+    #messageForm button:hover {
+      background: #218838;
     }
   </style>
 </head>
