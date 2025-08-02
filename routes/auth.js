@@ -4,35 +4,26 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const User = require("../models/User");
+const sendEmail = require("../utils/sendEmail"); // Your email sending utility
 
 const JWT_SECRET = process.env.JWT_SECRET || "supersecretkey123";
 
-// Temporary in-memory token store (replace with DB for production)
-const resetTokens = {};
-
-// Generate JWT token
+// Generate JWT token with 30-day expiry
 const generateToken = (id) => {
   return jwt.sign({ id }, JWT_SECRET, { expiresIn: "30d" });
 };
 
-// ------------------ REGISTER ------------------
+// REGISTER
 router.post("/register", async (req, res) => {
   const { username, email, password } = req.body;
-
-  if (!username || !email || !password) {
+  if (!username || !email || !password)
     return res.status(400).json({ message: "All fields are required" });
-  }
 
   try {
-    const emailExists = await User.findOne({ email });
-    if (emailExists) {
+    if (await User.findOne({ email }))
       return res.status(400).json({ message: "Email already in use" });
-    }
-
-    const usernameExists = await User.findOne({ username });
-    if (usernameExists) {
+    if (await User.findOne({ username }))
       return res.status(400).json({ message: "Username already taken" });
-    }
 
     const hashedPassword = await bcrypt.hash(password, 12);
 
@@ -44,11 +35,7 @@ router.post("/register", async (req, res) => {
 
     res.status(201).json({
       token: generateToken(newUser._id),
-      user: {
-        id: newUser._id,
-        username: newUser.username,
-        email: newUser.email,
-      },
+      user: { id: newUser._id, username: newUser.username, email: newUser.email },
     });
   } catch (err) {
     console.error("Register error:", err);
@@ -56,13 +43,11 @@ router.post("/register", async (req, res) => {
   }
 });
 
-// ------------------ LOGIN ------------------
+// LOGIN
 router.post("/login", async (req, res) => {
   const { email, password } = req.body;
-
-  if (!email || !password) {
+  if (!email || !password)
     return res.status(400).json({ message: "Email and password required" });
-  }
 
   try {
     const user = await User.findOne({ email });
@@ -73,11 +58,7 @@ router.post("/login", async (req, res) => {
 
     res.status(200).json({
       token: generateToken(user._id),
-      user: {
-        id: user._id,
-        username: user.username,
-        email: user.email,
-      },
+      user: { id: user._id, username: user.username, email: user.email },
     });
   } catch (err) {
     console.error("Login error:", err);
@@ -85,46 +66,65 @@ router.post("/login", async (req, res) => {
   }
 });
 
-// ------------------ FORGOT PASSWORD ------------------
+// FORGOT PASSWORD
 router.post("/forgot-password", async (req, res) => {
   const { email } = req.body;
+  if (!email) return res.status(400).json({ message: "Email is required" });
 
   try {
     const user = await User.findOne({ email });
     if (!user) return res.status(400).json({ message: "User not found" });
 
     const token = crypto.randomBytes(20).toString("hex");
-    resetTokens[token] = { userId: user._id, expires: Date.now() + 3600000 }; // 1hr
+    const expires = Date.now() + 3600000; // 1 hour
+
+    // Save token and expiry to user
+    user.resetPasswordToken = token;
+    user.resetPasswordExpires = expires;
+    await user.save();
 
     const resetLink = `http://localhost:3000/reset-password.html?token=${token}`;
-    console.log("🔗 Reset link:", resetLink);
+    const message = `
+Hello ${user.username},
 
-    res.json({ message: "Password reset link has been sent to your email (check console)." });
+You requested a password reset. Please click the link below to reset your password:
+
+${resetLink}
+
+If you did not request this, please ignore this email.
+
+Thanks,
+SmartTalk Team
+    `;
+
+    await sendEmail(user.email, "SmartTalk Password Reset", message);
+
+    res.json({ message: "Password reset link sent to your email." });
   } catch (err) {
     console.error("Forgot password error:", err);
-    res.status(500).json({ message: "Server error during forgot password" });
+    res.status(500).json({ message: "Server error" });
   }
 });
 
-// ------------------ RESET PASSWORD ------------------
+// RESET PASSWORD
 router.post("/reset-password", async (req, res) => {
   const { token, newPassword } = req.body;
-
-  const data = resetTokens[token];
-
-  if (!data || Date.now() > data.expires) {
-    return res.status(400).json({ message: "Invalid or expired token" });
-  }
+  if (!token || !newPassword)
+    return res.status(400).json({ message: "Token and new password required" });
 
   try {
-    const user = await User.findById(data.userId);
-    if (!user) return res.status(400).json({ message: "User not found" });
+    const user = await User.findOne({
+      resetPasswordToken: token,
+      resetPasswordExpires: { $gt: Date.now() },
+    });
+
+    if (!user) return res.status(400).json({ message: "Invalid or expired token" });
 
     const hashedPassword = await bcrypt.hash(newPassword, 12);
     user.password = hashedPassword;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
     await user.save();
-
-    delete resetTokens[token];
 
     res.json({ message: "Password has been reset successfully." });
   } catch (err) {
