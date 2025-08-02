@@ -5,36 +5,39 @@
   <title>SmartTalk - Home</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="/styles/home.css" />
-  <script src="/socket.io/socket.io.js"></script>
+  <script defer src="/scripts/home.js"></script>
 </head>
 <body>
   <header>
+    <h2>SmartTalk</h2>
     <div class="top-bar">
       <input type="text" id="searchInput" placeholder="Search users..." />
-      <h2 id="welcomeUser">Welcome</h2>
-      <button id="settingsIcon">⚙️</button>
+      <button id="settingsBtn" title="Settings">⚙️</button>
     </div>
   </header>
 
   <main>
-    <ul id="userList" class="user-list"></ul>
-    <button id="addUserBtn" class="floating-btn">＋</button>
+    <h3 id="welcomeUser">Welcome, <span id="username">User</span></h3>
+
+    <section id="userList" class="user-list">
+      <!-- Users will be displayed here -->
+    </section>
+
+    <button id="addUserBtn" title="Add New User">+</button>
   </main>
 
   <!-- Settings Modal -->
   <div id="settingsModal" class="modal hidden">
     <div class="modal-content">
-      <button class="close-btn" id="closeSettings">←</button>
+      <span class="close">&times;</span>
       <h3>Settings</h3>
-      <ul class="settings-options">
+      <ul>
         <li><a href="/profile.html">Edit Profile</a></li>
-        <li><a href="/contact.html">Contact</a></li>
         <li><a href="/support.html">Customer Service</a></li>
+        <li><a href="/contact.html">Contact</a></li>
         <li><a href="#" id="logoutBtn">Logout</a></li>
       </ul>
     </div>
   </div>
-
-  <script src="/scripts/home.js"></script>
 </body>
 </html>
