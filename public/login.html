@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Login – SmartTalk</title>
-  <link rel="stylesheet" href="styles/home.css" />
+  <title>SmartTalk - Login</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
   <style>
     body {
       background: linear-gradient(to right, #0066cc, #3399ff);
@@ -49,28 +49,6 @@
       box-sizing: border-box;
     }
 
-    .password-wrapper {
-      position: relative;
-      width: 100%;
-    }
-
-    .password-wrapper input {
-      width: 100%;
-      padding-right: 60px;
-    }
-
-    .toggle-password {
-      position: absolute;
-      right: 12px;
-      top: 50%;
-      transform: translateY(-50%);
-      color: #0066cc;
-      font-size: 13px;
-      cursor: pointer;
-      user-select: none;
-      background-color: transparent;
-    }
-
     .login-box button {
       width: 100%;
       padding: 10px;
@@ -97,10 +75,21 @@
       text-decoration: underline;
     }
 
-    .error-msg {
+    .error-msg, .error-message {
       color: #ffcccc;
       font-size: 14px;
       margin-top: 10px;
+    }
+
+    .login-box hr {
+      margin: 20px 0;
+      border: 0;
+      border-top: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    h3 {
+      color: #fff;
+      margin-bottom: 10px;
     }
   </style>
 </head>
@@ -108,58 +97,81 @@
   <div class="login-box">
     <img src="/images/logo.png" alt="SmartTalk Logo" />
     <h2>Login to SmartTalk</h2>
+
     <form id="loginForm">
-      <input type="email" name="email" placeholder="Email" required />
-
-      <div class="password-wrapper">
-        <input type="password" name="password" id="login-password" placeholder="Password" required />
-        <span class="toggle-password" onclick="togglePassword('login-password', this)">Show</span>
-      </div>
-
+      <input type="email" id="loginEmail" placeholder="Email" required />
+      <input type="password" id="loginPassword" placeholder="Password" required />
       <button type="submit">Login</button>
-      <div class="forgot-link">
-        <a href="/forgot-password.html">Forgot Password?</a>
-      </div>
-      <div class="error-msg" id="errorMsg"></div>
     </form>
+
+    <p id="loginError" class="error-msg"></p>
+
+    <hr />
+
+    <h3>Register</h3>
+
+    <form id="registerForm">
+      <input type="text" id="regUsername" placeholder="Username" required />
+      <input type="email" id="regEmail" placeholder="Email" required />
+      <input type="password" id="regPassword" placeholder="Password" required />
+      <button type="submit">Register</button>
+    </form>
+
+    <p id="registerError" class="error-msg"></p>
   </div>
 
   <script>
-    function togglePassword(id, el) {
-      const input = document.getElementById(id);
-      if (input.type === "password") {
-        input.type = "text";
-        el.textContent = "Hide";
-      } else {
-        input.type = "password";
-        el.textContent = "Show";
-      }
-    }
+    const loginForm = document.getElementById("loginForm");
+    const registerForm = document.getElementById("registerForm");
+    const loginError = document.getElementById("loginError");
+    const registerError = document.getElementById("registerError");
 
-    document.getElementById("loginForm").addEventListener("submit", async function(e) {
+    loginForm.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const form = e.target;
-      const email = form.email.value.trim();
-      const password = form.password.value.trim();
-      const errorMsg = document.getElementById("errorMsg");
+      loginError.textContent = "";
 
-      try {
-        const res = await fetch("/api/auth/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password })
-        });
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: loginForm.loginEmail.value,
+          password: loginForm.loginPassword.value
+        })
+      });
 
-        const data = await res.json();
+      const data = await res.json();
 
-        if (res.ok) {
-          localStorage.setItem("token", data.token);
-          window.location.href = "/home.html";
-        } else {
-          errorMsg.textContent = data.message || "Login failed.";
-        }
-      } catch (err) {
-        errorMsg.textContent = "An error occurred. Try again.";
+      if (res.ok) {
+        localStorage.setItem("token", data.token);
+        localStorage.setItem("user", JSON.stringify(data.user));
+        window.location.href = "/home.html";
+      } else {
+        loginError.textContent = data.message || "Login failed";
+      }
+    });
+
+    registerForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      registerError.textContent = "";
+
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: registerForm.regUsername.value,
+          email: registerForm.regEmail.value,
+          password: registerForm.regPassword.value
+        })
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        localStorage.setItem("token", data.token);
+        localStorage.setItem("user", JSON.stringify(data.user));
+        window.location.href = "/home.html";
+      } else {
+        registerError.textContent = data.message || "Registration failed";
       }
     });
   </script>
