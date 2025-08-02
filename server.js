@@ -21,19 +21,24 @@ const settingsRoutes = require("./routes/settings");
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIO(server);
+const io = socketIO(server, {
+  cors: {
+    origin: "*", // or set to your frontend URL for better security
+    methods: ["GET", "POST"]
+  }
+});
 
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, "public")));
+app.use(express.static(path.join(__dirname, "public"))); // Serves /login.html, /home.html etc.
 
 // MongoDB Connection
 mongoose.connect(process.env.MONGO_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 }).then(() => console.log("✅ MongoDB connected"))
-  .catch((err) => console.error("MongoDB connection error:", err));
+  .catch((err) => console.error("❌ MongoDB error:", err));
 
 // API Routes
 app.use("/api/auth", authRoutes);
@@ -41,25 +46,25 @@ app.use("/api/users", userRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/settings", settingsRoutes);
 
-// Default route
+// Serve login page by default
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "login.html"));
 });
 
-// Socket.IO real-time features
+// --- SOCKET.IO REAL-TIME LOGIC ---
 let onlineUsers = {};
 
 io.on("connection", (socket) => {
-  console.log("🔌 New client connected:", socket.id);
+  console.log("🔌 New connection:", socket.id);
 
-  // Track online user
+  // When a user comes online
   socket.on("userOnline", async ({ userId }) => {
     onlineUsers[userId] = socket.id;
     await User.findByIdAndUpdate(userId, { online: true, lastSeen: new Date() });
     io.emit("updateUserStatus", { userId, online: true });
   });
 
-  // Send message
+  // Handle private message
   socket.on("privateMessage", async ({ senderId, receiverId, content, fileUrl, fileType }) => {
     const message = new Message({
       sender: senderId,
@@ -71,28 +76,30 @@ io.on("connection", (socket) => {
     });
     await message.save();
 
-    // Emit to receiver if online
+    // Send to receiver if online
     const receiverSocket = onlineUsers[receiverId];
     if (receiverSocket) {
       io.to(receiverSocket).emit("privateMessage", {
         _id: message._id,
         senderId,
+        receiverId,
         content,
         fileUrl,
         fileType,
+        type: message.type,
         status: "sent",
         createdAt: message.createdAt,
       });
     }
 
-    // Also confirm to sender
+    // Confirm delivery to sender
     const senderSocket = onlineUsers[senderId];
     if (senderSocket) {
       io.to(senderSocket).emit("privateMessageSent", message);
     }
   });
 
-  // Read receipt
+  // Mark message as read
   socket.on("markAsRead", async ({ messageId }) => {
     const msg = await Message.findByIdAndUpdate(messageId, { read: true, status: "read" });
     if (msg && onlineUsers[msg.sender]) {
@@ -100,7 +107,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  // Soft delete message
+  // Soft delete
   socket.on("deleteMessage", async ({ messageId }) => {
     const msg = await Message.findByIdAndUpdate(messageId, { deleted: true });
     if (msg) {
@@ -108,7 +115,22 @@ io.on("connection", (socket) => {
     }
   });
 
-  // Handle disconnect
+  // Typing indicator
+  socket.on("typing", ({ senderId, receiverId }) => {
+    const receiverSocket = onlineUsers[receiverId];
+    if (receiverSocket) {
+      io.to(receiverSocket).emit("typing", { from: senderId });
+    }
+  });
+
+  socket.on("stopTyping", ({ senderId, receiverId }) => {
+    const receiverSocket = onlineUsers[receiverId];
+    if (receiverSocket) {
+      io.to(receiverSocket).emit("stopTyping", { from: senderId });
+    }
+  });
+
+  // On disconnect
   socket.on("disconnect", async () => {
     const userId = Object.keys(onlineUsers).find(id => onlineUsers[id] === socket.id);
     if (userId) {
@@ -116,12 +138,12 @@ io.on("connection", (socket) => {
       await User.findByIdAndUpdate(userId, { online: false, lastSeen: new Date() });
       io.emit("updateUserStatus", { userId, online: false });
     }
-    console.log("❌ Client disconnected:", socket.id);
+    console.log("❌ Disconnected:", socket.id);
   });
 });
 
-// Start the server
+// Start server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`🚀 SmartTalk running at http://localhost:${PORT}`);
+  console.log(`🚀 SmartTalk running: http://localhost:${PORT}`);
 });
