@@ -135,7 +135,6 @@
       const closeModal = document.getElementById("closeModal");
       const addFriendButton = document.getElementById("addFriendButton");
 
-      const userId = localStorage.getItem("userId");
       const username = localStorage.getItem("username");
       const token = localStorage.getItem("token");
 
@@ -147,30 +146,38 @@
           const query = searchBar.value.trim();
           if (query.length === 0) return (userList.innerHTML = "");
 
-          const res = await fetch(`/api/users/search?query=${query}`);
-          const data = await res.json();
-          userList.innerHTML = "";
-
-          data.forEach(user => {
-            const item = document.createElement("div");
-            item.className = "user-card";
-            item.innerHTML = `
-              <div>
-                <strong>${user.username}</strong><br>
-                <small>${user.email}</small>
-              </div>
-              <button class="startChat" data-id="${user._id}">Chat</button>
-            `;
-            userList.appendChild(item);
-          });
-
-          document.querySelectorAll(".startChat").forEach(btn => {
-            btn.addEventListener("click", () => {
-              const friendId = btn.getAttribute("data-id");
-              localStorage.setItem("chatWith", friendId);
-              window.location.href = "/chat.html";
+          try {
+            const res = await fetch(`/api/users/search?query=${query}`, {
+              headers: {
+                Authorization: `Bearer ${token}`
+              }
             });
-          });
+            const data = await res.json();
+            userList.innerHTML = "";
+
+            data.forEach(user => {
+              const item = document.createElement("div");
+              item.className = "user-card";
+              item.innerHTML = `
+                <div>
+                  <strong>${user.username}</strong><br>
+                  <small>${user.email}</small>
+                </div>
+                <button class="startChat" data-id="${user._id}">Chat</button>
+              `;
+              userList.appendChild(item);
+            });
+
+            document.querySelectorAll(".startChat").forEach(btn => {
+              btn.addEventListener("click", () => {
+                const friendId = btn.getAttribute("data-id");
+                localStorage.setItem("chatWith", friendId);
+                window.location.href = "/chat.html";
+              });
+            });
+          } catch (err) {
+            alert("Error searching users.");
+          }
         });
       }
 
@@ -196,7 +203,7 @@
               "Content-Type": "application/json",
               Authorization: `Bearer ${token}`
             },
-            body: JSON.stringify({ userId, friendIdentifier })
+            body: JSON.stringify({ identifier: friendIdentifier }) // Correct key
           });
 
           const data = await res.json();
