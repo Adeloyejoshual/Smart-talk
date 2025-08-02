@@ -1,101 +1,102 @@
 document.addEventListener("DOMContentLoaded", () => {
-  const usernameDisplay = document.getElementById("usernameDisplay");
-  const searchBar = document.getElementById("searchBar");
+  const welcomeUser = document.getElementById("username");
+  const searchInput = document.getElementById("searchInput");
   const userList = document.getElementById("userList");
+  const settingsBtn = document.getElementById("settingsBtn");
+  const settingsModal = document.getElementById("settingsModal");
+  const closeModal = document.querySelector(".close");
+  const logoutBtn = document.getElementById("logoutBtn");
   const addUserBtn = document.getElementById("addUserBtn");
-  const addUserModal = document.getElementById("addUserModal");
-  const closeModal = document.getElementById("closeModal");
-  const addFriendButton = document.getElementById("addFriendButton");
-  const newFriendEmail = document.getElementById("newFriendEmail");
 
-  const userId = localStorage.getItem("userId");
-  const username = localStorage.getItem("username");
   const token = localStorage.getItem("token");
+  const user = JSON.parse(localStorage.getItem("user"));
 
-  if (usernameDisplay) {
-    usernameDisplay.textContent = username || "Guest";
+  if (!token || !user) {
+    window.location.href = "/login.html";
+    return;
   }
 
-  // 🔍 Search users
-  if (searchBar) {
-    searchBar.addEventListener("input", async () => {
-      const query = searchBar.value.trim();
-      if (query.length === 0) return (userList.innerHTML = "");
+  welcomeUser.textContent = user.username;
 
-      try {
-        const res = await fetch(`/api/users/search?query=${query}`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        const data = await res.json();
-        userList.innerHTML = "";
-
-        data.forEach((user) => {
-          const item = document.createElement("div");
-          item.className = "user-card";
-          item.innerHTML = `
-            <div>
-              <strong>${user.username}</strong><br>
-              <small>${user.email}</small>
-            </div>
-            <button class="startChat" data-id="${user._id}">Chat</button>
-          `;
-          userList.appendChild(item);
-        });
-
-        document.querySelectorAll(".startChat").forEach((btn) => {
-          btn.addEventListener("click", () => {
-            const friendId = btn.getAttribute("data-id");
-            localStorage.setItem("chatWith", friendId);
-            window.location.href = "/chat.html";
-          });
-        });
-      } catch (err) {
-        console.error("Search error:", err);
-        alert("Error searching users.");
-      }
-    });
-  }
-
-  // ➕ Open Add Friend Modal
-  addUserBtn?.addEventListener("click", () => {
-    addUserModal.style.display = "block";
-  });
-
-  // ❌ Close Add Friend Modal
-  closeModal?.addEventListener("click", () => {
-    addUserModal.style.display = "none";
-  });
-
-  // ✅ Add Friend
-  addFriendButton?.addEventListener("click", async () => {
-    const email = newFriendEmail.value.trim();
-    if (!email) return alert("Please enter a valid email.");
-
+  // Fetch users
+  const loadUsers = async (query = "") => {
     try {
-      const res = await fetch("/api/users/add", {
-        method: "POST",
+      const res = await fetch(`/api/users/${query ? "search?q=" + query : "list"}`, {
         headers: {
-          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ email }),
       });
 
       const data = await res.json();
 
-      if (res.ok) {
-        alert("Friend added successfully!");
-        newFriendEmail.value = "";
-        addUserModal.style.display = "none";
-      } else {
-        alert(data.message || "Failed to add friend.");
-      }
+      if (!res.ok) throw new Error(data.message || "Failed to load users");
+
+      displayUsers(data);
     } catch (err) {
-      console.error("Add friend error:", err);
-      alert("Failed to connect to the server.");
+      console.error("Error loading users:", err);
+      userList.innerHTML = "<p class='error'>Could not load users.</p>";
+    }
+  };
+
+  // Display users
+  const displayUsers = (users) => {
+    userList.innerHTML = "";
+
+    users.forEach((u) => {
+      if (u._id === user._id) return; // skip self
+
+      const userCard = document.createElement("div");
+      userCard.className = "user-card";
+      userCard.innerHTML = `
+        <strong>${u.username}</strong>
+        <p>${u.email}</p>
+      `;
+
+      userCard.addEventListener("click", () => {
+        localStorage.setItem("receiverId", u._id);
+        localStorage.setItem("receiverUsername", u.username);
+        window.location.href = "/chat.html";
+      });
+
+      userList.appendChild(userCard);
+    });
+  };
+
+  // Search input
+  searchInput.addEventListener("input", (e) => {
+    const query = e.target.value.trim();
+    loadUsers(query);
+  });
+
+  // Settings modal
+  settingsBtn.addEventListener("click", () => {
+    settingsModal.classList.remove("hidden");
+  });
+
+  closeModal.addEventListener("click", () => {
+    settingsModal.classList.add("hidden");
+  });
+
+  window.addEventListener("click", (e) => {
+    if (e.target === settingsModal) {
+      settingsModal.classList.add("hidden");
     }
   });
+
+  // Logout
+  logoutBtn.addEventListener("click", () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    window.location.href = "/login.html";
+  });
+
+  // Add new user
+  addUserBtn.addEventListener("click", () => {
+    alert("Feature coming soon: Add New User!");
+    // Or redirect to user registration/profile edit page
+    // window.location.href = "/add-user.html";
+  });
+
+  // Initial load
+  loadUsers();
 });
