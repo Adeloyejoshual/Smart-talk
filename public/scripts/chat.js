@@ -7,7 +7,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const receiverId = localStorage.getItem("receiverId");
   const receiverUsername = localStorage.getItem("receiverUsername") || "Unknown";
 
-  // HTML Elements
   const chatWith = document.getElementById("chatWith");
   const messageForm = document.getElementById("messageForm");
   const messageInput = document.getElementById("messageInput");
@@ -15,53 +14,41 @@ document.addEventListener("DOMContentLoaded", () => {
   const typingStatus = document.getElementById("typingStatus");
   const backArrow = document.getElementById("backArrow");
 
-  // ✅ Guard: redirect if not logged in
   if (!token || !user || !receiverId) {
-    window.location.href = "/login.html";
-    return;
+    return (window.location.href = "/login.html");
   }
 
-  // ✅ Display who you're chatting with
   if (chatWith) chatWith.textContent = `Chat with ${receiverUsername}`;
+  backArrow?.addEventListener("click", () => window.location.href = "/home.html");
 
-  // ✅ Back arrow handler
-  backArrow?.addEventListener("click", () => {
-    window.location.href = "/home.html";
-  });
+  socket.emit("joinPrivate", { senderId: user._id, receiverId });
 
-  // ✅ Join private room
-  socket.emit("joinPrivate", {
-    senderId: user._id,
-    receiverId,
-  });
+  // Load chat history
+  fetch(`/api/messages/history/${receiverId}`, {
+    headers: { Authorization: token },
+  })
+    .then(res => res.json())
+    .then(messages => {
+      messages.forEach(msg => appendMessage(msg));
+    });
 
-  // ✅ Load chat history
-  fetch(`/api/messages/${receiverId}`, {
+  // Mark messages as read
+  fetch(`/api/messages/read/${receiverId}`, {
+    method: "PATCH",
     headers: {
+      "Content-Type": "application/json",
       Authorization: token,
     },
-  })
-    .then((res) => res.json())
-    .then((messages) => {
-      if (Array.isArray(messages)) {
-        messages.forEach((msg) => {
-          const senderName = msg.sender === user._id ? "You" : receiverUsername;
-          appendMessage(msg.content, senderName, msg.sender === user._id);
-        });
-      }
-    })
-    .catch((err) => console.error("History load error:", err));
+    body: JSON.stringify({ userId: user._id }),
+  });
 
-  // ✅ Handle sending messages
+  // Send message
   messageForm?.addEventListener("submit", async (e) => {
     e.preventDefault();
     const content = messageInput.value.trim();
     if (!content) return;
 
-    const messageData = {
-      receiverId,
-      content,
-    };
+    const messageData = { receiverId, content };
 
     try {
       const res = await fetch("/api/messages/send", {
@@ -74,8 +61,7 @@ document.addEventListener("DOMContentLoaded", () => {
       });
 
       const savedMsg = await res.json();
-      appendMessage(savedMsg.content || content, "You", true);
-
+      appendMessage(savedMsg);
       socket.emit("privateMessage", {
         from: user._id,
         to: receiverId,
@@ -89,7 +75,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // ✅ Typing indicator
+  // Typing indicator
   messageInput.addEventListener("input", () => {
     socket.emit("typing", {
       from: user._id,
@@ -105,23 +91,56 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // ✅ Receive message in real time
+  // Receive messages in real time
   socket.on("privateMessage", (msg) => {
     if (msg.from === receiverId) {
-      appendMessage(msg.content, receiverUsername, false);
+      appendMessage(msg);
     }
   });
 
-  // ✅ Append message
-  function appendMessage(content, senderName, isOwn) {
+  // Append message to DOM
+  function appendMessage(msg) {
+    const isOwn = msg.sender === user._id;
     const msgDiv = document.createElement("div");
     msgDiv.className = `message ${isOwn ? "sent" : "received"}`;
-    msgDiv.innerHTML = `<strong>${senderName}:</strong> ${content}`;
+
+    if (msg.deleted) {
+      msgDiv.innerText = "Message deleted";
+      msgDiv.classList.add("deleted-message");
+    } else {
+      msgDiv.innerHTML = `<strong>${isOwn ? "You" : receiverUsername}:</strong> ${msg.content}`;
+
+      // ✓✓ Read status for sender
+      if (isOwn && typeof msg.read !== "undefined") {
+        const readStatus = document.createElement("span");
+        readStatus.className = "read-status";
+        readStatus.textContent = msg.read ? " ✓✓" : " ✓";
+        msgDiv.appendChild(readStatus);
+      }
+
+      // 🗑️ Delete button
+      if (isOwn) {
+        const delBtn = document.createElement("button");
+        delBtn.textContent = "🗑️";
+        delBtn.onclick = () => {
+          fetch(`/api/messages/${msg._id}`, {
+            method: "DELETE",
+            headers: { Authorization: token },
+          })
+            .then(() => {
+              msgDiv.innerText = "Message deleted";
+              msgDiv.classList.add("deleted-message");
+            });
+        };
+        msgDiv.appendChild(delBtn);
+      }
+    }
+
     messagesContainer.appendChild(msgDiv);
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
   }
 
-  // ✅ Disconnect cleanly
+  // Disconnect on page unload
   window.addEventListener("beforeunload", () => {
     socket.disconnect();
   });
