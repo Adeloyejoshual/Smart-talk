@@ -98,6 +98,23 @@ router.put("/remove-friend/:id", authMiddleware, async (req, res) => {
   }
 });
 
+// POST /api/users/add-friend/:id
+router.post("/add-friend/:id", authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    const friendId = req.params.id;
+
+    if (!user.friends.includes(friendId)) {
+      user.friends.push(friendId);
+      await user.save();
+    }
+
+    res.json({ message: "Friend added!" });
+  } catch (err) {
+    res.status(500).json({ message: "Could not add friend." });
+  }
+});
+
 // Get friend list
 router.get("/friends", authMiddleware, async (req, res) => {
   try {
