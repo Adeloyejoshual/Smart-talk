@@ -9,112 +9,32 @@
 </head>
 <body>
   <header>
-    <h2>SmartTalk</h2>
     <div class="top-bar">
       <input type="text" id="searchInput" placeholder="Search users..." />
-      <span id="welcomeUser">Welcome, <span id="loggedInUsername">User</span></span>
-      <button id="settingsBtn">⚙️</button>
+      <h2 id="welcomeUser">Welcome</h2>
+      <button id="settingsIcon">⚙️</button>
     </div>
   </header>
 
   <main>
-    <div id="userList" class="user-list"></div>
-    <button id="addUserBtn">+</button>
+    <ul id="userList" class="user-list"></ul>
+    <button id="addUserBtn" class="floating-btn">＋</button>
   </main>
 
   <!-- Settings Modal -->
   <div id="settingsModal" class="modal hidden">
     <div class="modal-content">
-      <span class="close-btn" id="closeSettings">&times;</span>
+      <button class="close-btn" id="closeSettings">←</button>
       <h3>Settings</h3>
-      <ul>
+      <ul class="settings-options">
         <li><a href="/profile.html">Edit Profile</a></li>
-        <li><a href="/contact.html">Customer Service</a></li>
-        <li><a href="mailto:smarttalkgit@gmail.com">Contact</a></li>
+        <li><a href="/contact.html">Contact</a></li>
+        <li><a href="/support.html">Customer Service</a></li>
+        <li><a href="#" id="logoutBtn">Logout</a></li>
       </ul>
     </div>
   </div>
 
-  <script>
-    const token = localStorage.getItem("token");
-    const user = JSON.parse(localStorage.getItem("user"));
-    const socket = io();
-
-    document.addEventListener("DOMContentLoaded", () => {
-      if (!token || !user) {
-        location.href = "/login.html";
-      }
-
-      document.getElementById("loggedInUsername").textContent = user.username;
-
-      const userList = document.getElementById("userList");
-      const searchInput = document.getElementById("searchInput");
-      const settingsBtn = document.getElementById("settingsBtn");
-      const settingsModal = document.getElementById("settingsModal");
-      const closeSettings = document.getElementById("closeSettings");
-
-      // Toggle settings modal
-      settingsBtn.onclick = () => settingsModal.classList.remove("hidden");
-      closeSettings.onclick = () => settingsModal.classList.add("hidden");
-
-      // Fetch users
-      const fetchUsers = async () => {
-        try {
-          const res = await fetch("/api/users/list", {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          const users = await res.json();
-
-          userList.innerHTML = "";
-          users.forEach((u) => {
-            if (u._id !== user._id && !user.blocked?.includes(u._id)) {
-              const div = document.createElement("div");
-              div.classList.add("user-card");
-              div.innerHTML = `<strong>${u.username}</strong> (${u.email})`;
-              div.onclick = () => {
-                localStorage.setItem("receiverId", u._id);
-                localStorage.setItem("receiverUsername", u.username);
-                location.href = "/chat.html";
-              };
-              userList.appendChild(div);
-            }
-          });
-        } catch (err) {
-          console.error("Error fetching users:", err);
-        }
-      };
-
-      fetchUsers();
-
-      // Search functionality
-      searchInput.addEventListener("input", async (e) => {
-        const keyword = e.target.value.toLowerCase();
-        const res = await fetch(`/api/users/search?query=${keyword}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const result = await res.json();
-
-        userList.innerHTML = "";
-        result.forEach((u) => {
-          if (u._id !== user._id && !user.blocked?.includes(u._id)) {
-            const div = document.createElement("div");
-            div.classList.add("user-card");
-            div.innerHTML = `<strong>${u.username}</strong> (${u.email})`;
-            div.onclick = () => {
-              localStorage.setItem("receiverId", u._id);
-              localStorage.setItem("receiverUsername", u.username);
-              location.href = "/chat.html";
-            };
-            userList.appendChild(div);
-          }
-        });
-      });
-
-      // Add new user button
-      document.getElementById("addUserBtn").onclick = () => {
-        alert("Feature coming soon: Add new user");
-      };
-    });
-  </script>
+  <script src="/scripts/home.js"></script>
 </body>
 </html>
