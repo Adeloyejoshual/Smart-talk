@@ -31,19 +31,47 @@ document.addEventListener("DOMContentLoaded", () => {
       userList.innerHTML = "";
 
       users.forEach((u) => {
-        if (u._id === user._id || u.blocked) return;
+        if (u._id === user._id || u.blocked || user.blockedUsers?.includes(u._id)) return;
 
         const userCard = document.createElement("div");
         userCard.className = "user-card";
+
+        const isFriend = user.friends?.includes(u._id);
+
         userCard.innerHTML = `
-          <span>${u.username}</span>
-          <small>${u.email}</small>
+          <div class="user-info">
+            <span>${u.username}</span>
+            <small>${u.email}</small>
+          </div>
+          <div class="user-actions">
+            <button class="chat-btn">Chat</button>
+            <button class="friend-btn">${isFriend ? "Remove Friend" : "Add Friend"}</button>
+          </div>
         `;
 
-        userCard.addEventListener("click", () => {
+        // Start chat
+        userCard.querySelector(".chat-btn").addEventListener("click", () => {
           localStorage.setItem("receiverId", u._id);
           localStorage.setItem("receiverUsername", u.username);
           window.location.href = "/chat.html";
+        });
+
+        // Add or remove friend
+        userCard.querySelector(".friend-btn").addEventListener("click", async () => {
+          const endpoint = isFriend
+            ? `/api/users/remove-friend/${u._id}`
+            : `/api/users/add-friend/${u._id}`;
+
+          try {
+            await fetch(endpoint, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            await refreshUserData();
+            loadUsers();
+          } catch (err) {
+            console.error("Friend action failed:", err);
+          }
         });
 
         userList.appendChild(userCard);
@@ -54,6 +82,15 @@ document.addEventListener("DOMContentLoaded", () => {
       localStorage.clear();
       window.location.href = "/login.html";
     }
+  }
+
+  // Refresh user from server
+  async function refreshUserData() {
+    const res = await fetch(`/api/users/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const updatedUser = await res.json();
+    localStorage.setItem("user", JSON.stringify(updatedUser));
   }
 
   // === User search ===
@@ -70,19 +107,45 @@ document.addEventListener("DOMContentLoaded", () => {
       userList.innerHTML = "";
 
       result.forEach((u) => {
-        if (u._id === user._id || u.blocked) return;
+        if (u._id === user._id || u.blocked || user.blockedUsers?.includes(u._id)) return;
 
         const userCard = document.createElement("div");
         userCard.className = "user-card";
+
+        const isFriend = user.friends?.includes(u._id);
+
         userCard.innerHTML = `
-          <span>${u.username}</span>
-          <small>${u.email}</small>
+          <div class="user-info">
+            <span>${u.username}</span>
+            <small>${u.email}</small>
+          </div>
+          <div class="user-actions">
+            <button class="chat-btn">Chat</button>
+            <button class="friend-btn">${isFriend ? "Remove Friend" : "Add Friend"}</button>
+          </div>
         `;
 
-        userCard.addEventListener("click", () => {
+        userCard.querySelector(".chat-btn").addEventListener("click", () => {
           localStorage.setItem("receiverId", u._id);
           localStorage.setItem("receiverUsername", u.username);
           window.location.href = "/chat.html";
+        });
+
+        userCard.querySelector(".friend-btn").addEventListener("click", async () => {
+          const endpoint = isFriend
+            ? `/api/users/remove-friend/${u._id}`
+            : `/api/users/add-friend/${u._id}`;
+
+          try {
+            await fetch(endpoint, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            await refreshUserData();
+            loadUsers();
+          } catch (err) {
+            console.error("Friend action failed:", err);
+          }
         });
 
         userList.appendChild(userCard);
@@ -115,11 +178,11 @@ document.addEventListener("DOMContentLoaded", () => {
     window.location.href = "/login.html";
   });
 
-  // === Add new user click event ===
+  // === Add new user (future feature) ===
   addUserBtn.addEventListener("click", () => {
     alert("Feature: Add New User (not implemented yet).");
   });
 
-  // Initial load
+  // === Initial Load ===
   loadUsers();
 });
