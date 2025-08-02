@@ -27,10 +27,10 @@ document.addEventListener("DOMContentLoaded", () => {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      const data = await res.json();
+      const users = await res.json();
       userList.innerHTML = "";
 
-      data.users.forEach((u) => {
+      users.forEach((u) => {
         if (u._id === user._id || u.blocked) return;
 
         const userCard = document.createElement("div");
