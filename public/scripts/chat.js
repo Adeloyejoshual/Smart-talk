@@ -7,7 +7,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const receiverUsername = localStorage.getItem("receiverUsername") || "Unknown";
 
   if (!token || !user || !receiverId) {
-    window.location.href = "/home.html";
+    window.location.href = "/login.html";
     return;
   }
 
@@ -20,37 +20,30 @@ document.addEventListener("DOMContentLoaded", () => {
   const backHome = document.getElementById("backHome");
 
   chatWith.textContent = `Chat with: ${receiverUsername}`;
-
   const roomId = [user._id, receiverId].sort().join("_");
   socket.emit("joinRoom", roomId);
 
- // Load previous messages from backend and display in chat
-async function loadMessages() {
-  try {
-    const res = await fetch(`/api/messages/${receiverId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+  // Load message history
+  async function loadMessages() {
+    try {
+      const res = await fetch(`/api/messages/${receiverId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
-    const data = await res.json();
-    messages.innerHTML = "";
+      const data = await res.json();
+      messagesList.innerHTML = "";
 
-    data.forEach((msg) => {
-      const div = document.createElement("div");
-      const time = new Date(msg.timestamp).toLocaleTimeString();
-      const isSender = msg.sender === user._id;
+      data.forEach((msg) => {
+        appendMessage(msg, msg.sender === user._id);
+      });
 
-      div.className = isSender ? "message sent" : "message received";
-      div.innerHTML = `<span>${msg.senderName || "User"}:</span> ${msg.text} <small>${time}</small>`;
-      messages.appendChild(div);
-    });
-
-    messages.scrollTop = messages.scrollHeight;
-  } catch (err) {
-    console.error("Error loading messages:", err);
+      scrollToBottom();
+    } catch (err) {
+      console.error("Error loading messages:", err);
+    }
   }
-}
 
-loadMessages();
+  loadMessages();
 
   // Send message
   messageForm.addEventListener("submit", (e) => {
@@ -63,21 +56,29 @@ loadMessages();
       senderId: user._id,
       receiverId,
       roomId,
+      senderName: user.username,
     };
 
     socket.emit("privateMessage", msg);
+    appendMessage(msg, true); // show own message immediately
     messageInput.value = "";
   });
 
   // Receive message
   socket.on("privateMessage", (msg) => {
-    const li = document.createElement("li");
-    const time = new Date(msg.timestamp).toLocaleTimeString();
-    const sender = msg.sender.username || "Unknown";
-    li.textContent = `[${time}] ${sender}: ${msg.text}`;
-    messagesList.appendChild(li);
-    scrollToBottom();
+    appendMessage(msg, msg.senderId === user._id);
   });
+
+  function appendMessage(msg, isSender) {
+    const div = document.createElement("div");
+    const time = new Date(msg.timestamp || Date.now()).toLocaleTimeString();
+    const name = msg.senderName || (isSender ? user.username : receiverUsername);
+
+    div.className = isSender ? "message sent" : "message received";
+    div.innerHTML = `<span>${name}:</span> ${msg.text} <small>${time}</small>`;
+    messagesList.appendChild(div);
+    scrollToBottom();
+  }
 
   // Typing indicator
   messageInput.addEventListener("input", () => {
@@ -92,16 +93,15 @@ loadMessages();
     }, 1000);
   });
 
-  function scrollToBottom() {
-    messagesList.scrollTop = messagesList.scrollHeight;
-  }
-
-  // Back to home
+  // Back to Home
   backHome.addEventListener("click", () => {
     window.location.href = "/home.html";
   });
 
-  // Disconnect on page exit
+  function scrollToBottom() {
+    messagesList.scrollTop = messagesList.scrollHeight;
+  }
+
   window.addEventListener("beforeunload", () => {
     socket.disconnect();
   });
