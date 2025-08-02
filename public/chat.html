@@ -5,6 +5,98 @@
   <title>SmartTalk - Chat</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="/styles/home.css" />
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      background: #111;
+      color: #eee;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #222;
+      padding: 10px 20px;
+      border-bottom: 1px solid #333;
+    }
+
+    #chatWith {
+      font-size: 1.2rem;
+    }
+
+    #backHome {
+      padding: 5px 10px;
+      border: none;
+      background: #555;
+      color: white;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    main {
+      padding: 10px;
+    }
+
+    #messages {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      max-height: 70vh;
+      overflow-y: auto;
+    }
+
+    #messages li {
+      margin-bottom: 10px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      max-width: 70%;
+      word-wrap: break-word;
+    }
+
+    .sent {
+      background-color: #0066cc;
+      color: white;
+      align-self: flex-end;
+      margin-left: auto;
+    }
+
+    .received {
+      background-color: #333;
+      color: #eee;
+      margin-right: auto;
+    }
+
+    #typingStatus {
+      margin: 10px;
+      font-style: italic;
+      color: #aaa;
+    }
+
+    #messageForm {
+      display: flex;
+      margin-top: 10px;
+    }
+
+    #messageInput {
+      flex: 1;
+      padding: 10px;
+      font-size: 1rem;
+      border: none;
+      border-radius: 5px 0 0 5px;
+      outline: none;
+    }
+
+    #messageForm button {
+      padding: 10px 20px;
+      border: none;
+      background: #28a745;
+      color: white;
+      border-radius: 0 5px 5px 0;
+      cursor: pointer;
+    }
+  </style>
 </head>
 <body>
   <header>
