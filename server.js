@@ -1,3 +1,5 @@
+// server.js
+
 const express = require("express");
 const http = require("http");
 const cors = require("cors");
@@ -7,8 +9,17 @@ const dotenv = require("dotenv");
 const jwt = require("jsonwebtoken");
 const socketIo = require("socket.io");
 
-// Load environment variables
 dotenv.config();
+
+// Models
+const User = require("./models/User");
+const Message = require("./models/Chat"); // Rename Chat.js to Chat.js or Message.js depending on your schema
+
+// Routes
+const authRoutes = require("./routes/auth");
+const userRoutes = require("./routes/user");
+const messageRoutes = require("./routes/messages");
+const uploadRoutes = require("./routes/upload"); // Handles file uploads
 
 const app = express();
 const server = http.createServer(app);
@@ -19,23 +30,28 @@ const io = socketIo(server, {
   },
 });
 
-// Models
-const User = require("./models/User");
-const Message = require("./models/Chat");
-
 // Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
-app.use("/uploads", express.static(path.join(__dirname, "public/uploads")));
+app.use("/uploads", express.static(path.join(__dirname, "public/uploads"))); // Serve uploaded files
+
+// MongoDB connection
+mongoose
+  .connect(process.env.MONGO_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  })
+  .then(() => console.log("✅ MongoDB connected"))
+  .catch((err) => console.error("❌ MongoDB connection error:", err));
 
 // API Routes
-app.use("/api/auth", require("./routes/auth"));
-app.use("/api/users", require("./routes/user"));
-app.use("/api/messages", require("./routes/messages"));
-app.use("/api/upload", require("./routes/upload"));
+app.use("/api/auth", authRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/messages", messageRoutes);
+app.use("/api/upload", uploadRoutes);
 
-// Static page routes
+// Static HTML frontend
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "login.html"));
 });
@@ -49,13 +65,14 @@ app.get("/settings", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "settings.html"));
 });
 
-// Online users map
+// --- SOCKET.IO CHAT LOGIC ---
+
 const onlineUsers = new Map();
 
-// Socket.IO JWT Authentication Middleware
+// JWT authentication for Socket.IO
 io.use((socket, next) => {
   const token = socket.handshake.auth.token;
-  if (!token) return next(new Error("Authentication token required"));
+  if (!token) return next(new Error("Token required"));
 
   jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
     if (err) return next(new Error("Invalid token"));
@@ -64,27 +81,26 @@ io.use((socket, next) => {
   });
 });
 
-// Socket.IO Events
 io.on("connection", (socket) => {
   const userId = socket.user.id;
-  console.log(`✅ Socket connected: ${userId}`);
   onlineUsers.set(userId, socket.id);
+  console.log(`🔌 User connected: ${userId}`);
 
-  // Mark user online
+  // Set user online status
   User.findByIdAndUpdate(userId, { online: true, lastSeen: new Date() }).catch(console.error);
 
-  // Join private chat room
+  // Join a room (private chat logic)
   socket.on("joinPrivateRoom", ({ sender, receiverId }) => {
     const roomId = [sender, receiverId].sort().join("_");
     socket.join(roomId);
     socket.data.roomId = roomId;
   });
 
-  // Handle private messages
+  // Send message
   socket.on("private message", async ({ to, message, fileUrl, fileType }) => {
     const from = userId;
 
-    const newMsg = await Message.create({
+    const newMsg = new Message({
       sender: from,
       receiver: to,
       content: message || "",
@@ -94,8 +110,23 @@ io.on("connection", (socket) => {
       createdAt: new Date(),
     });
 
+    await newMsg.save();
+
     const toSocketId = onlineUsers.get(to);
-    const payload = {
+    if (toSocketId) {
+      io.to(toSocketId).emit("private message", {
+        from,
+        message: newMsg.content,
+        fileUrl: newMsg.fileUrl,
+        fileType: newMsg.fileType,
+        status: newMsg.status,
+        timestamp: newMsg.createdAt.toISOString(),
+        messageId: newMsg._id.toString(),
+      });
+    }
+
+    // Also emit to sender
+    socket.emit("private message", {
       from,
       message: newMsg.content,
       fileUrl: newMsg.fileUrl,
@@ -103,17 +134,16 @@ io.on("connection", (socket) => {
       status: newMsg.status,
       timestamp: newMsg.createdAt.toISOString(),
       messageId: newMsg._id.toString(),
-    };
-
-    if (toSocketId) io.to(toSocketId).emit("private message", payload);
-    socket.emit("private message", payload);
+    });
   });
 
-  // Message status update
+  // Update message status (e.g., read)
   socket.on("message status update", async ({ messageId, status }) => {
+    if (!messageId || !status) return;
     try {
       const msg = await Message.findById(messageId);
       if (!msg) return;
+
       msg.status = status;
       await msg.save();
 
@@ -126,20 +156,24 @@ io.on("connection", (socket) => {
     }
   });
 
-  // Typing indicator
+  // Typing indicators
   socket.on("typing", ({ to }) => {
     const toSocketId = onlineUsers.get(to);
-    if (toSocketId) io.to(toSocketId).emit("typing", { from: userId });
+    if (toSocketId) {
+      io.to(toSocketId).emit("typing", { from: userId });
+    }
   });
 
   socket.on("stop typing", ({ to }) => {
     const toSocketId = onlineUsers.get(to);
-    if (toSocketId) io.to(toSocketId).emit("stop typing", { from: userId });
+    if (toSocketId) {
+      io.to(toSocketId).emit("stop typing", { from: userId });
+    }
   });
 
   // Disconnect
   socket.on("disconnect", async () => {
-    console.log(`❌ Disconnected: ${userId}`);
+    console.log(`❌ User disconnected: ${userId}`);
     onlineUsers.delete(userId);
     await User.findByIdAndUpdate(userId, {
       online: false,
@@ -148,17 +182,8 @@ io.on("connection", (socket) => {
   });
 });
 
-// Connect to MongoDB
-mongoose
-  .connect(process.env.MONGO_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  })
-  .then(() => console.log("✅ MongoDB connected"))
-  .catch((err) => console.error("❌ MongoDB error:", err));
-
 // Start server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`🚀 Server running at http://localhost:${PORT}`);
+  console.log(`🚀 SmartTalk server running on port ${PORT}`);
 });
