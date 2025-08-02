@@ -8,6 +8,25 @@ const sendEmail = require("../utils/sendEmail");
 
 const JWT_SECRET = process.env.JWT_SECRET || "supersecretkey123";
 
+// Refresh Token Endpoint
+router.post('/refresh', async (req, res) => {
+  const refreshToken = req.body.refreshToken;
+  if (!refreshToken) return res.status(401).json({ message: 'No refresh token provided' });
+
+  try {
+    const decoded = jwt.verify(refreshToken, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    // Issue new access token
+    const accessToken = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '15m' });
+
+    res.json({ accessToken });
+  } catch (error) {
+    res.status(403).json({ message: 'Invalid refresh token' });
+  }
+});
+
 // Generate JWT token with 30-day expiry
 const generateToken = (id) => {
   return jwt.sign({ id }, JWT_SECRET, { expiresIn: "30d" });
