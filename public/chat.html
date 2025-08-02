@@ -21,23 +21,19 @@
       background-color: #222;
       padding: 15px;
       display: flex;
-      justify-content: space-between;
       align-items: center;
       border-bottom: 1px solid #333;
+    }
+
+    #backArrow {
+      font-size: 24px;
+      margin-right: 15px;
+      cursor: pointer;
     }
 
     #chatWith {
       margin: 0;
       font-size: 1.2em;
-    }
-
-    #logoutBtn {
-      background-color: #c62828;
-      color: white;
-      border: none;
-      padding: 8px 12px;
-      border-radius: 6px;
-      cursor: pointer;
     }
 
     #messagesContainer {
@@ -108,8 +104,8 @@
 </head>
 <body>
   <header>
+    <span id="backArrow">←</span>
     <h2 id="chatWith">Chat with <span id="chatUserName">...</span></h2>
-    <button id="logoutBtn">Logout</button>
   </header>
 
   <div id="messagesContainer"></div>
@@ -121,7 +117,6 @@
   </form>
 
   <script>
-    // Get user info from localStorage
     const senderId = localStorage.getItem("userId");
     const senderName = localStorage.getItem("username");
     const receiverId = localStorage.getItem("chatWithId");
@@ -132,26 +127,27 @@
       window.location.href = "/login.html";
     }
 
-    // Set chat header username
     document.getElementById("chatUserName").textContent = receiverName;
 
-    // Initialize DOM elements
     const messagesContainer = document.getElementById("messagesContainer");
     const typingStatus = document.getElementById("typingStatus");
     const messageForm = document.getElementById("messageForm");
     const messageInput = document.getElementById("messageInput");
+    const backArrow = document.getElementById("backArrow");
 
-    // Connect to Socket.IO with auth token
+    // ✅ Back arrow handler
+    backArrow?.addEventListener("click", () => {
+      window.location.href = "/home.html";
+    });
+
     const socket = io({
       auth: {
         token: token
       }
     });
 
-    // Join private room on connect
     socket.emit("joinPrivateRoom", { sender: senderId, receiverId });
 
-    // Load chat history on DOMContentLoaded
     window.addEventListener("DOMContentLoaded", async () => {
       try {
         const res = await fetch(`/api/messages/${senderId}/${receiverId}`, {
@@ -182,7 +178,6 @@
       }
     });
 
-    // Listen for incoming private messages
     socket.on("private message", ({ from, message, fileUrl, fileType }) => {
       if (fileUrl && fileType) {
         if (fileType === "image") {
@@ -208,19 +203,18 @@
       scrollToBottom();
     });
 
-    // Typing indicator handlers
     socket.on("typing", ({ from }) => {
       if (from !== senderId) {
         typingStatus.innerText = `${receiverName} is typing...`;
       }
     });
+
     socket.on("stop typing", ({ from }) => {
       if (from !== senderId) {
         typingStatus.innerText = "";
       }
     });
 
-    // Emit typing events on input with debounce
     let typingTimeout;
     messageInput.addEventListener("input", () => {
       socket.emit("typing", { to: receiverId });
@@ -230,19 +224,16 @@
       }, 1000);
     });
 
-    // Send message on form submit
     messageForm.addEventListener("submit", async (e) => {
       e.preventDefault();
       const content = messageInput.value.trim();
       if (!content) return;
 
-      // Emit socket message
       socket.emit("private message", {
         to: receiverId,
         message: content,
       });
 
-      // Save message to DB
       try {
         await fetch("/api/messages/send", {
           method: "POST",
@@ -261,14 +252,6 @@
       scrollToBottom();
     });
 
-    // Logout logic
-    document.getElementById("logoutBtn").addEventListener("click", () => {
-      localStorage.clear();
-      socket.disconnect();
-      window.location.href = "/login.html";
-    });
-
-    // Append text message helper
     function appendMessage(text, className) {
       const div = document.createElement("div");
       div.className = `message ${className}`;
@@ -276,7 +259,6 @@
       messagesContainer.appendChild(div);
     }
 
-    // Append node message helper (image, link)
     function appendNodeMessage(node, className) {
       const div = document.createElement("div");
       div.className = `message ${className}`;
@@ -284,12 +266,10 @@
       messagesContainer.appendChild(div);
     }
 
-    // Scroll chat to bottom helper
     function scrollToBottom() {
       messagesContainer.scrollTop = messagesContainer.scrollHeight;
     }
 
-    // Disconnect socket on page unload
     window.addEventListener("beforeunload", () => {
       socket.disconnect();
     });
