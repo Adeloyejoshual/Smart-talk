@@ -2,168 +2,41 @@
 <html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SmartTalk - Home</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="/styles/home.css" />
   <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
   <header>
-    <h2>SmartTalk</h2>
-    <div class="header-right">
-      <span id="welcomeUser">Welcome, User</span>
-      <button id="themeToggle">🌓</button>
+    <h2 id="welcomeUser">Welcome</h2>
+    <div class="actions">
+      <button id="themeToggle">🌙</button>
       <button id="settingsBtn">⚙️</button>
     </div>
   </header>
 
   <main>
-    <input type="text" id="searchBar" placeholder="Search users by name or email..." />
-    <div id="userList" class="user-list"></div>
+    <input type="text" id="searchBar" placeholder="Search users by username or Gmail..." />
+    <ul id="userList"></ul>
   </main>
 
-  <!-- Floating Add User Button -->
-  <button id="addUserBtn" class="floating-btn">➕</button>
-
-  <!-- Add Friend Modal -->
-  <div id="addUserModal" class="modal hidden">
-    <div class="modal-content">
-      <span class="closeBtn" id="closeAddUserModal">&times;</span>
-      <h3>Add New Friend</h3>
-      <form id="addUserForm">
-        <input type="text" id="addUsername" placeholder="Enter username" required />
-        <button type="submit">Add</button>
-      </form>
-    </div>
-  </div>
+  <button id="addUserBtn">＋</button>
 
   <!-- Settings Modal -->
-  <div id="settingsModal" class="modal hidden">
+  <div id="settingsModal" class="modal">
     <div class="modal-content">
-      <span class="closeBtn" id="closeSettingsModal">&times;</span>
+      <button id="closeSettings">← Back</button>
       <h3>Settings</h3>
       <ul>
         <li><a href="/profile.html">Edit Profile</a></li>
-        <li><a href="/support.html">Customer Service</a></li>
+        <li><a href="/contact.html">Customer Service</a></li>
         <li><a href="mailto:smarttalkgit@gmail.com">Contact</a></li>
-        <li><a href="#" id="logoutBtn">Logout</a></li>
+        <li><button id="logoutBtn">Logout</button></li>
       </ul>
     </div>
   </div>
 
-  <script>
-    document.addEventListener("DOMContentLoaded", () => {
-      const socket = io();
-      const token = localStorage.getItem("token");
-      const username = localStorage.getItem("username");
-
-      const welcomeUser = document.getElementById("welcomeUser");
-      if (username) welcomeUser.textContent = `Welcome, ${username}`;
-
-      // Load theme
-      const savedTheme = localStorage.getItem("theme") || "dark";
-      document.documentElement.setAttribute("data-theme", savedTheme);
-
-      // Theme toggle
-      document.getElementById("themeToggle").addEventListener("click", () => {
-        const currentTheme = document.documentElement.getAttribute("data-theme");
-        const newTheme = currentTheme === "dark" ? "light" : "dark";
-        document.documentElement.setAttribute("data-theme", newTheme);
-        localStorage.setItem("theme", newTheme);
-      });
-
-      // Search users
-      const searchBar = document.getElementById("searchBar");
-      searchBar.addEventListener("input", (e) => fetchUsers(e.target.value));
-
-      // Load users
-      async function fetchUsers(query = "") {
-        try {
-          const res = await fetch(`/api/users/search?query=${encodeURIComponent(query)}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          const users = await res.json();
-          const userList = document.getElementById("userList");
-          userList.innerHTML = "";
-
-          users.forEach(user => {
-            const card = document.createElement("div");
-            card.className = "user-card";
-            card.innerHTML = `
-              <div>
-                <strong>${user.username}</strong><br/>
-                <small>${user.email}</small>
-              </div>
-              <button class="startChat" data-id="${user._id}" data-username="${user.username}">Chat</button>
-            `;
-            userList.appendChild(card);
-          });
-
-          document.querySelectorAll(".startChat").forEach(btn => {
-            btn.addEventListener("click", () => {
-              const friendId = btn.dataset.id;
-              const friendUsername = btn.dataset.username;
-              localStorage.setItem("receiverId", friendId);
-              localStorage.setItem("receiverUsername", friendUsername);
-              window.location.href = "/chat.html";
-            });
-          });
-        } catch (err) {
-          console.error("Failed to fetch users", err);
-        }
-      }
-
-      // Add friend modal
-      const addUserBtn = document.getElementById("addUserBtn");
-      const addUserModal = document.getElementById("addUserModal");
-      const closeAddUserModal = document.getElementById("closeAddUserModal");
-
-      addUserBtn.addEventListener("click", () => addUserModal.classList.remove("hidden"));
-      closeAddUserModal.addEventListener("click", () => addUserModal.classList.add("hidden"));
-
-      // Add friend form
-      document.getElementById("addUserForm").addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const username = document.getElementById("addUsername").value;
-        try {
-          const res = await fetch("/api/users/add", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({ username }),
-          });
-          const result = await res.json();
-          if (res.ok) {
-            alert("Friend added!");
-            addUserModal.classList.add("hidden");
-            fetchUsers();
-          } else {
-            alert(result.message || "Error adding friend");
-          }
-        } catch (err) {
-          console.error(err);
-        }
-      });
-
-      // Settings modal
-      const settingsBtn = document.getElementById("settingsBtn");
-      const settingsModal = document.getElementById("settingsModal");
-      const closeSettingsModal = document.getElementById("closeSettingsModal");
-
-      settingsBtn.addEventListener("click", () => settingsModal.classList.remove("hidden"));
-      closeSettingsModal.addEventListener("click", () => settingsModal.classList.add("hidden"));
-
-      // Logout
-      document.getElementById("logoutBtn").addEventListener("click", () => {
-        localStorage.clear();
-        window.location.href = "/login.html";
-      });
-
-      // Initial user list
-      fetchUsers();
-    });
-  </script>
+  <script src="/scripts/home.js"></script>
 </body>
 </html>
