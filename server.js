@@ -1,193 +1,138 @@
-// server.js
-
 const express = require("express");
 const http = require("http");
-const cors = require("cors");
 const mongoose = require("mongoose");
-const path = require("path");
 const dotenv = require("dotenv");
-const jwt = require("jsonwebtoken");
+const cors = require("cors");
+const path = require("path");
 const socketIo = require("socket.io");
+const jwt = require("jsonwebtoken");
+
+const authRoutes = require("./routes/auth");
+const userRoutes = require("./routes/users");
+const messageRoutes = require("./routes/messages");
+
+const User = require("./models/User");
+const Chat = require("./models/Chat");
+const Message = require("./models/Message");
 
 dotenv.config();
-
-// Models
-const User = require("./models/User");
-const Message = require("./models/Message"); // Adjust name if needed
-
-// Routes
-const authRoutes = require("./routes/auth");
-const userRoutes = require("./routes/user");
-const messageRoutes = require("./routes/messages");
-const uploadRoutes = require("./routes/upload");
 
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
-    origin: "*", // Change to your frontend URL for production
-    methods: ["GET", "POST"],
+    origin: "*",
   },
 });
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
-app.use("/uploads", express.static(path.join(__dirname, "public/uploads"))); // Serve uploaded files
+app.use("/uploads", express.static(path.join(__dirname, "public/uploads")));
 
-// MongoDB connection
-mongoose
-  .connect(process.env.MONGO_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  })
-  .then(() => console.log("✅ MongoDB connected"))
-  .catch((err) => console.error("❌ MongoDB connection error:", err));
-
-// API Routes
+// Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/messages", messageRoutes);
-app.use("/api/upload", uploadRoutes);
 
-// Static HTML frontend
+// Serve login as homepage
 app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "login.html"));
-});
-app.get("/home", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "home.html"));
-});
-app.get("/chat", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "chat.html"));
-});
-app.get("/settings", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "settings.html"));
+  res.sendFile(path.join(__dirname, "public/login.html"));
 });
 
-// --- SOCKET.IO CHAT LOGIC ---
+// MongoDB Connection
+mongoose
+  .connect(process.env.MONGO_URI)
+  .then(() => console.log("✅ MongoDB connected"))
+  .catch((err) => console.error("❌ MongoDB error:", err));
 
-const onlineUsers = new Map();
-
-// JWT authentication middleware for Socket.IO
-io.use((socket, next) => {
-  const token = socket.handshake.auth.token;
-  if (!token) return next(new Error("Token required"));
-
-  jwt.verify(token, process.env.JWT_SECRET || "supersecretkey123", (err, decoded) => {
-    if (err) return next(new Error("Invalid token"));
-    socket.user = decoded;
-    next();
-  });
-});
+// Socket.IO
+let onlineUsers = {};
 
 io.on("connection", (socket) => {
-  const userId = socket.user.id;
-  onlineUsers.set(userId, socket.id);
-  console.log(`🔌 User connected: ${userId}`);
+  console.log("🔌 New client connected");
 
-  // Update user online status
-  User.findByIdAndUpdate(userId, { online: true, lastSeen: new Date() }).catch(console.error);
+  // Store userID and socket ID
+  socket.on("userOnline", async ({ userId }) => {
+    onlineUsers[userId] = socket.id;
+    const user = await User.findByIdAndUpdate(userId, { lastSeen: "online" });
+    io.emit("updateUserList", onlineUsers);
+  });
 
   // Join private chat room
-  socket.on("joinPrivateRoom", ({ sender, receiverId }) => {
-    const roomId = [sender, receiverId].sort().join("_");
-    socket.join(roomId);
-    socket.data.roomId = roomId;
+  socket.on("joinRoom", ({ chatId }) => {
+    socket.join(chatId);
   });
 
-  // Handle sending private message
-  socket.on("private message", async ({ to, message, fileUrl, fileType }) => {
-    const from = userId;
+  // Typing Indicator
+  socket.on("typing", ({ chatId, sender }) => {
+    socket.to(chatId).emit("typing", { sender });
+  });
 
-    try {
-      const newMsg = new Message({
-        sender: from,
-        receiver: to,
-        content: message || "",
-        attachmentUrl: fileUrl || null,
-        type: fileType || "text",
-        read: false,
-        createdAt: new Date(),
-      });
+  socket.on("stopTyping", ({ chatId }) => {
+    socket.to(chatId).emit("stopTyping");
+  });
 
-      await newMsg.save();
+  // Message Sent
+  socket.on("privateMessage", async ({ chatId, sender, receiver, content, file }) => {
+    const message = new Message({
+      chatId,
+      sender,
+      receiver,
+      content,
+      file,
+      read: false,
+    });
 
-      const toSocketId = onlineUsers.get(to);
-      if (toSocketId) {
-        io.to(toSocketId).emit("private message", {
-          from,
-          message: newMsg.content,
-          fileUrl: newMsg.attachmentUrl,
-          fileType: newMsg.type,
-          status: "sent",
-          timestamp: newMsg.createdAt.toISOString(),
-          messageId: newMsg._id.toString(),
-        });
-      }
+    await message.save();
 
-      // Emit to sender as well (confirmation)
-      socket.emit("private message", {
-        from,
-        message: newMsg.content,
-        fileUrl: newMsg.attachmentUrl,
-        fileType: newMsg.type,
-        status: "sent",
-        timestamp: newMsg.createdAt.toISOString(),
-        messageId: newMsg._id.toString(),
-      });
-    } catch (err) {
-      console.error("Error sending message:", err);
+    // Update Chat last message
+    await Chat.findByIdAndUpdate(chatId, {
+      lastMessage: content,
+      updatedAt: Date.now(),
+    });
+
+    // Emit to room
+    io.to(chatId).emit("newMessage", message);
+
+    // Emit read receipt if receiver is online
+    if (onlineUsers[receiver]) {
+      io.to(onlineUsers[receiver]).emit("notifyMessage", message);
     }
   });
 
-  // Message status update (e.g., read)
-  socket.on("message status update", async ({ messageId, status }) => {
-    if (!messageId || !status) return;
-    try {
-      const msg = await Message.findById(messageId);
-      if (!msg) return;
-
-      msg.status = status;
-      await msg.save();
-
-      const senderSocketId = onlineUsers.get(msg.sender.toString());
-      if (senderSocketId) {
-        io.to(senderSocketId).emit("message status update", { messageId, status });
-      }
-    } catch (err) {
-      console.error("Status update error:", err.message);
-    }
+  // Mark as read
+  socket.on("markAsRead", async ({ chatId, readerId }) => {
+    await Message.updateMany({ chatId, receiver: readerId, read: false }, { read: true });
+    io.to(chatId).emit("messagesRead", { chatId, readerId });
   });
 
-  // Typing indicator
-  socket.on("typing", ({ to }) => {
-    const toSocketId = onlineUsers.get(to);
-    if (toSocketId) {
-      io.to(toSocketId).emit("typing", { from: userId });
-    }
+  // Delete message
+  socket.on("deleteMessage", async ({ messageId, chatId }) => {
+    await Message.findByIdAndDelete(messageId);
+    io.to(chatId).emit("messageDeleted", messageId);
   });
 
-  socket.on("stop typing", ({ to }) => {
-    const toSocketId = onlineUsers.get(to);
-    if (toSocketId) {
-      io.to(toSocketId).emit("stop typing", { from: userId });
-    }
-  });
-
-  // On disconnect
+  // Disconnect
   socket.on("disconnect", async () => {
-    console.log(`❌ User disconnected: ${userId}`);
-    onlineUsers.delete(userId);
-    await User.findByIdAndUpdate(userId, {
-      online: false,
-      lastSeen: new Date(),
-    }).catch(console.error);
+    const disconnectedUserId = Object.keys(onlineUsers).find(
+      (key) => onlineUsers[key] === socket.id
+    );
+
+    if (disconnectedUserId) {
+      delete onlineUsers[disconnectedUserId];
+      await User.findByIdAndUpdate(disconnectedUserId, {
+        lastSeen: new Date(),
+      });
+    }
+
+    io.emit("updateUserList", onlineUsers);
+    console.log("❌ Client disconnected");
   });
 });
 
-// Start server
+// Start Server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`🚀 SmartTalk server running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
