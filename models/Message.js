@@ -26,15 +26,15 @@ const messageSchema = new mongoose.Schema(
     },
     attachmentUrl: {
       type: String,
-      default: '', // URL to file or image if type is image/file
+      default: '', // used if type is 'image' or 'file'
     },
     read: {
       type: Boolean,
-      default: false,
+      default: false, // useful for read receipts
     },
   },
   {
-    timestamps: true, // adds createdAt and updatedAt
+    timestamps: true, // adds createdAt and updatedAt fields
   }
 );
 
