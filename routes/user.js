@@ -52,20 +52,21 @@ router.post("/edit-profile", authMiddleware, async (req, res) => {
 // Add friend by email or username
 router.post("/add-friend", authMiddleware, async (req, res) => {
   try {
-    const { identifier, friendId } = req.body;
-    const user = await User.findById(req.userId);
+    const { identifier } = req.body;
 
-    let friend = null;
-    if (friendId) {
-      friend = await User.findById(friendId);
-    } else if (identifier) {
-      friend = await User.findOne({
-        $or: [
-          { username: identifier },
-          { email: identifier }
-        ]
-      });
+    if (!identifier) {
+      return res.status(400).json({ message: "Friend identifier is required" });
     }
+
+    const user = await User.findById(req.userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const friend = await User.findOne({
+      $or: [
+        { username: identifier },
+        { email: identifier }
+      ]
+    });
 
     if (!friend || friend._id.equals(user._id)) {
       return res.status(400).json({ message: "Invalid friend" });
