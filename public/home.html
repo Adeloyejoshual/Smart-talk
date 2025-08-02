@@ -1,43 +1,38 @@
+<!-- public/home.html -->
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <title>SmartTalk - Home</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="/styles/home.css" />
-  <script defer src="/scripts/home.js"></script>
+  <link rel="stylesheet" href="/styles/home.css">
 </head>
 <body>
   <header>
     <h2>SmartTalk</h2>
-    <div class="top-bar">
-      <input type="text" id="searchInput" placeholder="Search users..." />
-      <button id="settingsBtn" title="Settings">⚙️</button>
-    </div>
+    <button id="themeToggle">🌙</button>
+    <div id="settingsIcon">⚙️</div>
   </header>
 
-  <main>
-    <h3 id="welcomeUser">Welcome, <span id="username">User</span></h3>
+  <section id="userSection">
+    <h3 id="welcomeUser">Welcome</h3>
+    <input type="text" id="searchInput" placeholder="Search users..." />
+    <ul id="userList"></ul>
+  </section>
 
-    <section id="userList" class="user-list">
-      <!-- Users will be displayed here -->
-    </section>
-
-    <button id="addUserBtn" title="Add New User">+</button>
-  </main>
-
-  <!-- Settings Modal -->
-  <div id="settingsModal" class="modal hidden">
-    <div class="modal-content">
-      <span class="close">&times;</span>
-      <h3>Settings</h3>
-      <ul>
-        <li><a href="/profile.html">Edit Profile</a></li>
-        <li><a href="/support.html">Customer Service</a></li>
-        <li><a href="/contact.html">Contact</a></li>
-        <li><a href="#" id="logoutBtn">Logout</a></li>
-      </ul>
-    </div>
+  <!-- Settings modal -->
+  <div id="settingsModal" class="hidden">
+    <ul>
+      <li><a href="/profile.html">Edit Profile</a></li>
+      <li><a href="/contact.html">Customer Service</a></li>
+      <li><a href="/notification.html">Notifications</a></li>
+      <li><a href="/login.html" onclick="localStorage.clear()">Logout</a></li>
+    </ul>
   </div>
+
+  <button id="addUserBtn">＋</button>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/scripts/home.js"></script>
 </body>
 </html>
