@@ -1,4 +1,3 @@
-
 <script>
 document.addEventListener("DOMContentLoaded", () => {
   const socket = io();
@@ -6,13 +5,15 @@ document.addEventListener("DOMContentLoaded", () => {
   const token = localStorage.getItem("token");
   const user = JSON.parse(localStorage.getItem("user"));
   const receiverId = localStorage.getItem("receiverId");
-  const receiverName = localStorage.getItem("receiverUsername") || "Unknown";
+  const receiverUsername = localStorage.getItem("receiverUsername") || "Unknown";
 
+  // HTML Elements
   const chatWith = document.getElementById("chatWith");
   const messageForm = document.getElementById("messageForm");
   const messageInput = document.getElementById("messageInput");
   const messagesContainer = document.getElementById("messagesContainer");
   const typingStatus = document.getElementById("typingStatus");
+  const backArrow = document.getElementById("backArrow");
 
   // ✅ Guard: redirect if not logged in
   if (!token || !user || !receiverId) {
@@ -21,15 +22,20 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ✅ Display who you're chatting with
-  chatWith.textContent = `Chat with ${receiverName}`;
+  if (chatWith) chatWith.textContent = `Chat with ${receiverUsername}`;
 
-  // ✅ Join a private room for real-time chat
+  // ✅ Back arrow handler
+  backArrow?.addEventListener("click", () => {
+    window.location.href = "/home.html";
+  });
+
+  // ✅ Join private room
   socket.emit("joinPrivate", {
     senderId: user._id,
     receiverId,
   });
 
-  // ✅ Load chat history from backend API
+  // ✅ Load chat history
   fetch(`/api/messages/${receiverId}`, {
     headers: {
       Authorization: token,
@@ -39,15 +45,15 @@ document.addEventListener("DOMContentLoaded", () => {
     .then((messages) => {
       if (Array.isArray(messages)) {
         messages.forEach((msg) => {
-          const senderName = msg.sender === user._id ? "You" : receiverName;
-          appendMessage(msg.content, senderName);
+          const senderName = msg.sender === user._id ? "You" : receiverUsername;
+          appendMessage(msg.content, senderName, msg.sender === user._id);
         });
       }
     })
     .catch((err) => console.error("History load error:", err));
 
   // ✅ Handle sending messages
-  messageForm.addEventListener("submit", async (e) => {
+  messageForm?.addEventListener("submit", async (e) => {
     e.preventDefault();
     const content = messageInput.value.trim();
     if (!content) return;
@@ -68,9 +74,8 @@ document.addEventListener("DOMContentLoaded", () => {
       });
 
       const savedMsg = await res.json();
-      appendMessage(savedMsg.content || content, "You");
+      appendMessage(savedMsg.content || content, "You", true);
 
-      // Emit the message to the server for real-time delivery
       socket.emit("privateMessage", {
         from: user._id,
         to: receiverId,
@@ -84,7 +89,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // ✅ Show typing indicator when input changes
+  // ✅ Typing indicator
   messageInput.addEventListener("input", () => {
     socket.emit("typing", {
       from: user._id,
@@ -93,10 +98,9 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // ✅ Listen for typing event from the other user
   socket.on("typing", (data) => {
     if (data.from === receiverId) {
-      typingStatus.textContent = `${receiverName} is typing...`;
+      typingStatus.textContent = `${receiverUsername} is typing...`;
       setTimeout(() => (typingStatus.textContent = ""), 2000);
     }
   });
@@ -104,26 +108,20 @@ document.addEventListener("DOMContentLoaded", () => {
   // ✅ Receive message in real time
   socket.on("privateMessage", (msg) => {
     if (msg.from === receiverId) {
-      appendMessage(msg.content, receiverName);
+      appendMessage(msg.content, receiverUsername, false);
     }
   });
 
-  // ✅ Append a message to chat container
-  function appendMessage(content, senderName) {
+  // ✅ Append message
+  function appendMessage(content, senderName, isOwn) {
     const msgDiv = document.createElement("div");
-    msgDiv.className = "message";
+    msgDiv.className = `message ${isOwn ? "sent" : "received"}`;
     msgDiv.innerHTML = `<strong>${senderName}:</strong> ${content}`;
     messagesContainer.appendChild(msgDiv);
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
   }
 
-  // ✅ Logout and clear session
-  document.getElementById("logoutBtn")?.addEventListener("click", () => {
-    localStorage.clear();
-    window.location.href = "/login.html";
-  });
-
-  // ✅ Clean disconnect on page leave
+  // ✅ Disconnect cleanly
   window.addEventListener("beforeunload", () => {
     socket.disconnect();
   });
