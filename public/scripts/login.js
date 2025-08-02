@@ -8,8 +8,8 @@ document.addEventListener("DOMContentLoaded", () => {
     message.textContent = "";
 
     const formData = new FormData(loginForm);
-    const email = formData.get("email");
-    const password = formData.get("password");
+    const email = formData.get("email").trim();
+    const password = formData.get("password").trim();
 
     try {
       const res = await fetch("/api/auth/login", {
@@ -20,7 +20,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const data = await res.json();
 
-      if (!res.ok) {
+      if (!res.ok || !data.token || !data.user) {
         message.textContent = data.error || "Login failed";
         return;
       }
@@ -29,6 +29,7 @@ document.addEventListener("DOMContentLoaded", () => {
       localStorage.setItem("user", JSON.stringify(data.user));
       window.location.href = "/home.html";
     } catch (err) {
+      console.error(err);
       message.textContent = "Server error";
     }
   });
@@ -38,9 +39,9 @@ document.addEventListener("DOMContentLoaded", () => {
     message.textContent = "";
 
     const formData = new FormData(registerForm);
-    const username = formData.get("username");
-    const email = formData.get("email");
-    const password = formData.get("password");
+    const username = formData.get("username").trim();
+    const email = formData.get("email").trim();
+    const password = formData.get("password").trim();
 
     try {
       const res = await fetch("/api/auth/register", {
@@ -51,7 +52,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const data = await res.json();
 
-      if (!res.ok) {
+      if (!res.ok || !data.token || !data.user) {
         message.textContent = data.error || "Registration failed";
         return;
       }
@@ -60,12 +61,8 @@ document.addEventListener("DOMContentLoaded", () => {
       localStorage.setItem("user", JSON.stringify(data.user));
       window.location.href = "/home.html";
     } catch (err) {
+      console.error(err);
       message.textContent = "Server error";
     }
   });
 });
-
-function togglePassword(id) {
-  const input = document.getElementById(id);
-  input.type = input.type === "password" ? "text" : "password";
-}
