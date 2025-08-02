@@ -55,4 +55,14 @@ router.post("/add-friend", authenticateToken, async (req, res) => {
   }
 });
 
+// GET: Get only friends of current user
+router.get("/friends", authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).populate("friends", "username email");
+    res.json(user.friends);
+  } catch (err) {
+    res.status(500).json({ message: "Failed to load friends." });
+  }
+});
+
 module.exports = router;
