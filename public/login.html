@@ -2,176 +2,147 @@
 <html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
-  <title>SmartTalk - Login</title>
+  <title>SmartTalk - Login / Register</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
+  <link rel="stylesheet" href="/styles/home.css" />
   <style>
     body {
-      background: linear-gradient(to right, #0066cc, #3399ff);
       display: flex;
       align-items: center;
       justify-content: center;
       height: 100vh;
-      margin: 0;
+      background: linear-gradient(to right, #0f2027, #203a43, #2c5364);
+      color: #fff;
       font-family: 'Segoe UI', sans-serif;
     }
 
-    .login-box {
-      background: rgba(255, 255, 255, 0.1);
-      padding: 25px 30px;
-      border-radius: 14px;
-      box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+    .auth-container {
+      background-color: #1a1a1a;
+      padding: 2rem;
+      border-radius: 12px;
       width: 90%;
-      max-width: 340px;
+      max-width: 400px;
+      box-shadow: 0 0 12px rgba(0, 0, 0, 0.4);
+    }
+
+    h2 {
       text-align: center;
+      margin-bottom: 1rem;
     }
 
-    .login-box img {
-      width: 80px;
-      margin-bottom: 15px;
-    }
-
-    .login-box h2 {
-      font-size: 20px;
-      color: #fff;
-      margin-bottom: 20px;
-    }
-
-    .login-box input {
+    .auth-container input {
       width: 100%;
-      padding: 10px 12px;
-      margin: 10px 0;
+      padding: 0.75rem;
+      margin: 0.5rem 0;
       border: none;
-      border-radius: 6px;
-      background: #fff;
-      color: #333;
-      font-size: 14px;
-      box-sizing: border-box;
+      border-radius: 8px;
+      background: #333;
+      color: #fff;
     }
 
-    .login-box button {
+    .auth-container button {
       width: 100%;
-      padding: 10px;
-      background: #003366;
-      color: #fff;
+      padding: 0.75rem;
+      margin-top: 1rem;
       border: none;
-      border-radius: 6px;
-      font-size: 15px;
-      margin-top: 10px;
+      border-radius: 8px;
+      background-color: #0066cc;
+      color: white;
       cursor: pointer;
+      font-weight: bold;
     }
 
-    .login-box button:hover {
-      background: #0055aa;
+    .toggle {
+      margin-top: 1rem;
+      text-align: center;
+      cursor: pointer;
+      color: #aaa;
     }
 
-    .forgot-link {
-      margin-top: 12px;
-    }
-
-    .forgot-link a {
-      color: #fff;
-      font-size: 14px;
-      text-decoration: underline;
-    }
-
-    .error-msg, .error-message {
-      color: #ffcccc;
-      font-size: 14px;
-      margin-top: 10px;
-    }
-
-    .login-box hr {
-      margin: 20px 0;
-      border: 0;
-      border-top: 1px solid rgba(255, 255, 255, 0.2);
-    }
-
-    h3 {
-      color: #fff;
-      margin-bottom: 10px;
+    .error {
+      color: #ff5555;
+      text-align: center;
+      margin-bottom: 0.5rem;
     }
   </style>
 </head>
 <body>
-  <div class="login-box">
-    <img src="/images/logo.png" alt="SmartTalk Logo" />
-    <h2>Login to SmartTalk</h2>
-
-    <form id="loginForm">
-      <input type="email" id="loginEmail" placeholder="Email" required />
-      <input type="password" id="loginPassword" placeholder="Password" required />
-      <button type="submit">Login</button>
+  <div class="auth-container">
+    <h2 id="formTitle">Login to SmartTalk</h2>
+    <div class="error" id="errorMsg"></div>
+    <form id="authForm">
+      <input type="text" id="username" placeholder="Username" required />
+      <input type="email" id="email" placeholder="Email" required />
+      <input type="password" id="password" placeholder="Password" required />
+      <button type="submit" id="submitBtn">Login</button>
     </form>
-
-    <p id="loginError" class="error-msg"></p>
-
-    <hr />
-
-    <h3>Register</h3>
-
-    <form id="registerForm">
-      <input type="text" id="regUsername" placeholder="Username" required />
-      <input type="email" id="regEmail" placeholder="Email" required />
-      <input type="password" id="regPassword" placeholder="Password" required />
-      <button type="submit">Register</button>
-    </form>
-
-    <p id="registerError" class="error-msg"></p>
+    <div class="toggle" id="toggleForm">Don't have an account? Register</div>
   </div>
 
   <script>
-    const loginForm = document.getElementById("loginForm");
-    const registerForm = document.getElementById("registerForm");
-    const loginError = document.getElementById("loginError");
-    const registerError = document.getElementById("registerError");
+    const formTitle = document.getElementById('formTitle');
+    const authForm = document.getElementById('authForm');
+    const toggleForm = document.getElementById('toggleForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const errorMsg = document.getElementById('errorMsg');
 
-    loginForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      loginError.textContent = "";
+    let isLogin = true;
 
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: loginForm.loginEmail.value,
-          password: loginForm.loginPassword.value
-        })
-      });
-
-      const data = await res.json();
-
-      if (res.ok) {
-        localStorage.setItem("token", data.token);
-        localStorage.setItem("user", JSON.stringify(data.user));
-        window.location.href = "/home.html";
+    // Toggle between login/register
+    toggleForm.addEventListener('click', () => {
+      isLogin = !isLogin;
+      if (isLogin) {
+        formTitle.textContent = 'Login to SmartTalk';
+        submitBtn.textContent = 'Login';
+        toggleForm.textContent = "Don't have an account? Register";
       } else {
-        loginError.textContent = data.message || "Login failed";
+        formTitle.textContent = 'Register on SmartTalk';
+        submitBtn.textContent = 'Register';
+        toggleForm.textContent = 'Already have an account? Login';
       }
     });
 
-    registerForm.addEventListener("submit", async (e) => {
+    // On load, show "Session expired" if redirected
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("expired") === "1") {
+      errorMsg.textContent = "Session expired. Please login again";
+    }
+
+    authForm.addEventListener('submit', async (e) => {
       e.preventDefault();
-      registerError.textContent = "";
+      const username = document.getElementById('username').value.trim();
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
 
-      const res = await fetch("/api/auth/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username: registerForm.regUsername.value,
-          email: registerForm.regEmail.value,
-          password: registerForm.regPassword.value
-        })
-      });
+      const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
+      const payload = isLogin ? { email, password } : { username, email, password };
 
-      const data = await res.json();
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
 
-      if (res.ok) {
-        localStorage.setItem("token", data.token);
-        localStorage.setItem("user", JSON.stringify(data.user));
-        window.location.href = "/home.html";
-      } else {
-        registerError.textContent = data.message || "Registration failed";
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.message || 'Something went wrong');
+        }
+
+        if (isLogin) {
+          localStorage.setItem('token', data.token);
+          localStorage.setItem('user', JSON.stringify(data.user));
+          window.location.href = '/home.html';
+        } else {
+          isLogin = true;
+          formTitle.textContent = 'Login to SmartTalk';
+          submitBtn.textContent = 'Login';
+          toggleForm.textContent = "Don't have an account? Register";
+          errorMsg.textContent = "Registration successful. Please log in.";
+        }
+      } catch (err) {
+        errorMsg.textContent = err.message;
       }
     });
   </script>
