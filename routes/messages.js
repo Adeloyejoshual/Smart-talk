@@ -1,86 +1,90 @@
 const express = require("express");
 const router = express.Router();
+const authenticate = require("../middleware/auth");
 const Message = require("../models/Message");
+const User = require("../models/User");
 
-// ✅ Send a new message
-router.post("/", async (req, res) => {
-  const { sender, receiver, content, type, attachmentUrl, fileUrl, fileType } = req.body;
-
-  if (!sender || !receiver) {
-    return res.status(400).json({ message: "Sender and receiver are required" });
-  }
-
+// Create a new message (text or file)
+router.post("/", authenticate, async (req, res) => {
   try {
+    const { receiver, content, fileUrl, fileType, type } = req.body;
+
+    if (!receiver) return res.status(400).json({ message: "Receiver is required" });
+
     const message = new Message({
-      sender,
+      sender: req.user.id,
       receiver,
-      content: type === "text" ? content : "",
-      type: type || "text",
-      attachmentUrl: attachmentUrl || "",
+      content: content || "",
       fileUrl: fileUrl || null,
       fileType: fileType || null,
+      type: type || "text",
     });
 
     await message.save();
-    res.status(201).json(message);
-  } catch (err) {
-    console.error("Send message error:", err);
-    res.status(500).json({ message: "Server error sending message" });
+
+    res.status(201).json({ success: true, message });
+  } catch (error) {
+    res.status(500).json({ success: false, error: "Message send failed" });
   }
 });
 
-// ✅ Get messages between two users
-router.get("/:user1/:user2", async (req, res) => {
-  const { user1, user2 } = req.params;
-
+// Get chat history between two users
+router.get("/:receiverId", authenticate, async (req, res) => {
   try {
+    const receiverId = req.params.receiverId;
+
     const messages = await Message.find({
       $or: [
-        { sender: user1, receiver: user2 },
-        { sender: user2, receiver: user1 },
+        { sender: req.user.id, receiver: receiverId },
+        { sender: receiverId, receiver: req.user.id },
       ],
       deleted: false,
-    })
-      .sort({ createdAt: 1 })
-      .populate("sender", "username email")
-      .populate("receiver", "username email");
+    }).sort({ createdAt: 1 });
 
-    res.status(200).json(messages);
-  } catch (err) {
-    console.error("Get messages error:", err);
-    res.status(500).json({ message: "Server error fetching messages" });
+    res.status(200).json({ success: true, messages });
+  } catch (error) {
+    res.status(500).json({ success: false, error: "Failed to fetch messages" });
   }
 });
 
-// ✅ Mark all messages as read from sender to receiver
-router.put("/read", async (req, res) => {
-  const { sender, receiver } = req.body;
-
-  try {
-    await Message.updateMany(
-      { sender, receiver, read: false },
-      { $set: { read: true, status: "read" } }
-    );
-    res.status(200).json({ message: "Messages marked as read" });
-  } catch (err) {
-    console.error("Read receipt error:", err);
-    res.status(500).json({ message: "Server error updating read status" });
-  }
-});
-
-// ✅ Delete a specific message (soft delete)
-router.delete("/:messageId", async (req, res) => {
+// Mark a message as read
+router.put("/read/:messageId", authenticate, async (req, res) => {
   try {
     const message = await Message.findById(req.params.messageId);
-    if (!message) return res.status(404).json({ message: "Message not found" });
+
+    if (!message) return res.status(404).json({ success: false, message: "Message not found" });
+
+    if (String(message.receiver) !== String(req.user.id)) {
+      return res.status(403).json({ success: false, message: "Not authorized to mark as read" });
+    }
+
+    message.read = true;
+    message.status = "read";
+    await message.save();
+
+    res.status(200).json({ success: true, message });
+  } catch (error) {
+    res.status(500).json({ success: false, error: "Failed to mark as read" });
+  }
+});
+
+// Soft delete a message (only sender can delete)
+router.delete("/:messageId", authenticate, async (req, res) => {
+  try {
+    const message = await Message.findById(req.params.messageId);
+
+    if (!message) return res.status(404).json({ success: false, message: "Message not found" });
+
+    if (String(message.sender) !== String(req.user.id)) {
+      return res.status(403).json({ success: false, message: "Not authorized to delete this message" });
+    }
 
     message.deleted = true;
     await message.save();
 
-    res.status(200).json({ message: "Message deleted" });
-  } catch (err) {
-    console.error("Delete message error:", err);
-    res.status(500).json({ message: "Server error deleting message" });
+    res.status(200).json({ success: true, message: "Message deleted successfully" });
+  } catch (error) {
+    res.status(500).json({ success: false, error: "Failed to delete message" });
   }
 });
 
