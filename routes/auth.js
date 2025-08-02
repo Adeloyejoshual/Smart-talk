@@ -10,35 +10,40 @@ router.post("/register", async (req, res) => {
   try {
     const { username, email, password } = req.body;
 
-    if (!username || !email || !password)
+    if (!username || !email || !password) {
       return res.status(400).json({ error: "All fields are required." });
+    }
 
-    const existing = await User.findOne({ email });
-    if (existing)
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
       return res.status(400).json({ error: "Email already in use." });
+    }
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const user = await User.create({
+    const newUser = new User({
       username,
       email,
-      password: hashedPassword
+      password: hashedPassword,
     });
 
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-      expiresIn: "2h"
+    await newUser.save();
+
+    const token = jwt.sign({ userId: newUser._id }, process.env.JWT_SECRET, {
+      expiresIn: "2h",
     });
 
     res.status(201).json({
       token,
       user: {
-        _id: user._id,
-        username: user.username,
-        email: user.email
-      }
+        _id: newUser._id,
+        username: newUser.username,
+        email: newUser.email,
+      },
     });
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    console.error("Register Error:", err.message);
+    res.status(500).json({ error: "Server error during registration." });
   }
 });
 
@@ -48,15 +53,17 @@ router.post("/login", async (req, res) => {
     const { email, password } = req.body;
 
     const user = await User.findOne({ email });
-    if (!user)
+    if (!user) {
       return res.status(400).json({ error: "Invalid email or password" });
+    }
 
-    const match = await bcrypt.compare(password, user.password);
-    if (!match)
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
       return res.status(400).json({ error: "Invalid email or password" });
+    }
 
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-      expiresIn: "2h"
+    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, {
+      expiresIn: "2h",
     });
 
     res.json({
@@ -64,11 +71,12 @@ router.post("/login", async (req, res) => {
       user: {
         _id: user._id,
         username: user.username,
-        email: user.email
-      }
+        email: user.email,
+      },
     });
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    console.error("Login Error:", err.message);
+    res.status(500).json({ error: "Server error during login." });
   }
 });
 
