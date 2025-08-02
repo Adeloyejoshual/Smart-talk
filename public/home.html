@@ -8,45 +8,39 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
 </head>
 <body>
-  <!-- Header -->
   <header>
     <h2 id="welcomeUser">Welcome</h2>
     <div class="right-header">
       <input type="text" id="searchInput" placeholder="Search users..." />
-      <button id="themeToggle" title="Toggle Theme">
-        <i class="fas fa-moon"></i>
-      </button>
-      <button id="openSettings" title="Settings">
-        <i class="fas fa-cog"></i>
-      </button>
+      <button id="themeToggle" title="Toggle Theme"><i class="fas fa-moon"></i></button>
+      <button id="settingsBtn" title="Settings"><i class="fas fa-cog"></i></button>
     </div>
   </header>
 
-  <!-- Main Content -->
   <main>
     <section id="userList" class="user-list">
-      <!-- Dynamic user cards will load here -->
+      <!-- Users will be dynamically listed here -->
     </section>
 
     <!-- Settings Panel -->
     <div id="settingsPanel" class="settings-panel hidden">
       <div class="settings-header">
-        <button id="closeSettings" title="Close"><i class="fas fa-times"></i></button>
+        <button id="backToHome" class="back-btn"><i class="fas fa-arrow-left"></i></button>
         <h3>Settings</h3>
       </div>
-      <ul class="settings-list">
+      <ul class="settings-options">
         <li><a href="/profile.html"><i class="fas fa-user-edit"></i> Edit Profile</a></li>
         <li><a href="/contact.html"><i class="fas fa-headset"></i> Customer Service</a></li>
         <li><a href="mailto:smarttalkgit@gmail.com"><i class="fas fa-envelope"></i> Contact</a></li>
         <li><a href="#" id="logoutBtn"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
       </ul>
     </div>
-  </main>
 
-  <!-- Floating Add User Button -->
-  <button id="addUserBtn" class="floating-btn" title="Add New User">
-    <i class="fas fa-plus"></i>
-  </button>
+    <!-- Floating Add User Button -->
+    <button id="addUserBtn" class="floating-add-btn" title="Add New User">
+      <i class="fas fa-plus"></i>
+    </button>
+  </main>
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="/scripts/home.js"></script>
