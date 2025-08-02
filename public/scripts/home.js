@@ -9,49 +9,19 @@ document.addEventListener("DOMContentLoaded", () => {
   const logoutBtn = document.getElementById("logoutBtn");
   const backToHome = document.getElementById("backToHome");
 
-  const socket = io();
-
-  const user = JSON.parse(localStorage.getItem("user"));
   const token = localStorage.getItem("token");
+  const user = JSON.parse(localStorage.getItem("user"));
 
-  if (!user || !token) {
-    return (window.location.href = "/login.html");
+  if (!token || !user) {
+    window.location.href = "/login.html";
+    return;
   }
 
   welcomeUser.textContent = `Welcome, ${user.username}`;
 
-  // Theme toggle logic
-  themeToggle.addEventListener("click", () => {
-    const html = document.documentElement;
-    const isDark = html.getAttribute("data-theme") === "dark";
-    html.setAttribute("data-theme", isDark ? "light" : "dark");
-    themeToggle.innerHTML = `<i class="fas fa-${isDark ? "moon" : "sun"}"></i>`;
-  });
+  const socket = io();
 
-  // Show settings panel
-  settingsBtn.addEventListener("click", () => {
-    settingsPanel.classList.remove("hidden");
-  });
-
-  // Back to main view
-  backToHome.addEventListener("click", () => {
-    settingsPanel.classList.add("hidden");
-  });
-
-  // Logout
-  logoutBtn.addEventListener("click", () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    window.location.href = "/login.html";
-  });
-
-  // Add new user
-  addUserBtn.addEventListener("click", () => {
-    alert("This would open Add New User functionality.");
-    // You can implement your modal or redirect here
-  });
-
-  // Fetch user list
+  // Load users
   async function loadUsers() {
     try {
       const res = await fetch("/api/users/list", {
@@ -60,12 +30,12 @@ document.addEventListener("DOMContentLoaded", () => {
         },
       });
 
-      const users = await res.json();
-
+      const data = await res.json();
       userList.innerHTML = "";
 
-      users.forEach((u) => {
-        if (u._id === user._id || u.blocked) return; // Skip self or blocked
+      data.users.forEach((u) => {
+        if (u._id === user._id || u.blocked) return;
+
         const userCard = document.createElement("div");
         userCard.className = "user-card";
         userCard.textContent = u.username;
@@ -78,10 +48,13 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     } catch (err) {
       console.error("Error loading users:", err);
+      alert("Session expired. Please log in again.");
+      localStorage.clear();
+      window.location.href = "/login.html";
     }
   }
 
-  // Search users
+  // Search
   searchInput.addEventListener("input", async (e) => {
     const keyword = e.target.value.trim();
 
@@ -99,6 +72,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       result.forEach((u) => {
         if (u._id === user._id || u.blocked) return;
+
         const userCard = document.createElement("div");
         userCard.className = "user-card";
         userCard.textContent = u.username;
@@ -112,6 +86,35 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (err) {
       console.error("Search failed:", err);
     }
+  });
+
+  // Theme toggle
+  themeToggle.addEventListener("click", () => {
+    const html = document.documentElement;
+    const isDark = html.getAttribute("data-theme") === "dark";
+    html.setAttribute("data-theme", isDark ? "light" : "dark");
+    themeToggle.innerHTML = `<i class="fas fa-${isDark ? "moon" : "sun"}"></i>`;
+  });
+
+  // Settings toggle
+  settingsBtn.addEventListener("click", () => {
+    settingsPanel.classList.remove("hidden");
+  });
+
+  backToHome.addEventListener("click", () => {
+    settingsPanel.classList.add("hidden");
+  });
+
+  // Logout
+  logoutBtn.addEventListener("click", () => {
+    localStorage.clear();
+    window.location.href = "/login.html";
+  });
+
+  // Add new user
+  addUserBtn.addEventListener("click", () => {
+    alert("This would open Add New User functionality.");
+    // Add your logic here if needed
   });
 
   loadUsers();
