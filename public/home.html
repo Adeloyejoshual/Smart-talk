@@ -1,224 +1,119 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>SmartTalk – Home</title>
-  <link rel="stylesheet" href="styles/home.css" />
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #111;
-      color: #fff;
-      padding: 20px;
-    }
-
-    #usernameDisplay {
-      font-weight: bold;
-      font-size: 20px;
-    }
-
-    #searchBar {
-      width: 100%;
-      padding: 10px;
-      margin: 10px 0;
-      font-size: 16px;
-    }
-
-    #userList .user-card {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      background: #222;
-      padding: 10px;
-      margin: 5px 0;
-      border-radius: 8px;
-    }
-
-    #userList .user-card button {
-      padding: 5px 10px;
-      background-color: #0066cc;
-      color: white;
-      border: none;
-      border-radius: 5px;
-    }
-
-    #addUserBtn {
-      position: fixed;
-      bottom: 20px;
-      right: 20px;
-      background: #0a84ff;
-      color: white;
-      font-size: 24px;
-      width: 50px;
-      height: 50px;
-      border-radius: 50%;
-      border: none;
-      cursor: pointer;
-    }
-
-    #addUserModal {
-      display: none;
-      position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0, 0, 0, 0.8);
-      justify-content: center;
-      align-items: center;
-      z-index: 10;
-    }
-
-    .modal-content {
-      background: #222;
-      padding: 20px;
-      border-radius: 10px;
-      width: 300px;
-      color: white;
-      position: relative;
-    }
-
-    #closeModal {
-      position: absolute;
-      right: 10px;
-      top: 5px;
-      cursor: pointer;
-      font-size: 20px;
-      color: #aaa;
-    }
-
-    .modal-content input,
-    .modal-content button {
-      width: 100%;
-      margin-top: 10px;
-      padding: 10px;
-      border-radius: 5px;
-      border: none;
-    }
-
-    .modal-content button {
-      background: #0a84ff;
-      color: white;
-    }
-  </style>
+  <title>SmartTalk - Home</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="/styles/home.css" />
+  <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
+  <header>
+    <h2>SmartTalk</h2>
+    <div class="top-bar">
+      <input type="text" id="searchInput" placeholder="Search users..." />
+      <span id="welcomeUser">Welcome, <span id="loggedInUsername">User</span></span>
+      <button id="settingsBtn">⚙️</button>
+    </div>
+  </header>
 
-  <!-- Display logged-in user -->
-  <div>Welcome, <span id="usernameDisplay"></span></div>
+  <main>
+    <div id="userList" class="user-list"></div>
+    <button id="addUserBtn">+</button>
+  </main>
 
-  <!-- Search bar -->
-  <input type="text" id="searchBar" placeholder="Search users..." />
-
-  <!-- User list -->
-  <div id="userList"></div>
-
-  <!-- Add Friend Modal -->
-  <div id="addUserModal">
+  <!-- Settings Modal -->
+  <div id="settingsModal" class="modal hidden">
     <div class="modal-content">
-      <span id="closeModal">&times;</span>
-      <h3>Add a Friend</h3>
-      <input type="email" id="newFriendEmail" placeholder="Enter friend's email or username" />
-      <button id="addFriendButton">Add Friend</button>
+      <span class="close-btn" id="closeSettings">&times;</span>
+      <h3>Settings</h3>
+      <ul>
+        <li><a href="/profile.html">Edit Profile</a></li>
+        <li><a href="/contact.html">Customer Service</a></li>
+        <li><a href="mailto:smarttalkgit@gmail.com">Contact</a></li>
+      </ul>
     </div>
   </div>
 
-  <!-- Add Friend Button -->
-  <button id="addUserBtn">+</button>
-
-  <!-- JS Logic -->
   <script>
+    const token = localStorage.getItem("token");
+    const user = JSON.parse(localStorage.getItem("user"));
+    const socket = io();
+
     document.addEventListener("DOMContentLoaded", () => {
-      const usernameDisplay = document.getElementById("usernameDisplay");
-      const searchBar = document.getElementById("searchBar");
-      const userList = document.getElementById("userList");
-      const addUserBtn = document.getElementById("addUserBtn");
-      const addUserModal = document.getElementById("addUserModal");
-      const closeModal = document.getElementById("closeModal");
-      const addFriendButton = document.getElementById("addFriendButton");
-
-      const username = localStorage.getItem("username");
-      const token = localStorage.getItem("token");
-
-      if (usernameDisplay) usernameDisplay.textContent = username || "Guest";
-
-      // Live Search
-      if (searchBar) {
-        searchBar.addEventListener("input", async () => {
-          const query = searchBar.value.trim();
-          if (query.length === 0) return (userList.innerHTML = "");
-
-          try {
-            const res = await fetch(`/api/users/search?query=${query}`, {
-              headers: {
-                Authorization: `Bearer ${token}`
-              }
-            });
-            const data = await res.json();
-            userList.innerHTML = "";
-
-            data.forEach(user => {
-              const item = document.createElement("div");
-              item.className = "user-card";
-              item.innerHTML = `
-                <div>
-                  <strong>${user.username}</strong><br>
-                  <small>${user.email}</small>
-                </div>
-                <button class="startChat" data-id="${user._id}">Chat</button>
-              `;
-              userList.appendChild(item);
-            });
-
-            document.querySelectorAll(".startChat").forEach(btn => {
-              btn.addEventListener("click", () => {
-                const friendId = btn.getAttribute("data-id");
-                localStorage.setItem("chatWith", friendId);
-                window.location.href = "/chat.html";
-              });
-            });
-          } catch (err) {
-            alert("Error searching users.");
-          }
-        });
+      if (!token || !user) {
+        location.href = "/login.html";
       }
 
-      // Open Modal
-      addUserBtn.addEventListener("click", () => {
-        addUserModal.style.display = "flex";
-      });
+      document.getElementById("loggedInUsername").textContent = user.username;
 
-      // Close Modal
-      closeModal.addEventListener("click", () => {
-        addUserModal.style.display = "none";
-      });
+      const userList = document.getElementById("userList");
+      const searchInput = document.getElementById("searchInput");
+      const settingsBtn = document.getElementById("settingsBtn");
+      const settingsModal = document.getElementById("settingsModal");
+      const closeSettings = document.getElementById("closeSettings");
 
-      // Add Friend
-      addFriendButton.addEventListener("click", async () => {
-        const friendIdentifier = document.getElementById("newFriendEmail").value.trim();
-        if (!friendIdentifier) return alert("Enter a valid email or username");
+      // Toggle settings modal
+      settingsBtn.onclick = () => settingsModal.classList.remove("hidden");
+      closeSettings.onclick = () => settingsModal.classList.add("hidden");
 
+      // Fetch users
+      const fetchUsers = async () => {
         try {
-          const res = await fetch("/api/users/add-friend", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`
-            },
-            body: JSON.stringify({ identifier: friendIdentifier }) // Correct key
+          const res = await fetch("/api/users/list", {
+            headers: { Authorization: `Bearer ${token}` },
           });
+          const users = await res.json();
 
-          const data = await res.json();
-
-          if (res.ok) {
-            alert(data.message || "Friend added!");
-            addUserModal.style.display = "none";
-            document.getElementById("newFriendEmail").value = "";
-          } else {
-            alert(data.message || "Error adding friend");
-          }
+          userList.innerHTML = "";
+          users.forEach((u) => {
+            if (u._id !== user._id && !user.blocked?.includes(u._id)) {
+              const div = document.createElement("div");
+              div.classList.add("user-card");
+              div.innerHTML = `<strong>${u.username}</strong> (${u.email})`;
+              div.onclick = () => {
+                localStorage.setItem("receiverId", u._id);
+                localStorage.setItem("receiverUsername", u.username);
+                location.href = "/chat.html";
+              };
+              userList.appendChild(div);
+            }
+          });
         } catch (err) {
-          alert("Server error. Try again.");
+          console.error("Error fetching users:", err);
         }
+      };
+
+      fetchUsers();
+
+      // Search functionality
+      searchInput.addEventListener("input", async (e) => {
+        const keyword = e.target.value.toLowerCase();
+        const res = await fetch(`/api/users/search?query=${keyword}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const result = await res.json();
+
+        userList.innerHTML = "";
+        result.forEach((u) => {
+          if (u._id !== user._id && !user.blocked?.includes(u._id)) {
+            const div = document.createElement("div");
+            div.classList.add("user-card");
+            div.innerHTML = `<strong>${u.username}</strong> (${u.email})`;
+            div.onclick = () => {
+              localStorage.setItem("receiverId", u._id);
+              localStorage.setItem("receiverUsername", u.username);
+              location.href = "/chat.html";
+            };
+            userList.appendChild(div);
+          }
+        });
       });
+
+      // Add new user button
+      document.getElementById("addUserBtn").onclick = () => {
+        alert("Feature coming soon: Add new user");
+      };
     });
   </script>
 </body>
