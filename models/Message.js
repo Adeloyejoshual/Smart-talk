@@ -7,7 +7,7 @@ const messageSchema = new mongoose.Schema({
   fileUrl: { type: String, default: null },
   fileType: { type: String, enum: ["image", "file", "audio", "video", null], default: null },
   type: { type: String, enum: ["text", "file", "image"], default: "text" },
-  attachmentUrl: { type: String, default: "" }, // backward-compatible
+  attachmentUrl: { type: String, default: "" },
   status: { type: String, enum: ["sent", "read"], default: "sent" },
   read: { type: Boolean, default: false },
   deleted: { type: Boolean, default: false },
