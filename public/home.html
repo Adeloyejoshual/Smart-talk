@@ -5,38 +5,42 @@
   <title>SmartTalk - Home</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="/styles/home.css" />
-  <script src="/socket.io/socket.io.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 </head>
 <body>
   <header>
     <h2 id="welcomeUser">Welcome</h2>
-    <div class="actions">
-      <button id="themeToggle">🌙</button>
-      <button id="settingsBtn">⚙️</button>
+    <div class="right-header">
+      <input type="text" id="searchInput" placeholder="Search users..." />
+      <button id="themeToggle" title="Toggle Theme"><i class="fas fa-moon"></i></button>
+      <button id="settingsBtn" title="Settings"><i class="fas fa-cog"></i></button>
     </div>
   </header>
 
   <main>
-    <input type="text" id="searchBar" placeholder="Search users by username or Gmail..." />
-    <ul id="userList"></ul>
-  </main>
+    <section id="userList" class="user-list">
+      <!-- Users will be listed here -->
+    </section>
 
-  <button id="addUserBtn">＋</button>
-
-  <!-- Settings Modal -->
-  <div id="settingsModal" class="modal">
-    <div class="modal-content">
-      <button id="closeSettings">← Back</button>
+    <!-- Settings Panel -->
+    <div id="settingsPanel" class="settings-panel hidden">
+      <button id="backToHome"><i class="fas fa-arrow-left"></i> Back</button>
       <h3>Settings</h3>
       <ul>
         <li><a href="/profile.html">Edit Profile</a></li>
         <li><a href="/contact.html">Customer Service</a></li>
         <li><a href="mailto:smarttalkgit@gmail.com">Contact</a></li>
-        <li><button id="logoutBtn">Logout</button></li>
+        <li><a href="#" id="logoutBtn">Logout</a></li>
       </ul>
     </div>
-  </div>
 
+    <!-- Floating + Button -->
+    <button id="addUserBtn" title="Add New User">
+      <i class="fas fa-plus"></i>
+    </button>
+  </main>
+
+  <script src="/socket.io/socket.io.js"></script>
   <script src="/scripts/home.js"></script>
 </body>
 </html>
