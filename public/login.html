@@ -2,10 +2,9 @@
 <html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>SmartTalk - Login / Register</title>
+  <title>SmartTalk - Login</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="/styles/auth.css" />
-  <script src="https://kit.fontawesome.com/a2e0e6b54f.js" crossorigin="anonymous"></script>
   <style>
     body {
       background: linear-gradient(to right, #004466, #001f33);
@@ -28,36 +27,24 @@
       max-width: 400px;
     }
 
-    .auth-container h2 {
+    .auth-container h2, h3 {
       text-align: center;
       margin-bottom: 1rem;
     }
 
-    .input-group {
-      position: relative;
-      margin-bottom: 1rem;
-    }
-
-    input[type="text"], input[type="email"], input[type="password"] {
+    input[type="text"],
+    input[type="email"],
+    input[type="password"] {
       width: 100%;
       padding: 0.75rem;
-      padding-right: 2.5rem;
+      margin: 0.5rem 0;
       border-radius: 8px;
       border: none;
       background: #222;
       color: #fff;
     }
 
-    .toggle-password {
-      position: absolute;
-      right: 10px;
-      top: 50%;
-      transform: translateY(-50%);
-      cursor: pointer;
-      color: #ccc;
-    }
-
-    .btn {
+    button {
       width: 100%;
       padding: 0.75rem;
       background-color: #0066cc;
@@ -66,161 +53,51 @@
       border-radius: 8px;
       cursor: pointer;
       font-weight: bold;
-      margin-bottom: 0.5rem;
+      margin-top: 0.5rem;
     }
 
-    .switch-link {
-      color: #66ccff;
-      text-align: center;
-      cursor: pointer;
+    label {
       font-size: 0.9rem;
-      margin-top: 1rem;
       display: block;
+      margin-top: 0.25rem;
     }
 
-    .forgot-link {
-      text-align: right;
-      font-size: 0.85rem;
-      margin-top: -0.5rem;
-      margin-bottom: 1rem;
-    }
-
-    .forgot-link a {
-      color: #66ccff;
-      text-decoration: none;
-    }
-
-    .message {
+    #message {
       text-align: center;
       margin: 1rem 0;
       font-size: 0.95rem;
+      color: red;
     }
   </style>
 </head>
 <body>
   <div class="auth-container">
-    <h2 id="formTitle">Login to SmartTalk</h2>
-    <div id="message" class="message"></div>
-
-    <!-- Login Form -->
+    <h2>Login</h2>
     <form id="loginForm">
-      <div class="input-group">
-        <input type="text" id="loginIdentifier" placeholder="Email or Username" required />
-      </div>
-      <div class="input-group">
-        <input type="password" id="loginPassword" placeholder="Password" required />
-        <span class="toggle-password" onclick="togglePassword('loginPassword', this)">
-          <i class="fas fa-eye-slash"></i>
-        </span>
-      </div>
-      <div class="forgot-link">
-        <a href="#">Forgot Password?</a>
-      </div>
-      <button type="submit" class="btn">Login</button>
+      <input type="email" placeholder="Email" name="email" required />
+      <input type="password" placeholder="Password" name="password" id="loginPassword" required />
+      <label><input type="checkbox" onclick="togglePassword('loginPassword')"> Show Password</label>
+      <button type="submit">Login</button>
     </form>
 
-    <!-- Register Form -->
-    <form id="registerForm" style="display: none;">
-      <div class="input-group">
-        <input type="text" id="registerUsername" placeholder="Username" required />
-      </div>
-      <div class="input-group">
-        <input type="email" id="registerEmail" placeholder="Email" required />
-      </div>
-      <div class="input-group">
-        <input type="password" id="registerPassword" placeholder="Password" required />
-        <span class="toggle-password" onclick="togglePassword('registerPassword', this)">
-          <i class="fas fa-eye-slash"></i>
-        </span>
-      </div>
-      <button type="submit" class="btn">Register</button>
+    <h3>OR Register</h3>
+    <form id="registerForm">
+      <input type="text" placeholder="Username" name="username" required />
+      <input type="email" placeholder="Email" name="email" required />
+      <input type="password" placeholder="Password" name="password" id="registerPassword" required />
+      <label><input type="checkbox" onclick="togglePassword('registerPassword')"> Show Password</label>
+      <button type="submit">Register</button>
     </form>
 
-    <span class="switch-link" onclick="toggleForms()">Don't have an account? Register here</span>
+    <p id="message"></p>
   </div>
 
   <script>
-    const loginForm = document.getElementById("loginForm");
-    const registerForm = document.getElementById("registerForm");
-    const formTitle = document.getElementById("formTitle");
-    const switchLink = document.querySelector(".switch-link");
-    const message = document.getElementById("message");
-
-    function toggleForms() {
-      if (loginForm.style.display === "none") {
-        loginForm.style.display = "block";
-        registerForm.style.display = "none";
-        formTitle.innerText = "Login to SmartTalk";
-        switchLink.innerText = "Don't have an account? Register here";
-      } else {
-        loginForm.style.display = "none";
-        registerForm.style.display = "block";
-        formTitle.innerText = "Register for SmartTalk";
-        switchLink.innerText = "Already have an account? Login here";
-      }
-      message.innerText = "";
+    function togglePassword(id) {
+      const field = document.getElementById(id);
+      field.type = field.type === 'password' ? 'text' : 'password';
     }
-
-    function togglePassword(fieldId, iconElement) {
-      const field = document.getElementById(fieldId);
-      const icon = iconElement.querySelector("i");
-
-      if (field.type === "password") {
-        field.type = "text";
-        icon.classList.remove("fa-eye-slash");
-        icon.classList.add("fa-eye");
-      } else {
-        field.type = "password";
-        icon.classList.remove("fa-eye");
-        icon.classList.add("fa-eye-slash");
-      }
-    }
-
-    loginForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const identifier = document.getElementById("loginIdentifier").value;
-      const password = document.getElementById("loginPassword").value;
-
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identifier, password })
-      });
-
-      const data = await res.json();
-      if (res.ok) {
-        localStorage.setItem("token", data.token);
-        localStorage.setItem("user", JSON.stringify(data.user));
-        window.location.href = "/home.html";
-      } else {
-        message.innerText = data.message || "Login failed";
-      }
-    });
-
-    registerForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const username = document.getElementById("registerUsername").value;
-      const email = document.getElementById("registerEmail").value;
-      const password = document.getElementById("registerPassword").value;
-
-      const res = await fetch("/api/auth/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, email, password })
-      });
-
-      const data = await res.json();
-      if (res.ok) {
-        message.innerText = "Registration successful! Redirecting...";
-        localStorage.setItem("token", data.token);
-        localStorage.setItem("user", JSON.stringify(data.user));
-        setTimeout(() => {
-          window.location.href = "/home.html";
-        }, 1000);
-      } else {
-        message.innerText = data.message || "Registration failed";
-      }
-    });
   </script>
+  <script src="/scripts/login.js"></script>
 </body>
 </html>
