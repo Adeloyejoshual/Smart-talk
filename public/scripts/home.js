@@ -1,95 +1,118 @@
 document.addEventListener("DOMContentLoaded", () => {
-  const token = localStorage.getItem("token");
-  const user = JSON.parse(localStorage.getItem("user"));
-
-  if (!token || !user) {
-    window.location.href = "/login.html";
-    return;
-  }
+  const welcomeUser = document.getElementById("welcomeUser");
+  const userList = document.getElementById("userList");
+  const searchInput = document.getElementById("searchInput");
+  const themeToggle = document.getElementById("themeToggle");
+  const settingsBtn = document.getElementById("settingsBtn");
+  const settingsPanel = document.getElementById("settingsPanel");
+  const addUserBtn = document.getElementById("addUserBtn");
+  const logoutBtn = document.getElementById("logoutBtn");
+  const backToHome = document.getElementById("backToHome");
 
   const socket = io();
 
-  // DOM Elements
-  const welcomeUser = document.getElementById("welcomeUser");
-  const themeToggle = document.getElementById("themeToggle");
-  const settingsBtn = document.getElementById("settingsBtn");
-  const settingsModal = document.getElementById("settingsModal");
-  const closeSettings = document.getElementById("closeSettings");
-  const logoutBtn = document.getElementById("logoutBtn");
-  const addUserBtn = document.getElementById("addUserBtn");
-  const userList = document.getElementById("userList");
-  const searchBar = document.getElementById("searchBar");
+  const user = JSON.parse(localStorage.getItem("user"));
+  const token = localStorage.getItem("token");
 
-  // Show username
+  if (!user || !token) {
+    return (window.location.href = "/login.html");
+  }
+
   welcomeUser.textContent = `Welcome, ${user.username}`;
 
-  // Theme toggle
+  // Theme toggle logic
   themeToggle.addEventListener("click", () => {
     const html = document.documentElement;
-    html.dataset.theme = html.dataset.theme === "dark" ? "light" : "dark";
+    const isDark = html.getAttribute("data-theme") === "dark";
+    html.setAttribute("data-theme", isDark ? "light" : "dark");
+    themeToggle.innerHTML = `<i class="fas fa-${isDark ? "moon" : "sun"}"></i>`;
   });
 
-  // Settings modal
+  // Show settings panel
   settingsBtn.addEventListener("click", () => {
-    settingsModal.style.display = "block";
+    settingsPanel.classList.remove("hidden");
   });
 
-  closeSettings.addEventListener("click", () => {
-    settingsModal.style.display = "none";
+  // Back to main view
+  backToHome.addEventListener("click", () => {
+    settingsPanel.classList.add("hidden");
   });
 
   // Logout
   logoutBtn.addEventListener("click", () => {
-    localStorage.clear();
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
     window.location.href = "/login.html";
   });
 
-  // Add User button
+  // Add new user
   addUserBtn.addEventListener("click", () => {
-    alert("Add User feature coming soon.");
+    alert("This would open Add New User functionality.");
+    // You can implement your modal or redirect here
   });
 
-  // Fetch and display all users
-  const loadUsers = async (query = "") => {
+  // Fetch user list
+  async function loadUsers() {
     try {
-      const res = await fetch(`/api/users/search?q=${query}`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const res = await fetch("/api/users/list", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
       });
-      const data = await res.json();
+
+      const users = await res.json();
 
       userList.innerHTML = "";
 
-      if (data.length === 0) {
-        userList.innerHTML = "<li>No users found.</li>";
-        return;
-      }
-
-      data.forEach((u) => {
-        if (u._id !== user._id) {
-          const li = document.createElement("li");
-          li.textContent = u.username;
-          li.addEventListener("click", () => {
-            localStorage.setItem("receiverId", u._id);
-            localStorage.setItem("receiverUsername", u.username);
-            window.location.href = "/chat.html";
-          });
-          userList.appendChild(li);
-        }
+      users.forEach((u) => {
+        if (u._id === user._id || u.blocked) return; // Skip self or blocked
+        const userCard = document.createElement("div");
+        userCard.className = "user-card";
+        userCard.textContent = u.username;
+        userCard.addEventListener("click", () => {
+          localStorage.setItem("receiverId", u._id);
+          localStorage.setItem("receiverUsername", u.username);
+          window.location.href = "/chat.html";
+        });
+        userList.appendChild(userCard);
       });
     } catch (err) {
       console.error("Error loading users:", err);
     }
-  };
-
-  loadUsers();
+  }
 
   // Search users
-  searchBar.addEventListener("input", (e) => {
-    loadUsers(e.target.value.trim());
+  searchInput.addEventListener("input", async (e) => {
+    const keyword = e.target.value.trim();
+
+    if (keyword === "") return loadUsers();
+
+    try {
+      const res = await fetch(`/api/users/search?query=${keyword}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const result = await res.json();
+      userList.innerHTML = "";
+
+      result.forEach((u) => {
+        if (u._id === user._id || u.blocked) return;
+        const userCard = document.createElement("div");
+        userCard.className = "user-card";
+        userCard.textContent = u.username;
+        userCard.addEventListener("click", () => {
+          localStorage.setItem("receiverId", u._id);
+          localStorage.setItem("receiverUsername", u.username);
+          window.location.href = "/chat.html";
+        });
+        userList.appendChild(userCard);
+      });
+    } catch (err) {
+      console.error("Search failed:", err);
+    }
   });
 
-  // Disconnect on exit
-  window.addEventListener("beforeunload", () => {
-    socket.disconnect();
-  });
-}););
+  loadUsers();
+});
