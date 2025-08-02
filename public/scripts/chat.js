@@ -24,30 +24,33 @@ document.addEventListener("DOMContentLoaded", () => {
   const roomId = [user._id, receiverId].sort().join("_");
   socket.emit("joinRoom", roomId);
 
-  // Load chat history
-  const loadMessages = async () => {
-    try {
-      const res = await fetch(`/api/messages/${receiverId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
+ // Load previous messages from backend and display in chat
+async function loadMessages() {
+  try {
+    const res = await fetch(`/api/messages/${receiverId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
 
-      messagesList.innerHTML = "";
-      data.forEach((msg) => {
-        const li = document.createElement("li");
-        const time = new Date(msg.timestamp).toLocaleTimeString();
-        const sender = msg.sender.username || "Unknown";
-        li.textContent = `[${time}] ${sender}: ${msg.text}`;
-        messagesList.appendChild(li);
-      });
+    const data = await res.json();
+    messages.innerHTML = "";
 
-      scrollToBottom();
-    } catch (err) {
-      console.error("Failed to load messages:", err);
-    }
-  };
+    data.forEach((msg) => {
+      const div = document.createElement("div");
+      const time = new Date(msg.timestamp).toLocaleTimeString();
+      const isSender = msg.sender === user._id;
 
-  loadMessages();
+      div.className = isSender ? "message sent" : "message received";
+      div.innerHTML = `<span>${msg.senderName || "User"}:</span> ${msg.text} <small>${time}</small>`;
+      messages.appendChild(div);
+    });
+
+    messages.scrollTop = messages.scrollHeight;
+  } catch (err) {
+    console.error("Error loading messages:", err);
+  }
+}
+
+loadMessages();
 
   // Send message
   messageForm.addEventListener("submit", (e) => {
