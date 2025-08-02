@@ -1,38 +1,180 @@
-<!-- public/home.html -->
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <title>SmartTalk - Home</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="/styles/home.css">
+  <link rel="stylesheet" href="/styles/home.css" />
+  <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
   <header>
     <h2>SmartTalk</h2>
-    <button id="themeToggle">🌙</button>
-    <div id="settingsIcon">⚙️</div>
+    <div class="header-right">
+      <span id="welcomeUser">Welcome, User</span>
+      <button id="themeToggle">🌗</button>
+      <button id="settingsBtn">⚙️</button>
+    </div>
   </header>
 
-  <section id="userSection">
-    <h3 id="welcomeUser">Welcome</h3>
-    <input type="text" id="searchInput" placeholder="Search users..." />
-    <ul id="userList"></ul>
-  </section>
+  <main>
+    <input type="text" id="searchBar" placeholder="Search users by name or email..." />
+    <div id="userList" class="user-list"></div>
+  </main>
 
-  <!-- Settings modal -->
-  <div id="settingsModal" class="hidden">
-    <ul>
-      <li><a href="/profile.html">Edit Profile</a></li>
-      <li><a href="/contact.html">Customer Service</a></li>
-      <li><a href="/notification.html">Notifications</a></li>
-      <li><a href="/login.html" onclick="localStorage.clear()">Logout</a></li>
-    </ul>
+  <!-- Floating Add New User Button -->
+  <button id="addUserBtn" class="floating-btn">＋</button>
+
+  <!-- Modal for Adding New User -->
+  <div id="addUserModal" class="modal">
+    <div class="modal-content">
+      <span class="closeBtn" id="closeAddUserModal">&times;</span>
+      <h3>Add New Friend</h3>
+      <form id="addUserForm">
+        <input type="text" id="addUsername" placeholder="Enter username" required />
+        <button type="submit">Add</button>
+      </form>
+    </div>
   </div>
 
-  <button id="addUserBtn">＋</button>
+  <!-- Settings Modal -->
+  <div id="settingsModal" class="modal">
+    <div class="modal-content">
+      <span class="closeBtn" id="closeSettingsModal">&times;</span>
+      <h3>Settings</h3>
+      <ul>
+        <li><a href="/profile.html">Edit Profile</a></li>
+        <li><a href="/contact.html">Customer Service</a></li>
+        <li><a href="mailto:smarttalkgit@gmail.com">Contact</a></li>
+        <li><a href="#" id="logoutBtn">Logout</a></li>
+      </ul>
+    </div>
+  </div>
 
-  <script src="/socket.io/socket.io.js"></script>
-  <script src="/scripts/home.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const socket = io();
+      const token = localStorage.getItem("token");
+      const username = localStorage.getItem("username");
+
+      // Display username
+      const welcomeUser = document.getElementById("welcomeUser");
+      if (username) {
+        welcomeUser.textContent = `Welcome, ${username}`;
+      }
+
+      // Toggle Dark Mode
+      const themeToggle = document.getElementById("themeToggle");
+      themeToggle.addEventListener("click", () => {
+        const html = document.documentElement;
+        html.dataset.theme = html.dataset.theme === "dark" ? "light" : "dark";
+      });
+
+      // Settings Modal
+      const settingsBtn = document.getElementById("settingsBtn");
+      const settingsModal = document.getElementById("settingsModal");
+      const closeSettingsModal = document.getElementById("closeSettingsModal");
+
+      settingsBtn.addEventListener("click", () => {
+        settingsModal.style.display = "block";
+      });
+      closeSettingsModal.addEventListener("click", () => {
+        settingsModal.style.display = "none";
+      });
+
+      // Add User Modal
+      const addUserBtn = document.getElementById("addUserBtn");
+      const addUserModal = document.getElementById("addUserModal");
+      const closeAddUserModal = document.getElementById("closeAddUserModal");
+
+      addUserBtn.addEventListener("click", () => {
+        addUserModal.style.display = "block";
+      });
+      closeAddUserModal.addEventListener("click", () => {
+        addUserModal.style.display = "none";
+      });
+
+      // Add New Friend (POST)
+      const addUserForm = document.getElementById("addUserForm");
+      addUserForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const username = document.getElementById("addUsername").value;
+
+        try {
+          const res = await fetch("/api/users/add", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ username }),
+          });
+
+          const result = await res.json();
+          if (res.ok) {
+            alert("User added!");
+            addUserModal.style.display = "none";
+            fetchUsers(""); // refresh user list
+          } else {
+            alert(result.message || "Error adding user");
+          }
+        } catch (err) {
+          console.error(err);
+        }
+      });
+
+      // Search Users
+      const searchBar = document.getElementById("searchBar");
+      searchBar.addEventListener("input", (e) => {
+        fetchUsers(e.target.value);
+      });
+
+      // Fetch all users (GET)
+      async function fetchUsers(query = "") {
+        try {
+          const res = await fetch(`/api/users/search?query=${encodeURIComponent(query)}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          const users = await res.json();
+          const userList = document.getElementById("userList");
+          userList.innerHTML = "";
+
+          users.forEach((user) => {
+            const userCard = document.createElement("div");
+            userCard.className = "user-card";
+            userCard.innerHTML = `
+              <div>
+                <strong>${user.username}</strong><br>
+                <small>${user.email}</small>
+              </div>
+              <button class="startChat" data-id="${user._id}" data-username="${user.username}">Chat</button>
+            `;
+            userList.appendChild(userCard);
+          });
+
+          document.querySelectorAll(".startChat").forEach((btn) => {
+            btn.addEventListener("click", () => {
+              const friendId = btn.getAttribute("data-id");
+              const friendUsername = btn.getAttribute("data-username");
+              localStorage.setItem("receiverId", friendId);
+              localStorage.setItem("receiverUsername", friendUsername);
+              window.location.href = "/chat.html";
+            });
+          });
+        } catch (err) {
+          console.error("Error loading users:", err);
+        }
+      }
+
+      // Initial load
+      fetchUsers();
+
+      // Logout
+      document.getElementById("logoutBtn").addEventListener("click", () => {
+        localStorage.clear();
+        window.location.href = "/login.html";
+      });
+    });
+  </script>
 </body>
 </html>
