@@ -4,7 +4,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const User = require("../models/User");
-const sendEmail = require("../utils/sendEmail"); // Your email sending utility
+const sendEmail = require("../utils/sendEmail");
 
 const JWT_SECRET = process.env.JWT_SECRET || "supersecretkey123";
 
@@ -43,18 +43,21 @@ router.post("/register", async (req, res) => {
   }
 });
 
-// LOGIN
+// LOGIN (with username OR email)
 router.post("/login", async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password)
-    return res.status(400).json({ message: "Email and password required" });
+  const { identifier, password } = req.body;
+  if (!identifier || !password)
+    return res.status(400).json({ message: "Email or username and password required" });
 
   try {
-    const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ message: "Invalid credentials" });
+    const user = await User.findOne({
+      $or: [{ email: identifier }, { username: identifier }]
+    });
+
+    if (!user) return res.status(401).json({ message: "Invalid credentials" });
 
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(400).json({ message: "Invalid credentials" });
+    if (!isMatch) return res.status(401).json({ message: "Invalid credentials" });
 
     res.status(200).json({
       token: generateToken(user._id),
@@ -73,12 +76,11 @@ router.post("/forgot-password", async (req, res) => {
 
   try {
     const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ message: "User not found" });
+    if (!user) return res.status(404).json({ message: "User not found" });
 
     const token = crypto.randomBytes(20).toString("hex");
     const expires = Date.now() + 3600000; // 1 hour
 
-    // Save token and expiry to user
     user.resetPasswordToken = token;
     user.resetPasswordExpires = expires;
     await user.save();
@@ -87,15 +89,13 @@ router.post("/forgot-password", async (req, res) => {
     const message = `
 Hello ${user.username},
 
-You requested a password reset. Please click the link below to reset your password:
+You requested a password reset. Click the link below to reset your password:
 
 ${resetLink}
 
 If you did not request this, please ignore this email.
 
-Thanks,
-SmartTalk Team
-    `;
+– SmartTalk Team`;
 
     await sendEmail(user.email, "SmartTalk Password Reset", message);
 
