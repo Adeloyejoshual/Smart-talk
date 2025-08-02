@@ -1,3 +1,4 @@
+
 document.addEventListener("DOMContentLoaded", () => {
   const socket = io();
 
@@ -7,11 +8,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const receiverUsername = localStorage.getItem("receiverUsername") || "Unknown";
 
   if (!token || !user || !receiverId) {
+    alert("Session expired. Please log in again.");
     window.location.href = "/login.html";
     return;
   }
 
-  // DOM elements
   const chatWith = document.getElementById("chatWith");
   const messageForm = document.getElementById("messageForm");
   const messageInput = document.getElementById("messageInput");
@@ -20,15 +21,22 @@ document.addEventListener("DOMContentLoaded", () => {
   const backHome = document.getElementById("backHome");
 
   chatWith.textContent = `Chat with: ${receiverUsername}`;
+
   const roomId = [user._id, receiverId].sort().join("_");
   socket.emit("joinRoom", roomId);
 
-  // Load message history
+  // Load chat history
   async function loadMessages() {
     try {
       const res = await fetch(`/api/messages/${receiverId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+
+      if (res.status === 401) {
+        alert("Session expired. Please log in again.");
+        localStorage.clear();
+        return (window.location.href = "/login.html");
+      }
 
       const data = await res.json();
       messagesList.innerHTML = "";
@@ -60,7 +68,7 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     socket.emit("privateMessage", msg);
-    appendMessage(msg, true); // show own message immediately
+    appendMessage(msg, true);
     messageInput.value = "";
   });
 
@@ -69,13 +77,14 @@ document.addEventListener("DOMContentLoaded", () => {
     appendMessage(msg, msg.senderId === user._id);
   });
 
+  // Display message in chat
   function appendMessage(msg, isSender) {
     const div = document.createElement("div");
     const time = new Date(msg.timestamp || Date.now()).toLocaleTimeString();
     const name = msg.senderName || (isSender ? user.username : receiverUsername);
 
     div.className = isSender ? "message sent" : "message received";
-    div.innerHTML = `<span>${name}:</span> ${msg.text} <small>${time}</small>`;
+    div.innerHTML = `<span><strong>${name}:</strong></span> ${msg.text} <small>${time}</small>`;
     messagesList.appendChild(div);
     scrollToBottom();
   }
@@ -93,15 +102,17 @@ document.addEventListener("DOMContentLoaded", () => {
     }, 1000);
   });
 
-  // Back to Home
+  // Back to home
   backHome.addEventListener("click", () => {
     window.location.href = "/home.html";
   });
 
+  // Scroll to latest message
   function scrollToBottom() {
     messagesList.scrollTop = messagesList.scrollHeight;
   }
 
+  // Disconnect on unload
   window.addEventListener("beforeunload", () => {
     socket.disconnect();
   });
