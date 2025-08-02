@@ -13,19 +13,19 @@ dotenv.config();
 
 // Models
 const User = require("./models/User");
-const Message = require("./models/Chat"); // Rename Chat.js to Chat.js or Message.js depending on your schema
+const Message = require("./models/Message"); // Adjust name if needed
 
 // Routes
 const authRoutes = require("./routes/auth");
 const userRoutes = require("./routes/user");
 const messageRoutes = require("./routes/messages");
-const uploadRoutes = require("./routes/upload"); // Handles file uploads
+const uploadRoutes = require("./routes/upload");
 
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
-    origin: "*",
+    origin: "*", // Change to your frontend URL for production
     methods: ["GET", "POST"],
   },
 });
@@ -69,12 +69,12 @@ app.get("/settings", (req, res) => {
 
 const onlineUsers = new Map();
 
-// JWT authentication for Socket.IO
+// JWT authentication middleware for Socket.IO
 io.use((socket, next) => {
   const token = socket.handshake.auth.token;
   if (!token) return next(new Error("Token required"));
 
-  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+  jwt.verify(token, process.env.JWT_SECRET || "supersecretkey123", (err, decoded) => {
     if (err) return next(new Error("Invalid token"));
     socket.user = decoded;
     next();
@@ -86,58 +86,62 @@ io.on("connection", (socket) => {
   onlineUsers.set(userId, socket.id);
   console.log(`🔌 User connected: ${userId}`);
 
-  // Set user online status
+  // Update user online status
   User.findByIdAndUpdate(userId, { online: true, lastSeen: new Date() }).catch(console.error);
 
-  // Join a room (private chat logic)
+  // Join private chat room
   socket.on("joinPrivateRoom", ({ sender, receiverId }) => {
     const roomId = [sender, receiverId].sort().join("_");
     socket.join(roomId);
     socket.data.roomId = roomId;
   });
 
-  // Send message
+  // Handle sending private message
   socket.on("private message", async ({ to, message, fileUrl, fileType }) => {
     const from = userId;
 
-    const newMsg = new Message({
-      sender: from,
-      receiver: to,
-      content: message || "",
-      fileUrl: fileUrl || null,
-      fileType: fileType || null,
-      status: "sent",
-      createdAt: new Date(),
-    });
+    try {
+      const newMsg = new Message({
+        sender: from,
+        receiver: to,
+        content: message || "",
+        attachmentUrl: fileUrl || null,
+        type: fileType || "text",
+        read: false,
+        createdAt: new Date(),
+      });
 
-    await newMsg.save();
+      await newMsg.save();
 
-    const toSocketId = onlineUsers.get(to);
-    if (toSocketId) {
-      io.to(toSocketId).emit("private message", {
+      const toSocketId = onlineUsers.get(to);
+      if (toSocketId) {
+        io.to(toSocketId).emit("private message", {
+          from,
+          message: newMsg.content,
+          fileUrl: newMsg.attachmentUrl,
+          fileType: newMsg.type,
+          status: "sent",
+          timestamp: newMsg.createdAt.toISOString(),
+          messageId: newMsg._id.toString(),
+        });
+      }
+
+      // Emit to sender as well (confirmation)
+      socket.emit("private message", {
         from,
         message: newMsg.content,
-        fileUrl: newMsg.fileUrl,
-        fileType: newMsg.fileType,
-        status: newMsg.status,
+        fileUrl: newMsg.attachmentUrl,
+        fileType: newMsg.type,
+        status: "sent",
         timestamp: newMsg.createdAt.toISOString(),
         messageId: newMsg._id.toString(),
       });
+    } catch (err) {
+      console.error("Error sending message:", err);
     }
-
-    // Also emit to sender
-    socket.emit("private message", {
-      from,
-      message: newMsg.content,
-      fileUrl: newMsg.fileUrl,
-      fileType: newMsg.fileType,
-      status: newMsg.status,
-      timestamp: newMsg.createdAt.toISOString(),
-      messageId: newMsg._id.toString(),
-    });
   });
 
-  // Update message status (e.g., read)
+  // Message status update (e.g., read)
   socket.on("message status update", async ({ messageId, status }) => {
     if (!messageId || !status) return;
     try {
@@ -156,7 +160,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  // Typing indicators
+  // Typing indicator
   socket.on("typing", ({ to }) => {
     const toSocketId = onlineUsers.get(to);
     if (toSocketId) {
@@ -171,7 +175,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  // Disconnect
+  // On disconnect
   socket.on("disconnect", async () => {
     console.log(`❌ User disconnected: ${userId}`);
     onlineUsers.delete(userId);
