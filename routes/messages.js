@@ -1,17 +1,15 @@
-// routes/messages.js
-
 const express = require("express");
 const router = express.Router();
 const jwt = require("jsonwebtoken");
 const Message = require("../models/Message");
 
-// Middleware to verify token and extract userId
+// 🔒 Auth middleware
 const authMiddleware = (req, res, next) => {
   const token = req.headers.authorization?.split(" ")[1];
   if (!token) return res.status(401).json({ message: "No token provided" });
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || "supersecret");
     req.userId = decoded.id || decoded.userId;
     next();
   } catch (err) {
@@ -19,7 +17,7 @@ const authMiddleware = (req, res, next) => {
   }
 };
 
-// ✅ Send a message
+// ✅ Send message
 router.post("/send", authMiddleware, async (req, res) => {
   const { receiverId, content, fileUrl, fileType } = req.body;
 
@@ -62,25 +60,40 @@ router.get("/history/:userId", authMiddleware, async (req, res) => {
   }
 });
 
-// ✅ Mark messages from a specific sender as read
-router.post("/read", authMiddleware, async (req, res) => {
-  const { senderId } = req.body;
-
-  if (!senderId) return res.status(400).json({ message: "Sender ID required" });
+// ✅ Mark messages as read from a specific user
+router.patch("/read/:chatPartnerId", authMiddleware, async (req, res) => {
+  const { chatPartnerId } = req.params;
 
   try {
     await Message.updateMany(
-      { sender: senderId, receiver: req.userId, status: { $ne: "read" } },
-      { $set: { status: "read" } }
+      { sender: chatPartnerId, receiver: req.userId, read: false },
+      { $set: { read: true, status: "read" } }
     );
-
-    res.json({ success: true });
+    res.json({ message: "Messages marked as read" });
   } catch (err) {
     res.status(500).json({ message: "Failed to mark messages as read" });
   }
 });
 
-// ✅ Export messages to a downloadable text file
+// ✅ Delete message (soft delete)
+router.delete("/:id", authMiddleware, async (req, res) => {
+  try {
+    const msg = await Message.findById(req.params.id);
+    if (!msg) return res.status(404).json({ message: "Message not found" });
+
+    if (msg.sender.toString() !== req.userId) {
+      return res.status(403).json({ message: "Unauthorized" });
+    }
+
+    msg.deleted = true;
+    await msg.save();
+    res.json({ message: "Message deleted" });
+  } catch (err) {
+    res.status(500).json({ message: "Server error deleting message" });
+  }
+});
+
+// ✅ Export chat as text file
 router.get("/export/:userId/:friendId", authMiddleware, async (req, res) => {
   const { userId, friendId } = req.params;
 
@@ -98,6 +111,7 @@ router.get("/export/:userId/:friendId", authMiddleware, async (req, res) => {
 
     let exportText = "";
     for (const msg of messages) {
+      if (msg.deleted) continue;
       const senderLabel = msg.sender.toString() === userId ? "You" : "Them";
       const timeString = new Date(msg.createdAt).toLocaleString();
       const content = msg.content || msg.fileUrl || "[File]";
@@ -108,24 +122,7 @@ router.get("/export/:userId/:friendId", authMiddleware, async (req, res) => {
     res.setHeader("Content-Type", "text/plain");
     res.send(exportText);
   } catch (err) {
-    res.status(500).json({ message: "Error exporting chat" });
-  }
-});
-
-// ✅ Delete a message (only if sender)
-router.delete("/:id", authMiddleware, async (req, res) => {
-  try {
-    const msg = await Message.findById(req.params.id);
-    if (!msg) return res.status(404).json({ message: "Message not found" });
-
-    if (msg.sender.toString() !== req.userId) {
-      return res.status(403).json({ message: "Unauthorized" });
-    }
-
-    await msg.deleteOne();
-    res.json({ message: "Message deleted successfully" });
-  } catch (err) {
-    res.status(500).json({ message: "Failed to delete message", error: err.message });
+    res.status(500).json({ message: "Error exporting chat", error: err.message });
   }
 });
 
