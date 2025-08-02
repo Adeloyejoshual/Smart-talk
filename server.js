@@ -5,11 +5,11 @@ const cors = require("cors");
 const path = require("path");
 const http = require("http");
 const socketIO = require("socket.io");
+const jwt = require("jsonwebtoken");
 
 // Load env variables
 dotenv.config();
 
-// Models
 const User = require("./models/User");
 const Message = require("./models/Chat");
 
@@ -23,7 +23,7 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIO(server, {
   cors: {
-    origin: "*", // or set to your frontend URL for better security
+    origin: "*",
     methods: ["GET", "POST"]
   }
 });
@@ -31,7 +31,7 @@ const io = socketIO(server, {
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, "public"))); // Serves /login.html, /home.html etc.
+app.use(express.static(path.join(__dirname, "public"))); // Exposes /login.html etc.
 
 // MongoDB Connection
 mongoose.connect(process.env.MONGO_URI, {
@@ -46,25 +46,45 @@ app.use("/api/users", userRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/settings", settingsRoutes);
 
-// Serve login page by default
+// Optional Middleware: protect APIs (add to route if needed)
+const authMiddleware = (req, res, next) => {
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) return res.status(401).json({ message: "No token provided" });
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    return res.status(403).json({ message: "Invalid token" });
+  }
+};
+
+// Serve login.html by default
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "login.html"));
 });
 
-// --- SOCKET.IO REAL-TIME LOGIC ---
+// Optional: redirect unauthorized access to home/chat.html
+app.get("/home.html", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "home.html"));
+});
+app.get("/chat.html", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "chat.html"));
+});
+
+// SOCKET.IO REAL-TIME LOGIC
 let onlineUsers = {};
 
 io.on("connection", (socket) => {
-  console.log("🔌 New connection:", socket.id);
+  console.log("🔌 Connected:", socket.id);
 
-  // When a user comes online
   socket.on("userOnline", async ({ userId }) => {
     onlineUsers[userId] = socket.id;
     await User.findByIdAndUpdate(userId, { online: true, lastSeen: new Date() });
     io.emit("updateUserStatus", { userId, online: true });
   });
 
-  // Handle private message
   socket.on("privateMessage", async ({ senderId, receiverId, content, fileUrl, fileType }) => {
     const message = new Message({
       sender: senderId,
@@ -76,30 +96,34 @@ io.on("connection", (socket) => {
     });
     await message.save();
 
-    // Send to receiver if online
     const receiverSocket = onlineUsers[receiverId];
+    const senderSocket = onlineUsers[senderId];
+
+    const sender = await User.findById(senderId);
+    const senderName = sender ? sender.username : "Unknown";
+
+    const messagePayload = {
+      _id: message._id,
+      senderId,
+      receiverId,
+      senderName,
+      content,
+      fileUrl,
+      fileType,
+      type: message.type,
+      status: "sent",
+      createdAt: message.createdAt,
+    };
+
     if (receiverSocket) {
-      io.to(receiverSocket).emit("privateMessage", {
-        _id: message._id,
-        senderId,
-        receiverId,
-        content,
-        fileUrl,
-        fileType,
-        type: message.type,
-        status: "sent",
-        createdAt: message.createdAt,
-      });
+      io.to(receiverSocket).emit("privateMessage", messagePayload);
     }
 
-    // Confirm delivery to sender
-    const senderSocket = onlineUsers[senderId];
     if (senderSocket) {
-      io.to(senderSocket).emit("privateMessageSent", message);
+      io.to(senderSocket).emit("privateMessageSent", messagePayload);
     }
   });
 
-  // Mark message as read
   socket.on("markAsRead", async ({ messageId }) => {
     const msg = await Message.findByIdAndUpdate(messageId, { read: true, status: "read" });
     if (msg && onlineUsers[msg.sender]) {
@@ -107,7 +131,6 @@ io.on("connection", (socket) => {
     }
   });
 
-  // Soft delete
   socket.on("deleteMessage", async ({ messageId }) => {
     const msg = await Message.findByIdAndUpdate(messageId, { deleted: true });
     if (msg) {
@@ -115,11 +138,13 @@ io.on("connection", (socket) => {
     }
   });
 
-  // Typing indicator
-  socket.on("typing", ({ senderId, receiverId }) => {
+  socket.on("typing", async ({ senderId, receiverId }) => {
     const receiverSocket = onlineUsers[receiverId];
+    const sender = await User.findById(senderId);
+    const senderName = sender ? sender.username : "Someone";
+
     if (receiverSocket) {
-      io.to(receiverSocket).emit("typing", { from: senderId });
+      io.to(receiverSocket).emit("typing", { senderName });
     }
   });
 
@@ -130,7 +155,6 @@ io.on("connection", (socket) => {
     }
   });
 
-  // On disconnect
   socket.on("disconnect", async () => {
     const userId = Object.keys(onlineUsers).find(id => onlineUsers[id] === socket.id);
     if (userId) {
