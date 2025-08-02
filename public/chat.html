@@ -121,72 +121,128 @@
   </form>
 
   <script>
-    const socket = io();
-
+    // Get user info from localStorage
     const senderId = localStorage.getItem("userId");
     const senderName = localStorage.getItem("username");
     const receiverId = localStorage.getItem("chatWithId");
     const receiverName = localStorage.getItem("chatWithName");
     const token = localStorage.getItem("token");
 
-    const messagesContainer = document.getElementById("messagesContainer");
-    const typingStatus = document.getElementById("typingStatus");
-    const messageForm = document.getElementById("messageForm");
-    const messageInput = document.getElementById("messageInput");
-    const chatUserName = document.getElementById("chatUserName");
-
     if (!senderId || !receiverId || !token) {
       window.location.href = "/login.html";
     }
 
-    chatUserName.textContent = receiverName;
+    // Set chat header username
+    document.getElementById("chatUserName").textContent = receiverName;
 
-    const roomId = [senderId, receiverId].sort().join("_");
-    socket.emit("joinPrivateRoom", { roomId });
+    // Initialize DOM elements
+    const messagesContainer = document.getElementById("messagesContainer");
+    const typingStatus = document.getElementById("typingStatus");
+    const messageForm = document.getElementById("messageForm");
+    const messageInput = document.getElementById("messageInput");
 
-    // Load previous messages
+    // Connect to Socket.IO with auth token
+    const socket = io({
+      auth: {
+        token: token
+      }
+    });
+
+    // Join private room on connect
+    socket.emit("joinPrivateRoom", { sender: senderId, receiverId });
+
+    // Load chat history on DOMContentLoaded
     window.addEventListener("DOMContentLoaded", async () => {
       try {
         const res = await fetch(`/api/messages/${senderId}/${receiverId}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         const data = await res.json();
-        data.forEach(({ sender, content }) => {
-          appendMessage(content, sender === senderId ? "my-message" : "their-message");
+
+        data.forEach(({ sender, content, type, attachmentUrl }) => {
+          if(type === "text") {
+            appendMessage(content, sender === senderId ? "my-message" : "their-message");
+          } else if(type === "image" && attachmentUrl) {
+            const img = document.createElement("img");
+            img.src = attachmentUrl;
+            img.style.maxWidth = "200px";
+            img.style.borderRadius = "8px";
+            appendNodeMessage(img, sender === senderId ? "my-message" : "their-message");
+          } else if(type === "file" && attachmentUrl) {
+            const link = document.createElement("a");
+            link.href = attachmentUrl;
+            link.textContent = "Download file";
+            link.target = "_blank";
+            appendNodeMessage(link, sender === senderId ? "my-message" : "their-message");
+          }
         });
         scrollToBottom();
       } catch (err) {
-        console.error("History fetch failed:", err);
+        console.error("Failed to fetch message history:", err);
       }
     });
 
-    // Receive real-time message
-    socket.on("privateMessage", ({ content, senderId: incomingId }) => {
-      const msgClass = incomingId === senderId ? "my-message" : "their-message";
-      appendMessage(content, msgClass);
+    // Listen for incoming private messages
+    socket.on("private message", ({ from, message, fileUrl, fileType }) => {
+      if (fileUrl && fileType) {
+        if (fileType === "image") {
+          const img = document.createElement("img");
+          img.src = fileUrl;
+          img.style.maxWidth = "200px";
+          img.style.borderRadius = "8px";
+          appendNodeMessage(img, from === senderId ? "my-message" : "their-message");
+          scrollToBottom();
+          return;
+        } else {
+          const link = document.createElement("a");
+          link.href = fileUrl;
+          link.textContent = "Download file";
+          link.target = "_blank";
+          appendNodeMessage(link, from === senderId ? "my-message" : "their-message");
+          scrollToBottom();
+          return;
+        }
+      }
+      const className = from === senderId ? "my-message" : "their-message";
+      appendMessage(message, className);
       scrollToBottom();
     });
 
-    // Typing status
-    socket.on("typing", ({ senderName: typingUser }) => {
-      if (typingUser !== senderName) {
-        typingStatus.innerText = `${typingUser} is typing...`;
-        setTimeout(() => typingStatus.innerText = '', 1500);
+    // Typing indicator handlers
+    socket.on("typing", ({ from }) => {
+      if (from !== senderId) {
+        typingStatus.innerText = `${receiverName} is typing...`;
+      }
+    });
+    socket.on("stop typing", ({ from }) => {
+      if (from !== senderId) {
+        typingStatus.innerText = "";
       }
     });
 
+    // Emit typing events on input with debounce
+    let typingTimeout;
     messageInput.addEventListener("input", () => {
-      socket.emit("typing", { roomId, senderName });
+      socket.emit("typing", { to: receiverId });
+      clearTimeout(typingTimeout);
+      typingTimeout = setTimeout(() => {
+        socket.emit("stop typing", { to: receiverId });
+      }, 1000);
     });
 
-    // Send message
+    // Send message on form submit
     messageForm.addEventListener("submit", async (e) => {
       e.preventDefault();
       const content = messageInput.value.trim();
       if (!content) return;
 
-      socket.emit("privateMessage", { roomId, senderId, receiverId, content });
+      // Emit socket message
+      socket.emit("private message", {
+        to: receiverId,
+        message: content,
+      });
 
+      // Save message to DB
       try {
         await fetch("/api/messages/send", {
           method: "POST",
@@ -197,7 +253,7 @@
           body: JSON.stringify({ senderId, receiverId, content }),
         });
       } catch (err) {
-        console.error("DB save failed:", err);
+        console.error("Failed to save message:", err);
       }
 
       appendMessage(content, "my-message");
@@ -205,23 +261,35 @@
       scrollToBottom();
     });
 
-    // Logout
+    // Logout logic
     document.getElementById("logoutBtn").addEventListener("click", () => {
       localStorage.clear();
+      socket.disconnect();
       window.location.href = "/login.html";
     });
 
-    function appendMessage(content, className) {
+    // Append text message helper
+    function appendMessage(text, className) {
       const div = document.createElement("div");
       div.className = `message ${className}`;
-      div.textContent = content;
+      div.textContent = text;
       messagesContainer.appendChild(div);
     }
 
+    // Append node message helper (image, link)
+    function appendNodeMessage(node, className) {
+      const div = document.createElement("div");
+      div.className = `message ${className}`;
+      div.appendChild(node);
+      messagesContainer.appendChild(div);
+    }
+
+    // Scroll chat to bottom helper
     function scrollToBottom() {
       messagesContainer.scrollTop = messagesContainer.scrollHeight;
     }
 
+    // Disconnect socket on page unload
     window.addEventListener("beforeunload", () => {
       socket.disconnect();
     });
