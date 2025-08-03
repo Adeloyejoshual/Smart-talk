@@ -3,6 +3,14 @@ document.addEventListener("DOMContentLoaded", () => {
   const messageInput = document.getElementById("messageInput");
   const messageList = document.getElementById("messageList");
   const backButton = document.getElementById("backButton");
+document.getElementById("exportBtn").addEventListener("click", () => {
+  const messages = [...document.querySelectorAll("#messageList li")].map(li => li.innerText).join("\n");
+  const blob = new Blob([messages], { type: "text/plain" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "SmartTalk_Chat_History.txt";
+  link.click();
+});
 
   const receiverId = localStorage.getItem("receiverId");
   const token = localStorage.getItem("token");
