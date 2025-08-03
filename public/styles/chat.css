@@ -152,3 +152,16 @@ body {
   font-size: 0.8em;
   margin-left: 5px;
 }
+
+.export-button {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  background: #1e90ff;
+  color: white;
+  padding: 8px 14px;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
