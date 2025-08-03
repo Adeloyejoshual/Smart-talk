@@ -6,77 +6,82 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const receiverId = localStorage.getItem("receiverId");
   const token = localStorage.getItem("token");
+  const socket = io();
 
   if (!token || !receiverId) {
     window.location.href = "/home.html";
     return;
   }
 
-  // 🔄 Load message history
+  const myUserId = getMyUserId();
+
+  socket.emit("join", myUserId);
+
+  // Load chat history
   async function loadMessages() {
     try {
       const res = await fetch(`/api/messages/history/${receiverId}`, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
+        headers: { Authorization: `Bearer ${token}` }
       });
 
       const data = await res.json();
 
       if (data.success) {
         messageList.innerHTML = "";
-        data.messages.forEach((msg) => {
-          const messageEl = document.createElement("div");
-          messageEl.className = msg.sender === getMyUserId() ? "message sent" : "message received";
-          messageEl.textContent = msg.content;
-          messageList.appendChild(messageEl);
-        });
-        messageList.scrollTop = messageList.scrollHeight;
+        data.messages.forEach((msg) => appendMessage(msg));
+        scrollToBottom();
       }
     } catch (err) {
       console.error("Error loading messages:", err);
     }
   }
 
-  // 📨 Send a new message
-  messageForm.addEventListener("submit", async (e) => {
+  // Send message via Socket.IO
+  messageForm.addEventListener("submit", (e) => {
     e.preventDefault();
-
     const content = messageInput.value.trim();
     if (!content) return;
 
-    try {
-      const res = await fetch("/api/messages/send", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({ receiverId, content })
-      });
+    socket.emit("privateMessage", {
+      senderId: myUserId,
+      receiverId,
+      content
+    });
 
-      const data = await res.json();
+    appendMessage({ sender: myUserId, content });
+    messageInput.value = "";
+    scrollToBottom();
+  });
 
-      if (data.success) {
-        messageInput.value = "";
-        loadMessages(); // reload messages
-      }
-    } catch (err) {
-      console.error("Error sending message:", err);
+  // Receive real-time messages
+  socket.on("privateMessage", (msg) => {
+    if (msg.senderId === receiverId) {
+      appendMessage({ sender: receiverId, content: msg.content });
+      scrollToBottom();
     }
   });
 
-  // 🔙 Back to home
-  backButton.addEventListener("click", () => {
-    window.location.href = "/home.html";
-  });
+  // UI helpers
+  function appendMessage(msg) {
+    const messageEl = document.createElement("div");
+    messageEl.className = msg.sender === myUserId ? "message sent" : "message received";
+    messageEl.textContent = msg.content;
+    messageList.appendChild(messageEl);
+  }
 
-  // 🔐 Decode JWT to get my user ID
+  function scrollToBottom() {
+    messageList.scrollTop = messageList.scrollHeight;
+  }
+
   function getMyUserId() {
     const payload = JSON.parse(atob(token.split(".")[1]));
     return payload.id;
   }
 
-  // Initial load
+  backButton.addEventListener("click", () => {
+    window.location.href = "/home.html";
+  });
+
+  // Load initial messages
   loadMessages();
 });
