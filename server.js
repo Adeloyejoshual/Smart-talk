@@ -180,6 +180,25 @@ io.on("connection", (socket) => {
   });
 });
 
+// ✅ Remove friend
+router.delete("/remove-friend/:friendId", authMiddleware, async (req, res) => {
+  const { friendId } = req.params;
+
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user.friends.includes(friendId)) {
+      return res.status(400).json({ message: "Not in your friend list" });
+    }
+
+    user.friends = user.friends.filter(f => f.toString() !== friendId);
+    await user.save();
+
+    res.json({ message: "Friend removed successfully" });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to remove friend" });
+  }
+});
+
 // Start server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
