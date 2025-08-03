@@ -1,100 +1,92 @@
 const socket = io();
-const messagesContainer = document.getElementById("messagesContainer");
-const chatForm = document.getElementById("chatForm");
-const messageInput = document.getElementById("messageInput");
-const typingIndicator = document.getElementById("typingIndicator");
-const chatWith = document.getElementById("chatWith");
-const backBtn = document.getElementById("backBtn");
+let currentUser, currentFriend, roomId;
 
-let currentUser = null;
-let receiverId = null;
+document.addEventListener("DOMContentLoaded", () => {
+  currentUser = JSON.parse(localStorage.getItem("currentUser"));
+  currentFriend = JSON.parse(localStorage.getItem("currentFriend"));
 
-// Dummy initialization; you can fetch from server or localStorage
-document.addEventListener("DOMContentLoaded", async () => {
-  const res = await fetch("/api/users/me");
-  const data = await res.json();
-  currentUser = data.user;
-  chatWith.innerText = `Chatting as ${currentUser.username}`;
-
-  // Join room with receiver (you can set this via query string or storage)
-  const urlParams = new URLSearchParams(window.location.search);
-  receiverId = urlParams.get("to");
-
-  if (receiverId) {
-    socket.emit("joinRoom", { senderId: currentUser._id, receiverId });
-    loadMessages(currentUser._id, receiverId);
+  if (!currentUser || !currentFriend) {
+    window.location.href = "/home.html";
+    return;
   }
-});
 
-// Load message history
-async function loadMessages(senderId, receiverId) {
-  const res = await fetch(`/api/messages/history/${senderId}/${receiverId}`);
-  const data = await res.json();
+  document.getElementById("friendName").textContent = currentFriend.username;
+  roomId = [currentUser._id, currentFriend._id].sort().join('_');
 
-  data.messages.forEach((msg) => {
-    displayMessage(msg);
+  socket.emit("joinRoom", {
+    senderId: currentUser._id,
+    receiverId: currentFriend._id,
   });
 
-  scrollToBottom();
+  fetchMessages();
+
+  const messageForm = document.getElementById("messageForm");
+  const messageInput = document.getElementById("messageInput");
+
+  messageForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const message = messageInput.value.trim();
+    if (message === "") return;
+
+    socket.emit("sendMessage", {
+      senderId: currentUser._id,
+      receiverId: currentFriend._id,
+      message,
+      senderName: currentUser.username,
+    });
+
+    messageInput.value = "";
+  });
+
+  messageInput.addEventListener("input", () => {
+    socket.emit("typing", { roomId, senderName: currentUser.username });
+  });
+
+  socket.on("newMessage", (data) => {
+    addMessageToChat(data, data.senderId === currentUser._id);
+  });
+
+  socket.on("typing", (senderName) => {
+    const typingStatus = document.getElementById("typingStatus");
+    typingStatus.textContent = `${senderName} is typing...`;
+    clearTimeout(typingStatus.timeout);
+    typingStatus.timeout = setTimeout(() => {
+      typingStatus.textContent = "";
+    }, 2000);
+  });
+});
+
+function fetchMessages() {
+  fetch(`/api/messages/${currentUser._id}/${currentFriend._id}`)
+    .then((res) => res.json())
+    .then((messages) => {
+      messages.forEach((msg) => {
+        addMessageToChat(
+          {
+            senderId: msg.sender,
+            message: msg.message,
+            senderName: msg.sender === currentUser._id ? currentUser.username : currentFriend.username,
+            timestamp: msg.timestamp,
+          },
+          msg.sender === currentUser._id
+        );
+      });
+    });
 }
 
-// Display message
-function displayMessage(msg) {
-  const div = document.createElement("div");
-  div.classList.add("message");
-  if (msg.senderId === currentUser._id) div.classList.add("you");
+function addMessageToChat({ senderName, message, timestamp }, isMine) {
+  const messageList = document.getElementById("messageList");
 
-  div.innerHTML = `
-    ${msg.text}
-    <div class="meta">${msg.senderName || "You"} · ${new Date(msg.timestamp).toLocaleTimeString()}</div>
+  const msgEl = document.createElement("div");
+  msgEl.className = `message ${isMine ? "mine" : "theirs"}`;
+  msgEl.innerHTML = `
+    <div class="message-header">
+      <span class="sender">${senderName}</span>
+      <span class="time">${new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+    </div>
+    <div class="message-body">${message}</div>
   `;
-  messagesContainer.appendChild(div);
+
+  messageList.appendChild(msgEl);
+  messageList.scrollTop = messageList.scrollHeight;
 }
-
-// Send message
-chatForm.addEventListener("submit", (e) => {
-  e.preventDefault();
-  const message = messageInput.value.trim();
-  if (!message) return;
-
-  const msgData = {
-    senderId: currentUser._id,
-    receiverId,
-    text: message,
-    senderName: currentUser.username,
-    timestamp: Date.now(),
-  };
-
-  socket.emit("privateMessage", msgData);
-  displayMessage(msgData);
-  messageInput.value = "";
-  scrollToBottom();
-});
-
-// Receive message
-socket.on("privateMessage", (msg) => {
-  displayMessage(msg);
-  scrollToBottom();
-});
-
-// Typing indicator
-messageInput.addEventListener("input", () => {
-  socket.emit("typing", { senderId: currentUser._id, receiverId });
-});
-
-socket.on("typing", ({ senderId }) => {
-  typingIndicator.style.display = "block";
-  setTimeout(() => {
-    typingIndicator.style.display = "none";
-  }, 1000);
-});
-
-// Scroll to latest message
-function scrollToBottom() {
-  messagesContainer.scrollTop = messagesContainer.scrollHeight;
-}
-
-// Go back to homepage
-backBtn.addEventListener("click", () => {
-  window.location.href = "/home.html";
-});
