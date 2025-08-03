@@ -41,4 +41,18 @@ router.get("/history/:userId", authMiddleware, async (req, res) => {
   }
 });
 
+// routes/messages.js
+router.post('/markAsRead', async (req, res) => {
+  const { senderId, receiverId } = req.body;
+  try {
+    await Chat.updateMany(
+      { sender: senderId, receiver: receiverId, read: false },
+      { $set: { read: true } }
+    );
+    res.status(200).json({ message: 'Messages marked as read' });
+  } catch (err) {
+    res.status(500).json({ error: 'Error marking as read' });
+  }
+});
+
 module.exports = router;
