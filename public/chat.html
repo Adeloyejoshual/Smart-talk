@@ -2,28 +2,28 @@
 <html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>SmartTalk - Chat</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="/styles/chat.css" />
-  <script src="/socket.io/socket.io.js" defer></script>
-  <script src="/scripts/chat.js" defer></script>
+  <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
   <header class="chat-header">
-    <button id="backButton" class="back-button" onclick="window.location.href='home.html'">
-      ← Back
-    </button>
-    <h2 id="chatWith">Chat</h2>
-    <div id="typingStatus" class="typing-status"></div>
+    <button id="backBtn" onclick="window.location.href='home.html'">←</button>
+    <h2 id="friendName">Friend</h2>
+    <!-- No logout here as requested -->
   </header>
 
-  <main class="chat-main">
-    <ul id="messages" class="messages-list"></ul>
+  <main id="chatMain">
+    <div id="messageList" class="messages"></div>
+    <p id="typingStatus" class="typing-status"></p>
   </main>
 
-  <form id="messageForm" class="chat-form">
-    <input type="text" id="messageInput" autocomplete="off" placeholder="Type your message..." required />
-    <button type="submit" class="send-btn">Send</button>
+  <form id="messageForm" class="message-form">
+    <input type="text" id="messageInput" placeholder="Type your message..." autocomplete="off" required />
+    <button type="submit">Send</button>
   </form>
+
+  <script src="/js/chat.js"></script>
 </body>
 </html>
