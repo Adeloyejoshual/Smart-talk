@@ -2,136 +2,117 @@
 <html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>SmartTalk - Chat</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="/styles/home.css" />
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 0;
-      background: #111;
-      color: #eee;
-      display: flex;
-      flex-direction: column;
-      height: 100vh;
-    }
-
-    header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      background: #222;
-      padding: 10px 20px;
-      border-bottom: 1px solid #333;
-    }
-
-    #chatWith {
-      font-size: 1.2rem;
-    }
-
-    #backHome {
-      padding: 5px 10px;
-      border: none;
-      background: #555;
-      color: white;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-
-    main {
-      flex: 1;
-      padding: 10px;
-      display: flex;
-      flex-direction: column;
-    }
-
-    #messages {
-      list-style: none;
-      padding: 0;
-      margin: 0;
-      flex: 1;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-
-    #messages li {
-      padding: 10px 14px;
-      border-radius: 10px;
-      max-width: 70%;
-      word-wrap: break-word;
-    }
-
-    .sent {
-      background-color: #0066cc;
-      color: white;
-      align-self: flex-end;
-      margin-left: auto;
-    }
-
-    .received {
-      background-color: #333;
-      color: #eee;
-      align-self: flex-start;
-      margin-right: auto;
-    }
-
-    #typingStatus {
-      font-style: italic;
-      color: #aaa;
-      padding: 5px 10px;
-      min-height: 20px;
-    }
-
-    #messageForm {
-      display: flex;
-      margin-top: 10px;
-      border-top: 1px solid #333;
-      padding-top: 10px;
-    }
-
-    #messageInput {
-      flex: 1;
-      padding: 10px;
-      font-size: 1rem;
-      border: none;
-      border-radius: 5px 0 0 5px;
-      outline: none;
-    }
-
-    #messageForm button {
-      padding: 10px 20px;
-      border: none;
-      background: #28a745;
-      color: white;
-      border-radius: 0 5px 5px 0;
-      cursor: pointer;
-    }
-
-    #messageForm button:hover {
-      background: #218838;
-    }
-  </style>
+  <link rel="stylesheet" href="/styles/chat.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 </head>
 <body>
-  <header>
-    <h2 id="chatWith">Chat with: ...</h2>
-    <button id="backHome">Home</button>
+  <header class="chat-header">
+    <a href="/home.html" class="back-button"><i class="fas fa-arrow-left"></i></a>
+    <h2 id="chatWith">Chat</h2>
   </header>
 
-  <main>
-    <ul id="messages"></ul>
+  <main class="chat-container">
+    <div id="messages" class="messages"></div>
 
-    <div id="typingStatus"></div>
+    <div class="typing-indicator" id="typingIndicator"></div>
 
-    <form id="messageForm">
-      <input type="text" id="messageInput" placeholder="Type a message..." autocomplete="off" required />
-      <button type="submit">Send</button>
+    <form id="messageForm" class="message-form">
+      <input type="text" id="messageInput" placeholder="Type your message..." autocomplete="off" required />
+      <button type="submit"><i class="fas fa-paper-plane"></i></button>
     </form>
   </main>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/scripts/chat.js"></script>
+  <script>
+    const socket = io();
+
+    const messageForm = document.getElementById("messageForm");
+    const messageInput = document.getElementById("messageInput");
+    const messagesDiv = document.getElementById("messages");
+    const typingIndicator = document.getElementById("typingIndicator");
+    const chatWith = document.getElementById("chatWith");
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = localStorage.getItem("token");
+    const receiverId = urlParams.get("id");
+    const receiverName = urlParams.get("name");
+    chatWith.textContent = "Chat with " + receiverName;
+
+    let currentUser = null;
+
+    // Authenticate user and get own data
+    fetch("/api/users/me", {
+      headers: {
+        Authorization: "Bearer " + token,
+      },
+    })
+    .then((res) => res.json())
+    .then((user) => {
+      currentUser = user;
+      socket.emit("joinRoom", {
+        senderId: currentUser._id,
+        receiverId,
+      });
+
+      fetch(`/api/messages/${receiverId}`, {
+        headers: { Authorization: "Bearer " + token },
+      })
+      .then(res => res.json())
+      .then(messages => {
+        messages.forEach(msg => addMessage(msg.sender.username, msg.content, msg.timestamp));
+        scrollToBottom();
+      });
+    });
+
+    messageForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const content = messageInput.value;
+      if (content.trim()) {
+        socket.emit("privateMessage", {
+          senderId: currentUser._id,
+          receiverId,
+          content,
+        });
+        addMessage("Me", content);
+        messageInput.value = "";
+        socket.emit("stopTyping", receiverId);
+      }
+    });
+
+    messageInput.addEventListener("input", () => {
+      socket.emit("typing", receiverId);
+    });
+
+    socket.on("typing", () => {
+      typingIndicator.textContent = `${receiverName} is typing...`;
+    });
+
+    socket.on("stopTyping", () => {
+      typingIndicator.textContent = "";
+    });
+
+    socket.on("privateMessage", (data) => {
+      if (data.senderId === receiverId) {
+        addMessage(receiverName, data.content);
+      }
+    });
+
+    function addMessage(sender, text, timestamp = new Date()) {
+      const messageDiv = document.createElement("div");
+      messageDiv.classList.add("message");
+      messageDiv.innerHTML = `<strong>${sender}:</strong> ${text} <small>${new Date(timestamp).toLocaleTimeString()}</small>`;
+      messagesDiv.appendChild(messageDiv);
+    }
+
+    function scrollToBottom() {
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    window.addEventListener("beforeunload", () => {
+      socket.disconnect();
+    });
+  </script>
 </body>
 </html>
