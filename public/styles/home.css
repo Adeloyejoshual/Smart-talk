@@ -99,3 +99,9 @@ button {
   cursor: pointer;
   font-size: 24px;
 }
+
+.seen {
+  color: #4fc3f7;
+  font-size: 0.8em;
+  margin-left: 5px;
+}
