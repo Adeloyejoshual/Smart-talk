@@ -1,69 +1,127 @@
-const token = localStorage.getItem("token");
-const username = localStorage.getItem("username");
-const userDisplay = document.getElementById("welcomeUser");
-const userList = document.getElementById("userList");
-const themeToggle = document.getElementById("themeToggle");
-const logoutBtn = document.getElementById("logoutBtn");
-const addUserBtn = document.getElementById("addUserBtn");
-const settingsBtn = document.getElementById("settingsBtn");
-const settingsModal = document.getElementById("settingsModal");
-const closeSettings = document.getElementById("closeSettings");
-const searchInput = document.getElementById("searchInput");
-const searchResults = document.getElementById("searchResults");
+document.addEventListener("DOMContentLoaded", () => {
+  const welcomeUser = document.getElementById("welcomeUser");
+  const userList = document.getElementById("userList");
+  const searchInput = document.getElementById("searchInput");
+  const themeToggle = document.getElementById("themeToggle");
+  const settingsBtn = document.getElementById("settingsBtn");
+  const settingsPanel = document.getElementById("settingsPanel");
+  const logoutBtn = document.getElementById("logoutBtn");
+  const backToHome = document.getElementById("backToHome");
 
-if (!token || !username) {
-  window.location.href = "/login.html";
-} else {
-  userDisplay.textContent = `Welcome, ${username}`;
-  loadUsers();
-}
+  const token = localStorage.getItem("token");
+  if (!token) return (window.location.href = "/login.html");
 
-themeToggle.addEventListener("click", () => {
-  document.documentElement.toggleAttribute("data-theme");
-});
+  const headers = { Authorization: `Bearer ${token}` };
 
-logoutBtn.addEventListener("click", () => {
-  localStorage.clear();
-  window.location.href = "/login.html";
-});
+  async function refreshUserData() {
+    try {
+      const res = await fetch("/api/users/me", { headers });
+      const user = await res.json();
+      localStorage.setItem("user", JSON.stringify(user));
+      welcomeUser.textContent = `Welcome, ${user.username}`;
+      return user;
+    } catch (err) {
+      console.error("User fetch failed");
+      localStorage.clear();
+      window.location.href = "/login.html";
+    }
+  }
 
-addUserBtn.addEventListener("click", () => {
-  searchInput.value = "";
-  searchResults.innerHTML = "";
-  settingsModal.classList.remove("show");
-  document.getElementById("searchModal").classList.add("show");
-});
+  async function loadFriends(user) {
+    try {
+      const res = await fetch("/api/users/friends", { headers });
+      const friends = await res.json();
+      userList.innerHTML = "";
 
-settingsBtn.addEventListener("click", () => {
-  settingsModal.classList.toggle("show");
-});
+      friends.forEach(friend => {
+        const userCard = document.createElement("div");
+        userCard.className = "user-card";
 
-closeSettings.addEventListener("click", () => {
-  settingsModal.classList.remove("show");
-});
+        userCard.innerHTML = `
+          <div class="user-info">
+            <span>${friend.username}</span>
+            <small>${friend.email}</small>
+          </div>
+          <div class="user-actions">
+            <button class="chat-btn">Chat</button>
+            <button class="friend-btn">Remove Friend</button>
+          </div>
+        `;
 
-document.getElementById("closeSearch").addEventListener("click", () => {
-  document.getElementById("searchModal").classList.remove("show");
-});
+        userCard.querySelector(".chat-btn").addEventListener("click", () => {
+          localStorage.setItem("receiverId", friend._id);
+          localStorage.setItem("receiverUsername", friend.username);
+          window.location.href = "/chat.html";
+        });
 
-// Load only friends (not all users)
-async function loadUsers() {
-  try {
-    const res = await fetch("/api/users/friends", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+        userCard.querySelector(".friend-btn").addEventListener("click", async () => {
+          await fetch(`/api/users/remove-friend/${friend._id}`, {
+            method: "POST",
+            headers,
+          });
+          const updatedUser = await refreshUserData();
+          loadFriends(updatedUser);
+        });
 
+        userList.appendChild(userCard);
+      });
+    } catch (err) {
+      console.error("Failed to load friends:", err);
+    }
+  }
+
+  // Theme toggle
+  themeToggle.addEventListener("click", () => {
+    const html = document.documentElement;
+    const isDark = html.getAttribute("data-theme") === "dark";
+    html.setAttribute("data-theme", isDark ? "light" : "dark");
+    themeToggle.innerHTML = `<i class="fas fa-${isDark ? "moon" : "sun"}"></i>`;
+  });
+
+  // Settings
+  settingsBtn.addEventListener("click", () => {
+    settingsPanel.classList.remove("hidden");
+  });
+
+  backToHome.addEventListener("click", () => {
+    settingsPanel.classList.add("hidden");
+  });
+
+  // Logout
+  logoutBtn.addEventListener("click", () => {
+    localStorage.clear();
+    window.location.href = "/login.html";
+  });
+
+  // INIT
+  refreshUserData().then(user => {
+    if (user) loadFriends(user);
+  });
+
+  // Search (optional: only search among friends if needed)
+  searchInput.addEventListener("input", async (e) => {
+    const keyword = e.target.value.trim().toLowerCase();
+    const user = JSON.parse(localStorage.getItem("user"));
+    if (!keyword) return loadFriends(user);
+
+    const res = await fetch("/api/users/friends", { headers });
     const friends = await res.json();
+
+    const filtered = friends.filter(friend =>
+      friend.username.toLowerCase().includes(keyword) ||
+      friend.email.toLowerCase().includes(keyword)
+    );
+
     userList.innerHTML = "";
 
-    friends.forEach((u) => {
+    filtered.forEach(friend => {
       const userCard = document.createElement("div");
       userCard.className = "user-card";
 
       userCard.innerHTML = `
         <div class="user-info">
-          <span>${u.username}</span>
-          <small>${u.email}</small>
+          <span>${friend.username}</span>
+          <small>${friend.email}</small>
         </div>
         <div class="user-actions">
           <button class="chat-btn">Chat</button>
@@ -71,84 +129,22 @@ async function loadUsers() {
         </div>
       `;
 
-      // Start chat
       userCard.querySelector(".chat-btn").addEventListener("click", () => {
-        localStorage.setItem("receiverId", u._id);
-        localStorage.setItem("receiverUsername", u.username);
+        localStorage.setItem("receiverId", friend._id);
+        localStorage.setItem("receiverUsername", friend.username);
         window.location.href = "/chat.html";
       });
 
-      // Remove friend
       userCard.querySelector(".friend-btn").addEventListener("click", async () => {
-        try {
-          await fetch(`/api/users/remove-friend/${u._id}`, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          await refreshUserData();
-          loadUsers();
-        } catch (err) {
-          console.error("Failed to remove friend:", err);
-        }
+        await fetch(`/api/users/remove-friend/${friend._id}`, {
+          method: "POST",
+          headers,
+        });
+        const updatedUser = await refreshUserData();
+        loadFriends(updatedUser);
       });
 
       userList.appendChild(userCard);
     });
-  } catch (err) {
-    console.error("Failed to load friends.");
-    localStorage.clear();
-    window.location.href = "/login.html";
-  }
-}
-
-// Refresh current user data
-async function refreshUserData() {
-  const res = await fetch("/api/users/me", {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  const data = await res.json();
-  localStorage.setItem("username", data.username);
-}
-
-// Search functionality
-searchInput.addEventListener("input", async () => {
-  const query = searchInput.value.trim();
-  if (query.length === 0) {
-    searchResults.innerHTML = "";
-    return;
-  }
-
-  const res = await fetch(`/api/users/search?query=${encodeURIComponent(query)}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
-  const users = await res.json();
-  searchResults.innerHTML = "";
-
-  users.forEach((user) => {
-    const resultCard = document.createElement("div");
-    resultCard.className = "user-card";
-
-    resultCard.innerHTML = `
-      <div class="user-info">
-        <span>${user.username}</span>
-        <small>${user.email}</small>
-      </div>
-      <div class="user-actions">
-        <button class="add-btn">Add Friend</button>
-      </div>
-    `;
-
-    resultCard.querySelector(".add-btn").addEventListener("click", async () => {
-      await fetch(`/api/users/add-friend/${user._id}`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      await refreshUserData();
-      loadUsers();
-      document.getElementById("searchModal").classList.remove("show");
-    });
-
-    searchResults.appendChild(resultCard);
   });
 });
