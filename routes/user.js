@@ -20,70 +20,51 @@ const authMiddleware = (req, res, next) => {
 
 // ------------------ ROUTES ------------------
 
-// ✅ Get current user info
+
+// Get current user info
 router.get("/me", authMiddleware, async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id).select("-password");
-    if (!user) return res.status(404).json({ message: "User not found" });
-    res.json(user);
-  } catch (err) {
-    res.status(500).json({ message: "Failed to fetch user info" });
-  }
+  const user = await User.findById(req.user.id);
+  res.json(user);
 });
 
-// ✅ Search users (exclude self & existing friends)
+// Search users
 router.get("/search", authMiddleware, async (req, res) => {
   const q = req.query.q;
-  if (!q) return res.status(400).json({ message: "Search query is required" });
-
-  try {
-    const user = await User.findById(req.user.id);
-    const users = await User.find({
-      $or: [
-        { username: new RegExp(q, "i") },
-        { email: new RegExp(q, "i") }
-      ],
-      _id: { $ne: user._id },             // Exclude self
-      _id: { $nin: user.friends }         // Exclude existing friends
-    }).select("username email avatar");
-
-    res.json(users);
-  } catch (err) {
-    res.status(500).json({ message: "Search failed" });
-  }
+  const users = await User.find({
+    $or: [
+      { username: new RegExp(q, "i") },
+      { email: new RegExp(q, "i") }
+    ],
+    _id: { $ne: req.user.id },
+    friends: { $ne: req.user.id }
+  }).select("username email");
+  res.json(users);
 });
 
-// ✅ Add friend
+// Add friend
 router.post("/add-friend", authMiddleware, async (req, res) => {
   const { friendId } = req.body;
-  if (!friendId) return res.status(400).json({ message: "Friend ID is required" });
-
-  try {
-    const user = await User.findById(req.user.id);
-    const friend = await User.findById(friendId);
-    if (!friend) return res.status(404).json({ message: "Friend not found" });
-    if (friend._id.equals(user._id)) return res.status(400).json({ message: "Cannot add yourself" });
-
-    if (user.friends.includes(friendId)) {
-      return res.status(400).json({ message: "Already friends" });
-    }
-
+  const user = await User.findById(req.user.id);
+  if (!user.friends.includes(friendId)) {
     user.friends.push(friendId);
     await user.save();
-    res.json({ message: "Friend added!", friend: { id: friend._id, username: friend.username, email: friend.email } });
-  } catch (err) {
-    res.status(500).json({ message: "Failed to add friend" });
   }
+  res.json({ message: "Friend added!" });
 });
 
-// ✅ List friends
+// List friends
 router.get("/list", authMiddleware, async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id).populate("friends", "username email avatar status");
-    res.json(user.friends);
-  } catch (err) {
-    res.status(500).json({ message: "Failed to load friends" });
-  }
+  const user = await User.findById(req.user.id).populate("friends", "username email");
+  res.json(user.friends);
+});
+
+// ✅ Remove friend
+router.delete("/remove-friend/:friendId", authMiddleware, async (req, res) => {
+  const { friendId } = req.params;
+  const user = await User.findById(req.user.id);
+  user.friends = user.friends.filter(f => f.toString() !== friendId);
+  await user.save();
+  res.json({ message: "Friend removed." });
 });
 
 module.exports = router;
