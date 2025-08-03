@@ -90,6 +90,21 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 }
 
+function displayMessage(sender, text, time, isMine, isRead = false) {
+  const li = document.createElement("li");
+  li.className = isMine ? "sent" : "received";
+
+  li.innerHTML = `
+    <div class="bubble">
+      <strong>${sender}</strong>: ${text}
+      <div class="meta">${new Date(time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        ${isMine && isRead ? '<span class="seen">✔✔</span>' : ''}
+      </div>
+    </div>
+  `;
+  messageList.appendChild(li);
+}
+
   // Load initial messages
   loadMessages();
 });
