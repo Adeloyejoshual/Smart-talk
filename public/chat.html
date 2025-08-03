@@ -2,117 +2,30 @@
 <html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>SmartTalk - Chat</title>
-  <link rel="stylesheet" href="/styles/chat.css">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="/styles/chat.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
 </head>
 <body>
-  <header class="chat-header">
-    <a href="/home.html" class="back-button"><i class="fas fa-arrow-left"></i></a>
+  <header>
+    <button id="backBtn" title="Back to Home">
+      <i class="fas fa-arrow-left"></i>
+    </button>
     <h2 id="chatWith">Chat</h2>
   </header>
 
-  <main class="chat-container">
-    <div id="messages" class="messages"></div>
-
-    <div class="typing-indicator" id="typingIndicator"></div>
-
-    <form id="messageForm" class="message-form">
-      <input type="text" id="messageInput" placeholder="Type your message..." autocomplete="off" required />
-      <button type="submit"><i class="fas fa-paper-plane"></i></button>
-    </form>
+  <main>
+    <div id="messagesContainer" class="messages"></div>
+    <div id="typingIndicator" class="typing">Typing...</div>
   </main>
 
+  <form id="chatForm">
+    <input type="text" id="messageInput" placeholder="Type a message..." autocomplete="off" required />
+    <button type="submit"><i class="fas fa-paper-plane"></i></button>
+  </form>
+
   <script src="/socket.io/socket.io.js"></script>
-  <script>
-    const socket = io();
-
-    const messageForm = document.getElementById("messageForm");
-    const messageInput = document.getElementById("messageInput");
-    const messagesDiv = document.getElementById("messages");
-    const typingIndicator = document.getElementById("typingIndicator");
-    const chatWith = document.getElementById("chatWith");
-
-    const urlParams = new URLSearchParams(window.location.search);
-    const token = localStorage.getItem("token");
-    const receiverId = urlParams.get("id");
-    const receiverName = urlParams.get("name");
-    chatWith.textContent = "Chat with " + receiverName;
-
-    let currentUser = null;
-
-    // Authenticate user and get own data
-    fetch("/api/users/me", {
-      headers: {
-        Authorization: "Bearer " + token,
-      },
-    })
-    .then((res) => res.json())
-    .then((user) => {
-      currentUser = user;
-      socket.emit("joinRoom", {
-        senderId: currentUser._id,
-        receiverId,
-      });
-
-      fetch(`/api/messages/${receiverId}`, {
-        headers: { Authorization: "Bearer " + token },
-      })
-      .then(res => res.json())
-      .then(messages => {
-        messages.forEach(msg => addMessage(msg.sender.username, msg.content, msg.timestamp));
-        scrollToBottom();
-      });
-    });
-
-    messageForm.addEventListener("submit", (e) => {
-      e.preventDefault();
-      const content = messageInput.value;
-      if (content.trim()) {
-        socket.emit("privateMessage", {
-          senderId: currentUser._id,
-          receiverId,
-          content,
-        });
-        addMessage("Me", content);
-        messageInput.value = "";
-        socket.emit("stopTyping", receiverId);
-      }
-    });
-
-    messageInput.addEventListener("input", () => {
-      socket.emit("typing", receiverId);
-    });
-
-    socket.on("typing", () => {
-      typingIndicator.textContent = `${receiverName} is typing...`;
-    });
-
-    socket.on("stopTyping", () => {
-      typingIndicator.textContent = "";
-    });
-
-    socket.on("privateMessage", (data) => {
-      if (data.senderId === receiverId) {
-        addMessage(receiverName, data.content);
-      }
-    });
-
-    function addMessage(sender, text, timestamp = new Date()) {
-      const messageDiv = document.createElement("div");
-      messageDiv.classList.add("message");
-      messageDiv.innerHTML = `<strong>${sender}:</strong> ${text} <small>${new Date(timestamp).toLocaleTimeString()}</small>`;
-      messagesDiv.appendChild(messageDiv);
-    }
-
-    function scrollToBottom() {
-      messagesDiv.scrollTop = messagesDiv.scrollHeight;
-    }
-
-    window.addEventListener("beforeunload", () => {
-      socket.disconnect();
-    });
-  </script>
+  <script src="/scripts/chat.js"></script>
 </body>
 </html>
