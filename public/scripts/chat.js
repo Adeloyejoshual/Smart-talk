@@ -112,6 +112,15 @@ function displayMessage(sender, text, time, isMine, isRead = false) {
   `;
   messageList.appendChild(li);
 }
+});
+
+function blockUser(blockId) {
+  fetch("/api/users/block", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userId: myId, blockId })
+  });
+}
 
   // Load initial messages
   loadMessages();
