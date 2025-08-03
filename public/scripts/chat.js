@@ -1,119 +1,100 @@
+const socket = io();
+const messagesContainer = document.getElementById("messagesContainer");
+const chatForm = document.getElementById("chatForm");
+const messageInput = document.getElementById("messageInput");
+const typingIndicator = document.getElementById("typingIndicator");
+const chatWith = document.getElementById("chatWith");
+const backBtn = document.getElementById("backBtn");
 
-document.addEventListener("DOMContentLoaded", () => {
-  const socket = io();
+let currentUser = null;
+let receiverId = null;
 
-  const token = localStorage.getItem("token");
-  const user = JSON.parse(localStorage.getItem("user"));
-  const receiverId = localStorage.getItem("receiverId");
-  const receiverUsername = localStorage.getItem("receiverUsername") || "Unknown";
+// Dummy initialization; you can fetch from server or localStorage
+document.addEventListener("DOMContentLoaded", async () => {
+  const res = await fetch("/api/users/me");
+  const data = await res.json();
+  currentUser = data.user;
+  chatWith.innerText = `Chatting as ${currentUser.username}`;
 
-  if (!token || !user || !receiverId) {
-    alert("Session expired. Please log in again.");
-    window.location.href = "/login.html";
-    return;
+  // Join room with receiver (you can set this via query string or storage)
+  const urlParams = new URLSearchParams(window.location.search);
+  receiverId = urlParams.get("to");
+
+  if (receiverId) {
+    socket.emit("joinRoom", { senderId: currentUser._id, receiverId });
+    loadMessages(currentUser._id, receiverId);
   }
+});
 
-  const chatWith = document.getElementById("chatWith");
-  const messageForm = document.getElementById("messageForm");
-  const messageInput = document.getElementById("messageInput");
-  const messagesList = document.getElementById("messages");
-  const typingStatus = document.getElementById("typingStatus");
-  const backHome = document.getElementById("backHome");
+// Load message history
+async function loadMessages(senderId, receiverId) {
+  const res = await fetch(`/api/messages/history/${senderId}/${receiverId}`);
+  const data = await res.json();
 
-  chatWith.textContent = `Chat with: ${receiverUsername}`;
-
-  const roomId = [user._id, receiverId].sort().join("_");
-  socket.emit("joinRoom", roomId);
-
-  // Load chat history
-  async function loadMessages() {
-    try {
-      const res = await fetch(`/api/messages/${receiverId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (res.status === 401) {
-        alert("Session expired. Please log in again.");
-        localStorage.clear();
-        return (window.location.href = "/login.html");
-      }
-
-      const data = await res.json();
-      messagesList.innerHTML = "";
-
-      data.forEach((msg) => {
-        appendMessage(msg, msg.sender === user._id);
-      });
-
-      scrollToBottom();
-    } catch (err) {
-      console.error("Error loading messages:", err);
-    }
-  }
-
-  loadMessages();
-
-  // Send message
-  messageForm.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const text = messageInput.value.trim();
-    if (!text) return;
-
-    const msg = {
-      text,
-      senderId: user._id,
-      receiverId,
-      roomId,
-      senderName: user.username,
-    };
-
-    socket.emit("privateMessage", msg);
-    appendMessage(msg, true);
-    messageInput.value = "";
+  data.messages.forEach((msg) => {
+    displayMessage(msg);
   });
 
-  // Receive message
-  socket.on("privateMessage", (msg) => {
-    appendMessage(msg, msg.senderId === user._id);
-  });
+  scrollToBottom();
+}
 
-  // Display message in chat
-  function appendMessage(msg, isSender) {
-    const div = document.createElement("div");
-    const time = new Date(msg.timestamp || Date.now()).toLocaleTimeString();
-    const name = msg.senderName || (isSender ? user.username : receiverUsername);
+// Display message
+function displayMessage(msg) {
+  const div = document.createElement("div");
+  div.classList.add("message");
+  if (msg.senderId === currentUser._id) div.classList.add("you");
 
-    div.className = isSender ? "message sent" : "message received";
-    div.innerHTML = `<span><strong>${name}:</strong></span> ${msg.text} <small>${time}</small>`;
-    messagesList.appendChild(div);
-    scrollToBottom();
-  }
+  div.innerHTML = `
+    ${msg.text}
+    <div class="meta">${msg.senderName || "You"} · ${new Date(msg.timestamp).toLocaleTimeString()}</div>
+  `;
+  messagesContainer.appendChild(div);
+}
 
-  // Typing indicator
-  messageInput.addEventListener("input", () => {
-    socket.emit("typing", { roomId, username: user.username });
-  });
+// Send message
+chatForm.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const message = messageInput.value.trim();
+  if (!message) return;
 
-  socket.on("typing", ({ username }) => {
-    typingStatus.textContent = `${username} is typing...`;
-    clearTimeout(typingStatus.timeout);
-    typingStatus.timeout = setTimeout(() => {
-      typingStatus.textContent = "";
-    }, 1000);
-  });
+  const msgData = {
+    senderId: currentUser._id,
+    receiverId,
+    text: message,
+    senderName: currentUser.username,
+    timestamp: Date.now(),
+  };
 
-  // Back to home
-  backHome.addEventListener("click", () => {
-    window.location.href = "/home.html";
-  });
+  socket.emit("privateMessage", msgData);
+  displayMessage(msgData);
+  messageInput.value = "";
+  scrollToBottom();
+});
 
-  // Scroll to latest message
-  function scrollToBottom() {
-    messagesList.scrollTop = messagesList.scrollHeight;
-  }
+// Receive message
+socket.on("privateMessage", (msg) => {
+  displayMessage(msg);
+  scrollToBottom();
+});
 
-  // Disconnect on unload
-  window.addEventListener("beforeunload", () => {
-    socket.disconnect();
-  });
+// Typing indicator
+messageInput.addEventListener("input", () => {
+  socket.emit("typing", { senderId: currentUser._id, receiverId });
+});
+
+socket.on("typing", ({ senderId }) => {
+  typingIndicator.style.display = "block";
+  setTimeout(() => {
+    typingIndicator.style.display = "none";
+  }, 1000);
+});
+
+// Scroll to latest message
+function scrollToBottom() {
+  messagesContainer.scrollTop = messagesContainer.scrollHeight;
+}
+
+// Go back to homepage
+backBtn.addEventListener("click", () => {
+  window.location.href = "/home.html";
 });
