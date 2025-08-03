@@ -2,36 +2,41 @@
 <html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SmartTalk - Home</title>
-  <link rel="stylesheet" href="/styles/home.css">
+  <link rel="stylesheet" href="/styles/home.css" />
+  <script defer src="/scripts/home.js"></script>
 </head>
 <body>
   <header>
     <h2>SmartTalk</h2>
+    <button id="themeToggle">🌓</button>
     <button id="settingsBtn">⚙️</button>
   </header>
 
   <main>
-    <div id="welcomeUser"></div>
-    <h3>Your Friends</h3>
-    <ul id="userList"></ul>
+    <section class="search-bar">
+      <input type="text" id="searchInput" placeholder="Search users by name or email..." />
+      <div id="searchResults"></div>
+    </section>
+
+    <h3>Friends</h3>
+    <ul id="friendList" class="user-list"></ul>
   </main>
 
-  <!-- Floating add button -->
-  <button id="addFriendBtn" title="Add Friend">➕</button>
+  <button id="addUserBtn" class="floating-btn">＋</button>
 
-  <!-- Add Friend Modal -->
-  <div id="addFriendModal" class="modal hidden">
+  <div id="settingsModal" class="modal hidden">
     <div class="modal-content">
-      <span id="closeModal">&times;</span>
-      <h3>Search Users</h3>
-      <input type="text" id="searchInput" placeholder="Enter username or email..." />
-      <ul id="searchResults"></ul>
+      <h3>Settings</h3>
+      <ul>
+        <li><a href="/profile.html">Edit Profile</a></li>
+        <li><a href="/support.html">Customer Service</a></li>
+        <li><a href="/contact.html">Contact</a></li>
+        <li><a href="#" id="logoutBtn">Logout</a></li>
+      </ul>
+      <button id="closeSettings">Close</button>
     </div>
   </div>
-
-  <script src="/socket.io/socket.io.js"></script>
-  <script src="/scripts/home.js"></script>
 </body>
 </html>
