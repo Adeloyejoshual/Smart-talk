@@ -92,4 +92,25 @@ router.delete("/remove-friend/:friendId", authMiddleware, async (req, res) => {
   }
 });
 
+// Block User
+router.post("/block", async (req, res) => {
+  const { userId, blockId } = req.body;
+  await User.findByIdAndUpdate(userId, { $addToSet: { blockedUsers: blockId } });
+  res.send("Blocked");
+});
+
+// Unblock User
+router.post("/unblock", async (req, res) => {
+  const { userId, blockId } = req.body;
+  await User.findByIdAndUpdate(userId, { $pull: { blockedUsers: blockId } });
+  res.send("Unblocked");
+});
+
+// Report User
+router.post("/report", async (req, res) => {
+  const { userId, reportId } = req.body;
+  await User.findByIdAndUpdate(userId, { $addToSet: { reports: reportId } });
+  res.send("Reported");
+});
+
 module.exports = router;
