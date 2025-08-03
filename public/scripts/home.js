@@ -1,95 +1,111 @@
-const socket = io();
-const welcomeUser = document.getElementById("welcomeUser");
-const userList = document.getElementById("userList");
-const addFriendBtn = document.getElementById("addFriendBtn");
-const addFriendModal = document.getElementById("addFriendModal");
-const closeModal = document.getElementById("closeModal");
-const searchInput = document.getElementById("searchInput");
-const searchResults = document.getElementById("searchResults");
-const settingsBtn = document.getElementById("settingsBtn");
+document.addEventListener("DOMContentLoaded", () => {
+  const token = localStorage.getItem("token");
+  const searchInput = document.getElementById("searchInput");
+  const searchResults = document.getElementById("searchResults");
+  const friendList = document.getElementById("friendList");
 
-// Load current user and friends
-document.addEventListener("DOMContentLoaded", async () => {
-  try {
-    const res = await fetch("/api/users/me", {
-      headers: { Authorization: localStorage.getItem("token") }
-    });
-    if (!res.ok) throw new Error("Unauthorized");
-    const user = await res.json();
-    welcomeUser.textContent = `Welcome, ${user.username}!`;
+  const headers = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+  };
 
-    // Show friends
-    const friendsRes = await fetch("/api/users/list", {
-      headers: { Authorization: localStorage.getItem("token") }
-    });
-    const friends = await friendsRes.json();
-    userList.innerHTML = "";
-    friends.forEach(friend => {
-      const li = document.createElement("li");
-      li.textContent = friend.username;
-      userList.appendChild(li);
-    });
-  } catch (err) {
-    window.location.href = "/login.html";
+  // Load friend list
+  async function loadFriends() {
+    try {
+      const res = await fetch("/api/users/list", { headers });
+      const data = await res.json();
+      friendList.innerHTML = "";
+
+      data.forEach(user => {
+        const li = document.createElement("li");
+        li.innerHTML = `
+          <span>${user.username} (${user.email})</span>
+          <button class="chatBtn" data-id="${user._id}">💬</button>
+          <button class="removeBtn" data-id="${user._id}">❌</button>
+        `;
+        friendList.appendChild(li);
+      });
+    } catch (err) {
+      console.error("Failed to load friends", err);
+    }
   }
-});
 
-// Show modal
-addFriendBtn.addEventListener("click", () => {
-  addFriendModal.classList.remove("hidden");
-  searchInput.value = "";
-  searchResults.innerHTML = "";
-});
+  // Handle user search
+  searchInput.addEventListener("input", async () => {
+    const query = searchInput.value.trim();
+    if (!query) return (searchResults.innerHTML = "");
 
-// Hide modal
-closeModal.addEventListener("click", () => {
-  addFriendModal.classList.add("hidden");
-});
-
-// Search users
-searchInput.addEventListener("input", async () => {
-  const query = searchInput.value.trim();
-  if (query.length === 0) {
+    const res = await fetch(`/api/users/search?q=${encodeURIComponent(query)}`, {
+      headers,
+    });
+    const data = await res.json();
     searchResults.innerHTML = "";
-    return;
-  }
 
-  const res = await fetch(`/api/users/search?q=${query}`, {
-    headers: { Authorization: localStorage.getItem("token") }
-  });
-
-  const users = await res.json();
-  searchResults.innerHTML = "";
-
-  users.forEach(user => {
-    const li = document.createElement("li");
-    li.innerHTML = `
-      ${user.username} (${user.email}) 
-      <button class="addBtn" data-id="${user._id}">Add</button>
-    `;
-    searchResults.appendChild(li);
-  });
-});
-
-// Add friend
-searchResults.addEventListener("click", async (e) => {
-  if (e.target.classList.contains("addBtn")) {
-    const userId = e.target.dataset.id;
-    await fetch("/api/users/add-friend", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: localStorage.getItem("token")
-      },
-      body: JSON.stringify({ friendId: userId })
+    data.forEach(user => {
+      const div = document.createElement("div");
+      div.innerHTML = `
+        <strong>${user.username}</strong> (${user.email})
+        <button class="addBtn" data-id="${user._id}">➕ Add</button>
+      `;
+      searchResults.appendChild(div);
     });
+  });
 
-    e.target.parentElement.remove(); // Remove from list after adding
-    alert("Friend added!");
-  }
-});
+  // Add friend
+  searchResults.addEventListener("click", async (e) => {
+    if (e.target.classList.contains("addBtn")) {
+      const friendId = e.target.dataset.id;
+      await fetch("/api/users/add-friend", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ friendId }),
+      });
+      searchInput.value = "";
+      searchResults.innerHTML = "";
+      loadFriends();
+    }
+  });
 
-// Go to settings
-settingsBtn.addEventListener("click", () => {
-  window.location.href = "/settings.html";
+  // Remove friend
+  friendList.addEventListener("click", async (e) => {
+    if (e.target.classList.contains("removeBtn")) {
+      const friendId = e.target.dataset.id;
+      await fetch(`/api/users/remove-friend/${friendId}`, {
+        method: "DELETE",
+        headers,
+      });
+      loadFriends();
+    }
+  });
+
+  // Start private chat
+  friendList.addEventListener("click", (e) => {
+    if (e.target.classList.contains("chatBtn")) {
+      const friendId = e.target.dataset.id;
+      window.location.href = `/chat.html?user=${friendId}`;
+    }
+  });
+
+  // Settings modal
+  document.getElementById("settingsBtn").onclick = () => {
+    document.getElementById("settingsModal").classList.remove("hidden");
+  };
+  document.getElementById("closeSettings").onclick = () => {
+    document.getElementById("settingsModal").classList.add("hidden");
+  };
+
+  // Theme toggle
+  document.getElementById("themeToggle").onclick = () => {
+    document.documentElement.dataset.theme =
+      document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  };
+
+  // Logout
+  document.getElementById("logoutBtn").onclick = () => {
+    localStorage.removeItem("token");
+    window.location.href = "/login.html";
+  };
+
+  // Load friends on start
+  loadFriends();
 });
