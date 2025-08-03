@@ -2,163 +2,36 @@
 <html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>SmartTalk - Home</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="/styles/home.css" />
-  <script src="/socket.io/socket.io.js"></script>
+  <link rel="stylesheet" href="/styles/home.css">
 </head>
 <body>
   <header>
     <h2>SmartTalk</h2>
-    <div id="welcomeUser"></div>
-    <button id="themeToggle">🌙</button>
-    <button id="settingsBtn" title="Settings">⚙️</button>
+    <button id="settingsBtn">⚙️</button>
   </header>
 
   <main>
-    <section id="searchSection">
-      <input type="text" id="searchInput" placeholder="Search users..." />
-      <ul id="userList"></ul>
-    </section>
-
-    <section id="addFriendSection" class="hidden">
-      <h3>Add New Friend</h3>
-      <input type="text" id="addFriendInput" placeholder="Search by username or email..." />
-      <ul id="addFriendResults"></ul>
-    </section>
-
-    <section id="settingsSection" class="hidden">
-      <h3>Settings</h3>
-      <ul>
-        <li><button onclick="location.href='/profile.html'">Edit Profile</button></li>
-        <li><button onclick="location.href='/contact.html'">Customer Service</button></li>
-        <li><button onclick="location.href='mailto:smarttalkgit@gmail.com'">Contact</button></li>
-        <li><button onclick="logout()">Logout</button></li>
-      </ul>
-    </section>
+    <div id="welcomeUser"></div>
+    <h3>Your Friends</h3>
+    <ul id="userList"></ul>
   </main>
 
-  <button id="addBtn" title="Add Friend">➕</button>
+  <!-- Floating add button -->
+  <button id="addFriendBtn" title="Add Friend">➕</button>
 
-  <script>
-    const socket = io();
-    const token = localStorage.getItem("token");
+  <!-- Add Friend Modal -->
+  <div id="addFriendModal" class="modal hidden">
+    <div class="modal-content">
+      <span id="closeModal">&times;</span>
+      <h3>Search Users</h3>
+      <input type="text" id="searchInput" placeholder="Enter username or email..." />
+      <ul id="searchResults"></ul>
+    </div>
+  </div>
 
-    const welcomeUser = document.getElementById("welcomeUser");
-    const userList = document.getElementById("userList");
-    const searchInput = document.getElementById("searchInput");
-    const themeToggle = document.getElementById("themeToggle");
-    const addBtn = document.getElementById("addBtn");
-    const addFriendSection = document.getElementById("addFriendSection");
-    const settingsBtn = document.getElementById("settingsBtn");
-    const settingsSection = document.getElementById("settingsSection");
-
-    const addFriendInput = document.getElementById("addFriendInput");
-    const addFriendResults = document.getElementById("addFriendResults");
-
-    document.addEventListener("DOMContentLoaded", () => {
-      if (!token) return location.href = "/login.html";
-
-      loadUsers();
-      refreshUserData();
-
-      searchInput.addEventListener("input", filterUserList);
-      addFriendInput.addEventListener("input", searchNewUsers);
-    });
-
-    async function refreshUserData() {
-      const res = await fetch("/api/users/me", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const user = await res.json();
-      welcomeUser.textContent = "Welcome, " + user.username;
-    }
-
-    async function loadUsers() {
-      const res = await fetch("/api/users/friends", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const users = await res.json();
-      userList.innerHTML = "";
-
-      users.forEach(user => {
-        const li = document.createElement("li");
-        li.textContent = user.username;
-        li.addEventListener("click", () => startPrivateChat(user._id));
-        userList.appendChild(li);
-      });
-    }
-
-    function filterUserList() {
-      const query = searchInput.value.toLowerCase();
-      const items = userList.querySelectorAll("li");
-      items.forEach(item => {
-        item.style.display = item.textContent.toLowerCase().includes(query) ? "block" : "none";
-      });
-    }
-
-    function startPrivateChat(userId) {
-      location.href = `/chat.html?userId=${userId}`;
-    }
-
-    themeToggle.addEventListener("click", () => {
-      const current = document.documentElement.getAttribute("data-theme");
-      const newTheme = current === "dark" ? "light" : "dark";
-      document.documentElement.setAttribute("data-theme", newTheme);
-    });
-
-    addBtn.addEventListener("click", () => {
-      addFriendSection.classList.toggle("hidden");
-      settingsSection.classList.add("hidden");
-    });
-
-    settingsBtn.addEventListener("click", () => {
-      settingsSection.classList.toggle("hidden");
-      addFriendSection.classList.add("hidden");
-    });
-
-    async function searchNewUsers() {
-      const query = addFriendInput.value.trim();
-      if (!query) return addFriendResults.innerHTML = "";
-
-      const res = await fetch(`/api/users/search?q=${encodeURIComponent(query)}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const results = await res.json();
-
-      addFriendResults.innerHTML = "";
-      results.forEach(user => {
-        const li = document.createElement("li");
-        li.innerHTML = `
-          ${user.username} (${user.email})
-          <button onclick="addFriend('${user._id}')">Add</button>
-        `;
-        addFriendResults.appendChild(li);
-      });
-    }
-
-    async function addFriend(friendId) {
-      const res = await fetch("/api/users/add-friend", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ friendId }),
-      });
-      const data = await res.json();
-      alert(data.message);
-      loadUsers();
-    }
-
-    function logout() {
-      localStorage.removeItem("token");
-      location.href = "/login.html";
-    }
-
-    window.addEventListener("beforeunload", () => {
-      socket.disconnect();
-    });
-  </script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/scripts/home.js"></script>
 </body>
 </html>
