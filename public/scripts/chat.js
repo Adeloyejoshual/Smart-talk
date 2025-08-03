@@ -82,6 +82,14 @@ document.addEventListener("DOMContentLoaded", () => {
     window.location.href = "/home.html";
   });
 
+  function markMessagesAsRead(senderId, receiverId) {
+  fetch('/api/messages/markAsRead', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ senderId, receiverId })
+  });
+}
+
   // Load initial messages
   loadMessages();
 });
