@@ -1,38 +1,51 @@
-const express = require("express");
-const Message = require("../models/Message");
-const jwt = require("jsonwebtoken");
-const User = require("../models/User");
+const multer = require("multer");
+const cloudinary = require("cloudinary").v2;
+const streamifier = require("streamifier");
 
-const router = express.Router();
+// Cloudinary config
+cloudinary.config({
+  cloud_name: "di6zeyneq",
+  api_key: "<your_api_key>",
+  api_secret: "<your_api_secret>",
+});
 
-// JWT middleware
-const auth = async (req, res, next) => {
-  const token = req.headers.authorization?.split(" ")[1];
-  if (!token) return res.status(401).json({ error: "Missing token" });
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
+
+// POST /api/messages/group/image
+router.post("/group/image", auth, upload.single("image"), async (req, res) => {
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = await User.findById(decoded.id);
-    next();
-  } catch {
-    res.status(401).json({ error: "Invalid token" });
+    const { groupId } = req.body;
+    const file = req.file;
+
+    const streamUpload = (req) => {
+      return new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          { folder: "smarttalk" },
+          (error, result) => {
+            if (result) resolve(result);
+            else reject(error);
+          }
+        );
+        streamifier.createReadStream(req.file.buffer).pipe(stream);
+      });
+    };
+
+    const result = await streamUpload(req);
+
+    const message = new Message({
+      sender: req.user._id,
+      group: groupId,
+      text: "", // text optional
+      image: result.secure_url,
+    });
+
+    await message.save();
+    await message.populate("sender", "username");
+
+    res.status(201).json(message);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Image upload failed" });
   }
-};
-
-// 🔹 Get 1-on-1 chat messages
-router.get("/:otherUserId", auth, async (req, res) => {
-  const messages = await Message.find({
-    $or: [
-      { sender: req.user._id, recipient: req.params.otherUserId },
-      { sender: req.params.otherUserId, recipient: req.user._id },
-    ],
-  }).sort("createdAt");
-  res.json(messages);
 });
-
-// 🔹 Get group chat messages
-router.get("/group/:groupId", auth, async (req, res) => {
-  const messages = await Message.find({ group: req.params.groupId }).sort("createdAt");
-  res.json(messages);
-});
-
-module.exports = router;
