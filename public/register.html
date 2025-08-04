@@ -11,20 +11,25 @@
     <div class="auth-card">
       <img src="/images/logo.png" alt="SmartTalk Logo" class="logo" />
       <h2>Create Account</h2>
+
       <form id="registerForm">
         <input type="text" name="username" placeholder="Username" required />
         <input type="email" name="email" placeholder="Email" required />
+        
         <div class="password-wrapper">
           <input type="password" name="password" placeholder="Password" id="password" required />
           <span class="toggle-password" onclick="togglePassword()">👁</span>
         </div>
+
         <button type="submit">Register</button>
-        <p id="message"></p>
+        <div id="message"></div>
       </form>
+
       <p>Already have an account? <a href="/login.html">Login here</a></p>
     </div>
   </div>
 
+  <!-- ✅ Register Logic -->
   <script>
     const form = document.getElementById('registerForm');
     const message = document.getElementById('message');
@@ -32,6 +37,7 @@
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const formData = new FormData(form);
+
       const data = {
         username: formData.get('username'),
         email: formData.get('email'),
@@ -39,7 +45,6 @@
       };
 
       try {
-        // FIXED: Use correct backend route
         const res = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -47,17 +52,19 @@
         });
 
         const result = await res.json();
+
         if (res.ok) {
           message.style.color = 'lightgreen';
-          message.innerText = '✅ Registered! Redirecting...';
+          message.innerText = '✅ Registration successful! Redirecting...';
           setTimeout(() => window.location.href = '/login.html', 1500);
         } else {
           message.style.color = 'red';
           message.innerText = result.message || 'Registration failed';
         }
+
       } catch (err) {
         message.style.color = 'red';
-        message.innerText = 'Error connecting to server';
+        message.innerText = '❌ Error connecting to server';
       }
     });
 
@@ -66,5 +73,7 @@
       pwd.type = pwd.type === 'password' ? 'text' : 'password';
     }
   </script>
+
+  <script src="/scripts/theme.js"></script>
 </body>
 </html>
