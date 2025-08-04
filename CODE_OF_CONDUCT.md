@@ -26,7 +26,7 @@ Examples of unacceptable behavior:
 Violations may be reported to:
 
 **Adeloye Joshua**  
-Email: [your-email@example.com]  
+Email: [adeloyejoshua2020@gmail.com]  
 Maintainers will investigate and take appropriate action.
 
 ---
