@@ -1,42 +1,148 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SmartTalk - Home</title>
-  <link rel="stylesheet" href="/styles/home.css" />
-  <script defer src="/scripts/home.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Home - SmartTalk</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
 </head>
-<body>
-  <header>
-    <h2>SmartTalk</h2>
-    <button id="themeToggle">🌓</button>
-    <button id="settingsBtn">⚙️</button>
+<body class="bg-gray-100 text-gray-800 h-screen flex flex-col">
+
+  <!-- Header -->
+  <header class="bg-white shadow p-4 flex justify-between items-center">
+    <h1 class="text-xl font-bold">SmartTalk</h1>
+    <button id="logoutBtn" class="text-red-600 font-semibold">Logout</button>
   </header>
 
-  <main>
-    <section class="search-bar">
-      <input type="text" id="searchInput" placeholder="Search users by name or email..." />
-      <div id="searchResults"></div>
-    </section>
+  <!-- User info -->
+  <section class="p-4 border-b bg-white">
+    <div id="userInfo" class="text-sm text-gray-600">Loading user...</div>
+  </section>
 
-    <h3>Friends</h3>
-    <ul id="friendList" class="user-list"></ul>
-  </main>
-
-  <button id="addUserBtn" class="floating-btn">＋</button>
-
-  <div id="settingsModal" class="modal hidden">
-    <div class="modal-content">
-      <h3>Settings</h3>
-      <ul>
-        <li><a href="/profile.html">Edit Profile</a></li>
-        <li><a href="/support.html">Customer Service</a></li>
-        <li><a href="/contact.html">Contact</a></li>
-        <li><a href="#" id="logoutBtn">Logout</a></li>
-      </ul>
-      <button id="closeSettings">Close</button>
+  <!-- Search & Friends -->
+  <section class="flex-1 overflow-y-auto px-4 py-2 space-y-6">
+    <!-- Friend List -->
+    <div>
+      <h2 class="text-lg font-semibold mb-2">Friends</h2>
+      <ul id="friendList" class="space-y-2"></ul>
     </div>
-  </div>
+
+    <!-- Group List -->
+    <div>
+      <h2 class="text-lg font-semibold mb-2">Groups</h2>
+      <ul id="groupList" class="space-y-2"></ul>
+    </div>
+  </section>
+
+  <!-- Footer buttons -->
+  <footer class="p-4 bg-white border-t flex justify-between">
+    <button id="addFriendBtn" class="bg-blue-500 text-white px-4 py-2 rounded">➕ Add Friend</button>
+    <button id="createGroupBtn" class="bg-green-500 text-white px-4 py-2 rounded">➕ New Group</button>
+  </footer>
+
+  <!-- Scripts -->
+  <script type="module">
+    const token = localStorage.getItem("token");
+    if (!token) window.location.href = "/login.html";
+
+    const friendList = document.getElementById("friendList");
+    const groupList = document.getElementById("groupList");
+    const logoutBtn = document.getElementById("logoutBtn");
+    const userInfo = document.getElementById("userInfo");
+
+    const headers = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    };
+
+    // Fetch profile
+    async function loadUser() {
+      try {
+        const res = await fetch("/api/users/me", { headers });
+        const user = await res.json();
+        userInfo.textContent = `Logged in as: ${user.username}`;
+      } catch {
+        userInfo.textContent = "Failed to load user info";
+      }
+    }
+
+    // Fetch friends
+    async function loadFriends() {
+      try {
+        const res = await fetch("/api/users/friends", { headers });
+        const users = await res.json();
+        friendList.innerHTML = "";
+        users.forEach(u => {
+          const li = document.createElement("li");
+          li.className = "bg-white p-3 rounded shadow flex justify-between items-center";
+          li.innerHTML = `
+            <span>${u.username}</span>
+            <button data-id="${u._id}" class="chatBtn text-blue-600">💬</button>
+          `;
+          friendList.appendChild(li);
+        });
+      } catch (err) {
+        friendList.innerHTML = "<li class='text-sm text-red-500'>Error loading friends</li>";
+      }
+    }
+
+    // Fetch groups
+    async function loadGroups() {
+      try {
+        const res = await fetch("/api/groups", { headers });
+        const groups = await res.json();
+        groupList.innerHTML = "";
+        groups.forEach(g => {
+          const li = document.createElement("li");
+          li.className = "bg-white p-3 rounded shadow flex justify-between items-center";
+          li.innerHTML = `
+            <span>${g.name}</span>
+            <button data-id="${g._id}" class="groupBtn text-green-600">💬</button>
+          `;
+          groupList.appendChild(li);
+        });
+      } catch (err) {
+        groupList.innerHTML = "<li class='text-sm text-red-500'>Error loading groups</li>";
+      }
+    }
+
+    // Start private chat
+    friendList.addEventListener("click", (e) => {
+      if (e.target.classList.contains("chatBtn")) {
+        const friendId = e.target.dataset.id;
+        localStorage.setItem("receiverId", friendId);
+        window.location.href = "/chat.html";
+      }
+    });
+
+    // Start group chat
+    groupList.addEventListener("click", (e) => {
+      if (e.target.classList.contains("groupBtn")) {
+        const groupId = e.target.dataset.id;
+        localStorage.setItem("groupId", groupId);
+        window.location.href = "/group-chat.html";
+      }
+    });
+
+    // Logout
+    logoutBtn.onclick = () => {
+      localStorage.removeItem("token");
+      window.location.href = "/login.html";
+    };
+
+    // Add friend (navigate)
+    document.getElementById("addFriendBtn").onclick = () => {
+      window.location.href = "/add-user.html";
+    };
+
+    // Create group (navigate)
+    document.getElementById("createGroupBtn").onclick = () => {
+      window.location.href = "/create-group.html";
+    };
+
+    loadUser();
+    loadFriends();
+    loadGroups();
+  </script>
 </body>
 </html>
