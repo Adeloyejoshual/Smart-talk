@@ -18,7 +18,7 @@ const auth = async (req, res, next) => {
   }
 };
 
-// Get 1-on-1 chat
+// 🔹 Get 1-on-1 chat messages
 router.get("/:otherUserId", auth, async (req, res) => {
   const messages = await Message.find({
     $or: [
@@ -26,6 +26,12 @@ router.get("/:otherUserId", auth, async (req, res) => {
       { sender: req.params.otherUserId, recipient: req.user._id },
     ],
   }).sort("createdAt");
+  res.json(messages);
+});
+
+// 🔹 Get group chat messages
+router.get("/group/:groupId", auth, async (req, res) => {
+  const messages = await Message.find({ group: req.params.groupId }).sort("createdAt");
   res.json(messages);
 });
 
