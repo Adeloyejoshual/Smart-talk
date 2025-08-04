@@ -75,14 +75,16 @@
     <form id="loginForm">
       <input type="email" placeholder="Email" name="email" required />
       <input type="password" placeholder="Password" name="password" id="loginPassword" required />
-      <label><input type="checkbox" onclick="togglePassword('loginPassword')"> Show Password</label>
+      <label>
+        <input type="checkbox" onclick="togglePassword('loginPassword')"> Show Password
+      </label>
       <button type="submit">Login</button>
     </form>
 
-    <!-- ✅ Add the message div here -->
     <div id="message"></div>
   </div>
 
+  <!-- JS scripts -->
   <script>
     function togglePassword(id) {
       const field = document.getElementById(id);
@@ -90,5 +92,6 @@
     }
   </script>
   <script src="/scripts/login.js"></script>
+  <script src="/scripts/theme.js"></script>
 </body>
 </html>
