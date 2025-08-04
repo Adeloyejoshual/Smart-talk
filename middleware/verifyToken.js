@@ -1,23 +1,22 @@
 // middleware/verifyToken.js
-const jwt = require('jsonwebtoken');
+const jwt = require("jsonwebtoken");
 
 function verifyToken(req, res, next) {
-  const rawToken = req.headers['authorization'];
+  const rawToken = req.headers["authorization"];
 
   if (!rawToken) {
-    return res.status(401).json({ message: 'Access denied. No token provided.' });
+    return res.status(401).json({ message: "Access denied. No token provided." });
   }
 
-  const token = rawToken.replace(/^Bearer\s+/i, ''); // Remove 'Bearer ' prefix
+  const token = rawToken.replace(/^Bearer\s+/i, "");
 
-  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
-    if (err) {
-      return res.status(403).json({ message: 'Invalid or expired token.' });
-    }
-
-    req.userId = decoded.userId || decoded.id; // Support either `userId` or `id`
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.userId = decoded.id || decoded.userId;
     next();
-  });
+  } catch (err) {
+    return res.status(403).json({ message: "Invalid or expired token." });
+  }
 }
 
 module.exports = verifyToken;
