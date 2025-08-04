@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { io } from "socket.io-client";
 import API from "../api/api";
 import { getGroups, createGroup } from "../api/groups";
+import axios from "axios";
 
 const socket = io("http://localhost:3000", {
   auth: { token: localStorage.getItem("token") },
@@ -53,6 +54,8 @@ const ChatBox = ({ user }) => {
   };
 
   const sendMessage = () => {
+    if (!content.trim()) return;
+
     if (recipientId) {
       socket.emit("send_message", { to: recipientId, content });
     } else if (groupId) {
@@ -71,6 +74,51 @@ const ChatBox = ({ user }) => {
     setGroupName("");
     setGroupMember("");
     fetchGroups();
+  };
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const token = localStorage.getItem("token");
+
+    try {
+      const res = await axios.post("http://localhost:3000/api/upload", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const imageUrl = res.data.url;
+
+      // Send as chat message
+      if (recipientId) {
+        socket.emit("send_message", { to: recipientId, content: imageUrl });
+      } else if (groupId) {
+        socket.emit("send_group_message", { groupId, content: imageUrl });
+      }
+    } catch (err) {
+      console.error("Upload error:", err);
+      alert("Image upload failed");
+    }
+  };
+
+  const renderMessage = (msg, i) => {
+    const isImage = msg.content.startsWith("http") && /\.(jpg|jpeg|png|gif)/i.test(msg.content);
+    return (
+      <div key={i}>
+        <b>{msg.sender === user.id ? "You" : msg.sender}:</b>{" "}
+        {isImage ? (
+          <img src={msg.content} alt="img" width="120" style={{ margin: "5px 0" }} />
+        ) : (
+          msg.content
+        )}
+      </div>
+    );
   };
 
   return (
@@ -104,11 +152,7 @@ const ChatBox = ({ user }) => {
       </div>
 
       <div style={{ border: "1px solid #aaa", height: 200, overflowY: "scroll", marginBottom: 10 }}>
-        {messages.map((msg, i) => (
-          <div key={i}>
-            <b>{msg.sender === user.id ? "You" : msg.sender}:</b> {msg.content}
-          </div>
-        ))}
+        {messages.map(renderMessage)}
       </div>
 
       {typing && <i>Typing...</i>}
@@ -119,6 +163,7 @@ const ChatBox = ({ user }) => {
         placeholder="Message..."
       />
       <button onClick={sendMessage}>Send</button>
+      <input type="file" accept="image/*" onChange={handleFileUpload} style={{ marginLeft: 10 }} />
 
       <hr />
       <h4>Create Group</h4>
