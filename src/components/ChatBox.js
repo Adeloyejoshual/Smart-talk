@@ -1,79 +1,138 @@
 import React, { useEffect, useState } from "react";
 import { io } from "socket.io-client";
 import API from "../api/api";
+import { getGroups, createGroup } from "../api/groups";
 
 const socket = io("http://localhost:3000", {
-  auth: {
-    token: localStorage.getItem("token"),
-  },
+  auth: { token: localStorage.getItem("token") },
 });
 
 const ChatBox = ({ user }) => {
   const [recipientId, setRecipientId] = useState("");
+  const [groupId, setGroupId] = useState("");
   const [content, setContent] = useState("");
   const [messages, setMessages] = useState([]);
+  const [groups, setGroups] = useState([]);
   const [typing, setTyping] = useState(false);
+  const [groupName, setGroupName] = useState("");
+  const [groupMember, setGroupMember] = useState("");
 
   useEffect(() => {
-    if (!recipientId) return;
-
     socket.emit("join", user.id);
+    fetchGroups();
+  }, []);
 
-    socket.on("receive_message", (msg) => {
-      if (msg.sender === recipientId) {
-        setMessages((prev) => [...prev, msg]);
-      }
-    });
+  useEffect(() => {
+    if (!recipientId && !groupId) return;
 
-    socket.on("user_typing", (from) => {
-      if (from === recipientId) {
-        setTyping(true);
-        setTimeout(() => setTyping(false), 1000);
-      }
-    });
+    socket.off("receive_message");
+    socket.off("receive_group_message");
 
-    API.get(`/messages/${recipientId}`).then((res) => setMessages(res.data));
+    if (recipientId) {
+      API.get(`/messages/${recipientId}`).then((res) => setMessages(res.data));
+      socket.on("receive_message", (msg) => {
+        if (msg.sender === recipientId) {
+          setMessages((prev) => [...prev, msg]);
+        }
+      });
+    }
 
-    return () => {
-      socket.off("receive_message");
-      socket.off("user_typing");
-    };
-  }, [recipientId, user.id]);
+    if (groupId) {
+      API.get(`/messages/group/${groupId}`).then((res) => setMessages(res.data));
+      socket.on("receive_group_message", (msg) => {
+        if (msg.group === groupId) {
+          setMessages((prev) => [...prev, msg]);
+        }
+      });
+    }
+  }, [recipientId, groupId]);
+
+  const fetchGroups = async () => {
+    const data = await getGroups();
+    setGroups(data);
+  };
 
   const sendMessage = () => {
-    socket.emit("send_message", {
-      to: recipientId,
-      content,
-    });
+    if (recipientId) {
+      socket.emit("send_message", { to: recipientId, content });
+    } else if (groupId) {
+      socket.emit("send_group_message", { groupId, content });
+    }
     setContent("");
   };
 
   const handleTyping = () => {
-    socket.emit("typing", { to: recipientId });
+    if (recipientId) socket.emit("typing", { to: recipientId });
+  };
+
+  const handleGroupCreate = async () => {
+    const res = await createGroup(groupName, [groupMember]);
+    alert(`Group "${res.name}" created`);
+    setGroupName("");
+    setGroupMember("");
+    fetchGroups();
   };
 
   return (
     <div>
-      <h3>Chatting as: {user.username}</h3>
-      <input
-        placeholder="Recipient user ID"
-        onChange={(e) => setRecipientId(e.target.value)}
-      />
-      <div style={{ height: "200px", overflowY: "scroll", border: "1px solid gray", margin: "10px 0" }}>
-        {messages.map((m, i) => (
+      <h3>Welcome, {user.username}</h3>
+
+      <div style={{ marginBottom: 10 }}>
+        <h4>Chat Options</h4>
+        <input
+          placeholder="Private user ID"
+          value={recipientId}
+          onChange={(e) => {
+            setRecipientId(e.target.value);
+            setGroupId("");
+          }}
+        />
+        <br />
+        <select
+          onChange={(e) => {
+            setGroupId(e.target.value);
+            setRecipientId("");
+          }}
+        >
+          <option value="">-- Select Group --</option>
+          {groups.map((g) => (
+            <option value={g._id} key={g._id}>
+              {g.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div style={{ border: "1px solid #aaa", height: 200, overflowY: "scroll", marginBottom: 10 }}>
+        {messages.map((msg, i) => (
           <div key={i}>
-            <b>{m.sender === user.id ? "You" : "Them"}:</b> {m.content}
+            <b>{msg.sender === user.id ? "You" : msg.sender}:</b> {msg.content}
           </div>
         ))}
       </div>
-      {typing && <div><i>Typing...</i></div>}
+
+      {typing && <i>Typing...</i>}
       <input
         value={content}
-        placeholder="Type a message..."
         onChange={(e) => setContent(e.target.value)}
         onKeyDown={handleTyping}
+        placeholder="Message..."
       />
       <button onClick={sendMessage}>Send</button>
+
+      <hr />
+      <h4>Create Group</h4>
+      <input
+        placeholder="Group Name"
+        value={groupName}
+        onChange={(e) => setGroupName(e.target.value)}
+      />
+      <input
+        placeholder="Member User ID"
+        value={groupMember}
+        onChange={(e) => setGroupMember(e.target.value)}
+      />
+      <button onClick={handleGroupCreate}>Create</button>
     </div>
   );
 };
