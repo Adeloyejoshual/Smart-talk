@@ -1,39 +1,52 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import API from "../api";
+import { io } from "socket.io-client";
+
+const SOCKET_URL = "https://smart-talk-backend.onrender.com";
 
 const GroupChat = ({ groupId }) => {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
+  const socket = useRef(null);
 
-  // Load messages
   const fetchChats = async () => {
     try {
       const res = await API.get(`/messages/group/${groupId}`);
       setMessages(res.data);
     } catch (err) {
-      console.error("Error fetching messages:", err);
+      console.error("Fetch error:", err);
     }
   };
 
   useEffect(() => {
+    socket.current = io(SOCKET_URL);
+    socket.current.emit("join-group", groupId);
+
+    socket.current.on("group-message", (msg) => {
+      setMessages((prev) => [...prev, msg]);
+    });
+
     fetchChats();
+
+    return () => {
+      socket.current.disconnect();
+    };
   }, [groupId]);
 
-  // Send new message
   const handleSend = async (e) => {
     e.preventDefault();
     if (!newMessage.trim()) return;
 
     try {
-      await API.post("/messages/group", {
+      const { data } = await API.post("/messages/group", {
         groupId,
         text: newMessage,
       });
 
+      socket.current.emit("group-message", data);
       setNewMessage("");
-      fetchChats(); // Refresh after send
     } catch (err) {
-      console.error("Error sending message:", err);
+      console.error("Send error:", err);
     }
   };
 
