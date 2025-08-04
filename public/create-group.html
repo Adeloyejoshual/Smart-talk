@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Create Group - SmartTalk</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col">
+
+  <!-- Header -->
+  <header class="bg-white shadow p-4 flex justify-between items-center">
+    <h1 class="text-xl font-bold">Create Group</h1>
+    <button onclick="window.location.href='/home.html'" class="text-blue-600">← Back</button>
+  </header>
+
+  <!-- Form -->
+  <main class="flex-1 p-6 space-y-4">
+    <input type="text" id="groupName" placeholder="Enter group name"
+      class="w-full p-3 border rounded focus:outline-none" />
+
+    <h2 class="text-lg font-semibold">Select Members</h2>
+    <ul id="friendList" class="space-y-2 max-h-80 overflow-y-auto"></ul>
+
+    <button id="createGroupBtn"
+      class="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700">Create Group</button>
+  </main>
+
+  <!-- Scripts -->
+  <script>
+    const token = localStorage.getItem("token");
+    if (!token) window.location.href = "/login.html";
+
+    const headers = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    };
+
+    const friendList = document.getElementById("friendList");
+    const createGroupBtn = document.getElementById("createGroupBtn");
+    const groupNameInput = document.getElementById("groupName");
+
+    let selectedMembers = [];
+
+    // Load user's friends to select from
+    async function loadFriends() {
+      try {
+        const res = await fetch("/api/users/friends", { headers });
+        const friends = await res.json();
+
+        friendList.innerHTML = "";
+        friends.forEach(user => {
+          const li = document.createElement("li");
+          li.className = "flex items-center space-x-2 bg-white p-2 rounded shadow";
+
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.value = user._id;
+
+          checkbox.addEventListener("change", (e) => {
+            if (e.target.checked) {
+              selectedMembers.push(e.target.value);
+            } else {
+              selectedMembers = selectedMembers.filter(id => id !== e.target.value);
+            }
+          });
+
+          li.appendChild(checkbox);
+          li.appendChild(document.createTextNode(` ${user.username} (${user.email})`));
+          friendList.appendChild(li);
+        });
+      } catch (err) {
+        friendList.innerHTML = "<li class='text-sm text-red-500'>Failed to load friends.</li>";
+      }
+    }
+
+    // Create group
+    createGroupBtn.onclick = async () => {
+      const name = groupNameInput.value.trim();
+      if (!name || selectedMembers.length === 0) {
+        alert("Enter a group name and select at least one member.");
+        return;
+      }
+
+      try {
+        const res = await fetch("/api/groups", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ name, members: selectedMembers }),
+        });
+
+        const data = await res.json();
+        if (data._id) {
+          alert("Group created successfully!");
+          window.location.href = "/home.html";
+        } else {
+          alert("Failed to create group.");
+        }
+      } catch (err) {
+        console.error(err);
+        alert("Error creating group.");
+      }
+    };
+
+    loadFriends();
+  </script>
+</body>
+</html>
