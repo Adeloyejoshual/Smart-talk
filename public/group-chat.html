@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Group Chat - SmartTalk</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
+  <style>
+    .sent .bubble {
+      @apply bg-green-500 text-white self-end;
+    }
+    .received .bubble {
+      @apply bg-gray-200 text-black self-start;
+    }
+    .bubble {
+      @apply p-2 rounded-xl max-w-xs break-words;
+    }
+    .meta {
+      @apply text-xs text-right mt-1 opacity-70;
+    }
+  </style>
+</head>
+<body class="bg-gray-100 h-screen flex flex-col">
+
+  <!-- Header -->
+  <header class="bg-white shadow p-4 flex justify-between items-center">
+    <button id="backToHome" class="text-green-600 font-bold">&larr; Back</button>
+    <h1 class="text-lg font-bold text-center flex-1 -ml-6">Group Chat</h1>
+  </header>
+
+  <!-- Messages -->
+  <ul id="groupMessages" class="flex-1 overflow-y-auto p-4 space-y-2 flex flex-col bg-white">
+    <!-- Messages will be injected here -->
+  </ul>
+
+  <!-- Form -->
+  <form id="groupMessageForm" class="flex p-2 bg-white shadow">
+    <input
+      id="groupMessageInput"
+      type="text"
+      placeholder="Type a message..."
+      class="flex-1 p-2 border rounded-l focus:outline-none"
+      required
+    />
+    <button
+      type="submit"
+      class="bg-green-600 text-white px-4 rounded-r hover:bg-green-700"
+    >
+      Send
+    </button>
+  </form>
+
+  <!-- Socket.IO -->
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <!-- Your frontend group chat logic -->
+  <script type="module">
+    import { io } from "https://cdn.skypack.dev/socket.io-client";
+
+    const socket = io(import.meta.env?.VITE_API?.replace('/api', '') || window.location.origin);
+    const groupId = localStorage.getItem("groupId") || "123"; // Replace or assign properly
+    const token = localStorage.getItem("token");
+
+    const form = document.getElementById("groupMessageForm");
+    const input = document.getElementById("groupMessageInput");
+    const list = document.getElementById("groupMessages");
+    const backBtn = document.getElementById("backToHome");
+
+    socket.emit("join-group", groupId);
+
+    socket.on("group-message", (msg) => {
+      appendMessage(msg);
+    });
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const content = input.value.trim();
+      if (!content) return;
+
+      try {
+        const res = await fetch(`/api/messages/group`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ groupId, text: content }),
+        });
+
+        const data = await res.json();
+        socket.emit("group-message", data);
+        input.value = "";
+      } catch (err) {
+        console.error("Error sending group message:", err);
+      }
+    });
+
+    async function loadMessages() {
+      try {
+        const res = await fetch(`/api/messages/group/${groupId}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        const data = await res.json();
+        data.forEach(appendMessage);
+      } catch (err) {
+        console.error("Error loading messages:", err);
+      }
+    }
+
+    function appendMessage(msg) {
+      const li = document.createElement("li");
+      const isMine = getUserId() === msg.sender?._id;
+      li.className = isMine ? "sent" : "received";
+      li.innerHTML = `
+        <div class="bubble">
+          <strong>${isMine ? "You" : msg.sender?.username || "User"}</strong>: ${msg.text}
+          <div class="meta">${new Date(msg.createdAt || Date.now()).toLocaleTimeString()}</div>
+        </div>
+      `;
+      list.appendChild(li);
+      list.scrollTop = list.scrollHeight;
+    }
+
+    function getUserId() {
+      try {
+        const payload = JSON.parse(atob(token.split(".")[1]));
+        return payload.id || payload.userId;
+      } catch {
+        return null;
+      }
+    }
+
+    backBtn.onclick = () => {
+      window.location.href = "/home.html";
+    };
+
+    loadMessages();
+  </script>
+</body>
+</html>
