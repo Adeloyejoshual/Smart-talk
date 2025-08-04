@@ -1,61 +1,25 @@
-const jwt = require("jsonwebtoken");
-const Message = require("./models/Message");
-const User = require("./models/User");
-const Group = require("./models/Group");
-
-function socketHandler(io) {
-  io.use(async (socket, next) => {
-    const token = socket.handshake.auth.token;
-    if (!token) return next(new Error("Unauthorized"));
-    try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      socket.user = await User.findById(decoded.id);
-      next();
-    } catch {
-      next(new Error("Unauthorized"));
-    }
-  });
-
+// socket.js
+module.exports = (io) => {
   io.on("connection", (socket) => {
-    const userId = socket.user._id.toString();
-    socket.join(userId);
+    console.log("🔌 A user connected");
 
-    // Join group rooms
-    Group.find({ members: userId }).then((groups) => {
-      groups.forEach((group) => {
-        socket.join(group._id.toString());
-      });
+    // Join a group chat room
+    socket.on("join-group", (groupId) => {
+      socket.join(groupId);
+      console.log(`🟢 User joined group: ${groupId}`);
     });
 
-    // 1-on-1 typing
-    socket.on("typing", ({ to }) => {
-      io.to(to).emit("typing", { from: userId });
+    // Broadcast message to all in the group
+    socket.on("group-message", (msg) => {
+      const groupId = msg.group;
+      if (groupId) {
+        io.to(groupId).emit("group-message", msg);
+        console.log(`📤 Broadcast to group ${groupId}: ${msg.text}`);
+      }
     });
 
-    // Private message
-    socket.on("send_message", async ({ to, content }) => {
-      const msg = await Message.create({
-        sender: userId,
-        recipient: to,
-        content,
-      });
-
-      io.to(to).emit("receive_message", msg);
-      io.to(userId).emit("message_sent", msg);
-    });
-
-    // Group message
-    socket.on("send_group_message", async ({ groupId, content }) => {
-      const msg = await Message.create({
-        sender: userId,
-        group: groupId,
-        content,
-      });
-
-      io.to(groupId).emit("receive_group_message", msg);
-      io.to(userId).emit("message_sent", msg);
+    socket.on("disconnect", () => {
+      console.log("🔌 A user disconnected");
     });
   });
-}
-
-module.exports = socketHandler;
+};
