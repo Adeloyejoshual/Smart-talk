@@ -8,6 +8,7 @@ const socketIo = require("socket.io");
 const authRoutes = require("./routes/auth");
 const messageRoutes = require("./routes/messages");
 const socketHandler = require("./socket");
+const groupRoutes = require("./routes/groups");
 
 const app = express();
 const server = http.createServer(app);
