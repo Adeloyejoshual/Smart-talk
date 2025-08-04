@@ -1,3 +1,5 @@
+/* settings.css */
+
 body {
   font-family: sans-serif;
   background: #111;
@@ -43,30 +45,6 @@ body {
 
 .settings-container button:hover {
   background: #666;
-}
-
-.modal {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0,0,0,0.8);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.modal.hidden {
-  display: none;
-}
-
-.modal-content {
-  background: #222;
-  padding: 2rem;
-  border-radius: 12px;
-  width: 90%;
-  max-width: 400px;
 }
 
 .modal-content h2 {
