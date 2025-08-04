@@ -1,27 +1,24 @@
-// middleware/auth.js
-const jwt = require('jsonwebtoken');
+const jwt = require("jsonwebtoken");
 
-// Middleware to verify JWT token
 function verifyToken(req, res, next) {
-  const authHeader = req.headers['authorization'];
+  const authHeader = req.headers["authorization"];
 
   if (!authHeader) {
-    return res.status(401).json({ message: 'No token provided' });
+    return res.status(401).json({ message: "Authorization header missing" });
   }
 
-  // Extract token from "Bearer <token>"
-  const token = authHeader.replace(/^Bearer\s+/i, '');
+  const token = authHeader.split(" ")[1]; // Expected format: "Bearer <token>"
+  if (!token) {
+    return res.status(401).json({ message: "Token missing" });
+  }
 
-  // Verify token
-  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
-    if (err) {
-      return res.status(403).json({ message: 'Invalid or expired token' });
-    }
-
-    // Store decoded user ID in request object for later use
-    req.userId = decoded.id;
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.userId = decoded.id; // You could attach the whole decoded object if needed
     next();
-  });
+  } catch (err) {
+    return res.status(403).json({ message: "Invalid or expired token" });
+  }
 }
 
 module.exports = verifyToken;
