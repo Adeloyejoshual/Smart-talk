@@ -1,6 +1,11 @@
 # Smart-talk
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+
+## 🤝 Contributing
+
+We welcome contributions! Please see our [Contributing Guide](./CONTRIBUTING.md) and [Code of Conduct](./CODE_OF_CONDUCT.md) to get started.
+
 ![Render Deploy](https://github.com/Adeloyejoshual/Smart-talk/actions/workflows/render-deploy.yml/badge.svg)
 
 **Smart-talk** is a Node.js-based chat backend project built with support for real-time communication using `socket.io`. It’s designed for scalable messaging between users using modern JavaScript technologies.
