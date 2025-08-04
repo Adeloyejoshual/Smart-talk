@@ -1,6 +1,7 @@
 const jwt = require("jsonwebtoken");
 const Message = require("./models/Message");
 const User = require("./models/User");
+const Group = require("./models/Group");
 
 function socketHandler(io) {
   io.use(async (socket, next) => {
@@ -18,30 +19,41 @@ function socketHandler(io) {
   io.on("connection", (socket) => {
     const userId = socket.user._id.toString();
     socket.join(userId);
-    console.log(`User ${userId} connected`);
 
-    // Typing event
+    // Join group rooms
+    Group.find({ members: userId }).then((groups) => {
+      groups.forEach((group) => {
+        socket.join(group._id.toString());
+      });
+    });
+
+    // 1-on-1 typing
     socket.on("typing", ({ to }) => {
       io.to(to).emit("typing", { from: userId });
     });
 
-    // Send message
+    // Private message
     socket.on("send_message", async ({ to, content }) => {
-      const message = await Message.create({
+      const msg = await Message.create({
         sender: userId,
         recipient: to,
         content,
-        status: "sent",
       });
 
-      io.to(to).emit("receive_message", message);
-      io.to(userId).emit("message_sent", message);
+      io.to(to).emit("receive_message", msg);
+      io.to(userId).emit("message_sent", msg);
     });
 
-    // Read receipt
-    socket.on("mark_read", async ({ messageId }) => {
-      const msg = await Message.findByIdAndUpdate(messageId, { status: "read" }, { new: true });
-      io.to(msg.sender.toString()).emit("message_read", { messageId });
+    // Group message
+    socket.on("send_group_message", async ({ groupId, content }) => {
+      const msg = await Message.create({
+        sender: userId,
+        group: groupId,
+        content,
+      });
+
+      io.to(groupId).emit("receive_group_message", msg);
+      io.to(userId).emit("message_sent", msg);
     });
   });
 }
