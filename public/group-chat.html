@@ -5,79 +5,65 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Group Chat - SmartTalk</title>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
-  <style>
-    .sent .bubble {
-      @apply bg-green-500 text-white self-end;
-    }
-    .received .bubble {
-      @apply bg-gray-200 text-black self-start;
-    }
-    .bubble {
-      @apply p-2 rounded-xl max-w-xs break-words;
-    }
-    .meta {
-      @apply text-xs text-right mt-1 opacity-70;
-    }
-  </style>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 </head>
 <body class="bg-gray-100 h-screen flex flex-col">
 
   <!-- Header -->
   <header class="bg-white shadow p-4 flex justify-between items-center">
-    <button id="backToHome" class="text-green-600 font-bold">&larr; Back</button>
-    <h1 class="text-lg font-bold text-center flex-1 -ml-6">Group Chat</h1>
+    <h1 class="text-xl font-bold">Group Chat</h1>
+    <button onclick="window.location.href='/home.html'" class="text-blue-600">← Back</button>
   </header>
 
-  <!-- Messages -->
-  <ul id="groupMessages" class="flex-1 overflow-y-auto p-4 space-y-2 flex flex-col bg-white">
-    <!-- Messages will be injected here -->
-  </ul>
+  <!-- Chat Display -->
+  <main class="flex-1 p-4 overflow-y-auto" id="chatBox">
+    <ul id="messageList" class="space-y-2"></ul>
+  </main>
 
-  <!-- Form -->
-  <form id="groupMessageForm" class="flex p-2 bg-white shadow">
-    <input
-      id="groupMessageInput"
-      type="text"
-      placeholder="Type a message..."
-      class="flex-1 p-2 border rounded-l focus:outline-none"
-      required
-    />
-    <button
-      type="submit"
-      class="bg-green-600 text-white px-4 rounded-r hover:bg-green-700"
-    >
-      Send
-    </button>
+  <!-- Message Form -->
+  <form id="messageForm" class="flex p-4 bg-white border-t">
+    <input id="messageInput" type="text" placeholder="Type your message..."
+      class="flex-1 border rounded-l px-3 py-2 focus:outline-none" />
+    <button type="submit"
+      class="bg-blue-600 text-white px-4 py-2 rounded-r hover:bg-blue-700">Send</button>
   </form>
 
-  <!-- Socket.IO -->
-  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-  <!-- Your frontend group chat logic -->
-  <script type="module">
-    import { io } from "https://cdn.skypack.dev/socket.io-client";
-
-    const socket = io(import.meta.env?.VITE_API?.replace('/api', '') || window.location.origin);
-    const groupId = localStorage.getItem("groupId") || "123"; // Replace or assign properly
+  <!-- Scripts -->
+  <script>
     const token = localStorage.getItem("token");
+    const urlParams = new URLSearchParams(window.location.search);
+    const groupId = urlParams.get("group");
 
-    const form = document.getElementById("groupMessageForm");
-    const input = document.getElementById("groupMessageInput");
-    const list = document.getElementById("groupMessages");
-    const backBtn = document.getElementById("backToHome");
+    if (!token || !groupId) {
+      window.location.href = "/home.html";
+    }
+
+    const socket = io();
+    const myUserId = getMyUserId();
+    const messageForm = document.getElementById("messageForm");
+    const messageInput = document.getElementById("messageInput");
+    const messageList = document.getElementById("messageList");
 
     socket.emit("join-group", groupId);
 
+    // Load existing messages
+    loadGroupMessages();
+
+    // Real-time receive
     socket.on("group-message", (msg) => {
-      appendMessage(msg);
+      if (msg.group === groupId) {
+        appendMessage(msg.sender?.username || "User", msg.content, msg.createdAt);
+      }
     });
 
-    form.addEventListener("submit", async (e) => {
+    // Send message
+    messageForm.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const content = input.value.trim();
+      const content = messageInput.value.trim();
       if (!content) return;
 
       try {
-        const res = await fetch(`/api/messages/group`, {
+        const res = await fetch("/api/messages/group", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -88,41 +74,51 @@
 
         const data = await res.json();
         socket.emit("group-message", data);
-        input.value = "";
+        appendMessage("You", content, new Date().toISOString());
+        messageInput.value = "";
+        scrollToBottom();
       } catch (err) {
-        console.error("Error sending group message:", err);
+        alert("Failed to send message");
       }
     });
 
-    async function loadMessages() {
+    // Append message
+    function appendMessage(sender, content, timestamp) {
+      const li = document.createElement("li");
+      li.className = "bg-white p-2 rounded shadow";
+      li.innerHTML = `
+        <div><strong>${sender}</strong>: ${content}</div>
+        <div class="text-xs text-gray-500">${new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+      `;
+      messageList.appendChild(li);
+      scrollToBottom();
+    }
+
+    // Load old messages
+    async function loadGroupMessages() {
       try {
         const res = await fetch(`/api/messages/group/${groupId}`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          headers: { Authorization: `Bearer ${token}` }
         });
-        const data = await res.json();
-        data.forEach(appendMessage);
+
+        const messages = await res.json();
+        messageList.innerHTML = "";
+
+        messages.forEach(msg => {
+          appendMessage(msg.sender?.username || "User", msg.text, msg.createdAt);
+        });
+
+        scrollToBottom();
       } catch (err) {
-        console.error("Error loading messages:", err);
+        alert("Could not load group messages");
       }
     }
 
-    function appendMessage(msg) {
-      const li = document.createElement("li");
-      const isMine = getUserId() === msg.sender?._id;
-      li.className = isMine ? "sent" : "received";
-      li.innerHTML = `
-        <div class="bubble">
-          <strong>${isMine ? "You" : msg.sender?.username || "User"}</strong>: ${msg.text}
-          <div class="meta">${new Date(msg.createdAt || Date.now()).toLocaleTimeString()}</div>
-        </div>
-      `;
-      list.appendChild(li);
-      list.scrollTop = list.scrollHeight;
+    function scrollToBottom() {
+      messageList.scrollTop = messageList.scrollHeight;
     }
 
-    function getUserId() {
+    function getMyUserId() {
       try {
         const payload = JSON.parse(atob(token.split(".")[1]));
         return payload.id || payload.userId;
@@ -130,12 +126,6 @@
         return null;
       }
     }
-
-    backBtn.onclick = () => {
-      window.location.href = "/home.html";
-    };
-
-    loadMessages();
   </script>
 </body>
 </html>
