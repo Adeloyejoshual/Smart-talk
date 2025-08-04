@@ -3,144 +3,187 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Home - SmartTalk</title>
+  <title>SmartTalk - Home</title>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 </head>
-<body class="bg-gray-100 text-gray-800 h-screen flex flex-col">
+<body class="bg-gray-100 h-screen flex flex-col">
 
   <!-- Header -->
-  <header class="bg-white shadow p-4 flex justify-between items-center">
-    <h1 class="text-xl font-bold">SmartTalk</h1>
-    <button id="logoutBtn" class="text-red-600 font-semibold">Logout</button>
+  <header class="bg-white p-4 shadow flex justify-between items-center">
+    <h1 class="text-xl font-bold text-blue-600">SmartTalk</h1>
+    <div class="space-x-2">
+      <button id="themeToggle" class="text-sm px-2 py-1 bg-gray-200 rounded">🌓 Theme</button>
+      <button id="settingsBtn" class="text-sm px-2 py-1 bg-yellow-200 rounded">⚙️ Settings</button>
+      <button id="logoutBtn" class="text-sm px-2 py-1 bg-red-400 text-white rounded">Logout</button>
+    </div>
   </header>
 
-  <!-- User info -->
-  <section class="p-4 border-b bg-white">
-    <div id="userInfo" class="text-sm text-gray-600">Loading user...</div>
+  <!-- Search & Results -->
+  <section class="p-4 space-y-4">
+    <input id="searchInput" type="text" placeholder="Search users..."
+      class="w-full border px-3 py-2 rounded" />
+    <div id="searchResults" class="space-y-2"></div>
   </section>
 
-  <!-- Search & Friends -->
-  <section class="flex-1 overflow-y-auto px-4 py-2 space-y-6">
-    <!-- Friend List -->
-    <div>
-      <h2 class="text-lg font-semibold mb-2">Friends</h2>
-      <ul id="friendList" class="space-y-2"></ul>
-    </div>
-
-    <!-- Group List -->
-    <div>
-      <h2 class="text-lg font-semibold mb-2">Groups</h2>
-      <ul id="groupList" class="space-y-2"></ul>
-    </div>
+  <!-- Friends List -->
+  <section class="p-4">
+    <h2 class="text-lg font-semibold mb-2">Friends</h2>
+    <ul id="friendList" class="space-y-2"></ul>
   </section>
 
-  <!-- Footer buttons -->
-  <footer class="p-4 bg-white border-t flex justify-between">
-    <button id="addFriendBtn" class="bg-blue-500 text-white px-4 py-2 rounded">➕ Add Friend</button>
-    <button id="createGroupBtn" class="bg-green-500 text-white px-4 py-2 rounded">➕ New Group</button>
-  </footer>
+  <!-- Groups List -->
+  <section class="p-4">
+    <div class="flex justify-between items-center mb-2">
+      <h2 class="text-lg font-semibold">Groups</h2>
+      <button onclick="createGroup()" class="text-sm bg-green-500 text-white px-2 py-1 rounded">+ Create Group</button>
+    </div>
+    <ul id="groupList" class="space-y-2"></ul>
+  </section>
 
-  <!-- Scripts -->
-  <script type="module">
+  <!-- Settings Modal -->
+  <div id="settingsModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+    <div class="bg-white p-6 rounded w-80">
+      <h2 class="text-lg font-bold mb-4">Settings</h2>
+      <button id="closeSettings" class="w-full bg-gray-300 rounded py-2">Close</button>
+    </div>
+  </div>
+
+  <script>
     const token = localStorage.getItem("token");
-    if (!token) window.location.href = "/login.html";
-
-    const friendList = document.getElementById("friendList");
-    const groupList = document.getElementById("groupList");
-    const logoutBtn = document.getElementById("logoutBtn");
-    const userInfo = document.getElementById("userInfo");
-
     const headers = {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     };
 
-    // Fetch profile
-    async function loadUser() {
-      try {
-        const res = await fetch("/api/users/me", { headers });
-        const user = await res.json();
-        userInfo.textContent = `Logged in as: ${user.username}`;
-      } catch {
-        userInfo.textContent = "Failed to load user info";
-      }
-    }
+    if (!token) window.location.href = "/login.html";
 
-    // Fetch friends
+    const friendList = document.getElementById("friendList");
+    const groupList = document.getElementById("groupList");
+    const searchInput = document.getElementById("searchInput");
+    const searchResults = document.getElementById("searchResults");
+
+    // Load friends
     async function loadFriends() {
-      try {
-        const res = await fetch("/api/users/friends", { headers });
-        const users = await res.json();
-        friendList.innerHTML = "";
-        users.forEach(u => {
-          const li = document.createElement("li");
-          li.className = "bg-white p-3 rounded shadow flex justify-between items-center";
-          li.innerHTML = `
-            <span>${u.username}</span>
-            <button data-id="${u._id}" class="chatBtn text-blue-600">💬</button>
-          `;
-          friendList.appendChild(li);
-        });
-      } catch (err) {
-        friendList.innerHTML = "<li class='text-sm text-red-500'>Error loading friends</li>";
-      }
+      const res = await fetch("/api/users/friends", { headers });
+      const data = await res.json();
+      friendList.innerHTML = "";
+      data.forEach(user => {
+        const li = document.createElement("li");
+        li.innerHTML = `
+          <div class="bg-white p-2 rounded shadow flex justify-between items-center">
+            <span>${user.username}</span>
+            <div>
+              <button onclick="startChat('${user._id}')" class="text-green-600">💬</button>
+              <button onclick="removeFriend('${user._id}')" class="text-red-600 ml-2">❌</button>
+            </div>
+          </div>
+        `;
+        friendList.appendChild(li);
+      });
     }
 
-    // Fetch groups
+    // Load groups
     async function loadGroups() {
-      try {
-        const res = await fetch("/api/groups", { headers });
-        const groups = await res.json();
-        groupList.innerHTML = "";
-        groups.forEach(g => {
-          const li = document.createElement("li");
-          li.className = "bg-white p-3 rounded shadow flex justify-between items-center";
-          li.innerHTML = `
-            <span>${g.name}</span>
-            <button data-id="${g._id}" class="groupBtn text-green-600">💬</button>
-          `;
-          groupList.appendChild(li);
-        });
-      } catch (err) {
-        groupList.innerHTML = "<li class='text-sm text-red-500'>Error loading groups</li>";
-      }
+      const res = await fetch("/api/groups/my", { headers });
+      const data = await res.json();
+      groupList.innerHTML = "";
+      data.forEach(group => {
+        const li = document.createElement("li");
+        li.innerHTML = `
+          <div class="bg-white p-2 rounded shadow flex justify-between items-center">
+            <span>${group.name}</span>
+            <button onclick="enterGroup('${group._id}')" class="text-blue-600">Enter</button>
+          </div>
+        `;
+        groupList.appendChild(li);
+      });
+    }
+
+    // Search users
+    searchInput.addEventListener("input", async () => {
+      const query = searchInput.value.trim();
+      if (!query) return (searchResults.innerHTML = "");
+
+      const res = await fetch(`/api/users/search?q=${encodeURIComponent(query)}`, { headers });
+      const data = await res.json();
+      searchResults.innerHTML = "";
+      data.forEach(user => {
+        const div = document.createElement("div");
+        div.className = "bg-white p-2 rounded shadow flex justify-between items-center";
+        div.innerHTML = `
+          <span>${user.username}</span>
+          <button onclick="addFriend('${user._id}')" class="text-blue-500">➕</button>
+        `;
+        searchResults.appendChild(div);
+      });
+    });
+
+    // Add friend
+    async function addFriend(id) {
+      await fetch(`/api/users/add-friend/${id}`, { method: "POST", headers });
+      searchInput.value = "";
+      searchResults.innerHTML = "";
+      loadFriends();
+    }
+
+    // Remove friend
+    async function removeFriend(id) {
+      await fetch(`/api/users/remove-friend/${id}`, { method: "POST", headers });
+      loadFriends();
     }
 
     // Start private chat
-    friendList.addEventListener("click", (e) => {
-      if (e.target.classList.contains("chatBtn")) {
-        const friendId = e.target.dataset.id;
-        localStorage.setItem("receiverId", friendId);
-        window.location.href = "/chat.html";
-      }
-    });
+    function startChat(userId) {
+      localStorage.setItem("receiverId", userId);
+      window.location.href = "/chat.html";
+    }
 
-    // Start group chat
-    groupList.addEventListener("click", (e) => {
-      if (e.target.classList.contains("groupBtn")) {
-        const groupId = e.target.dataset.id;
-        localStorage.setItem("groupId", groupId);
-        window.location.href = "/group-chat.html";
+    // Enter group chat
+    function enterGroup(groupId) {
+      window.location.href = `/group-chat.html?group=${groupId}`;
+    }
+
+    // Create group
+    async function createGroup() {
+      const name = prompt("Enter group name:");
+      if (!name) return;
+
+      const res = await fetch("/api/groups", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ name }),
+      });
+
+      if (res.ok) {
+        alert("Group created!");
+        loadGroups();
+      } else {
+        alert("Error creating group.");
       }
-    });
+    }
+
+    // Theme toggle
+    document.getElementById("themeToggle").onclick = () => {
+      document.documentElement.dataset.theme =
+        document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+    };
 
     // Logout
-    logoutBtn.onclick = () => {
+    document.getElementById("logoutBtn").onclick = () => {
       localStorage.removeItem("token");
       window.location.href = "/login.html";
     };
 
-    // Add friend (navigate)
-    document.getElementById("addFriendBtn").onclick = () => {
-      window.location.href = "/add-user.html";
+    // Settings
+    document.getElementById("settingsBtn").onclick = () => {
+      document.getElementById("settingsModal").classList.remove("hidden");
+    };
+    document.getElementById("closeSettings").onclick = () => {
+      document.getElementById("settingsModal").classList.add("hidden");
     };
 
-    // Create group (navigate)
-    document.getElementById("createGroupBtn").onclick = () => {
-      window.location.href = "/create-group.html";
-    };
-
-    loadUser();
+    // Load data
     loadFriends();
     loadGroups();
   </script>
