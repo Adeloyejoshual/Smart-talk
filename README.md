@@ -1,6 +1,8 @@
 # Smart-talk
+
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
-Smart-talk is a Node.js-based chat backend project built with support for real-time communication using `socket.io`. It’s designed for scalable messaging between users with modern JavaScript technologies.
+
+**Smart-talk** is a Node.js-based chat backend project built with support for real-time communication using `socket.io`. It’s designed for scalable messaging between users using modern JavaScript technologies.
 
 ---
 
@@ -19,18 +21,19 @@ Smart-talk is a Node.js-based chat backend project built with support for real-t
 
 - **Backend:** Node.js, Express
 - **Real-time:** Socket.io
-- **Database:** MongoDB
+- **Database:** MongoDB (via Mongoose)
 - **Security:** bcrypt, JWT
 - **Version Control:** Git + GitHub
+- **Deployment:** Render
 
 ---
 
-## 📦 Installation
+## 📦 Installation (Local Development)
 
 Make sure you have **Node.js** and **npm** installed.
 
-1. Clone the repo:
+1. Clone the repository:
 
-```bash
-git clone https://github.com/Adeloyejoshual/Smart-talk.git
-cd Smart-talk
+   ```bash
+   git clone https://github.com/Adeloyejoshual/Smart-talk.git
+   cd Smart-talk
