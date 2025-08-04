@@ -1,123 +1,108 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Group Chat - SmartTalk</title>
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
-  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <title>SmartTalk – Group Chat</title>
+  <link rel="stylesheet" href="styles/chat.css" />
+  <script src="/socket.io/socket.io.js"></script>
 </head>
-<body class="bg-gray-100 h-screen flex flex-col">
+<body>
+  <div class="chat-container">
+    <div class="chat-header">
+      <button id="backBtn">← Back</button>
+      <h2 id="groupName">Group Chat</h2>
+    </div>
 
-  <!-- Header -->
-  <header class="bg-white shadow p-4 flex justify-between items-center">
-    <h1 class="text-xl font-bold">Group Chat</h1>
-    <button onclick="window.location.href='/home.html'" class="text-blue-600">← Back</button>
-  </header>
+    <ul id="messageList" class="message-list"></ul>
 
-  <!-- Chat Display -->
-  <main class="flex-1 p-4 overflow-y-auto" id="chatBox">
-    <ul id="messageList" class="space-y-2"></ul>
-  </main>
+    <form id="messageForm" class="message-form">
+      <input type="text" id="messageInput" placeholder="Type your message..." autocomplete="off" />
+      <button type="submit">Send</button>
+    </form>
+  </div>
 
-  <!-- Message Form -->
-  <form id="messageForm" class="flex p-4 bg-white border-t">
-    <input id="messageInput" type="text" placeholder="Type your message..."
-      class="flex-1 border rounded-l px-3 py-2 focus:outline-none" />
-    <button type="submit"
-      class="bg-blue-600 text-white px-4 py-2 rounded-r hover:bg-blue-700">Send</button>
-  </form>
-
-  <!-- Scripts -->
-  <script>
+  <script type="module">
     const token = localStorage.getItem("token");
-    const urlParams = new URLSearchParams(window.location.search);
-    const groupId = urlParams.get("group");
+    const groupId = new URLSearchParams(window.location.search).get("group");
 
     if (!token || !groupId) {
       window.location.href = "/home.html";
     }
 
     const socket = io();
-    const myUserId = getMyUserId();
+    const userId = getMyUserId();
     const messageForm = document.getElementById("messageForm");
     const messageInput = document.getElementById("messageInput");
     const messageList = document.getElementById("messageList");
+    const backBtn = document.getElementById("backBtn");
 
+    // Join group room
     socket.emit("join-group", groupId);
 
     // Load existing messages
-    loadGroupMessages();
+    fetch(`/api/messages/group/${groupId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(res => res.json())
+      .then(data => {
+        data.forEach(msg => appendMessage(msg));
+        scrollToBottom();
+      });
 
-    // Real-time receive
-    socket.on("group-message", (msg) => {
-      if (msg.group === groupId) {
-        appendMessage(msg.sender?.username || "User", msg.content, msg.createdAt);
-      }
-    });
-
-    // Send message
+    // Handle new message form submit
     messageForm.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const content = messageInput.value.trim();
-      if (!content) return;
+      const text = messageInput.value.trim();
+      if (!text) return;
 
-      try {
-        const res = await fetch("/api/messages/group", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ groupId, text: content }),
-        });
+      const res = await fetch("/api/messages/group", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ groupId, text }),
+      });
 
-        const data = await res.json();
-        socket.emit("group-message", data);
-        appendMessage("You", content, new Date().toISOString());
-        messageInput.value = "";
+      const data = await res.json();
+      socket.emit("group-message", data);
+      messageInput.value = "";
+    });
+
+    // On receiving a group message
+    socket.on("group-message", (msg) => {
+      if (msg.group === groupId) {
+        appendMessage(msg);
         scrollToBottom();
-      } catch (err) {
-        alert("Failed to send message");
       }
     });
 
-    // Append message
-    function appendMessage(sender, content, timestamp) {
+    // Go back to home
+    backBtn.onclick = () => {
+      window.location.href = "/home.html";
+    };
+
+    // Append message to UI
+    function appendMessage({ sender, text, createdAt }) {
+      const isMe = sender._id === userId || sender === userId;
       const li = document.createElement("li");
-      li.className = "bg-white p-2 rounded shadow";
+      li.className = isMe ? "sent" : "received";
       li.innerHTML = `
-        <div><strong>${sender}</strong>: ${content}</div>
-        <div class="text-xs text-gray-500">${new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+        <div class="bubble">
+          <strong>${isMe ? "You" : sender.username || "User"}</strong>: ${text}
+          <div class="meta">${new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+        </div>
       `;
       messageList.appendChild(li);
-      scrollToBottom();
     }
 
-    // Load old messages
-    async function loadGroupMessages() {
-      try {
-        const res = await fetch(`/api/messages/group/${groupId}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-
-        const messages = await res.json();
-        messageList.innerHTML = "";
-
-        messages.forEach(msg => {
-          appendMessage(msg.sender?.username || "User", msg.text, msg.createdAt);
-        });
-
-        scrollToBottom();
-      } catch (err) {
-        alert("Could not load group messages");
-      }
-    }
-
+    // Scroll to bottom
     function scrollToBottom() {
       messageList.scrollTop = messageList.scrollHeight;
     }
 
+    // Decode JWT
     function getMyUserId() {
       try {
         const payload = JSON.parse(atob(token.split(".")[1]));
