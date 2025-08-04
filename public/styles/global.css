@@ -1,34 +1,25 @@
-/* global.css - Apply across all pages */
+/* global.css */
 
-:root { --primary-color: #4a90e2; --dark-bg: #121212; --light-bg: #ffffff; --text-light: #f0f0f0; --text-dark: #222222; --accent-color: #ff9800; --border-radius: 12px; }
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
 
-body { margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: var(--dark-bg); color: var(--text-light); }
+.modal.hidden {
+  display: none;
+}
 
-button, input, textarea, select { font-family: inherit; font-size: 1rem; border-radius: var(--border-radius); border: 1px solid #333; padding: 0.5em 1em; background-color: #1e1e1e; color: var(--text-light); }
-
-button:hover { background-color: var(--primary-color); color: #fff; }
-
-a { color: var(--primary-color); text-decoration: none; }
-
-a:hover { text-decoration: underline; }
-
-.container { max-width: 1200px; margin: 0 auto; padding: 1rem; }
-
-.card { background-color: #1f1f1f; border-radius: var(--border-radius); padding: 1rem; margin: 1rem 0; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-
-.flex { display: flex; }
-
-.flex-between { display: flex; justify-content: space-between; align-items: center; }
-
-.flex-center { display: flex; justify-content: center; align-items: center; }
-
-.hidden { display: none; }
-
-/* Scrollbar Styling */ ::-webkit-scrollbar { width: 8px; }
-
-::-webkit-scrollbar-track { background: #1e1e1e; }
-
-::-webkit-scrollbar-thumb { background: var(--primary-color); border-radius: 4px; }
-
-/* Add additional universal utility classes as needed */
-
+.modal-content {
+  background: #222;
+  padding: 2rem;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 400px;
+}
