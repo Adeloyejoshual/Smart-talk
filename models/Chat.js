@@ -9,7 +9,7 @@ const ChatSchema = new mongoose.Schema(
       required: true,
     },
     receiver: {
-      type: mongoose.Schema.Types.ObjectId,
+      type: mngoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
     },
