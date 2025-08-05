@@ -1,4 +1,5 @@
-<!DOCTYPE html><html lang="en">
+<!DOCTYPE html>
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -8,35 +9,41 @@
   <script defer src="./js/theme.js"></script>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@3.4.1/dist/tailwind.min.css" rel="stylesheet" />
 </head>
-<body class="bg-gray-200 dark:bg-gray-900 text-gray-900 dark:text-white">  <div class="max-w-md mx-auto h-screen flex flex-col border border-gray-300 dark:border-gray-700 rounded-md overflow-hidden">
+<body class="bg-gray-200 dark:bg-gray-900 text-gray-900 dark:text-white">
+
+  <div class="max-w-md mx-auto h-screen flex flex-col border border-gray-300 dark:border-gray-700 rounded-md overflow-hidden">
+
     <!-- Header -->
     <div class="flex items-center justify-between px-4 py-3 bg-white dark:bg-gray-800 border-b dark:border-gray-700">
       <button onclick="goHome()" class="text-xl">&#8592;</button>
       <h1 id="chat-username" class="font-semibold text-lg truncate">Username</h1>
       <button onclick="openSettingsModal()" class="text-xl">&#8942;</button>
-    </div><!-- Messages Area -->
-<div id="chat-box" class="flex-1 overflow-y-auto px-4 py-2 bg-gray-100 dark:bg-gray-800 space-y-2">
-  <!-- Sticky Date Example -->
-  <div class="sticky top-0 text-center text-xs bg-gray-300 dark:bg-gray-700 py-1 rounded">Aug 5, 2025</div>
-  <!-- Messages will be dynamically inserted here -->
-</div>
+    </div>
 
-<!-- Typing indicator -->
-<div id="typing-indicator" class="px-4 py-1 text-sm text-gray-600 dark:text-gray-400 hidden">User is typing...</div>
+    <!-- Messages -->
+    <div id="chat-box" class="flex-1 overflow-y-auto px-4 py-2 bg-gray-100 dark:bg-gray-800 space-y-2">
+      <!-- Sticky Date Example -->
+      <div id="sticky-date" class="sticky top-0 text-center text-xs bg-gray-300 dark:bg-gray-700 py-1 rounded hidden"></div>
+    </div>
 
-<!-- Message Input Area -->
-<form id="message-form" class="p-3 bg-white dark:bg-gray-900 border-t dark:border-gray-700 flex items-center gap-2">
-  <label for="image-upload" class="cursor-pointer">
-    <svg class="w-6 h-6 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" d="M3 16l4-4a2 2 0 012.828 0L15 17l4-4M4 7h16" />
-    </svg>
-    <input type="file" id="image-upload" class="hidden" accept="image/*" />
-  </label>
-  <input type="text" id="message-input" placeholder="Type a message..." class="flex-1 px-3 py-2 rounded-full border dark:border-gray-600 bg-gray-100 dark:bg-gray-700 focus:outline-none" />
-  <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-full">Send</button>
-</form>
+    <!-- Typing -->
+    <div id="typing-indicator" class="px-4 py-1 text-sm text-gray-600 dark:text-gray-400 hidden">User is typing...</div>
 
-  </div>  <!-- Chat Settings Modal -->  <div id="chat-settings-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-end justify-center z-50">
+    <!-- Message input -->
+    <form id="message-form" class="p-3 bg-white dark:bg-gray-900 border-t dark:border-gray-700 flex items-center gap-2">
+      <label for="image-upload" class="cursor-pointer">
+        <svg class="w-6 h-6 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 16l4-4a2 2 0 012.828 0L15 17l4-4M4 7h16" />
+        </svg>
+        <input type="file" id="image-upload" class="hidden" accept="image/*" />
+      </label>
+      <input type="text" id="message-input" placeholder="Type a message..." class="flex-1 px-3 py-2 rounded-full border dark:border-gray-600 bg-gray-100 dark:bg-gray-700 focus:outline-none" />
+      <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-full">Send</button>
+    </form>
+  </div>
+
+  <!-- Chat Settings Modal -->
+  <div id="chat-settings-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-end justify-center z-50">
     <div class="bg-white dark:bg-gray-800 w-full max-w-md rounded-t-xl p-4">
       <h2 class="text-lg font-bold mb-3">Chat Settings</h2>
       <ul class="space-y-2">
@@ -45,5 +52,6 @@
         <li><button onclick="closeSettingsModal()" class="w-full text-left mt-3 text-sm text-gray-500">Close</button></li>
       </ul>
     </div>
-  </div></body>
+  </div>
+</body>
 </html>
