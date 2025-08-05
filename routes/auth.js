@@ -1,19 +1,18 @@
 const express = require("express");
-const router = express.Router();
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
+
+const router = express.Router();
 
 // ✅ Register
 router.post("/register", async (req, res) => {
   try {
     const { username, email, password } = req.body;
 
-    // Check required fields
     if (!username || !email || !password) {
       return res.status(400).json({ error: "Username, email, and password are required" });
     }
 
-    // Check if user exists
     const existingUser = await User.findOne({
       $or: [{ username }, { email }],
     });
@@ -22,12 +21,11 @@ router.post("/register", async (req, res) => {
       return res.status(400).json({ error: "Username or email already in use" });
     }
 
-    // Create new user
     const user = new User({ username, email, password });
     await user.save();
 
     res.status(201).json({
-      message: "User registered successfully",
+      message: "User created",
       user: {
         id: user._id,
         username: user.username,
@@ -35,22 +33,22 @@ router.post("/register", async (req, res) => {
       },
     });
   } catch (err) {
-    console.error("Registration Error:", err);
+    console.error("❌ Registration Error:", err);
     res.status(500).json({ error: "Server error during registration" });
   }
 });
 
-// ✅ Login (username or email allowed)
+// ✅ Login with email or username
 router.post("/login", async (req, res) => {
   try {
-    const { emailOrUsername, password } = req.body;
+    const { email, username, password } = req.body;
 
-    if (!emailOrUsername || !password) {
-      return res.status(400).json({ error: "Username or email and password are required" });
+    if (!password || (!email && !username)) {
+      return res.status(400).json({ error: "Username/email and password are required" });
     }
 
     const user = await User.findOne({
-      $or: [{ email: emailOrUsername }, { username: emailOrUsername }],
+      $or: [{ email }, { username }],
     });
 
     if (!user || !(await user.comparePassword(password))) {
@@ -70,7 +68,7 @@ router.post("/login", async (req, res) => {
       },
     });
   } catch (err) {
-    console.error("Login Error:", err);
+    console.error("❌ Login Error:", err);
     res.status(500).json({ error: "Server error during login" });
   }
 });
