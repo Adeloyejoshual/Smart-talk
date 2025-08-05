@@ -1,24 +1,18 @@
-// /public/js/private-chat.js
+// js/private-chat.js
 
-const socket = io("https://your-backend-url"); // Or just io() if same domain
-
-const userToken = localStorage.getItem("token");
+const socket = io();
 const urlParams = new URLSearchParams(window.location.search);
 const otherUserId = urlParams.get("id");
+const chatBox = document.getElementById("chat-box");
+const messageForm = document.getElementById("message-form");
+const messageInput = document.getElementById("message-input");
+const typingIndicator = document.getElementById("typing-indicator");
+const chatUsername = document.getElementById("chat-username");
+const imageUpload = document.getElementById("image-upload");
 
-let myUserId = null;
-let lastDateLabel = null;
-
-// Auth fetch for username
-fetch("/api/users/me", {
-  headers: { Authorization: `Bearer ${userToken}` }
-})
-  .then(res => res.json())
-  .then(user => {
-    myUserId = user._id;
-    loadMessages();
-    socket.emit("join", myUserId);
-  });
+let userId = null;
+let lastDate = null;
+let typingTimeout;
 
 function goHome() {
   window.location.href = "/home.html";
@@ -27,113 +21,166 @@ function goHome() {
 function openSettingsModal() {
   document.getElementById("chat-settings-modal").classList.remove("hidden");
 }
+
 function closeSettingsModal() {
   document.getElementById("chat-settings-modal").classList.add("hidden");
 }
 
+// Simulated edit/delete (replace with real API later)
 function editMessage() {
-  alert("Edit message feature coming soon.");
+  alert("Edit functionality coming soon!");
 }
 function deleteMessage() {
-  alert("Delete message feature coming soon.");
+  alert("Delete functionality coming soon!");
 }
 
-document.getElementById("message-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const input = document.getElementById("message-input");
-  const text = input.value.trim();
-  const file = document.getElementById("image-upload").files[0];
-
-  if (!text && !file) return;
-
-  if (file) {
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("receiverId", otherUserId);
-
-    const res = await fetch("/api/messages/file", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${userToken}` },
-      body: formData,
-    });
-
-    const result = await res.json();
-    addMessageToUI({
-      sender: myUserId,
-      fileUrl: result.data.fileUrl,
-      createdAt: new Date().toISOString(),
-    });
-  }
-
-  if (text) {
-    socket.emit("privateMessage", {
-      senderId: myUserId,
-      receiverId: otherUserId,
-      content: text,
-    });
-
-    addMessageToUI({
-      sender: myUserId,
-      content: text,
-      createdAt: new Date().toISOString(),
-    });
-  }
-
-  input.value = "";
-  document.getElementById("image-upload").value = "";
-});
-
-socket.on("privateMessage", (data) => {
-  addMessageToUI({
-    sender: data.senderId,
-    content: data.content,
-    createdAt: data.timestamp,
+// === Load user info and chat ===
+async function loadChat() {
+  const token = localStorage.getItem("token");
+  const res = await fetch("/api/users/me", {
+    headers: { Authorization: "Bearer " + token },
   });
-});
+  const user = await res.json();
+  userId = user._id;
 
-function loadMessages() {
-  fetch(`/api/messages/private/${otherUserId}`, {
-    headers: { Authorization: `Bearer ${userToken}` },
-  })
-    .then(res => res.json())
-    .then(messages => {
-      messages.forEach(msg => addMessageToUI(msg));
-    });
+  socket.emit("join", userId);
+
+  // Load other user's name
+  const friendRes = await fetch(`/api/users/chats`, {
+    headers: { Authorization: "Bearer " + token },
+  });
+  const friends = await friendRes.json();
+  const otherUser = friends.find((f) => f._id === otherUserId);
+  if (otherUser) chatUsername.textContent = otherUser.username;
+
+  // Load chat messages
+  const msgRes = await fetch(`/api/messages/private/${otherUserId}`, {
+    headers: { Authorization: "Bearer " + token },
+  });
+  const messages = await msgRes.json();
+  messages.forEach(renderMessage);
+  scrollToBottom();
 }
 
-function addMessageToUI(msg) {
-  const chatBox = document.getElementById("chat-box");
+function scrollToBottom() {
+  chatBox.scrollTop = chatBox.scrollHeight;
+}
 
-  const dateLabel = new Date(msg.createdAt).toDateString();
-  if (lastDateLabel !== dateLabel) {
+// === Render message ===
+function renderMessage(msg) {
+  const date = new Date(msg.createdAt).toDateString();
+  if (lastDate !== date) {
     const dateDiv = document.createElement("div");
     dateDiv.className = "sticky top-0 text-center text-xs bg-gray-300 dark:bg-gray-700 py-1 rounded";
-    dateDiv.textContent = dateLabel;
+    dateDiv.textContent = date;
     chatBox.appendChild(dateDiv);
-    lastDateLabel = dateLabel;
+    lastDate = date;
   }
 
-  const div = document.createElement("div");
-  div.className = `max-w-xs px-4 py-2 rounded-lg ${msg.sender === myUserId ? 'bg-blue-600 text-white ml-auto' : 'bg-gray-300 text-black dark:bg-gray-700 dark:text-white mr-auto'}`;
+  const msgDiv = document.createElement("div");
+  msgDiv.className = `flex ${msg.sender === userId ? "justify-end" : "justify-start"}`;
+  const bubble = document.createElement("div");
+  bubble.className = `max-w-xs px-3 py-2 rounded-lg ${
+    msg.sender === userId
+      ? "bg-blue-600 text-white"
+      : "bg-gray-300 dark:bg-gray-700 text-black dark:text-white"
+  }`;
 
   if (msg.fileUrl) {
     const img = document.createElement("img");
     img.src = msg.fileUrl;
-    img.className = "max-w-full rounded";
-    div.appendChild(img);
+    img.className = "rounded max-w-[200px] max-h-[200px]";
+    bubble.appendChild(img);
   }
 
   if (msg.content) {
-    const text = document.createElement("p");
-    text.textContent = msg.content;
-    div.appendChild(text);
+    const p = document.createElement("p");
+    p.textContent = msg.content;
+    bubble.appendChild(p);
   }
 
   const time = document.createElement("div");
   time.className = "text-xs mt-1 text-right opacity-70";
-  time.textContent = new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  div.appendChild(time);
+  time.textContent = new Date(msg.createdAt).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  bubble.appendChild(time);
 
-  chatBox.appendChild(div);
-  chatBox.scrollTop = chatBox.scrollHeight;
+  msgDiv.appendChild(bubble);
+  chatBox.appendChild(msgDiv);
 }
+
+// === Send message ===
+messageForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const text = messageInput.value.trim();
+  if (!text && !imageUpload.files[0]) return;
+
+  const formData = new FormData();
+  formData.append("receiverId", otherUserId);
+  if (text) formData.append("content", text);
+  if (imageUpload.files[0]) formData.append("file", imageUpload.files[0]);
+
+  const token = localStorage.getItem("token");
+  const res = await fetch("/api/messages/private/send", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + token },
+    body: formData,
+  });
+
+  const data = await res.json();
+  socket.emit("privateMessage", {
+    senderId: userId,
+    receiverId: otherUserId,
+    content: data.content,
+    fileUrl: data.fileUrl,
+    createdAt: data.createdAt,
+  });
+
+  renderMessage({
+    ...data,
+    sender: userId,
+    createdAt: data.createdAt || new Date().toISOString(),
+  });
+
+  messageInput.value = "";
+  imageUpload.value = "";
+  scrollToBottom();
+});
+
+// === Typing Indicator ===
+messageInput.addEventListener("input", () => {
+  socket.emit("typing", { from: userId, to: otherUserId });
+  clearTimeout(typingTimeout);
+  typingTimeout = setTimeout(() => {
+    socket.emit("stopTyping", { from: userId, to: otherUserId });
+  }, 1000);
+});
+
+socket.on("typing", ({ from }) => {
+  if (from === otherUserId) {
+    typingIndicator.classList.remove("hidden");
+  }
+});
+
+socket.on("stopTyping", ({ from }) => {
+  if (from === otherUserId) {
+    typingIndicator.classList.add("hidden");
+  }
+});
+
+// === Receive Message ===
+socket.on("privateMessage", (msg) => {
+  if (msg.senderId === otherUserId) {
+    renderMessage({
+      sender: msg.senderId,
+      content: msg.content,
+      fileUrl: msg.fileUrl,
+      createdAt: msg.timestamp || new Date().toISOString(),
+    });
+    scrollToBottom();
+  }
+});
+
+loadChat();
