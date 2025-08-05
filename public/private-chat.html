@@ -2,108 +2,45 @@
 <html lang="en" class="dark">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SmartTalk - Private Chat</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Private Chat</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <script defer src="/js/private-chat.js"></script>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-  <script>
-    // Ensure dark mode is applied based on toggle
-    if (localStorage.getItem("darkMode") === "true") {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-    }
-  </script>
 </head>
-<body class="h-screen w-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 flex flex-col">
+<body class="bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white h-screen flex flex-col">
 
   <!-- Header -->
-  <div class="flex items-center p-4 shadow bg-white dark:bg-gray-800">
-    <img id="chat-avatar" src="" alt="Avatar" class="w-10 h-10 rounded-full mr-3" />
-    <div class="flex flex-col">
-      <span id="chat-username" class="font-bold text-lg"></span>
-      <span id="chat-email" class="text-sm text-gray-500 dark:text-gray-400"></span>
-    </div>
+  <div class="flex items-center justify-between p-4 bg-gray-200 dark:bg-gray-900 shadow-md">
+    <a href="/home.html" class="text-2xl font-bold">&larr;</a>
+    <h2 id="chat-username" class="text-xl font-semibold">User Name</h2>
+    <button id="chat-settings" class="text-2xl font-bold">⋮</button>
   </div>
 
-  <!-- Chat messages -->
-  <div id="chat-box" class="flex-1 overflow-y-auto p-4 space-y-2 bg-gray-50 dark:bg-gray-800">
-    <!-- Messages will be appended here -->
+  <!-- Chat thread -->
+  <div id="chat-thread" class="flex-1 overflow-y-auto p-3 space-y-2">
+    <!-- Messages will be inserted here -->
   </div>
 
-  <!-- Message input -->
-  <form id="chat-form" class="flex items-center p-3 border-t dark:border-gray-700 bg-white dark:bg-gray-900">
-    <label for="fileInput" class="cursor-pointer mr-2">
-      <input id="fileInput" type="file" hidden />
-      📎
+  <!-- Message input area -->
+  <form id="chat-form" class="bg-gray-100 dark:bg-gray-700 p-3 flex items-center gap-2">
+    <input id="message-input" type="text" placeholder="Type a message" class="flex-1 rounded px-4 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-white" />
+    
+    <!-- Image input -->
+    <label for="file-input" class="cursor-pointer">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-500 dark:text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 16l4-4a3 3 0 014 0l4 4M13 12h1a4 4 0 010 8H6a4 4 0 010-8h1"/>
+      </svg>
     </label>
-    <input type="text" id="messageInput" placeholder="Type a message" class="flex-1 px-4 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 focus:outline-none" />
-    <button type="submit" class="ml-2 px-4 py-2 bg-blue-600 text-white rounded-lg">Send</button>
+    <input id="file-input" type="file" accept="image/*" hidden>
+
+    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Send</button>
   </form>
 
-  <script>
-    const token = localStorage.getItem("token");
-    const receiverId = localStorage.getItem("chatWith"); // should be set when opening this chat
-    const apiUrl = "/api/messages/private";
-    const chatBox = document.getElementById("chat-box");
+  <!-- Preview image -->
+  <div id="image-preview" class="p-3 hidden">
+    <img id="preview-img" src="" class="max-h-40 rounded" alt="Image preview"/>
+  </div>
 
-    async function loadChat() {
-      const res = await fetch(`${apiUrl}/${receiverId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      renderMessages(data);
-    }
-
-    function renderMessages(messages) {
-      chatBox.innerHTML = "";
-      messages.forEach(msg => {
-        const div = document.createElement("div");
-        div.className = msg.sender === receiverId
-          ? "bg-gray-300 dark:bg-gray-700 text-black dark:text-white rounded-lg p-2 max-w-xs"
-          : "bg-blue-600 text-white rounded-lg p-2 self-end max-w-xs ml-auto";
-        div.innerHTML = msg.content || `<img src="${msg.fileUrl}" class="rounded-lg max-w-full" />`;
-        chatBox.appendChild(div);
-      });
-      chatBox.scrollTop = chatBox.scrollHeight;
-    }
-
-    document.getElementById("chat-form").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const message = document.getElementById("messageInput").value.trim();
-      if (!message) return;
-
-      await fetch(apiUrl, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ receiverId, content: message })
-      });
-
-      document.getElementById("messageInput").value = "";
-      loadChat();
-    });
-
-    document.getElementById("fileInput").addEventListener("change", async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("receiverId", receiverId);
-
-      await fetch("/api/messages/file", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData
-      });
-
-      loadChat();
-    });
-
-    // Load chat initially
-    loadChat();
-  </script>
 </body>
 </html>
