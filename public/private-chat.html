@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en" class="dark-mode">
+<head>
+  <meta charset="UTF-8">
+  <title>Private Chat | SmartTalk</title>
+  <link href="/css/styles.css" rel="stylesheet">
+</head>
+<body class="bg-white dark:bg-gray-900 text-black dark:text-white">
+  <div id="chatContainer" class="p-4 max-w-xl mx-auto">
+    <button id="backButton" class="mb-2 text-sm text-blue-600">← Back</button>
+    
+    <ul id="messageList" class="space-y-2 max-h-[60vh] overflow-y-auto border p-2 rounded"></ul>
+
+    <form id="messageForm" class="mt-4 flex gap-2">
+      <input type="text" id="messageInput" placeholder="Type a message..." class="flex-1 p-2 rounded border" />
+      <input type="file" id="privateImageInput" multiple accept="image/*" class="hidden" />
+      <button type="button" id="uploadBtn">📷</button>
+      <button type="submit" class="bg-blue-600 text-white px-3 py-1 rounded">Send</button>
+    </form>
+
+    <div id="previewContainer" class="mt-2 flex gap-2 flex-wrap"></div>
+
+    <button id="exportBtn" class="mt-4 text-xs text-gray-500">Export chat history</button>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/private-chat.js" defer></script>
+</body>
+</html>
