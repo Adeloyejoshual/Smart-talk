@@ -2,94 +2,116 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Settings - SmartTalk</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <script src="https://cdn.tailwindcss.com"></script>
+  <title>SmartTalk - Settings</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
 </head>
-<body class="bg-black text-white flex flex-col min-h-screen">
+<body class="bg-gray-100 min-h-screen flex flex-col items-center">
 
   <!-- Header -->
-  <div class="bg-[#5C2C24] p-4 shadow-md">
-    <h1 class="text-lg font-bold text-orange-400">Settings</h1>
+  <div class="w-full bg-blue-600 p-4 text-white text-center text-xl font-bold">
+    Settings
   </div>
 
-  <!-- Profile -->
-  <div class="flex flex-col items-center py-6 px-4">
-    <div class="mb-4">
-      <img id="avatarImage" src="/default-avatar.png" alt="Avatar" class="w-24 h-24 rounded-full border border-gray-600 object-cover" />
-    </div>
-    <form id="avatarForm" class="mb-6">
-      <input type="file" id="avatarInput" name="avatar" accept="image/*" class="text-sm" />
-      <button type="submit" class="bg-orange-600 mt-2 text-sm px-4 py-1 rounded">Upload</button>
+  <!-- Profile Section -->
+  <div class="flex flex-col items-center my-6">
+    <form id="avatarForm" enctype="multipart/form-data">
+      <label for="avatarInput">
+        <img id="avatarPreview" src="default-avatar.png" alt="Profile Picture"
+          class="w-24 h-24 rounded-full object-cover cursor-pointer border-4 border-blue-500 hover:opacity-80 transition" />
+      </label>
+      <input type="file" name="avatar" id="avatarInput" accept="image/*" class="hidden" />
     </form>
-    <div id="usernameDisplay" class="text-lg font-semibold text-orange-400 mb-4">Username</div>
+
+    <!-- Username and Email -->
+    <div class="text-center mt-3">
+      <h2 id="username" class="text-lg font-semibold text-gray-800"></h2>
+      <p id="email" class="text-sm text-gray-500"></p>
+    </div>
   </div>
 
-  <!-- Actions -->
-  <div class="flex flex-col gap-4 px-4">
-    <button onclick="inviteFriends()" class="bg-gray-800 border border-gray-600 py-3 px-4 rounded text-left hover:bg-gray-700">
-      📩 Invite Friends
+  <!-- Options -->
+  <div class="w-full max-w-sm space-y-4 mt-4">
+    <a href="#" class="block w-full text-center py-3 bg-green-500 text-white rounded-lg shadow hover:bg-green-600">
+      Invite Friends
+    </a>
+
+    <a href="contact.html" class="block w-full text-center py-3 bg-yellow-500 text-white rounded-lg shadow hover:bg-yellow-600">
+      Contact
+    </a>
+
+    <button id="logoutBtn" class="block w-full text-center py-3 bg-red-500 text-white rounded-lg shadow hover:bg-red-600">
+      Logout
     </button>
-    <button onclick="goToContact()" class="bg-gray-800 border border-gray-600 py-3 px-4 rounded text-left hover:bg-gray-700">
-      📬 Contact
-    </button>
-    <button onclick="logout()" class="bg-red-600 py-3 px-4 rounded text-left hover:bg-red-700 text-white">
-      🚪 Logout
-    </button>
+  </div>
+
+  <!-- Bottom Navigation -->
+  <div class="fixed bottom-0 w-full bg-white border-t flex justify-around py-2">
+    <a href="home.html" class="text-center text-blue-600 font-bold">Home</a>
+    <a href="call.html" class="text-center text-gray-600">Call</a>
+    <a href="settings.html" class="text-center text-gray-600">Settings</a>
   </div>
 
   <!-- Script -->
   <script>
     const token = localStorage.getItem("token");
 
-    async function loadProfile() {
-      const res = await fetch("/api/users/me", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const user = await res.json();
-      document.getElementById("usernameDisplay").innerText = user.username || user.email;
-      if (user.avatar) {
-        document.getElementById("avatarImage").src = user.avatar;
-      }
-    }
-
-    document.getElementById("avatarForm").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const fileInput = document.getElementById("avatarInput");
-      if (!fileInput.files[0]) return alert("Please choose a file");
-
+    // Auto-upload avatar
+    document.getElementById("avatarInput").addEventListener("change", async function () {
       const formData = new FormData();
-      formData.append("avatar", fileInput.files[0]);
+      formData.append("avatar", this.files[0]);
 
-      const res = await fetch("/api/users/upload-avatar", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData
-      });
+      try {
+        const res = await fetch("/api/users/upload-avatar", {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer " + token
+          },
+          body: formData
+        });
 
-      const data = await res.json();
-      if (data.avatar) {
-        document.getElementById("avatarImage").src = data.avatar;
-        alert("✅ Profile picture updated!");
-      } else {
-        alert("❌ Upload failed");
+        const data = await res.json();
+
+        if (data.avatar) {
+          document.getElementById("avatarPreview").src = data.avatar;
+        } else {
+          alert("Failed to upload avatar.");
+        }
+      } catch (err) {
+        alert("Upload error");
+        console.error(err);
       }
     });
 
-    function inviteFriends() {
-      alert("Share SmartTalk with your friends!");
-    }
+    // Load current user info
+    (async () => {
+      try {
+        const res = await fetch("/api/users/me", {
+          headers: {
+            Authorization: "Bearer " + token
+          }
+        });
 
-    function goToContact() {
-      window.location.href = "contact.html";
-    }
+        const user = await res.json();
+        if (user.avatar) {
+          document.getElementById("avatarPreview").src = user.avatar;
+        }
+        if (user.username) {
+          document.getElementById("username").textContent = user.username;
+        }
+        if (user.email) {
+          document.getElementById("email").textContent = user.email;
+        }
+      } catch (err) {
+        console.error("Could not load user data");
+      }
+    })();
 
-    function logout() {
-      localStorage.clear();
-      window.location.href = "/login.html";
-    }
-
-    loadProfile();
+    // Logout
+    document.getElementById("logoutBtn").addEventListener("click", () => {
+      localStorage.removeItem("token");
+      window.location.href = "index.html";
+    });
   </script>
 </body>
 </html>
