@@ -73,6 +73,12 @@
         }
       });
 
+      // Logout
+      function logout() {
+        localStorage.removeItem("token");
+        window.location.href = "/login.html";
+      }
+
       // Dark mode toggle from localStorage
       if (localStorage.getItem("darkToggle") === "true") {
         document.documentElement.classList.add("dark");
