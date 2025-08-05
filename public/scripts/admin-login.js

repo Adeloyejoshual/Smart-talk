@@ -1,0 +1,33 @@
+document.addEventListener("DOMContentLoaded", () => {
+  const form = document.getElementById("adminLoginForm");
+  const message = document.getElementById("message");
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const email = form.email.value.trim();
+    const password = form.password.value.trim();
+
+    try {
+      const res = await fetch("/api/admin/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password })
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.token) {
+        localStorage.setItem("adminToken", data.token);
+        window.location.href = "/admin.html";
+      } else {
+        message.innerText = data.message || "Invalid admin credentials";
+        message.style.color = "red";
+      }
+    } catch (err) {
+      console.error("Login error:", err);
+      message.innerText = "Server error";
+      message.style.color = "red";
+    }
+  });
+});
