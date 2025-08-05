@@ -1,5 +1,7 @@
 document.addEventListener("DOMContentLoaded", () => {
   const token = localStorage.getItem("token");
+  if (!token) return (window.location.href = "/login.html");
+
   const searchInput = document.getElementById("searchInput");
   const searchResults = document.getElementById("searchResults");
   const friendList = document.getElementById("friendList");
@@ -9,7 +11,7 @@ document.addEventListener("DOMContentLoaded", () => {
     Authorization: `Bearer ${token}`,
   };
 
-  // Load friend list
+  // Load all friends
   async function loadFriends() {
     try {
       const res = await fetch("/api/users/list", { headers });
@@ -19,50 +21,61 @@ document.addEventListener("DOMContentLoaded", () => {
       data.forEach(user => {
         const li = document.createElement("li");
         li.innerHTML = `
-          <span>${user.username} (${user.email})</span>
-          <button class="chatBtn" data-id="${user._id}">💬</button>
-          <button class="removeBtn" data-id="${user._id}">❌</button>
+          <div class="bg-white p-2 rounded shadow flex justify-between items-center">
+            <span>${user.username} (${user.email})</span>
+            <div>
+              <button class="chatBtn text-green-600" data-id="${user._id}">💬</button>
+              <button class="removeBtn text-red-600 ml-2" data-id="${user._id}">❌</button>
+            </div>
+          </div>
         `;
         friendList.appendChild(li);
       });
     } catch (err) {
-      console.error("Failed to load friends", err);
+      console.error("Failed to load friends:", err);
     }
   }
 
-  // Handle user search
+  // Handle search
   searchInput.addEventListener("input", async () => {
     const query = searchInput.value.trim();
     if (!query) return (searchResults.innerHTML = "");
 
-    const res = await fetch(`/api/users/search?q=${encodeURIComponent(query)}`, {
-      headers,
-    });
-    const data = await res.json();
-    searchResults.innerHTML = "";
+    try {
+      const res = await fetch(`/api/users/search?q=${encodeURIComponent(query)}`, { headers });
+      const users = await res.json();
+      searchResults.innerHTML = "";
 
-    data.forEach(user => {
-      const div = document.createElement("div");
-      div.innerHTML = `
-        <strong>${user.username}</strong> (${user.email})
-        <button class="addBtn" data-id="${user._id}">➕ Add</button>
-      `;
-      searchResults.appendChild(div);
-    });
+      users.forEach(user => {
+        const div = document.createElement("div");
+        div.className = "bg-white p-2 rounded shadow flex justify-between items-center";
+        div.innerHTML = `
+          <span><strong>${user.username}</strong> (${user.email})</span>
+          <button class="addBtn text-blue-500" data-id="${user._id}">➕ Add</button>
+        `;
+        searchResults.appendChild(div);
+      });
+    } catch (err) {
+      console.error("Search failed:", err);
+    }
   });
 
   // Add friend
   searchResults.addEventListener("click", async (e) => {
     if (e.target.classList.contains("addBtn")) {
       const friendId = e.target.dataset.id;
-      await fetch("/api/users/add-friend", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ friendId }),
-      });
-      searchInput.value = "";
-      searchResults.innerHTML = "";
-      loadFriends();
+      try {
+        await fetch("/api/users/add-friend", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ friendId }),
+        });
+        searchInput.value = "";
+        searchResults.innerHTML = "";
+        loadFriends();
+      } catch (err) {
+        console.error("Add friend failed:", err);
+      }
     }
   });
 
@@ -70,11 +83,15 @@ document.addEventListener("DOMContentLoaded", () => {
   friendList.addEventListener("click", async (e) => {
     if (e.target.classList.contains("removeBtn")) {
       const friendId = e.target.dataset.id;
-      await fetch(`/api/users/remove-friend/${friendId}`, {
-        method: "DELETE",
-        headers,
-      });
-      loadFriends();
+      try {
+        await fetch(`/api/users/remove-friend/${friendId}`, {
+          method: "DELETE",
+          headers,
+        });
+        loadFriends();
+      } catch (err) {
+        console.error("Remove friend failed:", err);
+      }
     }
   });
 
@@ -82,19 +99,22 @@ document.addEventListener("DOMContentLoaded", () => {
   friendList.addEventListener("click", (e) => {
     if (e.target.classList.contains("chatBtn")) {
       const friendId = e.target.dataset.id;
-      window.location.href = `/chat.html?user=${friendId}`;
+      localStorage.setItem("receiverId", friendId);
+      window.location.href = "/chat.html";
     }
   });
 
-  // Settings modal
+  // Open settings modal
   document.getElementById("settingsBtn").onclick = () => {
     document.getElementById("settingsModal").classList.remove("hidden");
   };
+
+  // Close settings modal
   document.getElementById("closeSettings").onclick = () => {
     document.getElementById("settingsModal").classList.add("hidden");
   };
 
-  // Theme toggle
+  // Toggle theme
   document.getElementById("themeToggle").onclick = () => {
     document.documentElement.dataset.theme =
       document.documentElement.dataset.theme === "dark" ? "light" : "dark";
@@ -103,9 +123,10 @@ document.addEventListener("DOMContentLoaded", () => {
   // Logout
   document.getElementById("logoutBtn").onclick = () => {
     localStorage.removeItem("token");
+    localStorage.removeItem("user");
     window.location.href = "/login.html";
   };
 
-  // Load friends on start
+  // Initial load
   loadFriends();
 });
