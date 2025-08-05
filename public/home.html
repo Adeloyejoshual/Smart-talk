@@ -11,7 +11,9 @@
   <!-- Header -->
   <div class="flex items-center justify-between px-4 py-3 bg-[#5C2C24] shadow">
     <h1 class="text-xl font-bold text-orange-400">SmartTalk</h1>
-    <button onclick="logout()" class="text-sm text-gray-100 hover:text-orange-400 font-semibold">Logout</button>
+    <button onclick="toggleSettings()" class="text-xl text-gray-100 hover:text-orange-400">
+      ⚙️
+    </button>
   </div>
 
   <!-- Search -->
@@ -30,7 +32,7 @@
     <!-- JS will populate chats -->
   </div>
 
-  <!-- Add Friend Floating Button -->
+  <!-- Floating + Add Button -->
   <button
     onclick="addFriendPrompt()"
     class="fixed bottom-20 right-4 bg-orange-600 hover:bg-orange-700 w-12 h-12 rounded-full text-white text-2xl flex items-center justify-center shadow-lg z-50"
@@ -41,7 +43,26 @@
   <div class="bg-[#1A1A1A] border-t border-gray-700 flex justify-around py-3 text-sm">
     <button class="text-orange-400 font-bold">Chats</button>
     <button onclick="window.location.href='/groups.html'" class="text-gray-400 hover:text-orange-400">Groups</button>
-    <button onclick="window.location.href='/settings.html'" class="text-gray-400 hover:text-orange-400">Call</button>
+    <button onclick="window.location.href='/call.html'" class="text-gray-400 hover:text-orange-400">Call</button>
+  </div>
+
+  <!-- Settings Modal -->
+  <div id="settingsModal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 hidden">
+    <div class="bg-[#1F1F1F] rounded-lg p-6 w-80 shadow-lg border border-gray-700">
+      <h2 class="text-lg font-bold text-orange-400 mb-4">Settings</h2>
+      <button
+        onclick="logout()"
+        class="w-full bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md font-semibold mb-2"
+      >
+        Logout
+      </button>
+      <button
+        onclick="toggleSettings()"
+        class="w-full bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-md"
+      >
+        Close
+      </button>
+    </div>
   </div>
 
   <!-- Script -->
@@ -96,6 +117,11 @@
       localStorage.removeItem("token");
       localStorage.removeItem("user");
       window.location.href = "/login.html";
+    }
+
+    function toggleSettings() {
+      const modal = document.getElementById("settingsModal");
+      modal.classList.toggle("hidden");
     }
 
     function addFriendPrompt() {
