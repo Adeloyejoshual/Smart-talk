@@ -1,181 +1,163 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Settings - SmartTalk</title>
+  <title>SmartTalk - Chats</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="/styles/home.css" />
-  <style>
-    body {
-      font-family: 'Segoe UI', sans-serif;
-      background-color: #121212;
-      color: #fff;
-      margin: 0;
-      padding: 0;
-    }
-    header {
-      display: flex;
-      align-items: center;
-      padding: 10px;
-      background-color: #1e1e1e;
-      border-bottom: 1px solid #333;
-    }
-    .back-arrow {
-      font-size: 24px;
-      cursor: pointer;
-      padding: 10px;
-      margin-right: 10px;
-      color: #fff;
-    }
-    .back-arrow:hover {
-      color: #ccc;
-    }
-    h1 {
-      font-size: 20px;
-      margin: 0;
-    }
-    main {
-      padding: 20px;
-    }
-    ul {
-      list-style: none;
-      padding: 0;
-    }
-    li {
-      margin-bottom: 15px;
-    }
-    button, a {
-      width: 100%;
-      padding: 10px;
-      border: none;
-      border-radius: 8px;
-      background: #0066cc;
-      color: #fff;
-      text-decoration: none;
-      font-size: 16px;
-      display: block;
-      text-align: center;
-    }
-    button:hover, a:hover {
-      background: #005bb5;
-    }
-
-    /* Modal Styling */
-    .modal {
-      display: none;
-      position: fixed;
-      z-index: 10;
-      left: 0;
-      top: 0;
-      width: 100%;
-      height: 100%;
-      background-color: rgba(0, 0, 0, 0.7);
-    }
-
-    .modal-content {
-      background-color: #1e1e1e;
-      margin: 10% auto;
-      padding: 20px;
-      border-radius: 10px;
-      width: 90%;
-      max-width: 400px;
-    }
-
-    #closeModal {
-      float: right;
-      font-size: 24px;
-      cursor: pointer;
-      color: #fff;
-    }
-
-    input, textarea {
-      width: 100%;
-      margin-top: 10px;
-      padding: 10px;
-      border-radius: 8px;
-      border: 1px solid #555;
-      background: #2b2b2b;
-      color: #fff;
-    }
-
-    textarea.hidden {
-      display: none;
-    }
-  </style>
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-  <header>
-    <span class="back-arrow" onclick="goBack()">←</span>
-    <h1>Settings</h1>
-  </header>
+<body class="bg-black text-gray-200 min-h-screen flex flex-col relative">
 
-  <main>
-    <ul>
-      <li><button id="editProfileBtn">Edit Profile</button></li>
-      <li><button id="customerServiceBtn">Customer Service</button></li>
-      <li><button id="contactBtn">Contact</button></li>
-    </ul>
-  </main>
+  <!-- Header -->
+  <div class="flex items-center justify-between px-4 py-3 bg-[#5C2C24] shadow">
+    <h1 class="text-xl font-bold text-orange-400">SmartTalk</h1>
+    <button onclick="openSettings()" class="text-sm text-gray-100 hover:text-orange-400 font-semibold">
+      ⚙️
+    </button>
+  </div>
 
-  <!-- Modal -->
-  <div id="formModal" class="modal">
-    <div class="modal-content">
-      <span id="closeModal">&times;</span>
-      <h2 id="formTitle"></h2>
-      <form id="settingsForm">
-        <input type="text" id="input1" placeholder="" required />
-        <textarea id="input2" placeholder="" rows="4" class="hidden"></textarea>
-        <button type="submit">Submit</button>
-      </form>
+  <!-- Search -->
+  <div class="flex items-center gap-2 px-4 pt-3 pb-2">
+    <input
+      id="searchInput"
+      type="text"
+      placeholder="Search chats..."
+      class="flex-1 bg-[#1F1F1F] border border-gray-700 text-sm text-white rounded-full px-4 py-2 focus:outline-none"
+    />
+    <button onclick="filterChats()" class="text-white text-lg">	➤</button>
+  </div>
+
+  <!-- Chat List -->
+  <div id="chatList" class="flex-1 overflow-y-auto px-4 py-2 divide-y divide-gray-700">
+    <!-- Chat items inserted here -->
+  </div>
+
+  <!-- Add Friend Button -->
+  <div class="fixed bottom-20 right-4">
+    <button onclick="addFriendPrompt()" class="w-12 h-12 text-2xl rounded-full bg-orange-600 hover:bg-orange-700 text-white shadow-lg">
+      +
+    </button>
+  </div>
+
+  <!-- Bottom Navigation -->
+  <div class="bg-[#1A1A1A] border-t border-gray-700 flex justify-around py-3 text-sm">
+    <button class="text-orange-400 font-bold">Chats</button>
+    <button onclick="window.location.href='/groups.html'" class="text-gray-400 hover:text-orange-400">Groups</button>
+    <button onclick="window.location.href='/calls.html'" class="text-gray-400 hover:text-orange-400">Call</button>
+  </div>
+
+  <!-- Settings Modal -->
+  <div id="settingsModal" class="hidden fixed top-0 left-0 w-full h-full bg-black bg-opacity-80 flex items-center justify-center z-50">
+    <div class="bg-[#1F1F1F] p-6 rounded-lg w-[90%] max-w-sm text-center">
+      <h2 class="text-xl font-bold mb-4 text-white">Settings</h2>
+      <button onclick="goToSettings()" class="w-full bg-gray-700 hover:bg-gray-600 text-white py-2 px-4 rounded mb-3">Open Settings</button>
+      <button onclick="logout()" class="w-full bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded">Logout</button>
+      <button onclick="closeSettings()" class="mt-4 text-sm text-gray-400 hover:text-white">Close</button>
     </div>
   </div>
 
+  <!-- Script -->
   <script>
-    function goBack() {
-      window.location.href = "/home.html";
+    const user = JSON.parse(localStorage.getItem("user"));
+    const token = localStorage.getItem("token");
+    let allChats = [];
+
+    async function fetchChats() {
+      try {
+        const res = await fetch("/api/users/chats", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const chats = await res.json();
+        if (!Array.isArray(chats)) return;
+        allChats = chats;
+        displayChats(chats);
+      } catch (err) {
+        console.error("❌ Chat load error:", err);
+      }
     }
 
-    const modal = document.getElementById("formModal");
-    const closeModal = document.getElementById("closeModal");
-    const formTitle = document.getElementById("formTitle");
-    const input1 = document.getElementById("input1");
-    const input2 = document.getElementById("input2");
-    const form = document.getElementById("settingsForm");
+    function displayChats(chats) {
+      const list = document.getElementById("chatList");
+      list.innerHTML = "";
 
-    document.getElementById("editProfileBtn").addEventListener("click", () => {
-      formTitle.textContent = "Edit Profile";
-      input1.placeholder = "New Username";
-      input2.classList.add("hidden");
-      modal.style.display = "block";
-    });
+      chats.forEach(chat => {
+        const div = document.createElement("div");
+        div.className = "flex items-center p-3 hover:bg-[#2c2c2c] cursor-pointer relative";
+        div.onclick = () => window.location.href = `/private-chat.html?user=${chat._id}`;
 
-    document.getElementById("customerServiceBtn").addEventListener("click", () => {
-      formTitle.textContent = "Customer Service";
-      input1.placeholder = "Your Email";
-      input2.placeholder = "Your Message";
-      input2.classList.remove("hidden");
-      modal.style.display = "block";
-    });
+        const lastTime = chat.time ? new Date(chat.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "";
 
-    document.getElementById("contactBtn").addEventListener("click", () => {
-      window.location.href = "mailto:smarttalkgit@gmail.com";
-    });
+        div.innerHTML = `
+          <img src="${chat.avatar || '/default-avatar.png'}" class="w-10 h-10 rounded-full mr-3 border border-gray-600" />
+          <div class="flex-1 min-w-0">
+            <div class="flex justify-between items-center">
+              <span class="font-semibold text-white text-base truncate">${chat.username || chat.name}</span>
+              <span class="text-xs text-gray-500">${lastTime}</span>
+            </div>
+            <div class="flex justify-between items-center mt-1">
+              <span class="text-sm text-gray-400 truncate">${chat.lastMessage || "Start chatting..."}</span>
+              ${chat.unreadCount > 0 ? `<span class="text-xs bg-orange-600 text-white rounded-full px-2 py-0.5 ml-2">${chat.unreadCount}</span>` : ""}
+            </div>
+          </div>
+        `;
 
-    closeModal.onclick = () => {
-      modal.style.display = "none";
-    };
+        list.appendChild(div);
+      });
+    }
 
-    window.onclick = (e) => {
-      if (e.target == modal) {
-        modal.style.display = "none";
-      }
-    };
+    function filterChats() {
+      const q = document.getElementById("searchInput").value.toLowerCase();
+      const filtered = allChats.filter(chat =>
+        (chat.username || "").toLowerCase().includes(q) ||
+        (chat.name || "").toLowerCase().includes(q) ||
+        (chat.email || "").toLowerCase().includes(q)
+      );
+      displayChats(filtered);
+    }
 
-    form.addEventListener("submit", (e) => {
-      e.preventDefault();
-      alert("Submitted!");
-      modal.style.display = "none";
-    });
+    function addFriendPrompt() {
+      const input = prompt("Enter friend's email or username:");
+      if (!input) return;
+
+      fetch("/api/users/add-friend", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ identifier: input })
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.error) return alert(data.error);
+          alert("✅ Friend added successfully!");
+          fetchChats();
+        })
+        .catch(err => {
+          console.error("Add friend error:", err);
+          alert("Error adding friend");
+        });
+    }
+
+    function openSettings() {
+      document.getElementById("settingsModal").classList.remove("hidden");
+    }
+
+    function closeSettings() {
+      document.getElementById("settingsModal").classList.add("hidden");
+    }
+
+    function goToSettings() {
+      window.location.href = "/settings.html";
+    }
+
+    function logout() {
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      window.location.href = "/login.html";
+    }
+
+    fetchChats();
   </script>
 </body>
 </html>
