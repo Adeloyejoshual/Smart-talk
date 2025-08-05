@@ -18,8 +18,8 @@ app.use(express.static(path.join(__dirname, "public")));
 // MongoDB
 mongoose
   .connect(process.env.MONGO_URI, {})
-  .then(() => console.log("MongoDB connected"))
-  .catch((err) => console.error("Mongo error:", err));
+  .then(() => console.log("✅ MongoDB connected"))
+  .catch((err) => console.error("❌ MongoDB error:", err));
 
 // Routes
 app.use("/api/auth", require("./routes/auth"));
@@ -28,13 +28,13 @@ app.use("/api/messages", require("./routes/messages"));
 app.use("/api/groups", require("./routes/groups"));
 app.use("/api/admin", require("./routes/admin"));
 
-// Start server
+// Start HTTP server
 const PORT = process.env.PORT || 3000;
 const server = app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
 
-// Socket.IO
+// Setup Socket.IO
 const io = socketIO(server, {
   cors: {
     origin: "*",
@@ -42,46 +42,58 @@ const io = socketIO(server, {
   },
 });
 
+// Message model
 const Message = require("./models/Message");
-const GroupMessage = require("./models/GroupMessage");
 
+// === SOCKET.IO EVENTS ===
 io.on("connection", (socket) => {
-  console.log("User connected:", socket.id);
+  console.log("📡 User connected:", socket.id);
 
+  // Join private room (user's ID)
   socket.on("join", (userId) => {
     socket.join(userId);
   });
 
+  // Private message
   socket.on("privateMessage", async ({ senderId, receiverId, content }) => {
-    const newMsg = new Message({ sender: senderId, receiver: receiverId, content });
+    const newMsg = new Message({
+      sender: senderId,
+      recipient: receiverId,
+      content,
+    });
     await newMsg.save();
 
     io.to(receiverId).emit("privateMessage", {
       senderId,
       content,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
   });
 
+  // Join group room
   socket.on("join-group", (groupId) => {
     socket.join(groupId);
   });
 
-  socket.on("group-message", async (msg) => {
-    const saved = await new GroupMessage({
-      group: msg.group,
-      sender: msg.sender._id || msg.sender,
-      text: msg.text,
-      createdAt: new Date(),
-    }).save();
+  // Group message
+  socket.on("group-message", async ({ group, sender, text }) => {
+    const newMsg = new Message({
+      sender: sender._id || sender,
+      group,
+      content: text,
+    });
+    await newMsg.save();
 
-    io.to(msg.group).emit("group-message", {
-      ...msg,
-      createdAt: saved.createdAt,
+    io.to(group).emit("group-message", {
+      group,
+      sender,
+      text,
+      timestamp: newMsg.createdAt,
     });
   });
 
+  // Disconnect
   socket.on("disconnect", () => {
-    console.log("User disconnected:", socket.id);
+    console.log("❌ User disconnected:", socket.id);
   });
 });
