@@ -1,149 +1,93 @@
 const socket = io();
-const chatThread = document.getElementById("chat-thread");
-const chatForm = document.getElementById("chat-form");
-const messageInput = document.getElementById("message-input");
-const fileInput = document.getElementById("file-input");
-const imagePreview = document.getElementById("image-preview");
-const previewImg = document.getElementById("preview-img");
-const chatUsername = document.getElementById("chat-username");
 
+// Get data from URL
+const urlParams = new URLSearchParams(window.location.search);
 const token = localStorage.getItem("token");
-const receiverId = new URLSearchParams(window.location.search).get("id"); // ?id=xxxx
+const otherUserId = urlParams.get("id");
+const username = urlParams.get("username");
 
-if (!token || !receiverId) {
-  alert("Missing token or chat target.");
-  window.location.href = "/home.html";
+document.getElementById("chat-username").textContent = username;
+
+// DOM
+const chatBox = document.getElementById("chat-box");
+const form = document.getElementById("message-form");
+const input = document.getElementById("message-input");
+
+// Fetch old messages
+async function loadMessages() {
+  const res = await fetch(`/api/messages/private/${otherUserId}`, {
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+  const messages = await res.json();
+  messages.forEach(drawMessage);
+  scrollToBottom();
 }
 
-let currentUserId;
+// Render messages
+function drawMessage(msg) {
+  const div = document.createElement("div");
+  const isMe = msg.sender === parseJwt(token).id;
+  div.className = `max-w-[70%] px-4 py-2 rounded-lg text-sm ${isMe ? 'bg-blue-600 text-white self-end ml-auto' : 'bg-gray-300 dark:bg-gray-700 dark:text-white self-start mr-auto'}`
+  div.textContent = msg.content;
+  chatBox.appendChild(div);
+}
 
-// === Load current user info ===
-fetch("/api/users/me", {
-  headers: {
-    Authorization: `Bearer ${token}`,
-  },
-})
-  .then((res) => res.json())
-  .then((user) => {
-    currentUserId = user._id;
-    socket.emit("join", currentUserId);
-  });
-
-// === Load receiver username ===
-fetch(`/api/users/chats`, {
-  headers: {
-    Authorization: `Bearer ${token}`,
-  },
-})
-  .then((res) => res.json())
-  .then((friends) => {
-    const user = friends.find((f) => f._id === receiverId);
-    if (user) chatUsername.textContent = user.username || "Chat";
-  });
-
-// === Load past messages ===
-fetch(`/api/messages/private/${receiverId}`, {
-  headers: {
-    Authorization: `Bearer ${token}`,
-  },
-})
-  .then((res) => res.json())
-  .then((messages) => {
-    messages.forEach(showMessage);
-    scrollToBottom();
-  });
-
-// === Send message ===
-chatForm.addEventListener("submit", async (e) => {
+// Submit message
+form.addEventListener("submit", async (e) => {
   e.preventDefault();
+  const content = input.value.trim();
+  if (!content) return;
 
-  const text = messageInput.value.trim();
-  const file = fileInput.files[0];
-
-  if (!text && !file) return;
-
-  const formData = new FormData();
-  formData.append("receiverId", receiverId);
-  if (file) formData.append("file", file);
-  if (text) formData.append("content", text);
-
-  const res = await fetch("/api/messages/private/send", {
+  const res = await fetch(`/api/messages/private/send`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`
     },
-    body: formData,
+    body: JSON.stringify({ recipientId: otherUserId, content })
   });
 
-  const data = await res.json();
-  if (data && data._id) {
-    showMessage(data);
-    messageInput.value = "";
-    fileInput.value = "";
-    imagePreview.classList.add("hidden");
-    previewImg.src = "";
+  const msg = await res.json();
+  drawMessage(msg);
+  socket.emit("privateMessage", {
+    senderId: msg.sender,
+    receiverId: msg.recipient,
+    content: msg.content
+  });
+
+  input.value = "";
+  scrollToBottom();
+});
+
+// Receive messages
+socket.on("privateMessage", (msg) => {
+  if (msg.senderId === otherUserId) {
+    drawMessage({ sender: msg.senderId, content: msg.content });
     scrollToBottom();
   }
 });
 
-// === Preview selected image ===
-fileInput.addEventListener("change", () => {
-  const file = fileInput.files[0];
-  if (file) {
-    const reader = new FileReader();
-    reader.onload = () => {
-      previewImg.src = reader.result;
-      imagePreview.classList.remove("hidden");
-    };
-    reader.readAsDataURL(file);
-  } else {
-    previewImg.src = "";
-    imagePreview.classList.add("hidden");
-  }
-});
-
-// === Listen for real-time incoming messages ===
-socket.on("privateMessage", (data) => {
-  if (data.senderId === receiverId) {
-    showMessage({
-      sender: receiverId,
-      content: data.content,
-      createdAt: data.timestamp,
-    });
-    scrollToBottom();
-  }
-});
-
-// === Show message in thread ===
-function showMessage(msg) {
-  const isSelf = msg.sender === currentUserId || msg.sender?._id === currentUserId;
-
-  const div = document.createElement("div");
-  div.className = `p-2 max-w-[70%] rounded-lg ${
-    isSelf
-      ? "bg-blue-500 text-white self-end ml-auto"
-      : "bg-gray-300 dark:bg-gray-600 text-gray-900 dark:text-white"
-  }`;
-
-  if (msg.fileUrl) {
-    const img = document.createElement("img");
-    img.src = msg.fileUrl;
-    img.className = "max-w-full rounded";
-    div.appendChild(img);
-  }
-
-  if (msg.content) {
-    const p = document.createElement("p");
-    p.textContent = msg.content;
-    div.appendChild(p);
-  }
-
-  const wrapper = document.createElement("div");
-  wrapper.className = "flex flex-col";
-  wrapper.appendChild(div);
-  chatThread.appendChild(wrapper);
+function parseJwt(token) {
+  const payload = token.split(".")[1];
+  return JSON.parse(atob(payload));
 }
 
 function scrollToBottom() {
-  chatThread.scrollTop = chatThread.scrollHeight;
+  chatBox.scrollTop = chatBox.scrollHeight;
 }
+
+function goHome() {
+  window.location.href = "home.html";
+}
+
+function openSettings() {
+  alert("Chat settings coming soon...");
+}
+
+// Join socket room
+const myId = parseJwt(token).id;
+socket.emit("join", myId);
+
+loadMessages();
