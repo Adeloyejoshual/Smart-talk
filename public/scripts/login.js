@@ -9,7 +9,7 @@ document.addEventListener("DOMContentLoaded", () => {
     message.textContent = "";
 
     const formData = new FormData(loginForm);
-    const input = formData.get("email").trim(); // This could be username or email
+    const input = formData.get("email").trim(); // Can be email or username
     const password = formData.get("password").trim();
 
     if (!input || !password) {
@@ -39,11 +39,11 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      // ✅ Store token and user
+      // Store token and user
       localStorage.setItem("token", data.token);
       localStorage.setItem("user", JSON.stringify(data.user));
 
-      // ✅ Redirect to home
+      // Redirect
       message.style.color = "green";
       message.textContent = "✅ Login successful. Redirecting...";
       setTimeout(() => {
