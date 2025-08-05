@@ -1,5 +1,3 @@
-const fs = require("fs");
-const https = require("https");
 const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
@@ -7,7 +5,7 @@ const mongoose = require("mongoose");
 const socketIO = require("socket.io");
 const path = require("path");
 
-// Load environment variables
+// Load env
 dotenv.config();
 
 const app = express();
@@ -30,21 +28,20 @@ app.use("/api/messages", require("./routes/messages"));
 app.use("/api/groups", require("./routes/groups"));
 app.use("/api/admin", require("./routes/admin"));
 
-// === HTTPS Setup ===
-const sslOptions = {
-  key: fs.readFileSync(path.join(__dirname, "ssl", "key.pem")),
-  cert: fs.readFileSync(path.join(__dirname, "ssl", "cert.pem")),
-};
+// Start server
+const PORT = process.env.PORT || 3000;
+const server = app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+});
 
-const httpsServer = https.createServer(sslOptions, app);
-const io = socketIO(httpsServer, {
+// Socket.IO
+const io = socketIO(server, {
   cors: {
     origin: "*",
     methods: ["GET", "POST"],
   },
 });
 
-// === SOCKET.IO Setup ===
 const Message = require("./models/Message");
 const GroupMessage = require("./models/GroupMessage");
 
@@ -87,10 +84,4 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => {
     console.log("User disconnected:", socket.id);
   });
-});
-
-// Start HTTPS server
-const PORT = process.env.PORT || 443;
-httpsServer.listen(PORT, () => {
-  console.log(`🚀 HTTPS Server running on port ${PORT}`);
 });
