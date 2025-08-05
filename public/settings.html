@@ -1,33 +1,86 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Settings - SmartTalk</title>
-  <script defer src="./js/settings.js"></script>
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet"/>
-</head>
-<body class="bg-gray-100 text-gray-800">
-
-  <div class="max-w-md mx-auto p-4">
-    <h2 class="text-center text-2xl font-bold mb-4">Settings</h2>
-
-    <!-- Avatar and username -->
-    <div class="flex flex-col items-center gap-2">
-      <div id="avatar-wrapper" class="w-24 h-24 rounded-full bg-gray-300 overflow-hidden cursor-pointer border-2 border-gray-400 hover:border-blue-500">
-        <img id="avatar-img" src="./default-avatar.png" alt="Profile Picture" class="w-full h-full object-cover"/>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Settings - SmartTalk</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-white dark:bg-gray-900 text-gray-900 dark:text-white transition-colors duration-300">
+    <div class="max-w-md mx-auto px-4 py-6">
+      <!-- Profile Picture -->
+      <div class="flex flex-col items-center gap-3">
+        <label for="avatarInput" class="cursor-pointer">
+          <img
+            id="avatarPreview"
+            src="default.jpg"
+            class="w-24 h-24 rounded-full border-2 border-gray-300 dark:border-white object-cover"
+            alt="Profile Picture"
+          />
+        </label>
+        <input type="file" id="avatarInput" accept="image/*" class="hidden" />
+        <p id="username" class="text-lg font-bold"></p>
+        <p id="email" class="text-sm text-gray-500 dark:text-gray-300"></p>
       </div>
-      <input type="file" id="avatar-input" accept="image/*" class="hidden"/>
-      <h3 id="username-display" class="text-xl font-semibold">Username</h3>
+
+      <!-- Divider -->
+      <hr class="my-6 border-gray-300 dark:border-gray-600" />
+
+      <!-- Options -->
+      <div class="flex flex-col space-y-4">
+        <a href="#" class="block w-full text-center bg-green-600 text-white py-2 rounded-lg">Invite Friends</a>
+        <a href="contact.html" class="block w-full text-center bg-blue-600 text-white py-2 rounded-lg">Contact</a>
+        <button
+          onclick="logout()"
+          class="w-full bg-red-500 text-white py-2 rounded-lg"
+        >
+          Logout
+        </button>
+      </div>
     </div>
 
-    <!-- Options -->
-    <div class="mt-6 space-y-4">
-      <button onclick="window.location.href='invite.html'" class="w-full py-2 px-4 bg-blue-500 text-white rounded shadow hover:bg-blue-600">Invite Friends</button>
-      <button onclick="window.location.href='contact.html'" class="w-full py-2 px-4 bg-green-500 text-white rounded shadow hover:bg-green-600">Contact</button>
-      <button id="logout-btn" class="w-full py-2 px-4 bg-red-500 text-white rounded shadow hover:bg-red-600">Logout</button>
-    </div>
-  </div>
+    <script>
+      const token = localStorage.getItem("token");
+      const headers = { Authorization: "Bearer " + token };
 
-</body>
+      // Load user profile
+      async function loadProfile() {
+        const res = await fetch("/api/users/me", { headers });
+        const data = await res.json();
+        document.getElementById("username").innerText = data.username;
+        document.getElementById("email").innerText = data.email;
+        document.getElementById("avatarPreview").src = data.avatar || "default.jpg";
+      }
+
+      // Upload image when selected
+      document.getElementById("avatarInput").addEventListener("change", async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const formData = new FormData();
+        formData.append("avatar", file);
+
+        const res = await fetch("/api/users/upload-avatar", {
+          method: "POST",
+          headers,
+          body: formData,
+        });
+
+        const result = await res.json();
+        if (result.avatar) {
+          document.getElementById("avatarPreview").src = result.avatar;
+        } else {
+          alert("Upload failed");
+        }
+      });
+
+      // Dark mode toggle from localStorage
+      if (localStorage.getItem("darkToggle") === "true") {
+        document.documentElement.classList.add("dark");
+      } else {
+        document.documentElement.classList.remove("dark");
+      }
+
+      loadProfile();
+    </script>
+  </body>
 </html>
