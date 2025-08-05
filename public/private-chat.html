@@ -18,9 +18,11 @@
       <div class="flex items-center space-x-2">
         <button onclick="goHome()" class="text-xl">←</button>
         <h2 id="chat-username" class="font-semibold text-lg truncate">Username</h2>
-      </div>
-      <button onclick="openSettings()" class="text-xl">⋮</button>
-    </div>
+<div class="flex items-center justify-between px-4 py-3 bg-white dark:bg-gray-800 border-b dark:border-gray-700">
+  <button onclick="goBack()" class="text-xl">←</button>
+  <h1 id="chat-username" class="font-semibold text-lg truncate"></h1>
+  <button onclick="openSettings()" class="text-xl">⋮</button>
+</div>
 
     <!-- Messages -->
     <div id="chat-box" class="flex-1 overflow-y-auto px-4 py-2 space-y-2 bg-gray-100 dark:bg-gray-800">
