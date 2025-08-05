@@ -3,6 +3,7 @@ const router = express.Router();
 const jwt = require("jsonwebtoken");
 const multer = require("multer");
 const path = require("path");
+const fs = require("fs");
 const User = require("../models/User");
 
 // JWT secret
@@ -22,10 +23,18 @@ const authMiddleware = (req, res, next) => {
   }
 };
 
-// =================== FILE UPLOAD ===================
+// =================== FILE UPLOAD CONFIG ===================
+
+// Ensure 'public/uploads' exists
+const uploadPath = path.join(__dirname, "../public/uploads");
+if (!fs.existsSync(uploadPath)) {
+  fs.mkdirSync(uploadPath, { recursive: true });
+}
+
+// Configure multer
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, "uploads/");
+    cb(null, uploadPath);
   },
   filename: function (req, file, cb) {
     const ext = path.extname(file.originalname);
@@ -125,7 +134,25 @@ router.delete("/remove-friend/:friendId", authMiddleware, async (req, res) => {
   }
 });
 
-// ✅ Block
+// ✅ Upload avatar route
+router.post(
+  "/upload-avatar",
+  authMiddleware,
+  upload.single("avatar"),
+  async (req, res) => {
+    try {
+      const user = await User.findById(req.user.id);
+      user.avatar = "/uploads/" + req.file.filename; // Save relative path
+      await user.save();
+      res.json({ avatar: user.avatar });
+    } catch (err) {
+      console.error("Upload error:", err);
+      res.status(500).json({ message: "Upload failed" });
+    }
+  }
+);
+
+// ✅ Block user
 router.post("/block", async (req, res) => {
   const { userId, blockId } = req.body;
   await User.findByIdAndUpdate(userId, {
@@ -134,7 +161,7 @@ router.post("/block", async (req, res) => {
   res.send("Blocked");
 });
 
-// ✅ Unblock
+// ✅ Unblock user
 router.post("/unblock", async (req, res) => {
   const { userId, blockId } = req.body;
   await User.findByIdAndUpdate(userId, {
@@ -143,26 +170,13 @@ router.post("/unblock", async (req, res) => {
   res.send("Unblocked");
 });
 
-// ✅ Report
+// ✅ Report user
 router.post("/report", async (req, res) => {
   const { userId, reportId } = req.body;
   await User.findByIdAndUpdate(userId, {
     $addToSet: { reports: reportId },
   });
   res.send("Reported");
-});
-
-// ✅ Upload avatar route
-router.post("/upload-avatar", authMiddleware, upload.single("avatar"), async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id);
-    user.avatar = "/uploads/" + req.file.filename; // Save relative path
-    await user.save();
-    res.json({ avatar: user.avatar });
-  } catch (err) {
-    console.error("Upload error:", err);
-    res.status(500).json({ message: "Upload failed" });
-  }
 });
 
 module.exports = router;
