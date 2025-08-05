@@ -13,25 +13,13 @@ document.addEventListener("DOMContentLoaded", () => {
     return;
   }
 
-  const myUserId = getMyUserId();
+  const myUserId = getMyUserId(token);
   const socket = io();
 
   socket.emit("join", myUserId);
-
-  // Load initial messages
   loadMessages();
 
-  // Export chat
-  exportBtn.addEventListener("click", () => {
-    const messages = [...messageList.querySelectorAll("li")].map(li => li.innerText).join("\n");
-    const blob = new Blob([messages], { type: "text/plain" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = "SmartTalk_Chat_History.txt";
-    link.click();
-  });
-
-  // Send new message
+  // Send message
   messageForm.addEventListener("submit", (e) => {
     e.preventDefault();
     const content = messageInput.value.trim();
@@ -48,12 +36,27 @@ document.addEventListener("DOMContentLoaded", () => {
     scrollToBottom();
   });
 
-  // Receive real-time messages
+  // Receive message
   socket.on("privateMessage", (msg) => {
     if (msg.senderId === receiverId) {
-      appendMessage({ sender: receiverId, content: msg.content, timestamp: Date.now(), read: false });
+      appendMessage({
+        sender: receiverId,
+        content: msg.content,
+        timestamp: Date.now(),
+        read: false
+      });
       scrollToBottom();
     }
+  });
+
+  // Export chat
+  exportBtn.addEventListener("click", () => {
+    const messages = [...messageList.querySelectorAll("li")].map(li => li.innerText).join("\n");
+    const blob = new Blob([messages], { type: "text/plain" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "SmartTalk_PrivateChat.txt";
+    link.click();
   });
 
   // Back button
@@ -61,14 +64,14 @@ document.addEventListener("DOMContentLoaded", () => {
     window.location.href = "/home.html";
   });
 
-  // Load messages from server
+  // Load chat history
   async function loadMessages() {
     try {
       const res = await fetch(`/api/messages/history/${receiverId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-
       const data = await res.json();
+
       if (data.success && data.messages) {
         messageList.innerHTML = "";
         data.messages.forEach(msg => {
@@ -86,11 +89,11 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  // Append a message to the list
   function appendMessage({ sender, content, timestamp, read }) {
-    const li = document.createElement("li");
     const isMine = sender === myUserId;
+    const li = document.createElement("li");
     li.className = isMine ? "sent" : "received";
-
     li.innerHTML = `
       <div class="bubble">
         <strong>${isMine ? "You" : "User"}</strong>: ${content}
@@ -107,7 +110,7 @@ document.addEventListener("DOMContentLoaded", () => {
     messageList.scrollTop = messageList.scrollHeight;
   }
 
-  function getMyUserId() {
+  function getMyUserId(token) {
     try {
       const payload = JSON.parse(atob(token.split(".")[1]));
       return payload.id || payload.userId;
@@ -116,7 +119,19 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // Optional: Block user
+  // Optional helper: Mark messages as read
+  function markMessagesAsRead() {
+    fetch('/api/messages/markAsRead', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ senderId: receiverId, receiverId: myUserId })
+    });
+  }
+
+  // Optional helper: Block user
   async function blockUser(blockId) {
     try {
       await fetch("/api/users/block", {
@@ -131,17 +146,5 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (err) {
       console.error("Block failed", err);
     }
-  }
-
-  // Optional: Mark messages as read
-  function markMessagesAsRead() {
-    fetch('/api/messages/markAsRead', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`
-      },
-      body: JSON.stringify({ senderId: receiverId, receiverId: myUserId })
-    });
   }
 });
