@@ -2,153 +2,55 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>SmartTalk - Chats</title>
+  <title>SmartTalk - Settings</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-black text-gray-200 min-h-screen flex flex-col relative">
+<body class="bg-black text-gray-200 min-h-screen flex flex-col">
 
   <!-- Header -->
-  <div class="flex items-center justify-between px-4 py-3 bg-[#5C2C24] shadow">
-    <h1 class="text-xl font-bold text-orange-400">SmartTalk</h1>
-    <button onclick="openSettings()" class="text-sm text-gray-100 hover:text-orange-400 font-semibold">
-      ⚙️
-    </button>
+  <div class="bg-[#5C2C24] px-4 py-3 flex justify-between items-center shadow">
+    <h1 class="text-lg font-bold text-orange-400">Settings</h1>
+    <button onclick="goBack()" class="text-sm text-gray-100 hover:text-orange-400">Back</button>
   </div>
 
-  <!-- Search -->
-  <div class="flex items-center gap-2 px-4 pt-3 pb-2">
-    <input
-      id="searchInput"
-      type="text"
-      placeholder="Search chats..."
-      class="flex-1 bg-[#1F1F1F] border border-gray-700 text-sm text-white rounded-full px-4 py-2 focus:outline-none"
-    />
-    <button onclick="filterChats()" class="text-white text-lg">	➤</button>
-  </div>
-
-  <!-- Chat List -->
-  <div id="chatList" class="flex-1 overflow-y-auto px-4 py-2 divide-y divide-gray-700">
-    <!-- Chat items inserted here -->
-  </div>
-
-  <!-- Add Friend Button -->
-  <div class="fixed bottom-20 right-4">
-    <button onclick="addFriendPrompt()" class="w-12 h-12 text-2xl rounded-full bg-orange-600 hover:bg-orange-700 text-white shadow-lg">
-      +
-    </button>
-  </div>
-
-  <!-- Bottom Navigation -->
-  <div class="bg-[#1A1A1A] border-t border-gray-700 flex justify-around py-3 text-sm">
-    <button class="text-orange-400 font-bold">Chats</button>
-    <button onclick="window.location.href='/groups.html'" class="text-gray-400 hover:text-orange-400">Groups</button>
-    <button onclick="window.location.href='/calls.html'" class="text-gray-400 hover:text-orange-400">Call</button>
-  </div>
-
-  <!-- Settings Modal -->
-  <div id="settingsModal" class="hidden fixed top-0 left-0 w-full h-full bg-black bg-opacity-80 flex items-center justify-center z-50">
-    <div class="bg-[#1F1F1F] p-6 rounded-lg w-[90%] max-w-sm text-center">
-      <h2 class="text-xl font-bold mb-4 text-white">Settings</h2>
-      <button onclick="goToSettings()" class="w-full bg-gray-700 hover:bg-gray-600 text-white py-2 px-4 rounded mb-3">Open Settings</button>
-      <button onclick="logout()" class="w-full bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded">Logout</button>
-      <button onclick="closeSettings()" class="mt-4 text-sm text-gray-400 hover:text-white">Close</button>
+  <!-- Profile Section -->
+  <div class="flex flex-col items-center text-center mt-6 px-4">
+    <div class="relative">
+      <img id="avatarPreview" src="/default-avatar.png" alt="Avatar" class="w-24 h-24 rounded-full border border-gray-500 object-cover" />
+      <input type="file" id="avatarInput" class="absolute top-0 left-0 w-24 h-24 opacity-0 cursor-pointer" onchange="previewAvatar()" />
     </div>
+    <h2 id="usernameDisplay" class="text-lg font-bold mt-3">Username</h2>
   </div>
 
-  <!-- Script -->
+  <!-- Options -->
+  <div class="mt-8 px-6 flex flex-col gap-4 text-sm">
+    <button class="bg-[#2c2c2c] hover:bg-[#3a3a3a] py-3 px-4 rounded-lg text-left">📨 Invite Friends</button>
+    <button class="bg-[#2c2c2c] hover:bg-[#3a3a3a] py-3 px-4 rounded-lg text-left">📞 Contact</button>
+    <button onclick="logout()" class="bg-red-600 hover:bg-red-700 text-white py-3 px-4 rounded-lg text-left">🚪 Logout</button>
+  </div>
+
   <script>
     const user = JSON.parse(localStorage.getItem("user"));
     const token = localStorage.getItem("token");
-    let allChats = [];
 
-    async function fetchChats() {
-      try {
-        const res = await fetch("/api/users/chats", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const chats = await res.json();
-        if (!Array.isArray(chats)) return;
-        allChats = chats;
-        displayChats(chats);
-      } catch (err) {
-        console.error("❌ Chat load error:", err);
+    if (!user || !token) {
+      window.location.href = "/login.html";
+    }
+
+    // Show username and avatar
+    document.getElementById("usernameDisplay").innerText = user.username || "Username";
+    document.getElementById("avatarPreview").src = user.avatar || "/default-avatar.png";
+
+    function previewAvatar() {
+      const file = document.getElementById("avatarInput").files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          document.getElementById("avatarPreview").src = reader.result;
+        };
+        reader.readAsDataURL(file);
       }
-    }
-
-    function displayChats(chats) {
-      const list = document.getElementById("chatList");
-      list.innerHTML = "";
-
-      chats.forEach(chat => {
-        const div = document.createElement("div");
-        div.className = "flex items-center p-3 hover:bg-[#2c2c2c] cursor-pointer relative";
-        div.onclick = () => window.location.href = `/private-chat.html?user=${chat._id}`;
-
-        const lastTime = chat.time ? new Date(chat.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "";
-
-        div.innerHTML = `
-          <img src="${chat.avatar || '/default-avatar.png'}" class="w-10 h-10 rounded-full mr-3 border border-gray-600" />
-          <div class="flex-1 min-w-0">
-            <div class="flex justify-between items-center">
-              <span class="font-semibold text-white text-base truncate">${chat.username || chat.name}</span>
-              <span class="text-xs text-gray-500">${lastTime}</span>
-            </div>
-            <div class="flex justify-between items-center mt-1">
-              <span class="text-sm text-gray-400 truncate">${chat.lastMessage || "Start chatting..."}</span>
-              ${chat.unreadCount > 0 ? `<span class="text-xs bg-orange-600 text-white rounded-full px-2 py-0.5 ml-2">${chat.unreadCount}</span>` : ""}
-            </div>
-          </div>
-        `;
-
-        list.appendChild(div);
-      });
-    }
-
-    function filterChats() {
-      const q = document.getElementById("searchInput").value.toLowerCase();
-      const filtered = allChats.filter(chat =>
-        (chat.username || "").toLowerCase().includes(q) ||
-        (chat.name || "").toLowerCase().includes(q) ||
-        (chat.email || "").toLowerCase().includes(q)
-      );
-      displayChats(filtered);
-    }
-
-    function addFriendPrompt() {
-      const input = prompt("Enter friend's email or username:");
-      if (!input) return;
-
-      fetch("/api/users/add-friend", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({ identifier: input })
-      })
-        .then(res => res.json())
-        .then(data => {
-          if (data.error) return alert(data.error);
-          alert("✅ Friend added successfully!");
-          fetchChats();
-        })
-        .catch(err => {
-          console.error("Add friend error:", err);
-          alert("Error adding friend");
-        });
-    }
-
-    function openSettings() {
-      document.getElementById("settingsModal").classList.remove("hidden");
-    }
-
-    function closeSettings() {
-      document.getElementById("settingsModal").classList.add("hidden");
-    }
-
-    function goToSettings() {
-      window.location.href = "/settings.html";
     }
 
     function logout() {
@@ -157,7 +59,9 @@
       window.location.href = "/login.html";
     }
 
-    fetchChats();
+    function goBack() {
+      window.location.href = "/home.html";
+    }
   </script>
 </body>
 </html>
