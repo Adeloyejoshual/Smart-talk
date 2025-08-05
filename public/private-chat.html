@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Private Chat</title>
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-  <script defer src="./js/private-chat.js"></script>
-  <script defer src="./js/theme.js"></script>
+  <script defer src="./scripts/private-chat.js"></script>
+  <script defer src="./scripts/theme.js"></script>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@3.4.1/dist/tailwind.min.css" rel="stylesheet" />
 </head>
 <body class="bg-gray-200 dark:bg-gray-900 text-gray-900 dark:text-white">
@@ -22,14 +22,13 @@
 
     <!-- Messages -->
     <div id="chat-box" class="flex-1 overflow-y-auto px-4 py-2 bg-gray-100 dark:bg-gray-800 space-y-2">
-      <!-- Sticky Date Example -->
-      <div id="sticky-date" class="sticky top-0 text-center text-xs bg-gray-300 dark:bg-gray-700 py-1 rounded hidden"></div>
+      <!-- Messages inserted here -->
     </div>
 
-    <!-- Typing -->
+    <!-- Typing Indicator -->
     <div id="typing-indicator" class="px-4 py-1 text-sm text-gray-600 dark:text-gray-400 hidden">User is typing...</div>
 
-    <!-- Message input -->
+    <!-- Input Area -->
     <form id="message-form" class="p-3 bg-white dark:bg-gray-900 border-t dark:border-gray-700 flex items-center gap-2">
       <label for="image-upload" class="cursor-pointer">
         <svg class="w-6 h-6 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -42,7 +41,7 @@
     </form>
   </div>
 
-  <!-- Chat Settings Modal -->
+  <!-- Settings Modal -->
   <div id="chat-settings-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-end justify-center z-50">
     <div class="bg-white dark:bg-gray-800 w-full max-w-md rounded-t-xl p-4">
       <h2 class="text-lg font-bold mb-3">Chat Settings</h2>
@@ -53,5 +52,6 @@
       </ul>
     </div>
   </div>
+
 </body>
 </html>
