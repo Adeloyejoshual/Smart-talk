@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-black text-gray-200 min-h-screen flex flex-col">
+<body class="bg-black text-gray-200 min-h-screen flex flex-col relative">
 
   <!-- Header -->
   <div class="flex items-center justify-between px-4 py-3 bg-[#5C2C24] shadow">
@@ -14,19 +14,15 @@
     <button onclick="logout()" class="text-sm text-gray-100 hover:text-orange-400 font-semibold">Logout</button>
   </div>
 
-  <!-- Search & Add Friend -->
-  <div class="flex items-center gap-2 px-4 pt-3 pb-2">
+  <!-- Search -->
+  <div class="px-4 pt-3 pb-2">
     <input
       id="searchInput"
       type="text"
       placeholder="Search chats..."
-      class="flex-1 bg-[#1F1F1F] border border-gray-700 text-sm text-white rounded-full px-4 py-2 focus:outline-none"
+      class="w-full bg-[#1F1F1F] border border-gray-700 text-sm text-white rounded-full px-4 py-2 focus:outline-none"
       oninput="filterChats()"
     />
-    <button
-      onclick="addFriendPrompt()"
-      class="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 text-sm rounded-full font-semibold"
-    >+ Add</button>
   </div>
 
   <!-- Chat List -->
@@ -34,11 +30,18 @@
     <!-- JS will populate chats -->
   </div>
 
+  <!-- Add Friend Floating Button -->
+  <button
+    onclick="addFriendPrompt()"
+    class="fixed bottom-20 right-4 bg-orange-600 hover:bg-orange-700 w-12 h-12 rounded-full text-white text-2xl flex items-center justify-center shadow-lg z-50"
+    aria-label="Add Friend"
+  >+</button>
+
   <!-- Bottom Navigation -->
   <div class="bg-[#1A1A1A] border-t border-gray-700 flex justify-around py-3 text-sm">
     <button class="text-orange-400 font-bold">Chats</button>
     <button onclick="window.location.href='/groups.html'" class="text-gray-400 hover:text-orange-400">Groups</button>
-    <button onclick="window.location.href='/settings.html'" class="text-gray-400 hover:text-orange-400">Settings</button>
+    <button onclick="window.location.href='/settings.html'" class="text-gray-400 hover:text-orange-400">Call</button>
   </div>
 
   <!-- Script -->
@@ -52,10 +55,8 @@
         const res = await fetch("/api/users/list", {
           headers: { Authorization: `Bearer ${token}` },
         });
-
         const chats = await res.json();
         if (!Array.isArray(chats)) return;
-
         allChats = chats;
         displayChats(chats);
       } catch (err) {
@@ -66,7 +67,6 @@
     function displayChats(chats) {
       const list = document.getElementById("chatList");
       list.innerHTML = "";
-
       chats.forEach(chat => {
         const div = document.createElement("div");
         div.className = "flex items-center p-3 hover:bg-[#2c2c2c] cursor-pointer";
@@ -101,7 +101,6 @@
     function addFriendPrompt() {
       const input = prompt("Enter friend's email or username:");
       if (!input) return;
-
       fetch("/api/users/add-friend", {
         method: "POST",
         headers: {
