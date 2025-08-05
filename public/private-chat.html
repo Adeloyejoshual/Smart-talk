@@ -1,29 +1,51 @@
 <!DOCTYPE html>
-<html lang="en" class="dark-mode">
+<html lang="en" class="dark">
 <head>
-  <meta charset="UTF-8">
-  <title>Private Chat | SmartTalk</title>
-  <link href="/css/styles.css" rel="stylesheet">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SmartTalk - Private Chat</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/theme.js" defer></script>
+  <script src="/js/private-chat.js" defer></script>
 </head>
-<body class="bg-white dark:bg-gray-900 text-black dark:text-white">
-  <div id="chatContainer" class="p-4 max-w-xl mx-auto">
-    <button id="backButton" class="mb-2 text-sm text-blue-600">← Back</button>
-    
-    <ul id="messageList" class="space-y-2 max-h-[60vh] overflow-y-auto border p-2 rounded"></ul>
+<body class="bg-white dark:bg-gray-900 text-gray-900 dark:text-white h-screen flex flex-col">
 
-    <form id="messageForm" class="mt-4 flex gap-2">
-      <input type="text" id="messageInput" placeholder="Type a message..." class="flex-1 p-2 rounded border" />
-      <input type="file" id="privateImageInput" multiple accept="image/*" class="hidden" />
-      <button type="button" id="uploadBtn">📷</button>
-      <button type="submit" class="bg-blue-600 text-white px-3 py-1 rounded">Send</button>
-    </form>
+  <!-- Header -->
+  <header class="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-100 dark:bg-gray-800">
+    <button id="backButton" class="text-sm bg-blue-600 text-white px-3 py-1 rounded">Back</button>
+    <h1 class="text-lg font-semibold">Private Chat</h1>
+    <div class="flex items-center gap-3">
+      <label class="flex items-center cursor-pointer">
+        <input type="checkbox" id="darkModeToggle" class="hidden" />
+        <span class="w-5 h-5 bg-gray-300 dark:bg-gray-700 rounded-full"></span>
+      </label>
+      <button id="exportBtn" class="text-sm bg-green-600 text-white px-3 py-1 rounded">Export</button>
+    </div>
+  </header>
 
-    <div id="previewContainer" class="mt-2 flex gap-2 flex-wrap"></div>
+  <!-- Chat messages -->
+  <ul id="messageList" class="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50 dark:bg-gray-900">
+    <!-- Messages rendered here -->
+  </ul>
 
-    <button id="exportBtn" class="mt-4 text-xs text-gray-500">Export chat history</button>
+  <!-- Image preview -->
+  <div id="previewContainer" class="flex gap-2 p-2 overflow-x-auto bg-gray-100 dark:bg-gray-800">
+    <!-- Previews inserted here -->
   </div>
 
-  <script src="/socket.io/socket.io.js"></script>
-  <script src="/js/private-chat.js" defer></script>
+  <!-- Message form -->
+  <form id="messageForm" class="flex gap-2 p-4 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700">
+    <input id="messageInput" type="text" placeholder="Type a message..."
+      class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-700 rounded focus:outline-none dark:bg-gray-800 dark:text-white"/>
+
+    <input type="file" id="privateImageInput" multiple hidden />
+    <button type="button" id="imagePickerBtn"
+      class="px-3 py-2 bg-yellow-500 text-white rounded">📷</button>
+
+    <button type="submit"
+      class="px-4 py-2 bg-blue-600 text-white rounded">Send</button>
+  </form>
+
 </body>
 </html>
