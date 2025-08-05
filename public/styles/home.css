@@ -1,107 +1,142 @@
+/* General body */
 body {
-  font-family: Arial, sans-serif;
   margin: 0;
-  background-color: #111;
-  color: #fff;
-}
-
-header {
-  display: flex;
-  justify-content: space-between;
-  padding: 1rem;
-  background: #222;
-  border-bottom: 1px solid #333;
-}
-
-main {
-  padding: 1rem;
-}
-
-ul {
-  list-style: none;
   padding: 0;
+  font-family: 'Segoe UI', sans-serif;
+  background-color: #1c1c1c;
+  color: #f0f0f0;
 }
 
-li {
-  margin: 0.5rem 0;
+/* Container */
+.container {
+  display: flex;
+  height: 100vh;
+  width: 100%;
+}
+
+/* Sidebar */
+.sidebar {
+  width: 300px;
+  background-color: #101010;
+  border-right: 1px solid #333;
+  display: flex;
+  flex-direction: column;
   padding: 1rem;
-  background: #222;
-  border-radius: 8px;
+}
+
+/* Sidebar header */
+.sidebar-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  color: #ff9933;
+  margin-bottom: 1rem;
 }
 
-button {
-  cursor: pointer;
-}
-
-#addFriendBtn {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  background: #00aaff;
-  color: #fff;
-  font-size: 24px;
+/* Search input */
+.sidebar input[type="text"] {
+  padding: 0.6rem;
   border: none;
-  padding: 15px;
-  border-radius: 50%;
-  box-shadow: 0 0 10px #00aaff;
-  transition: 0.3s;
-}
-
-#addFriendBtn:hover {
-  background: #008ecc;
-}
-
-.modal {
-  position: fixed;
-  top: 0;
-  left: 0;
+  border-radius: 6px;
+  margin-bottom: 1rem;
   width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.7);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 10;
+  background-color: #2a2a2a;
+  color: #fff;
 }
 
-.modal.hidden {
+/* Add Friend / Group buttons */
+.sidebar .add-buttons {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.sidebar button {
+  flex: 1;
+  background-color: #c1440e; /* reddish-orange */
+  color: #fff;
+  border: none;
+  padding: 0.5rem;
+  border-radius: 5px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: background 0.3s;
+}
+
+.sidebar button:hover {
+  background-color: #a93700;
+}
+
+/* Chat list */
+.chat-list {
+  flex-grow: 1;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.chat-list::-webkit-scrollbar {
   display: none;
 }
 
-.modal-content {
-  background: #222;
-  padding: 20px;
-  border-radius: 10px;
-  width: 90%;
-  max-width: 400px;
-}
-
-.modal-content input {
-  width: 100%;
-  padding: 10px;
-  margin-top: 10px;
-  margin-bottom: 15px;
-  border-radius: 5px;
-  border: none;
-  background: #333;
-  color: #fff;
-}
-
-.modal-content ul li {
-  justify-content: space-between;
-}
-
-#closeModal {
-  float: right;
+.chat-item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.7rem 0.5rem;
+  border-bottom: 1px solid #2e2e2e;
   cursor: pointer;
-  font-size: 24px;
+  transition: background 0.3s;
 }
 
-.seen {
-  color: #4fc3f7;
-  font-size: 0.8em;
-  margin-left: 5px;
+.chat-item:hover {
+  background-color: #252525;
+}
+
+.chat-avatar {
+  width: 45px;
+  height: 45px;
+  border-radius: 50%;
+  background-color: #444;
+  object-fit: cover;
+}
+
+.chat-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-info .name {
+  font-weight: bold;
+  color: #ff9933;
+}
+
+.chat-info .last-message {
+  font-size: 0.85rem;
+  color: #ccc;
+}
+
+/* Main chat area placeholder */
+.main {
+  flex-grow: 1;
+  background-color: #141414;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #999;
+  font-size: 1.2rem;
+}
+
+/* Toast messages */
+#toast {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  background-color: #d2691e;
+  color: #fff;
+  padding: 0.75rem 1.2rem;
+  border-radius: 6px;
+  display: none;
+  z-index: 9999;
+  font-weight: bold;
 }
