@@ -1,126 +1,149 @@
-document.addEventListener("DOMContentLoaded", () => {
-  const socket = io(); // Connect to server
+const socket = io();
+const chatThread = document.getElementById("chat-thread");
+const chatForm = document.getElementById("chat-form");
+const messageInput = document.getElementById("message-input");
+const fileInput = document.getElementById("file-input");
+const imagePreview = document.getElementById("image-preview");
+const previewImg = document.getElementById("preview-img");
+const chatUsername = document.getElementById("chat-username");
 
-  const input = document.getElementById("privateImageInput");
-  const previewContainer = document.getElementById("previewContainer");
-  const messageInput = document.getElementById("privateMessageInput");
-  const sendBtn = document.getElementById("sendPrivateMessage");
+const token = localStorage.getItem("token");
+const receiverId = new URLSearchParams(window.location.search).get("id"); // ?id=xxxx
 
-  const token = localStorage.getItem("token");
-  const receiverId = localStorage.getItem("receiverId");
+if (!token || !receiverId) {
+  alert("Missing token or chat target.");
+  window.location.href = "/home.html";
+}
 
-  if (!token || !receiverId) {
-    alert("Token or receiver missing.");
-    return window.location.href = "/home.html";
-  }
+let currentUserId;
 
-  const myUserId = getMyUserId(token);
-
-  // Preview selected images
-  input.addEventListener("change", () => {
-    previewContainer.innerHTML = "";
-    [...input.files].forEach(file => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const img = document.createElement("img");
-        img.src = reader.result;
-        img.className = "w-20 h-20 object-cover rounded border";
-        previewContainer.appendChild(img);
-      };
-      reader.readAsDataURL(file);
-    });
+// === Load current user info ===
+fetch("/api/users/me", {
+  headers: {
+    Authorization: `Bearer ${token}`,
+  },
+})
+  .then((res) => res.json())
+  .then((user) => {
+    currentUserId = user._id;
+    socket.emit("join", currentUserId);
   });
 
-  // Send message (text + optional images)
-  sendBtn.addEventListener("click", async () => {
-    const content = messageInput.value.trim();
-
-    // If there's text, send it via socket
-    if (content) {
-      socket.emit("privateMessage", {
-        senderId: myUserId,
-        receiverId,
-        content,
-      });
-      appendMessage({ sender: myUserId, content, timestamp: new Date().toISOString() });
-      messageInput.value = "";
-    }
-
-    // If images selected, upload them
-    if (input.files.length) {
-      const formData = new FormData();
-      formData.append("receiverId", receiverId);
-      [...input.files].forEach(file => formData.append("images", file));
-
-      try {
-        const res = await fetch("/api/messages/private/image", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-          body: formData,
-        });
-
-        const data = await res.json();
-        if (data.success && data.messages) {
-          data.messages.forEach(msg => {
-            appendMessage({
-              sender: msg.sender,
-              image: msg.image,
-              timestamp: msg.createdAt,
-            });
-          });
-          previewContainer.innerHTML = "";
-          input.value = "";
-        }
-      } catch (err) {
-        console.error("Image upload failed:", err);
-      }
-    }
+// === Load receiver username ===
+fetch(`/api/users/chats`, {
+  headers: {
+    Authorization: `Bearer ${token}`,
+  },
+})
+  .then((res) => res.json())
+  .then((friends) => {
+    const user = friends.find((f) => f._id === receiverId);
+    if (user) chatUsername.textContent = user.username || "Chat";
   });
 
-  // Handle incoming socket messages
-  socket.on("privateMessage", (msg) => {
-    if (msg.senderId === receiverId) {
-      appendMessage({ sender: receiverId, content: msg.content, timestamp: msg.timestamp });
-    }
+// === Load past messages ===
+fetch(`/api/messages/private/${receiverId}`, {
+  headers: {
+    Authorization: `Bearer ${token}`,
+  },
+})
+  .then((res) => res.json())
+  .then((messages) => {
+    messages.forEach(showMessage);
+    scrollToBottom();
   });
 
-  function appendMessage({ sender, content, image, timestamp }) {
-    const chatBox = document.getElementById("messageList");
-    const isMine = sender === myUserId;
+// === Send message ===
+chatForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
 
-    const msgDiv = document.createElement("div");
-    msgDiv.className = `p-2 mb-2 max-w-[70%] rounded-lg ${isMine ? "bg-blue-100 self-end" : "bg-gray-200 self-start"}`;
+  const text = messageInput.value.trim();
+  const file = fileInput.files[0];
 
-    if (image) {
-      const img = document.createElement("img");
-      img.src = image;
-      img.className = "w-40 h-auto rounded mb-1";
-      msgDiv.appendChild(img);
-    }
+  if (!text && !file) return;
 
-    if (content) {
-      const p = document.createElement("p");
-      p.textContent = content;
-      msgDiv.appendChild(p);
-    }
+  const formData = new FormData();
+  formData.append("receiverId", receiverId);
+  if (file) formData.append("file", file);
+  if (text) formData.append("content", text);
 
-    const time = document.createElement("div");
-    time.className = "text-xs text-gray-500 mt-1";
-    time.textContent = new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    msgDiv.appendChild(time);
+  const res = await fetch("/api/messages/private/send", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: formData,
+  });
 
-    chatBox.appendChild(msgDiv);
-    chatBox.scrollTop = chatBox.scrollHeight;
-  }
-
-  function getMyUserId(token) {
-    try {
-      const payload = JSON.parse(atob(token.split(".")[1]));
-      return payload.id || payload.userId;
-    } catch {
-      return null;
-    }
+  const data = await res.json();
+  if (data && data._id) {
+    showMessage(data);
+    messageInput.value = "";
+    fileInput.value = "";
+    imagePreview.classList.add("hidden");
+    previewImg.src = "";
+    scrollToBottom();
   }
 });
+
+// === Preview selected image ===
+fileInput.addEventListener("change", () => {
+  const file = fileInput.files[0];
+  if (file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      previewImg.src = reader.result;
+      imagePreview.classList.remove("hidden");
+    };
+    reader.readAsDataURL(file);
+  } else {
+    previewImg.src = "";
+    imagePreview.classList.add("hidden");
+  }
+});
+
+// === Listen for real-time incoming messages ===
+socket.on("privateMessage", (data) => {
+  if (data.senderId === receiverId) {
+    showMessage({
+      sender: receiverId,
+      content: data.content,
+      createdAt: data.timestamp,
+    });
+    scrollToBottom();
+  }
+});
+
+// === Show message in thread ===
+function showMessage(msg) {
+  const isSelf = msg.sender === currentUserId || msg.sender?._id === currentUserId;
+
+  const div = document.createElement("div");
+  div.className = `p-2 max-w-[70%] rounded-lg ${
+    isSelf
+      ? "bg-blue-500 text-white self-end ml-auto"
+      : "bg-gray-300 dark:bg-gray-600 text-gray-900 dark:text-white"
+  }`;
+
+  if (msg.fileUrl) {
+    const img = document.createElement("img");
+    img.src = msg.fileUrl;
+    img.className = "max-w-full rounded";
+    div.appendChild(img);
+  }
+
+  if (msg.content) {
+    const p = document.createElement("p");
+    p.textContent = msg.content;
+    div.appendChild(p);
+  }
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "flex flex-col";
+  wrapper.appendChild(div);
+  chatThread.appendChild(wrapper);
+}
+
+function scrollToBottom() {
+  chatThread.scrollTop = chatThread.scrollHeight;
+}
