@@ -1,4 +1,4 @@
-// /public/script/private-chat.js const socket = io(); let userId = null; let otherUserId = null; let token = localStorage.getItem("token");
+// /public/scripts/private-chat.js const socket = io(); let userId = null; let otherUserId = null; let token = localStorage.getItem("token");
 
 const chatBox = document.getElementById("chat-box"); const messageForm = document.getElementById("message-form"); const messageInput = document.getElementById("message-input"); const imageUpload = document.getElementById("image-upload"); const usernameHeader = document.getElementById("chat-username"); const typingIndicator = document.getElementById("typing-indicator");
 
