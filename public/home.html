@@ -1,191 +1,74 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>SmartTalk - Home</title>
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
-  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <title>SmartTalk - Chats</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-100 h-screen flex flex-col">
+<body class="bg-black text-gray-200 min-h-screen flex flex-col">
 
   <!-- Header -->
-  <header class="bg-white p-4 shadow flex justify-between items-center">
-    <h1 class="text-xl font-bold text-blue-600">SmartTalk</h1>
-    <div class="space-x-2">
-      <button id="themeToggle" class="text-sm px-2 py-1 bg-gray-200 rounded">🌓 Theme</button>
-      <button id="settingsBtn" class="text-sm px-2 py-1 bg-yellow-200 rounded">⚙️ Settings</button>
-      <button id="logoutBtn" class="text-sm px-2 py-1 bg-red-400 text-white rounded">Logout</button>
-    </div>
-  </header>
-
-  <!-- Search & Results -->
-  <section class="p-4 space-y-4">
-    <input id="searchInput" type="text" placeholder="Search users..."
-      class="w-full border px-3 py-2 rounded" />
-    <div id="searchResults" class="space-y-2"></div>
-  </section>
-
-  <!-- Friends List -->
-  <section class="p-4">
-    <h2 class="text-lg font-semibold mb-2">Friends</h2>
-    <ul id="friendList" class="space-y-2"></ul>
-  </section>
-
-  <!-- Groups List -->
-  <section class="p-4">
-    <div class="flex justify-between items-center mb-2">
-      <h2 class="text-lg font-semibold">Groups</h2>
-      <button onclick="createGroup()" class="text-sm bg-green-500 text-white px-2 py-1 rounded">+ Create Group</button>
-    </div>
-    <ul id="groupList" class="space-y-2"></ul>
-  </section>
-
-  <!-- Settings Modal -->
-  <div id="settingsModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-    <div class="bg-white p-6 rounded w-80">
-      <h2 class="text-lg font-bold mb-4">Settings</h2>
-      <button id="closeSettings" class="w-full bg-gray-300 rounded py-2">Close</button>
-    </div>
+  <div class="flex items-center justify-between px-4 py-3 bg-[#5C2C24] shadow">
+    <h1 class="text-xl font-bold text-orange-400">SmartTalk</h1>
+    <button onclick="logout()" class="text-sm text-gray-100 hover:text-orange-400 font-semibold">Logout</button>
   </div>
 
+  <!-- Chat List -->
+  <div id="chatList" class="flex-1 overflow-y-auto px-4 py-2 divide-y divide-gray-700">
+    <!-- JS will populate chats -->
+  </div>
+
+  <!-- Bottom Navigation -->
+  <div class="bg-[#1A1A1A] border-t border-gray-700 flex justify-around py-3 text-sm">
+    <button class="text-orange-400 font-bold">Chats</button>
+    <button onclick="window.location.href='/groups.html'" class="text-gray-400 hover:text-orange-400">Groups</button>
+    <button onclick="window.location.href='/settings.html'" class="text-gray-400 hover:text-orange-400">Settings</button>
+  </div>
+
+  <!-- Script -->
   <script>
+    const user = JSON.parse(localStorage.getItem("user"));
     const token = localStorage.getItem("token");
-    const headers = {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    };
 
-    if (!token) window.location.href = "/login.html";
+    async function fetchChats() {
+      try {
+        const res = await fetch("/api/users/chats", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
 
-    const friendList = document.getElementById("friendList");
-    const groupList = document.getElementById("groupList");
-    const searchInput = document.getElementById("searchInput");
-    const searchResults = document.getElementById("searchResults");
+        const chats = await res.json();
+        const list = document.getElementById("chatList");
+        list.innerHTML = "";
 
-    // Load friends
-    async function loadFriends() {
-      const res = await fetch("/api/users/friends", { headers });
-      const data = await res.json();
-      friendList.innerHTML = "";
-      data.forEach(user => {
-        const li = document.createElement("li");
-        li.innerHTML = `
-          <div class="bg-white p-2 rounded shadow flex justify-between items-center">
-            <span>${user.username}</span>
-            <div>
-              <button onclick="startChat('${user._id}')" class="text-green-600">💬</button>
-              <button onclick="removeFriend('${user._id}')" class="text-red-600 ml-2">❌</button>
+        if (!Array.isArray(chats)) return;
+
+        chats.forEach(chat => {
+          const div = document.createElement("div");
+          div.className = "flex items-center p-3 hover:bg-[#2c2c2c] cursor-pointer";
+          div.onclick = () => window.location.href = `/private-chat.html?user=${chat._id}`;
+          div.innerHTML = `
+            <img src="${chat.avatar || '/default-avatar.png'}" class="w-10 h-10 rounded-full mr-3 border border-gray-600" />
+            <div class="flex-1">
+              <div class="font-semibold text-white text-base">${chat.username}</div>
+              <div class="text-sm text-gray-400 truncate">${chat.lastMessage || "Start chatting..."}</div>
             </div>
-          </div>
-        `;
-        friendList.appendChild(li);
-      });
-    }
-
-    // Load groups
-    async function loadGroups() {
-      const res = await fetch("/api/groups/my", { headers });
-      const data = await res.json();
-      groupList.innerHTML = "";
-      data.forEach(group => {
-        const li = document.createElement("li");
-        li.innerHTML = `
-          <div class="bg-white p-2 rounded shadow flex justify-between items-center">
-            <span>${group.name}</span>
-            <button onclick="enterGroup('${group._id}')" class="text-blue-600">Enter</button>
-          </div>
-        `;
-        groupList.appendChild(li);
-      });
-    }
-
-    // Search users
-    searchInput.addEventListener("input", async () => {
-      const query = searchInput.value.trim();
-      if (!query) return (searchResults.innerHTML = "");
-
-      const res = await fetch(`/api/users/search?q=${encodeURIComponent(query)}`, { headers });
-      const data = await res.json();
-      searchResults.innerHTML = "";
-      data.forEach(user => {
-        const div = document.createElement("div");
-        div.className = "bg-white p-2 rounded shadow flex justify-between items-center";
-        div.innerHTML = `
-          <span>${user.username}</span>
-          <button onclick="addFriend('${user._id}')" class="text-blue-500">➕</button>
-        `;
-        searchResults.appendChild(div);
-      });
-    });
-
-    // Add friend
-    async function addFriend(id) {
-      await fetch(`/api/users/add-friend/${id}`, { method: "POST", headers });
-      searchInput.value = "";
-      searchResults.innerHTML = "";
-      loadFriends();
-    }
-
-    // Remove friend
-    async function removeFriend(id) {
-      await fetch(`/api/users/remove-friend/${id}`, { method: "POST", headers });
-      loadFriends();
-    }
-
-    // Start private chat
-    function startChat(userId) {
-      localStorage.setItem("receiverId", userId);
-      window.location.href = "/chat.html";
-    }
-
-    // Enter group chat
-    function enterGroup(groupId) {
-      window.location.href = `/group-chat.html?group=${groupId}`;
-    }
-
-    // Create group
-    async function createGroup() {
-      const name = prompt("Enter group name:");
-      if (!name) return;
-
-      const res = await fetch("/api/groups", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ name }),
-      });
-
-      if (res.ok) {
-        alert("Group created!");
-        loadGroups();
-      } else {
-        alert("Error creating group.");
+            <div class="text-xs text-gray-500 whitespace-nowrap">${chat.time || ""}</div>
+          `;
+          list.appendChild(div);
+        });
+      } catch (err) {
+        console.error("❌ Chat load error:", err);
       }
     }
 
-    // Theme toggle
-    document.getElementById("themeToggle").onclick = () => {
-      document.documentElement.dataset.theme =
-        document.documentElement.dataset.theme === "dark" ? "light" : "dark";
-    };
-
-    // Logout
-    document.getElementById("logoutBtn").onclick = () => {
+    function logout() {
       localStorage.removeItem("token");
+      localStorage.removeItem("user");
       window.location.href = "/login.html";
-    };
+    }
 
-    // Settings
-    document.getElementById("settingsBtn").onclick = () => {
-      document.getElementById("settingsModal").classList.remove("hidden");
-    };
-    document.getElementById("closeSettings").onclick = () => {
-      document.getElementById("settingsModal").classList.add("hidden");
-    };
-
-    // Load data
-    loadFriends();
-    loadGroups();
+    fetchChats();
   </script>
 </body>
 </html>
