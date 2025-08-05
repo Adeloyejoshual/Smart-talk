@@ -6,111 +6,90 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-black text-white min-h-screen flex flex-col">
+<body class="bg-black text-white flex flex-col min-h-screen">
 
   <!-- Header -->
-  <div class="px-4 py-4 bg-[#5C2C24] flex justify-between items-center shadow">
-    <h1 class="text-xl font-bold text-orange-400">Settings</h1>
-    <button onclick="goHome()" class="text-sm text-white hover:text-orange-300">Home</button>
+  <div class="bg-[#5C2C24] p-4 shadow-md">
+    <h1 class="text-lg font-bold text-orange-400">Settings</h1>
   </div>
 
-  <!-- Profile Info -->
-  <div class="p-6 space-y-4">
-    <div class="flex flex-col items-center space-y-3">
-      <img id="avatarPreview" src="/default-avatar.png" class="w-24 h-24 rounded-full border border-gray-500" />
-      <input type="file" accept="image/*" onchange="handleImageUpload(event)" class="text-sm text-gray-300" />
-      <input type="hidden" id="avatarInput" />
+  <!-- Profile -->
+  <div class="flex flex-col items-center py-6 px-4">
+    <div class="mb-4">
+      <img id="avatarImage" src="/default-avatar.png" alt="Avatar" class="w-24 h-24 rounded-full border border-gray-600 object-cover" />
     </div>
+    <form id="avatarForm" class="mb-6">
+      <input type="file" id="avatarInput" name="avatar" accept="image/*" class="text-sm" />
+      <button type="submit" class="bg-orange-600 mt-2 text-sm px-4 py-1 rounded">Upload</button>
+    </form>
+    <div id="usernameDisplay" class="text-lg font-semibold text-orange-400 mb-4">Username</div>
+  </div>
 
-    <div>
-      <label class="block text-sm text-gray-400 mb-1">Username</label>
-      <input id="usernameField" class="w-full bg-[#1F1F1F] border border-gray-600 text-white rounded px-4 py-2" />
-    </div>
-
-    <button onclick="saveProfile()" class="w-full bg-orange-600 hover:bg-orange-700 text-white py-2 rounded font-semibold">
-      Save Profile
+  <!-- Actions -->
+  <div class="flex flex-col gap-4 px-4">
+    <button onclick="inviteFriends()" class="bg-gray-800 border border-gray-600 py-3 px-4 rounded text-left hover:bg-gray-700">
+      📩 Invite Friends
+    </button>
+    <button onclick="goToContact()" class="bg-gray-800 border border-gray-600 py-3 px-4 rounded text-left hover:bg-gray-700">
+      📬 Contact
+    </button>
+    <button onclick="logout()" class="bg-red-600 py-3 px-4 rounded text-left hover:bg-red-700 text-white">
+      🚪 Logout
     </button>
   </div>
 
-  <!-- Other Options -->
-  <div class="px-6 pt-4">
-    <button onclick="invite()" class="w-full text-left text-orange-400 py-2">📨 Invite Friends</button>
-    <button onclick="contact()" class="w-full text-left text-orange-400 py-2">📞 Contact</button>
-    <button onclick="logout()" class="w-full text-left text-red-500 py-2 mt-4">🚪 Logout</button>
-  </div>
-
+  <!-- Script -->
   <script>
     const token = localStorage.getItem("token");
 
-    async function loadUserProfile() {
+    async function loadProfile() {
       const res = await fetch("/api/users/me", {
         headers: { Authorization: `Bearer ${token}` }
       });
       const user = await res.json();
-
-      document.getElementById("usernameField").value = user.username || "";
-      document.getElementById("avatarPreview").src = user.avatar || "/default-avatar.png";
-      document.getElementById("avatarInput").value = user.avatar || "";
+      document.getElementById("usernameDisplay").innerText = user.username || user.email;
+      if (user.avatar) {
+        document.getElementById("avatarImage").src = user.avatar;
+      }
     }
 
-    async function handleImageUpload(event) {
-      const file = event.target.files[0];
-      if (!file) return;
+    document.getElementById("avatarForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fileInput = document.getElementById("avatarInput");
+      if (!fileInput.files[0]) return alert("Please choose a file");
 
       const formData = new FormData();
-      formData.append("file", file);
-      formData.append("upload_preset", "smarttalk"); // your Cloudinary unsigned preset
+      formData.append("avatar", fileInput.files[0]);
 
-      const res = await fetch("https://api.cloudinary.com/v1_1/YOUR_CLOUD_NAME/image/upload", {
+      const res = await fetch("/api/users/upload-avatar", {
         method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
         body: formData
       });
 
       const data = await res.json();
-      const imageUrl = data.secure_url;
-      document.getElementById("avatarPreview").src = imageUrl;
-      document.getElementById("avatarInput").value = imageUrl;
+      if (data.avatar) {
+        document.getElementById("avatarImage").src = data.avatar;
+        alert("✅ Profile picture updated!");
+      } else {
+        alert("❌ Upload failed");
+      }
+    });
+
+    function inviteFriends() {
+      alert("Share SmartTalk with your friends!");
     }
 
-    async function saveProfile() {
-      const username = document.getElementById("usernameField").value;
-      const avatar = document.getElementById("avatarInput").value;
-
-      const res = await fetch("/api/users/update-profile", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({ username, avatar })
-      });
-
-      if ((await res.json()).message) {
-        alert("✅ Profile updated!");
-      } else {
-        alert("❌ Could not update profile.");
-      }
+    function goToContact() {
+      window.location.href = "contact.html";
     }
 
     function logout() {
-      localStorage.removeItem("token");
-      localStorage.removeItem("user");
+      localStorage.clear();
       window.location.href = "/login.html";
     }
 
-    function goHome() {
-      window.location.href = "/home.html";
-    }
-
-    function invite() {
-      alert("Invite link copied!");
-    }
-
-    function contact() {
-      alert("Email: support@smarttalk.com");
-    }
-
-    loadUserProfile();
+    loadProfile();
   </script>
 </body>
 </html>
