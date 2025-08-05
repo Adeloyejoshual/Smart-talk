@@ -2,38 +2,56 @@ const Message = require("../models/Message");
 
 module.exports = function (io) {
   io.on("connection", (socket) => {
-    console.log("A user connected:", socket.id);
+    console.log("🔌 User connected:", socket.id);
 
-    // Join user to a room
-    socket.on("joinRoom", ({ room, username }) => {
-      socket.join(room);
-      socket.to(room).emit("message", {
-        username: "System",
-        text: `${username} has joined the room.`,
-        time: new Date(),
-      });
+    // Join private room
+    socket.on("join", (userId) => {
+      socket.join(userId);
     });
 
-    // Handle incoming chat messages
-    socket.on("chatMessage", async ({ room, username, text }) => {
-      const message = new Message({ username, text, time: new Date() });
-      await message.save();
+    // Join group room
+    socket.on("join-group", (groupId) => {
+      socket.join(groupId);
+    });
 
-      io.to(room).emit("message", {
-        username,
+    // Handle private messages
+    socket.on("privateMessage", ({ senderId, receiverId, content }) => {
+      const message = {
+        senderId,
+        receiverId,
+        content,
+        timestamp: new Date(),
+        status: "delivered"
+      };
+
+      // Emit to receiver only
+      socket.to(receiverId).emit("privateMessage", message);
+    });
+
+    // Handle group messages
+    socket.on("group-message", async (msg) => {
+      const { sender, group, text } = msg;
+
+      // Save to DB
+      const saved = await Message.create({
+        sender,
+        group,
         text,
-        time: message.time,
+        createdAt: new Date()
       });
+
+      // Emit to everyone in group
+      io.to(group).emit("group-message", saved);
     });
 
-    // Notify room on user disconnect
+    // Disconnect cleanup
     socket.on("disconnecting", () => {
-      const rooms = [...socket.rooms].filter((r) => r !== socket.id);
-      rooms.forEach((room) => {
+      const rooms = [...socket.rooms].filter(r => r !== socket.id);
+      rooms.forEach(room => {
         socket.to(room).emit("message", {
           username: "System",
           text: "A user has left the chat.",
-          time: new Date(),
+          time: new Date()
         });
       });
     });
