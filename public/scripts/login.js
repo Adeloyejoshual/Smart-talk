@@ -1,3 +1,5 @@
+// public/scripts/login.js
+
 document.addEventListener("DOMContentLoaded", () => {
   const loginForm = document.getElementById("loginForm");
   const message = document.getElementById("message");
@@ -10,6 +12,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const email = formData.get("email").trim();
     const password = formData.get("password").trim();
 
+    if (!email || !password) {
+      message.style.color = "red";
+      message.textContent = "Please enter both email and password.";
+      return;
+    }
+
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
@@ -20,16 +28,26 @@ document.addEventListener("DOMContentLoaded", () => {
       const data = await res.json();
 
       if (!res.ok || !data.token || !data.user) {
-        message.textContent = data.error || "Login failed";
+        message.style.color = "red";
+        message.textContent = data.message || data.error || "Login failed";
         return;
       }
 
+      // Store token and user
       localStorage.setItem("token", data.token);
       localStorage.setItem("user", JSON.stringify(data.user));
-      window.location.href = "/home.html";
+
+      // Redirect
+      message.style.color = "green";
+      message.textContent = "✅ Login successful. Redirecting...";
+      setTimeout(() => {
+        window.location.href = "/home.html";
+      }, 1000);
+
     } catch (err) {
-      console.error(err);
-      message.textContent = "Server error";
+      console.error("Login error:", err);
+      message.style.color = "red";
+      message.textContent = "Server error. Please try again later.";
     }
   });
 });
