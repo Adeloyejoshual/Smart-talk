@@ -52,32 +52,36 @@ router.post("/group/image", auth, upload.single("image"), async (req, res) => {
 /* =====================================================
    📸 PRIVATE CHAT MULTIPLE IMAGE UPLOAD
 ===================================================== */
-router.post("/private/image", auth, upload.array("images", 5), async (req, res) => {
+// Private message send route
+router.post("/private/send", auth, async (req, res) => {
   try {
-    const { receiverId } = req.body;
+    const { recipientId, content } = req.body;
 
-    if (!req.files || req.files.length === 0) {
-      return res.status(400).json({ message: "No images uploaded" });
+    if (!recipientId || (!content && !req.file)) {
+      return res.status(400).json({ error: "Message content or image is required." });
     }
 
-    const messages = await Promise.all(req.files.map(async (file) => {
-      const imageUrl = await uploadToCloudinary(file.buffer);
+    const newMessage = new Message({
+      sender: req.userId,
+      recipient: recipientId,
+      content: content || "",
+      status: "sent",
+    });
 
-      const msg = new Message({
-        sender: req.userId,
-        receiver: receiverId,
-        text: "",
-        image: imageUrl,
-      });
+    await newMessage.save();
+    await newMessage.populate("sender", "username");
 
-      await msg.save();
-      return msg;
-    }));
+    // Emit via Socket.IO to recipient
+    req.io?.to(recipientId).emit("privateMessage", {
+      senderId: req.userId,
+      content,
+      timestamp: newMessage.createdAt,
+    });
 
-    res.status(201).json({ success: true, messages });
+    res.status(201).json(newMessage);
   } catch (err) {
-    console.error("❌ Private image upload error:", err);
-    res.status(500).json({ error: "Upload failed" });
+    console.error("Private message error:", err);
+    res.status(500).json({ error: "Failed to send message" });
   }
 });
 
