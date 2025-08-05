@@ -2,116 +2,32 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SmartTalk - Settings</title>
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Settings - SmartTalk</title>
+  <script defer src="./js/settings.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet"/>
 </head>
-<body class="bg-gray-100 min-h-screen flex flex-col items-center">
+<body class="bg-gray-100 text-gray-800">
 
-  <!-- Header -->
-  <div class="w-full bg-blue-600 p-4 text-white text-center text-xl font-bold">
-    Settings
-  </div>
+  <div class="max-w-md mx-auto p-4">
+    <h2 class="text-center text-2xl font-bold mb-4">Settings</h2>
 
-  <!-- Profile Section -->
-  <div class="flex flex-col items-center my-6">
-    <form id="avatarForm" enctype="multipart/form-data">
-      <label for="avatarInput">
-        <img id="avatarPreview" src="default-avatar.png" alt="Profile Picture"
-          class="w-24 h-24 rounded-full object-cover cursor-pointer border-4 border-blue-500 hover:opacity-80 transition" />
-      </label>
-      <input type="file" name="avatar" id="avatarInput" accept="image/*" class="hidden" />
-    </form>
+    <!-- Avatar and username -->
+    <div class="flex flex-col items-center gap-2">
+      <div id="avatar-wrapper" class="w-24 h-24 rounded-full bg-gray-300 overflow-hidden cursor-pointer border-2 border-gray-400 hover:border-blue-500">
+        <img id="avatar-img" src="./default-avatar.png" alt="Profile Picture" class="w-full h-full object-cover"/>
+      </div>
+      <input type="file" id="avatar-input" accept="image/*" class="hidden"/>
+      <h3 id="username-display" class="text-xl font-semibold">Username</h3>
+    </div>
 
-    <!-- Username and Email -->
-    <div class="text-center mt-3">
-      <h2 id="username" class="text-lg font-semibold text-gray-800"></h2>
-      <p id="email" class="text-sm text-gray-500"></p>
+    <!-- Options -->
+    <div class="mt-6 space-y-4">
+      <button onclick="window.location.href='invite.html'" class="w-full py-2 px-4 bg-blue-500 text-white rounded shadow hover:bg-blue-600">Invite Friends</button>
+      <button onclick="window.location.href='contact.html'" class="w-full py-2 px-4 bg-green-500 text-white rounded shadow hover:bg-green-600">Contact</button>
+      <button id="logout-btn" class="w-full py-2 px-4 bg-red-500 text-white rounded shadow hover:bg-red-600">Logout</button>
     </div>
   </div>
 
-  <!-- Options -->
-  <div class="w-full max-w-sm space-y-4 mt-4">
-    <a href="#" class="block w-full text-center py-3 bg-green-500 text-white rounded-lg shadow hover:bg-green-600">
-      Invite Friends
-    </a>
-
-    <a href="contact.html" class="block w-full text-center py-3 bg-yellow-500 text-white rounded-lg shadow hover:bg-yellow-600">
-      Contact
-    </a>
-
-    <button id="logoutBtn" class="block w-full text-center py-3 bg-red-500 text-white rounded-lg shadow hover:bg-red-600">
-      Logout
-    </button>
-  </div>
-
-  <!-- Bottom Navigation -->
-  <div class="fixed bottom-0 w-full bg-white border-t flex justify-around py-2">
-    <a href="home.html" class="text-center text-blue-600 font-bold">Home</a>
-    <a href="call.html" class="text-center text-gray-600">Call</a>
-    <a href="settings.html" class="text-center text-gray-600">Settings</a>
-  </div>
-
-  <!-- Script -->
-  <script>
-    const token = localStorage.getItem("token");
-
-    // Auto-upload avatar
-    document.getElementById("avatarInput").addEventListener("change", async function () {
-      const formData = new FormData();
-      formData.append("avatar", this.files[0]);
-
-      try {
-        const res = await fetch("/api/users/upload-avatar", {
-          method: "POST",
-          headers: {
-            Authorization: "Bearer " + token
-          },
-          body: formData
-        });
-
-        const data = await res.json();
-
-        if (data.avatar) {
-          document.getElementById("avatarPreview").src = data.avatar;
-        } else {
-          alert("Failed to upload avatar.");
-        }
-      } catch (err) {
-        alert("Upload error");
-        console.error(err);
-      }
-    });
-
-    // Load current user info
-    (async () => {
-      try {
-        const res = await fetch("/api/users/me", {
-          headers: {
-            Authorization: "Bearer " + token
-          }
-        });
-
-        const user = await res.json();
-        if (user.avatar) {
-          document.getElementById("avatarPreview").src = user.avatar;
-        }
-        if (user.username) {
-          document.getElementById("username").textContent = user.username;
-        }
-        if (user.email) {
-          document.getElementById("email").textContent = user.email;
-        }
-      } catch (err) {
-        console.error("Could not load user data");
-      }
-    })();
-
-    // Logout
-    document.getElementById("logoutBtn").addEventListener("click", () => {
-      localStorage.removeItem("token");
-      window.location.href = "index.html";
-    });
-  </script>
 </body>
 </html>
