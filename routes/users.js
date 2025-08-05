@@ -152,21 +152,17 @@ router.post("/report", async (req, res) => {
   res.send("Reported");
 });
 
-// ✅ Upload avatar
-router.post(
-  "/upload-avatar",
-  authMiddleware,
-  upload.single("avatar"),
-  async (req, res) => {
-    try {
-      const user = await User.findById(req.user.id);
-      user.avatar = req.file.path;
-      await user.save();
-      res.json({ avatar: req.file.path });
-    } catch (err) {
-      res.status(500).json({ message: "Upload failed" });
-    }
+// ✅ Upload avatar route
+router.post("/upload-avatar", authMiddleware, upload.single("avatar"), async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    user.avatar = "/uploads/" + req.file.filename; // Save relative path
+    await user.save();
+    res.json({ avatar: user.avatar });
+  } catch (err) {
+    console.error("Upload error:", err);
+    res.status(500).json({ message: "Upload failed" });
   }
-);
+});
 
 module.exports = router;
