@@ -2,54 +2,93 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>SmartTalk - Settings</title>
+  <title>Settings - SmartTalk</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-black text-gray-200 min-h-screen flex flex-col">
+<body class="bg-black text-white min-h-screen flex flex-col">
 
   <!-- Header -->
-  <div class="bg-[#5C2C24] px-4 py-3 flex justify-between items-center shadow">
-    <h1 class="text-lg font-bold text-orange-400">Settings</h1>
-    <button onclick="goBack()" class="text-sm text-gray-100 hover:text-orange-400">Back</button>
+  <div class="px-4 py-4 bg-[#5C2C24] flex justify-between items-center shadow">
+    <h1 class="text-xl font-bold text-orange-400">Settings</h1>
+    <button onclick="goHome()" class="text-sm text-white hover:text-orange-300">Home</button>
   </div>
 
-  <!-- Profile Section -->
-  <div class="flex flex-col items-center text-center mt-6 px-4">
-    <div class="relative">
-      <img id="avatarPreview" src="/default-avatar.png" alt="Avatar" class="w-24 h-24 rounded-full border border-gray-500 object-cover" />
-      <input type="file" id="avatarInput" class="absolute top-0 left-0 w-24 h-24 opacity-0 cursor-pointer" onchange="previewAvatar()" />
+  <!-- Profile Info -->
+  <div class="p-6 space-y-4">
+    <div class="flex flex-col items-center space-y-3">
+      <img id="avatarPreview" src="/default-avatar.png" class="w-24 h-24 rounded-full border border-gray-500" />
+      <input type="file" accept="image/*" onchange="handleImageUpload(event)" class="text-sm text-gray-300" />
+      <input type="hidden" id="avatarInput" />
     </div>
-    <h2 id="usernameDisplay" class="text-lg font-bold mt-3">Username</h2>
+
+    <div>
+      <label class="block text-sm text-gray-400 mb-1">Username</label>
+      <input id="usernameField" class="w-full bg-[#1F1F1F] border border-gray-600 text-white rounded px-4 py-2" />
+    </div>
+
+    <button onclick="saveProfile()" class="w-full bg-orange-600 hover:bg-orange-700 text-white py-2 rounded font-semibold">
+      Save Profile
+    </button>
   </div>
 
-  <!-- Options -->
-  <div class="mt-8 px-6 flex flex-col gap-4 text-sm">
-    <button class="bg-[#2c2c2c] hover:bg-[#3a3a3a] py-3 px-4 rounded-lg text-left">📨 Invite Friends</button>
-    <button class="bg-[#2c2c2c] hover:bg-[#3a3a3a] py-3 px-4 rounded-lg text-left">📞 Contact</button>
-    <button onclick="logout()" class="bg-red-600 hover:bg-red-700 text-white py-3 px-4 rounded-lg text-left">🚪 Logout</button>
+  <!-- Other Options -->
+  <div class="px-6 pt-4">
+    <button onclick="invite()" class="w-full text-left text-orange-400 py-2">📨 Invite Friends</button>
+    <button onclick="contact()" class="w-full text-left text-orange-400 py-2">📞 Contact</button>
+    <button onclick="logout()" class="w-full text-left text-red-500 py-2 mt-4">🚪 Logout</button>
   </div>
 
   <script>
-    const user = JSON.parse(localStorage.getItem("user"));
     const token = localStorage.getItem("token");
 
-    if (!user || !token) {
-      window.location.href = "/login.html";
+    async function loadUserProfile() {
+      const res = await fetch("/api/users/me", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const user = await res.json();
+
+      document.getElementById("usernameField").value = user.username || "";
+      document.getElementById("avatarPreview").src = user.avatar || "/default-avatar.png";
+      document.getElementById("avatarInput").value = user.avatar || "";
     }
 
-    // Show username and avatar
-    document.getElementById("usernameDisplay").innerText = user.username || "Username";
-    document.getElementById("avatarPreview").src = user.avatar || "/default-avatar.png";
+    async function handleImageUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
 
-    function previewAvatar() {
-      const file = document.getElementById("avatarInput").files[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = () => {
-          document.getElementById("avatarPreview").src = reader.result;
-        };
-        reader.readAsDataURL(file);
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("upload_preset", "smarttalk"); // your Cloudinary unsigned preset
+
+      const res = await fetch("https://api.cloudinary.com/v1_1/YOUR_CLOUD_NAME/image/upload", {
+        method: "POST",
+        body: formData
+      });
+
+      const data = await res.json();
+      const imageUrl = data.secure_url;
+      document.getElementById("avatarPreview").src = imageUrl;
+      document.getElementById("avatarInput").value = imageUrl;
+    }
+
+    async function saveProfile() {
+      const username = document.getElementById("usernameField").value;
+      const avatar = document.getElementById("avatarInput").value;
+
+      const res = await fetch("/api/users/update-profile", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ username, avatar })
+      });
+
+      if ((await res.json()).message) {
+        alert("✅ Profile updated!");
+      } else {
+        alert("❌ Could not update profile.");
       }
     }
 
@@ -59,9 +98,19 @@
       window.location.href = "/login.html";
     }
 
-    function goBack() {
+    function goHome() {
       window.location.href = "/home.html";
     }
+
+    function invite() {
+      alert("Invite link copied!");
+    }
+
+    function contact() {
+      alert("Email: support@smarttalk.com");
+    }
+
+    loadUserProfile();
   </script>
 </body>
 </html>
