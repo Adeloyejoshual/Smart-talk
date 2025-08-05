@@ -9,20 +9,26 @@ document.addEventListener("DOMContentLoaded", () => {
     message.textContent = "";
 
     const formData = new FormData(loginForm);
-    const email = formData.get("email").trim();
+    const input = formData.get("email").trim(); // This could be username or email
     const password = formData.get("password").trim();
 
-    if (!email || !password) {
+    if (!input || !password) {
       message.style.color = "red";
-      message.textContent = "Please enter both email and password.";
+      message.textContent = "Please enter your username/email and password.";
       return;
     }
+
+    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input);
+    const payload = {
+      password,
+      ...(isEmail ? { email: input } : { username: input }),
+    };
 
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
@@ -33,11 +39,11 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      // Store token and user
+      // ✅ Store token and user
       localStorage.setItem("token", data.token);
       localStorage.setItem("user", JSON.stringify(data.user));
 
-      // Redirect
+      // ✅ Redirect to home
       message.style.color = "green";
       message.textContent = "✅ Login successful. Redirecting...";
       setTimeout(() => {
