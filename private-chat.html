@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>SmartTalk - Private Chat</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- Tailwind CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
+
+  <!-- Socket.IO -->
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+
+  <!-- Styles -->
+  <style>
+    .bubble {
+      padding: 0.5rem;
+      border-radius: 1rem;
+      max-width: 75%;
+      word-wrap: break-word;
+    }
+    .sent .bubble {
+      background-color: #2563eb; /* blue-600 */
+      color: white;
+      align-self: flex-end;
+    }
+    .received .bubble {
+      background-color: #e5e7eb; /* gray-200 */
+      color: black;
+      align-self: flex-start;
+    }
+    .meta {
+      font-size: 0.75rem;
+      text-align: right;
+      margin-top: 0.25rem;
+      opacity: 0.7;
+    }
+    .preview-image, .preview-file {
+      max-width: 80px;
+      margin-right: 0.5rem;
+    }
+    .preview-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      padding: 0.5rem;
+    }
+  </style>
+
+  <!-- Main Chat Script -->
+  <script defer src="/scripts/chat.js"></script>
+</head>
+
+<body class="bg-gray-200 min-h-screen flex flex-col">
+
+  <!-- Header -->
+  <header class="bg-blue-600 text-white p-4 flex justify-between items-center shadow fixed top-0 left-0 right-0 z-10">
+    <button id="backButton" class="text-lg font-semibold">&larr;</button>
+    <h1 id="chat-username" class="text-lg font-bold flex-1 text-center truncate">Chat</h1>
+    <button id="exportBtn" class="text-sm font-medium">Export</button>
+  </header>
+
+  <!-- Message Container -->
+  <div class="flex-1 overflow-y-auto pt-20 pb-36 px-4 space-y-3 flex flex-col" id="messageList">
+    <!-- Messages will be rendered by JavaScript -->
+  </div>
+
+  <!-- Preview Container -->
+  <div id="previewContainer" class="preview-container px-3"></div>
+
+  <!-- Chat Input -->
+  <form id="messageForm" class="flex items-center gap-2 p-3 bg-white border-t border-gray-300 fixed bottom-0 left-0 right-0 z-10">
+    <input
+      id="messageInput"
+      type="text"
+      placeholder="Type your message..."
+      class="flex-1 p-2 border rounded focus:outline-none"
+      required
+    />
+    
+    <!-- Upload Button -->
+    <label for="fileInput" class="cursor-pointer bg-blue-100 px-3 py-2 rounded border border-blue-300 hover:bg-blue-200">
+      📎
+    </label>
+    <input type="file" id="fileInput" class="hidden" multiple accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+
+    <!-- Send Button -->
+    <button
+      type="submit"
+      class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+    >
+      Send
+    </button>
+  </form>
+</body>
+</html>
