@@ -11,13 +11,14 @@
   <!-- Socket.IO -->
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 
+  <!-- Styling -->
   <style>
     .sent .bubble {
       background-color: #2563eb;
       color: white;
     }
     .received .bubble {
-      background-color: #e5e7eb;
+      background-color: #f3f4f6;
       color: black;
     }
     .bubble {
@@ -28,19 +29,29 @@
     }
     .meta {
       font-size: 0.75rem;
-      text-align: right;
       margin-top: 0.25rem;
       opacity: 0.7;
+      text-align: right;
     }
-    .seen {
-      color: #60a5fa;
+    .preview-box {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      padding: 0.5rem;
+      border-top: 1px solid #ccc;
+      background-color: #f9fafb;
+    }
+    .preview-box img, .preview-box .file {
+      max-height: 80px;
+      border: 1px solid #ddd;
+      border-radius: 0.5rem;
+      padding: 0.25rem;
     }
   </style>
 
-  <!-- Chat Logic -->
+  <!-- Chat JS -->
   <script defer src="/scripts/chat.js"></script>
 </head>
-
 <body class="bg-blue-50 min-h-screen flex flex-col">
 
   <!-- Header -->
@@ -50,25 +61,32 @@
     <button id="exportBtn" class="text-sm text-white font-medium">Export</button>
   </header>
 
-  <!-- Message List -->
+  <!-- Messages -->
   <ul id="messageList" class="flex-1 overflow-y-auto p-4 space-y-3 flex flex-col bg-blue-100">
-    <!-- Messages rendered dynamically -->
+    <!-- Messages will be loaded dynamically -->
   </ul>
 
-  <!-- Preview Container (injected by JS) -->
+  <!-- Preview box -->
+  <div id="previewContainer" class="preview-box hidden"></div>
 
-  <!-- Chat Input -->
+  <!-- Message Input -->
   <form id="messageForm" class="flex flex-col gap-2 p-3 bg-white border-t border-gray-300">
     <div class="flex items-center gap-2">
       <input
         id="messageInput"
         type="text"
-        placeholder="Type your message..."
+        placeholder="Type a message..."
         class="flex-1 p-2 border rounded focus:outline-none"
       />
       <label class="cursor-pointer bg-blue-100 px-3 py-2 rounded border border-blue-300 hover:bg-blue-200">
         📎
-        <input type="file" id="imageInput" accept="image/*,application/pdf,.doc,.docx" class="hidden" multiple />
+        <input
+          type="file"
+          id="imageInput"
+          accept="image/*,application/pdf,.doc,.docx"
+          class="hidden"
+          multiple
+        />
       </label>
       <button
         type="submit"
