@@ -18,12 +18,12 @@ cloudinary.config({
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
-/* === 📨 PRIVATE TEXT MESSAGE SEND === */
+/* === 📨 SEND PRIVATE TEXT MESSAGE === */
 router.post("/private/send", auth, async (req, res) => {
   try {
     const { recipientId, content, replyTo, isForwarded } = req.body;
     if (!recipientId || (!content && !replyTo)) {
-      return res.status(400).json({ error: "Missing fields" });
+      return res.status(400).json({ error: "Missing content or recipient" });
     }
 
     const newMessage = new Message({
@@ -54,31 +54,25 @@ router.post("/private/send", auth, async (req, res) => {
   }
 });
 
-/* === 🖼️📎 PRIVATE IMAGE / FILE UPLOAD === */
+/* === 🖼️📎 UPLOAD IMAGES / FILES === */
 router.post("/private/upload", auth, upload.array("files", 5), async (req, res) => {
   try {
     const { receiverId } = req.body;
-    if (!req.files?.length) return res.status(400).json({ message: "No files" });
+    if (!req.files?.length) return res.status(400).json({ message: "No files uploaded" });
 
     const messages = await Promise.all(
       req.files.map(async (file) => {
         const url = await uploadToCloudinary(file.buffer);
         const mime = file.mimetype;
-        let msgData = {
+        const msg = new Message({
           sender: req.userId,
           recipient: receiverId,
-        };
-
-        if (mime.startsWith("image/")) {
-          msgData.image = url;
-        } else {
-          msgData.file = url;
-          msgData.fileType = mime.split("/")[1];
-        }
-
-        const message = new Message(msgData);
-        await message.save();
-        return message;
+          ...(mime.startsWith("image/")
+            ? { image: url }
+            : { file: url, fileType: mime.split("/")[1] }),
+        });
+        await msg.save();
+        return msg;
       })
     );
 
@@ -89,7 +83,7 @@ router.post("/private/upload", auth, upload.array("files", 5), async (req, res) 
   }
 });
 
-/* === 📚 GET CHAT HISTORY === */
+/* === 📚 GET CHAT HISTORY (Paginated) === */
 router.get("/history/:receiverId", auth, async (req, res) => {
   try {
     const { receiverId } = req.params;
@@ -109,7 +103,7 @@ router.get("/history/:receiverId", auth, async (req, res) => {
     res.status(200).json({ success: true, messages });
   } catch (err) {
     console.error("❌ History error:", err);
-    res.status(500).json({ error: "Fetch error" });
+    res.status(500).json({ error: "Failed to fetch messages" });
   }
 });
 
@@ -118,8 +112,7 @@ router.put("/edit/:id", auth, async (req, res) => {
   try {
     const { content } = req.body;
     const message = await Message.findById(req.params.id);
-    if (!message) return res.status(404).json({ error: "Not found" });
-
+    if (!message) return res.status(404).json({ error: "Message not found" });
     if (message.sender.toString() !== req.userId) return res.status(403).json({ error: "Unauthorized" });
 
     message.content = content;
@@ -136,8 +129,7 @@ router.put("/edit/:id", auth, async (req, res) => {
 router.delete("/delete/:id", auth, async (req, res) => {
   try {
     const message = await Message.findById(req.params.id);
-    if (!message) return res.status(404).json({ error: "Not found" });
-
+    if (!message) return res.status(404).json({ error: "Message not found" });
     if (message.sender.toString() !== req.userId) return res.status(403).json({ error: "Unauthorized" });
 
     message.isDeleted = true;
@@ -149,29 +141,69 @@ router.delete("/delete/:id", auth, async (req, res) => {
   }
 });
 
-/* === ⭐ STAR OR UNSTAR MESSAGE === */
+/* === ⭐ STAR OR UNSTAR === */
 router.put("/star/:id", auth, async (req, res) => {
   try {
     const message = await Message.findById(req.params.id);
-    if (!message) return res.status(404).json({ error: "Not found" });
+    if (!message) return res.status(404).json({ error: "Message not found" });
 
     message.isStarred = !message.isStarred;
     await message.save();
 
-    res.status(200).json({ success: true, starred: message.isStarred });
+    res.json({ success: true, isStarred: message.isStarred });
   } catch (err) {
-    res.status(500).json({ error: "Star update failed" });
+    res.status(500).json({ error: "Failed to star/unstar" });
+  }
+});
+
+/* === 📌 PIN OR UNPIN === */
+router.put("/pin/:id", auth, async (req, res) => {
+  try {
+    const message = await Message.findById(req.params.id);
+    if (!message) return res.status(404).json({ error: "Message not found" });
+    if (message.sender.toString() !== req.userId) return res.status(403).json({ error: "Unauthorized" });
+
+    message.isPinned = !message.isPinned;
+    await message.save();
+
+    res.json({ success: true, isPinned: message.isPinned });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to pin/unpin" });
+  }
+});
+
+/* === 😊 REACT TO A MESSAGE === */
+router.post("/react/:id", auth, async (req, res) => {
+  try {
+    const { emoji } = req.body;
+    const message = await Message.findById(req.params.id);
+    if (!message) return res.status(404).json({ error: "Message not found" });
+
+    const existing = message.emojiReactions.findIndex(
+      (r) => r.user.toString() === req.userId && r.emoji === emoji
+    );
+
+    if (existing > -1) {
+      message.emojiReactions.splice(existing, 1); // Remove
+    } else {
+      message.emojiReactions.push({ user: req.userId, emoji });
+    }
+
+    await message.save();
+    res.json({ success: true, reactions: message.emojiReactions });
+  } catch (err) {
+    res.status(500).json({ error: "React failed" });
   }
 });
 
 /* === 🔁 FORWARD MESSAGE === */
 router.post("/forward/:id", auth, async (req, res) => {
   try {
-    const original = await Message.findById(req.params.id);
     const { recipientId } = req.body;
+    const original = await Message.findById(req.params.id);
     if (!original || !recipientId) return res.status(400).json({ error: "Missing data" });
 
-    const forwarded = new Message({
+    const newMsg = new Message({
       sender: req.userId,
       recipient: recipientId,
       content: original.content,
@@ -179,11 +211,12 @@ router.post("/forward/:id", auth, async (req, res) => {
       file: original.file,
       fileType: original.fileType,
       isForwarded: true,
+      forwardedFrom: original.sender,
     });
 
-    await forwarded.save();
+    await newMsg.save();
 
-    res.status(201).json({ success: true, message: forwarded });
+    res.status(201).json({ success: true, message: newMsg });
   } catch (err) {
     res.status(500).json({ error: "Forward failed" });
   }
