@@ -4,17 +4,21 @@
   <meta charset="UTF-8" />
   <title>SmartTalk - Private Chat</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  
+  <!-- Socket.IO -->
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-  <script defer src="/scripts/chat.js"></script>
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+
+  <!-- Tailwind CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
+
   <style>
     .sent .bubble {
-      background-color: #2563eb; /* Tailwind blue-600 */
+      background-color: #2563eb; /* blue-600 */
       color: white;
       align-self: flex-end;
     }
     .received .bubble {
-      background-color: #e5e7eb; /* Tailwind gray-200 */
+      background-color: #e5e7eb; /* gray-200 */
       color: black;
       align-self: flex-start;
     }
@@ -31,11 +35,15 @@
       opacity: 0.7;
     }
     .seen {
-      color: #93c5fd; /* Tailwind blue-300 */
+      color: #93c5fd; /* blue-300 */
       margin-left: 0.25rem;
     }
   </style>
+
+  <!-- Your script file -->
+  <script defer src="/scripts/chat.js"></script>
 </head>
+
 <body class="bg-blue-50 min-h-screen flex flex-col">
 
   <!-- Header -->
@@ -45,12 +53,12 @@
     <button id="exportBtn" class="text-sm text-white font-medium">Export</button>
   </header>
 
-  <!-- Chat Messages -->
+  <!-- Chat Message List -->
   <ul id="messageList" class="flex-1 overflow-y-auto p-4 space-y-3 flex flex-col">
-    <!-- Messages appended by JS -->
+    <!-- Messages rendered via JS -->
   </ul>
 
-  <!-- Chat Form -->
+  <!-- Chat Input Form -->
   <form id="messageForm" class="flex p-3 bg-white border-t border-gray-300">
     <input
       id="messageInput"
