@@ -11,14 +11,8 @@
   <!-- Socket.IO -->
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 
-  <!-- Styles -->
+  <!-- Custom styles -->
   <style>
-    .bubble {
-      padding: 0.5rem;
-      border-radius: 1rem;
-      max-width: 75%;
-      word-wrap: break-word;
-    }
     .sent .bubble {
       background-color: #2563eb; /* blue-600 */
       color: white;
@@ -29,62 +23,77 @@
       color: black;
       align-self: flex-start;
     }
+    .bubble {
+      padding: 0.5rem;
+      border-radius: 1rem;
+      max-width: 75%;
+      word-wrap: break-word;
+    }
     .meta {
       font-size: 0.75rem;
       text-align: right;
       margin-top: 0.25rem;
       opacity: 0.7;
     }
-    .preview-image, .preview-file {
-      max-width: 80px;
+    .seen {
+      color: #93c5fd;
+      margin-left: 0.25rem;
+    }
+    #previewContainer img,
+    #previewContainer .file-preview {
+      max-height: 5rem;
       margin-right: 0.5rem;
     }
-    .preview-container {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.5rem;
-      padding: 0.5rem;
+    .file-preview {
+      display: inline-block;
+      padding: 0.25rem 0.5rem;
+      background: #f1f5f9;
+      border-radius: 0.25rem;
+      font-size: 0.75rem;
     }
   </style>
 
-  <!-- Main Chat Script -->
-  <script defer src="/scripts/chat.js"></script>
+  <!-- Main Script -->
+  <script defer src="/scripts/private-chat.js"></script>
 </head>
 
-<body class="bg-gray-200 min-h-screen flex flex-col">
+<body class="bg-blue-50 min-h-screen flex flex-col">
 
   <!-- Header -->
-  <header class="bg-blue-600 text-white p-4 flex justify-between items-center shadow fixed top-0 left-0 right-0 z-10">
-    <button id="backButton" class="text-lg font-semibold">&larr;</button>
-    <h1 id="chat-username" class="text-lg font-bold flex-1 text-center truncate">Chat</h1>
-    <button id="exportBtn" class="text-sm font-medium">Export</button>
+  <header class="bg-blue-600 text-white p-4 flex justify-between items-center shadow">
+    <button id="backButton" class="text-white text-lg font-semibold">&larr;</button>
+    <h1 id="chat-username" class="text-lg font-bold flex-1 text-center truncate">Loading...</h1>
+    <button id="exportBtn" class="text-sm text-white font-medium">Export</button>
   </header>
 
-  <!-- Message Container -->
-  <div class="flex-1 overflow-y-auto pt-20 pb-36 px-4 space-y-3 flex flex-col" id="messageList">
-    <!-- Messages will be rendered by JavaScript -->
-  </div>
+  <!-- Message List -->
+  <ul id="messageList" class="flex-1 overflow-y-auto p-4 space-y-3 flex flex-col-reverse bg-blue-100">
+    <!-- Messages rendered by JS -->
+  </ul>
 
-  <!-- Preview Container -->
-  <div id="previewContainer" class="preview-container px-3"></div>
+  <!-- Image/File Preview Container -->
+  <div id="previewContainer" class="px-4 py-2 flex flex-wrap gap-2 bg-blue-100 hidden border-t border-blue-200"></div>
 
   <!-- Chat Input -->
-  <form id="messageForm" class="flex items-center gap-2 p-3 bg-white border-t border-gray-300 fixed bottom-0 left-0 right-0 z-10">
+  <form id="messageForm" class="flex items-center gap-2 p-3 bg-white border-t border-gray-300">
     <input
       id="messageInput"
       type="text"
       placeholder="Type your message..."
       class="flex-1 p-2 border rounded focus:outline-none"
-      required
     />
     
-    <!-- Upload Button -->
-    <label for="fileInput" class="cursor-pointer bg-blue-100 px-3 py-2 rounded border border-blue-300 hover:bg-blue-200">
+    <label class="cursor-pointer bg-blue-100 px-3 py-2 rounded border border-blue-300 hover:bg-blue-200">
       📎
+      <input
+        type="file"
+        id="imageInput"
+        accept="image/*,.pdf,.doc,.docx,.txt"
+        class="hidden"
+        multiple
+      />
     </label>
-    <input type="file" id="fileInput" class="hidden" multiple accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
 
-    <!-- Send Button -->
     <button
       type="submit"
       class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
@@ -92,5 +101,15 @@
       Send
     </button>
   </form>
+
+  <!-- Back Button Script -->
+  <script>
+    const backButton = document.getElementById("backButton");
+    if (backButton) {
+      backButton.addEventListener("click", () => {
+        window.location.href = "/home.html"; // Change this if your home is named differently
+      });
+    }
+  </script>
 </body>
 </html>
