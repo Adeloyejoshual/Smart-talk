@@ -12,17 +12,17 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middlewares
+// Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, "public"))); // Serve static HTML/CSS/JS
+app.use(express.static(path.join(__dirname, "public"))); // Serve frontend files
 app.use("/uploads", express.static(path.join(__dirname, "public/uploads"))); // Serve uploaded images
 
 // Connect MongoDB
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => console.log("✅ MongoDB connected"))
-  .catch((err) => console.error("❌ MongoDB error:", err));
+  .catch((err) => console.error("❌ MongoDB connection error:", err));
 
 // Routes
 app.use("/api/auth", require("./routes/auth"));
@@ -36,7 +36,7 @@ const server = app.listen(PORT, () =>
   console.log(`🚀 Server running on http://localhost:${PORT}`)
 );
 
-// Socket.IO setup
+// Setup Socket.IO
 const io = socketIO(server, {
   cors: {
     origin: "*",
@@ -44,19 +44,26 @@ const io = socketIO(server, {
   },
 });
 
-// === MODELS ===
+// 🧠 Attach `io` to every request (important for Socket.IO in routes)
+app.use((req, res, next) => {
+  req.io = io;
+  next();
+});
+
+// Load message model
 const Message = require("./models/Message");
 
 // === SOCKET.IO EVENTS ===
 io.on("connection", (socket) => {
   console.log("📡 New connection:", socket.id);
 
-  // Join a user-specific room
+  // Join a room with the user's ID
   socket.on("join", (userId) => {
     socket.join(userId);
+    console.log(`🟢 User joined room: ${userId}`);
   });
 
-  // Private messaging
+  // Private chat
   socket.on("privateMessage", async ({ senderId, receiverId, content }) => {
     try {
       const newMessage = new Message({
@@ -64,6 +71,7 @@ io.on("connection", (socket) => {
         recipient: receiverId,
         content,
       });
+
       await newMessage.save();
 
       io.to(receiverId).emit("privateMessage", {
@@ -71,17 +79,20 @@ io.on("connection", (socket) => {
         content,
         timestamp: newMessage.createdAt,
       });
+
+      console.log(`📩 Private message from ${senderId} to ${receiverId}: ${content}`);
     } catch (err) {
-      console.error("Private message error:", err.message);
+      console.error("❌ Error sending private message:", err.message);
     }
   });
 
-  // Join group
+  // Group join
   socket.on("join-group", (groupId) => {
     socket.join(groupId);
+    console.log(`👥 Joined group: ${groupId}`);
   });
 
-  // Group messaging
+  // Group chat
   socket.on("group-message", async ({ group, sender, text }) => {
     try {
       const newMessage = new Message({
@@ -89,6 +100,7 @@ io.on("connection", (socket) => {
         group,
         content: text,
       });
+
       await newMessage.save();
 
       io.to(group).emit("group-message", {
@@ -97,12 +109,15 @@ io.on("connection", (socket) => {
         text,
         timestamp: newMessage.createdAt,
       });
+
+      console.log(`📨 Group message in ${group}: ${text}`);
     } catch (err) {
-      console.error("Group message error:", err.message);
+      console.error("❌ Group message error:", err.message);
     }
   });
 
+  // Disconnect
   socket.on("disconnect", () => {
-    console.log("❌ Disconnected:", socket.id);
+    console.log("❌ User disconnected:", socket.id);
   });
 });
