@@ -1,71 +1,141 @@
-// /public/scripts/chat.js
-const socket = io(); let userId = null; let otherUserId = null; let token = localStorage.getItem("token");
+document.addEventListener("DOMContentLoaded", () => {
+  const messageForm = document.getElementById("messageForm");
+  const messageInput = document.getElementById("messageInput");
+  const messageList = document.getElementById("messageList");
+  const backButton = document.getElementById("backButton");
+  const exportBtn = document.getElementById("exportBtn");
+  const usernameHeader = document.getElementById("chat-username");
 
-const chatBox = document.getElementById("chat-box"); const messageForm = document.getElementById("message-form"); const messageInput = document.getElementById("message-input"); const imageUpload = document.getElementById("image-upload"); const usernameHeader = document.getElementById("chat-username"); const typingIndicator = document.getElementById("typing-indicator");
+  const token = localStorage.getItem("token");
+  const urlParams = new URLSearchParams(window.location.search);
+  const receiverId = urlParams.get("user");
 
-// Parse URL to get otherUserId const urlParams = new URLSearchParams(window.location.search); otherUserId = urlParams.get("id");
-
-// Get current user async function getCurrentUser() { const res = await fetch("/api/users/me", { headers: { Authorization: Bearer ${token} }, }); const user = await res.json(); userId = user._id; socket.emit("join", userId); return user; }
-
-// Load messages async function loadMessages() { try { const res = await fetch(/api/messages/history/${otherUserId}, { headers: { Authorization: Bearer ${token} }, }); const data = await res.json(); const messages = data.messages || [];
-
-chatBox.innerHTML = "";
-let currentDate = null;
-
-messages.forEach((msg) => {
-  const date = new Date(msg.createdAt).toDateString();
-  if (date !== currentDate) {
-    const dateDiv = document.createElement("div");
-    dateDiv.className = "sticky top-0 text-center text-xs bg-blue-200 dark:bg-blue-700 py-1 rounded";
-    dateDiv.textContent = date;
-    chatBox.appendChild(dateDiv);
-    currentDate = date;
+  if (!token || !receiverId) {
+    window.location.href = "/home.html";
+    return;
   }
 
-  const msgDiv = document.createElement("div");
-  msgDiv.className = `p-2 rounded max-w-[75%] mb-1 ${
-    msg.sender === userId
-      ? "bg-blue-500 text-white self-end ml-auto"
-      : "bg-blue-200 dark:bg-blue-600 text-black dark:text-white"
-  }`;
+  const myUserId = getMyUserId(token);
+  const socket = io();
+  socket.emit("join", myUserId);
 
-  if (msg.image) {
-    const img = document.createElement("img");
-    img.src = msg.image;
-    img.className = "w-40 h-auto rounded";
-    msgDiv.appendChild(img);
+  loadMessages();
+  loadUsername();
+
+  messageForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const content = messageInput.value.trim();
+    if (!content) return;
+
+    socket.emit("privateMessage", {
+      senderId: myUserId,
+      receiverId,
+      content,
+    });
+
+    await saveMessageToServer(receiverId, content);
+    appendMessage({ sender: myUserId, content, timestamp: Date.now(), read: true });
+    messageInput.value = "";
+    scrollToBottom();
+  });
+
+  socket.on("privateMessage", (msg) => {
+    if (msg.senderId === receiverId) {
+      appendMessage({
+        sender: receiverId,
+        content: msg.content,
+        timestamp: Date.now(),
+        read: false
+      });
+      scrollToBottom();
+    }
+  });
+
+  exportBtn.addEventListener("click", () => {
+    const messages = [...messageList.querySelectorAll("li")].map(li => li.innerText).join("\n");
+    const blob = new Blob([messages], { type: "text/plain" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "SmartTalk_PrivateChat.txt";
+    link.click();
+  });
+
+  backButton.addEventListener("click", () => {
+    window.location.href = "/home.html";
+  });
+
+  async function loadMessages() {
+    try {
+      const res = await fetch(`/api/messages/history/${receiverId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success && data.messages) {
+        messageList.innerHTML = "";
+        data.messages.forEach(msg => {
+          appendMessage({
+            sender: msg.sender,
+            content: msg.content || "",
+            timestamp: msg.createdAt,
+            read: msg.status === "read"
+          });
+        });
+        scrollToBottom();
+      }
+    } catch (err) {
+      console.error("Failed to load messages:", err);
+    }
   }
 
-  if (msg.content || msg.text) {
-    const text = document.createElement("p");
-    text.textContent = msg.content || msg.text;
-    msgDiv.appendChild(text);
+  async function loadUsername() {
+    try {
+      const res = await fetch(`/api/users/${receiverId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const user = await res.json();
+      usernameHeader.textContent = user.username || user.name || "Chat";
+    } catch (err) {
+      console.error("Failed to load user:", err);
+    }
   }
 
-  chatBox.appendChild(msgDiv);
+  function appendMessage({ sender, content, timestamp, read }) {
+    const isMine = sender === myUserId;
+    const li = document.createElement("li");
+    li.className = isMine ? "sent" : "received";
+    li.innerHTML = `
+      <div class="bubble">
+        <strong>${isMine ? "You" : "User"}</strong>: ${content}
+        <div class="meta">
+          ${new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          ${isMine && read ? '<span class="seen">✔✔</span>' : ''}
+        </div>
+      </div>
+    `;
+    messageList.appendChild(li);
+  }
+
+  async function saveMessageToServer(recipientId, content) {
+    await fetch(`/api/messages/private/send`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ recipientId, content }),
+    });
+  }
+
+  function scrollToBottom() {
+    messageList.scrollTop = messageList.scrollHeight;
+  }
+
+  function getMyUserId(token) {
+    try {
+      const payload = JSON.parse(atob(token.split(".")[1]));
+      return payload.id || payload.userId;
+    } catch {
+      return null;
+    }
+  }
 });
-
-chatBox.scrollTop = chatBox.scrollHeight;
-
-} catch (err) { console.error("❌ Failed to load messages:", err); } }
-
-// Send message messageForm.addEventListener("submit", async (e) => { e.preventDefault(); const content = messageInput.value; if (!content.trim()) return;
-
-socket.emit("privateMessage", { senderId: userId, receiverId: otherUserId, content, });
-
-await fetch(/api/messages/private/send, { method: "POST", headers: { "Content-Type": "application/json", Authorization: Bearer ${token}, }, body: JSON.stringify({ recipientId: otherUserId, content }), });
-
-messageInput.value = ""; loadMessages(); });
-
-// Handle image upload imageUpload?.addEventListener("change", async () => { const file = imageUpload.files[0]; if (!file) return; const formData = new FormData(); formData.append("file", file); formData.append("receiverId", otherUserId);
-
-await fetch("/api/messages/file", { method: "POST", headers: { Authorization: Bearer ${token}, }, body: formData, });
-
-imageUpload.value = ""; loadMessages(); });
-
-// Receive new message socket.on("privateMessage", (data) => { if (data.senderId === otherUserId || data.receiverId === otherUserId) { loadMessages(); } });
-
-// Navigation document.getElementById("backButton")?.addEventListener("click", () => { window.location.href = "/home.html"; });
-
-// Init getCurrentUser().then(async (me) => { const res = await fetch(/api/users/${otherUserId}, { headers: { Authorization: Bearer ${token} }, }); const user = await res.json(); usernameHeader.textContent = user.username || user.name || "Chat"; loadMessages(); });
-
