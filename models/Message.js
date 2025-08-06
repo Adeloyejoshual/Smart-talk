@@ -1,5 +1,3 @@
-// /models/Message.js
-
 const mongoose = require("mongoose");
 
 const messageSchema = new mongoose.Schema(
@@ -23,6 +21,12 @@ const messageSchema = new mongoose.Schema(
     image: {
       type: String,
     },
+    file: {
+      type: String, // e.g. URL to uploaded file
+    },
+    fileType: {
+      type: String, // e.g. 'pdf', 'docx', 'mp3', 'mp4'
+    },
     status: {
       type: String,
       enum: ["sent", "delivered", "read"],
@@ -36,9 +40,17 @@ const messageSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    isForwarded: {
+      type: Boolean,
+      default: false,
+    },
+    isStarred: {
+      type: Boolean,
+      default: false,
+    },
     replyTo: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Message", // 👈 This enables replying
+      ref: "Message",
       default: null,
     },
   },
