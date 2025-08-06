@@ -1,191 +1,133 @@
 document.addEventListener("DOMContentLoaded", () => {
   const socket = io();
-  const token = localStorage.getItem("token");
-  const receiverId = new URLSearchParams(window.location.search).get("user");
-
+  const messageList = document.getElementById("messageList");
   const messageForm = document.getElementById("messageForm");
   const messageInput = document.getElementById("messageInput");
   const imageInput = document.getElementById("imageInput");
-  const messageList = document.getElementById("messageList");
-  const backButton = document.getElementById("backButton");
   const exportBtn = document.getElementById("exportBtn");
+  const backButton = document.getElementById("backButton");
   const usernameHeader = document.getElementById("chat-username");
-  const previewContainer = document.createElement("div");
-  previewContainer.className = "flex flex-wrap gap-2 p-2";
-  messageForm.insertBefore(previewContainer, messageInput);
+
+  const token = localStorage.getItem("token");
+  const receiverId = new URLSearchParams(window.location.search).get("user");
 
   let myUserId = null;
   let skip = 0;
   const limit = 20;
   let loading = false;
+  let replyToId = null;
   let typingTimeout;
-  const typingIndicator = document.createElement("li");
-  typingIndicator.className = "italic text-sm text-gray-500 px-2";
-  typingIndicator.textContent = "Typing...";
+
+  const previewBox = document.createElement("div");
+  previewBox.id = "previewBox";
+  previewBox.className = "flex flex-wrap gap-2 px-2 py-1";
+  messageForm.prepend(previewBox);
 
   if (!token || !receiverId) return (window.location.href = "/home.html");
 
-  getMyUserId().then((id) => {
-    myUserId = id;
+  init();
+
+  async function init() {
+    myUserId = await getMyUserId(token);
     socket.emit("join", myUserId);
     fetchUsername();
     loadMessages(true);
+  }
+
+  messageForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const content = messageInput.value.trim();
+    if (content) await sendTextMessage(content);
+    await sendAllMediaFiles();
+    messageInput.value = "";
+    previewBox.innerHTML = "";
+    replyToId = null;
   });
-
-  backButton.onclick = () => (window.location.href = "/home.html");
-
-  exportBtn.onclick = () => {
-    const text = [...messageList.querySelectorAll("li")]
-      .map((li) => li.innerText)
-      .join("\n");
-    const blob = new Blob([text], { type: "text/plain" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = "chat.txt";
-    link.click();
-  };
 
   messageInput.addEventListener("input", () => {
     socket.emit("typing", { to: receiverId, from: myUserId });
     clearTimeout(typingTimeout);
     typingTimeout = setTimeout(() => {
       socket.emit("stopTyping", { to: receiverId, from: myUserId });
-    }, 2000);
+    }, 1500);
   });
 
-  imageInput?.addEventListener("change", handleFilePreview);
-
-  messageForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const content = messageInput.value.trim();
-    if (!content && !imageInput.files.length) return;
-
-    // Send text message
-    if (content) await sendMessage({ content });
-
-    // Upload files
-    if (imageInput.files.length) await sendFiles();
-
-    messageInput.value = "";
-    imageInput.value = "";
-    previewContainer.innerHTML = "";
-  });
-
-  async function sendMessage({ content, replyTo }) {
-    await fetch("/api/messages/private/send", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ recipientId: receiverId, content, replyTo }),
-    });
-  }
-
-  async function sendFiles() {
-    const formData = new FormData();
-    [...imageInput.files].forEach((file) => formData.append("files", file));
-    formData.append("receiverId", receiverId);
-
-    const res = await fetch("/api/messages/private/upload", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-      body: formData,
-    });
-
-    const data = await res.json();
-    if (data.success && data.urls) {
-      for (const url of data.urls) {
-        const ext = url.split(".").pop();
-        const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(ext);
-        const content = isImage
-          ? `<img src="${url}" class="w-40 rounded" />`
-          : `<a href="${url}" class="text-blue-500 underline" target="_blank">File</a>`;
-        await sendMessage({ content });
-      }
-    }
-  }
-
-  function handleFilePreview(e) {
-    previewContainer.innerHTML = "";
-    const files = [...e.target.files];
-    files.forEach((file) => {
+  imageInput.addEventListener("change", async (e) => {
+    previewBox.innerHTML = "";
+    [...e.target.files].forEach((file, i) => {
       const reader = new FileReader();
       reader.onload = () => {
-        const preview =
-          file.type.startsWith("image/") ?
-          `<img src="${reader.result}" class="w-20 h-20 object-cover rounded"/>` :
-          `<div class="text-sm px-2 py-1 border rounded">${file.name}</div>`;
-        const wrapper = document.createElement("div");
-        wrapper.innerHTML = preview;
-        previewContainer.appendChild(wrapper);
+        const isImage = file.type.startsWith("image/");
+        const preview = document.createElement("div");
+        preview.className = "relative border rounded p-1";
+        preview.innerHTML = isImage
+          ? `<img src="${reader.result}" class="w-20 h-20 object-cover rounded"/>`
+          : `<div class="w-20 h-20 flex flex-col justify-center items-center text-xs bg-gray-100 rounded">
+               <span>📄</span><span>${file.name.slice(0, 10)}</span>
+             </div>`;
+        previewBox.appendChild(preview);
       };
       reader.readAsDataURL(file);
     });
-  }
-
-  socket.on("privateMessage", (msg) => {
-    const isFromOrToReceiver =
-      msg.senderId === receiverId || msg.sender === receiverId;
-    if (!isFromOrToReceiver) return;
-
-    appendMessage({
-      _id: msg._id,
-      sender: msg.senderId || msg.sender,
-      content: msg.content,
-      timestamp: msg.timestamp || Date.now(),
-      status: msg.status,
-    }, true);
-    scrollToBottom();
   });
 
-  socket.on("typing", ({ from }) => {
-    if (from === receiverId && !messageList.contains(typingIndicator)) {
-      messageList.appendChild(typingIndicator);
+  socket.on("privateMessage", (msg) => {
+    const relevant =
+      [msg.senderId, msg.sender].includes(receiverId) &&
+      [msg.recipient, msg.receiverId].includes(myUserId);
+
+    if (relevant) {
+      appendMessage(msg, true);
       scrollToBottom();
     }
   });
 
-  socket.on("stopTyping", ({ from }) => {
-    if (from === receiverId && messageList.contains(typingIndicator)) {
-      messageList.removeChild(typingIndicator);
+  socket.on("typing", ({ from }) => {
+    if (from === receiverId && !document.getElementById("typing")) {
+      const li = document.createElement("li");
+      li.id = "typing";
+      li.className = "italic text-sm text-gray-500 px-2";
+      li.textContent = "Typing...";
+      messageList.appendChild(li);
     }
   });
 
-  async function loadMessages(initial = false) {
-    if (loading) return;
-    loading = true;
-    try {
-      const res = await fetch(
-        `/api/messages/history/${receiverId}?skip=${skip}&limit=20`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
-      const data = await res.json();
-      if (data.success && data.messages) {
-        if (initial) messageList.innerHTML = "";
-        const msgs = data.messages.reverse();
-        msgs.forEach((msg) => appendMessage({
-          _id: msg._id,
-          sender: msg.sender,
-          content: msg.content,
-          timestamp: msg.createdAt,
-          status: msg.status,
-        }, false));
-        if (initial) scrollToBottom();
-        skip += msgs.length;
-      }
-    } catch (err) {
-      console.error("Load error:", err);
-    } finally {
-      loading = false;
+  socket.on("stopTyping", ({ from }) => {
+    if (from === receiverId) {
+      const li = document.getElementById("typing");
+      if (li) li.remove();
     }
-  }
+  });
 
   messageList.addEventListener("scroll", () => {
-    if (messageList.scrollTop === 0 && !loading) loadMessages(false);
+    if (messageList.scrollTop === 0 && !loading) {
+      const currentHeight = messageList.scrollHeight;
+      loadMessages(false).then(() => {
+        messageList.scrollTop = messageList.scrollHeight - currentHeight;
+      });
+    }
   });
+
+  exportBtn.addEventListener("click", () => {
+    const text = [...messageList.querySelectorAll("li")]
+      .map((li) => li.innerText)
+      .join("\n");
+    const blob = new Blob([text], { type: "text/plain" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "SmartTalk_Chat.txt";
+    link.click();
+  });
+
+  backButton.addEventListener("click", () => (window.location.href = "/home.html"));
+
+  async function getMyUserId(token) {
+    const res = await fetch("/api/users/me", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    return data._id;
+  }
 
   async function fetchUsername() {
     try {
@@ -193,122 +135,157 @@ document.addEventListener("DOMContentLoaded", () => {
         headers: { Authorization: `Bearer ${token}` },
       });
       const user = await res.json();
-      usernameHeader.textContent = user.username || user.name || "Chat";
+      usernameHeader.textContent = user.username || "Chat";
     } catch {
       usernameHeader.textContent = "Chat";
     }
   }
 
-  function appendMessage({ _id, sender, content, timestamp, status }, toBottom) {
-    const isMine = sender === myUserId;
-    const li = document.createElement("li");
-    li.className = `${isMine ? "sent self-end text-right" : "received self-start text-left"} relative group`;
+  async function sendTextMessage(content) {
+    await fetch("/api/messages/private/send", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        recipientId: receiverId,
+        content,
+        replyTo: replyToId,
+      }),
+    });
+  }
 
-    const bubble = document.createElement("div");
-    bubble.className = "bubble bg-white dark:bg-gray-800 rounded-xl p-2 max-w-[75%]";
-    bubble.innerHTML = `
-      ${content}
-      <div class="meta text-xs mt-1 opacity-60 text-right">
-        ${new Date(timestamp).toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        })}
-        <span class="ml-2">${status === "delivered" ? "Delivered" : status === "read" ? "Seen" : ""}</span>
+  async function sendAllMediaFiles() {
+    const files = imageInput.files;
+    if (!files.length) return;
+    const formData = new FormData();
+    [...files].forEach((file) => formData.append("images", file));
+    formData.append("receiverId", receiverId);
+    if (replyToId) formData.append("replyTo", replyToId);
+
+    const res = await fetch("/api/messages/private/image", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+
+    const data = await res.json();
+    imageInput.value = "";
+  }
+
+  async function loadMessages(initial = false) {
+    if (loading) return;
+    loading = true;
+    try {
+      const res = await fetch(
+        `/api/messages/history/${receiverId}?skip=${skip}&limit=${limit}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const data = await res.json();
+      if (data.success) {
+        if (initial) messageList.innerHTML = "";
+        data.messages.reverse().forEach((msg) => appendMessage(msg, false));
+        if (initial) scrollToBottom();
+        skip += data.messages.length;
+      }
+    } catch (err) {
+      console.error("Load failed", err);
+    } finally {
+      loading = false;
+    }
+  }
+
+  function appendMessage(msg, toBottom) {
+    const li = document.createElement("li");
+    const isMine = msg.sender === myUserId;
+    li.className = `${isMine ? "self-end" : "self-start"} relative group max-w-[80%]`;
+
+    let content = msg.content;
+    const isImage = /<img.+src=['"](.+)['"]/.test(content);
+    const isFile = !isImage && msg.image;
+
+    if (isFile) {
+      content = `<a href="${msg.image}" target="_blank" class="text-blue-600 underline">📎 File</a>`;
+    }
+
+    let replyHtml = "";
+    if (msg.replyTo && msg.replyContent) {
+      replyHtml = `<div class="border-l-4 pl-2 mb-1 text-sm italic text-gray-600">
+        ${msg.replyContent.length > 100 ? msg.replyContent.slice(0, 100) + "..." : msg.replyContent}
+      </div>`;
+    }
+
+    li.innerHTML = `
+      <div class="bubble bg-${isMine ? "blue-600 text-white" : "gray-200 text-black"} rounded-xl p-2 relative">
+        ${replyHtml}
+        ${content}
+        <div class="meta text-xs text-right opacity-70 mt-1">
+          ${new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+          ${msg.status === "read" ? "✓✓" : msg.status === "delivered" ? "✓" : ""}
+        </div>
+        <div class="flex gap-2 mt-1 emoji-row">
+          ${(msg.reactions || []).map((r) => `<span>${r}</span>`).join("")}
+        </div>
+        <div class="absolute top-0 right-0 hidden group-hover:flex gap-2 text-xs">
+          ${isMine ? `<button onclick="editMessage('${msg._id}')">✏️</button>
+          <button onclick="deleteMessage('${msg._id}')">🗑️</button>` : ""}
+          <button onclick="reactMessage('${msg._id}', '❤️')">❤️</button>
+          <button onclick="replyMessage('${msg._id}', \`${msg.content.replace(/[`$]/g, "")}\`)">↩️</button>
+        </div>
       </div>
     `;
 
-    // Long-press or right click menu
-    let pressTimer;
-    bubble.addEventListener("contextmenu", (e) => {
-      e.preventDefault();
-      showEmojiMenu(li, _id, isMine);
-    });
-    bubble.addEventListener("touchstart", () => {
-      pressTimer = setTimeout(() => showEmojiMenu(li, _id, isMine), 600);
-    });
-    ["touchend", "mouseup", "mouseleave"].forEach((ev) =>
-      bubble.addEventListener(ev, () => clearTimeout(pressTimer))
-    );
-
-    li.appendChild(bubble);
-    toBottom ? messageList.appendChild(li) : messageList.prepend(li);
-  }
-
-  function showEmojiMenu(li, messageId, isMine) {
-    let existing = li.querySelector(".emoji-menu");
-    if (existing) return existing.remove();
-
-    const menu = document.createElement("div");
-    menu.className = "emoji-menu absolute bottom-full mb-2 bg-white border rounded p-1 shadow text-sm flex gap-1 z-10";
-
-    ["😂", "❤️", "👍"].forEach((emoji) => {
-      const btn = document.createElement("button");
-      btn.textContent = emoji;
-      btn.onclick = () => {
-        editMessageContent(messageId, emoji, true);
-        menu.remove();
-      };
-      menu.appendChild(btn);
-    });
-
-    if (isMine) {
-      const editBtn = document.createElement("button");
-      editBtn.textContent = "✏️";
-      editBtn.onclick = () => {
-        const newText = prompt("Edit message:");
-        if (newText) editMessageContent(messageId, newText, false);
-        menu.remove();
-      };
-      const delBtn = document.createElement("button");
-      delBtn.textContent = "🗑️";
-      delBtn.onclick = () => {
-        if (confirm("Delete this message?")) deleteMessage(messageId);
-        menu.remove();
-      };
-      menu.appendChild(editBtn);
-      menu.appendChild(delBtn);
+    if (toBottom) {
+      messageList.appendChild(li);
+    } else {
+      messageList.prepend(li);
     }
-
-    li.appendChild(menu);
-  }
-
-  async function editMessageContent(id, text, append = false) {
-    try {
-      await fetch(`/api/messages/private/${id}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ content: text, append }),
-      });
-      loadMessages(true);
-    } catch {
-      alert("Failed to update");
-    }
-  }
-
-  async function deleteMessage(id) {
-    try {
-      await fetch(`/api/messages/private/${id}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      loadMessages(true);
-    } catch {
-      alert("Failed to delete");
-    }
-  }
-
-  async function getMyUserId() {
-    const res = await fetch("/api/users/me", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    const user = await res.json();
-    return user._id;
   }
 
   function scrollToBottom() {
     messageList.scrollTop = messageList.scrollHeight;
   }
+
+  window.editMessage = async (id) => {
+    const newContent = prompt("Edit message:");
+    if (!newContent) return;
+    await fetch(`/api/messages/private/${id}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ content: newContent }),
+    });
+    loadMessages(true);
+  };
+
+  window.deleteMessage = async (id) => {
+    if (!confirm("Delete this message?")) return;
+    await fetch(`/api/messages/private/${id}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    loadMessages(true);
+  };
+
+  window.reactMessage = async (id, emoji) => {
+    await fetch(`/api/messages/private/react/${id}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ emoji }),
+    });
+    loadMessages(true);
+  };
+
+  window.replyMessage = (id, content) => {
+    replyToId = id;
+    messageInput.value = "";
+    messageInput.placeholder = `Replying to: ${content.slice(0, 30)}...`;
+    messageInput.focus();
+  };
 });
