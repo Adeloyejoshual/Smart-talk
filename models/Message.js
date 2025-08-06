@@ -22,10 +22,10 @@ const messageSchema = new mongoose.Schema(
       type: String,
     },
     file: {
-      type: String, // e.g. URL to uploaded file
+      type: String,
     },
     fileType: {
-      type: String, // e.g. 'pdf', 'docx', 'mp3', 'mp4'
+      type: String,
     },
     status: {
       type: String,
@@ -40,17 +40,28 @@ const messageSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-    isForwarded: {
-      type: Boolean,
-      default: false,
+    replyTo: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Message",
+      default: null,
     },
+    emojiReactions: [
+      {
+        user: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        emoji: String,
+      },
+    ],
     isStarred: {
       type: Boolean,
       default: false,
     },
-    replyTo: {
+    isPinned: {
+      type: Boolean,
+      default: false,
+    },
+    forwardedFrom: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Message",
+      ref: "User",
       default: null,
     },
   },
