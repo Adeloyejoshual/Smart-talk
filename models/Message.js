@@ -1,3 +1,5 @@
+// /models/Message.js
+
 const mongoose = require("mongoose");
 
 const messageSchema = new mongoose.Schema(
@@ -33,6 +35,11 @@ const messageSchema = new mongoose.Schema(
     isDeleted: {
       type: Boolean,
       default: false,
+    },
+    replyTo: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Message", // 👈 This enables replying
+      default: null,
     },
   },
   { timestamps: true }
