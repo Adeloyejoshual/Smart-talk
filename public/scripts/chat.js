@@ -13,15 +13,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const token = localStorage.getItem("token");
   const urlParams = new URLSearchParams(window.location.search);
   const receiverId = urlParams.get("user");
+
   let myUserId = null;
   let skip = 0;
   const limit = 20;
   let loading = false;
-  let typingTimeout;
-
-  const typingIndicator = document.createElement("li");
-  typingIndicator.className = "italic text-sm text-gray-500 px-2";
-  typingIndicator.textContent = "Typing...";
 
   if (!token || !receiverId) return (window.location.href = "/home.html");
 
@@ -47,14 +43,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     messageInput.value = "";
-  });
-
-  messageInput.addEventListener("input", () => {
-    socket.emit("typing", { to: receiverId, from: myUserId });
-    clearTimeout(typingTimeout);
-    typingTimeout = setTimeout(() => {
-      socket.emit("stopTyping", { to: receiverId, from: myUserId });
-    }, 2000);
   });
 
   imageInput?.addEventListener("change", async (e) => {
@@ -105,19 +93,6 @@ document.addEventListener("DOMContentLoaded", () => {
         true
       );
       scrollToBottom();
-    }
-  });
-
-  socket.on("typing", ({ from }) => {
-    if (from === receiverId && !messageList.contains(typingIndicator)) {
-      messageList.appendChild(typingIndicator);
-      scrollToBottom();
-    }
-  });
-
-  socket.on("stopTyping", ({ from }) => {
-    if (from === receiverId && messageList.contains(typingIndicator)) {
-      messageList.removeChild(typingIndicator);
     }
   });
 
@@ -205,10 +180,14 @@ document.addEventListener("DOMContentLoaded", () => {
             ${status === "delivered" ? "Delivered" : status === "read" ? "Seen" : ""}
           </div>
         </div>
-        ${isMine ? `<div class="absolute top-0 right-0 hidden group-hover:flex space-x-2 text-xs">
-          <button onclick="editMessage('${_id}')" class="text-yellow-500">Edit</button>
-          <button onclick="deleteMessage('${_id}')" class="text-red-500">Delete</button>
-        </div>` : ""}
+        ${
+          isMine
+            ? `<div class="absolute top-0 right-0 hidden group-hover:flex space-x-2 text-xs">
+              <button onclick="editMessage('${_id}')" class="text-yellow-500">Edit</button>
+              <button onclick="deleteMessage('${_id}')" class="text-red-500">Delete</button>
+            </div>`
+            : ""
+        }
       </div>
     `;
     if (toBottom) {
