@@ -8,69 +8,33 @@ const auth = require("../middleware/verifyToken");
 const uploadToCloudinary = require("../utils/cloudinaryUpload");
 
 dotenv.config();
-
-// 🔐 Configure Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUD_NAME,
   api_key: process.env.CLOUD_API_KEY,
   api_secret: process.env.CLOUD_API_SECRET,
 });
 
-// 📦 Multer memory storage
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
-/* =====================================================
-   📸 GROUP CHAT IMAGE UPLOAD
-===================================================== */
-router.post("/group/image", auth, upload.single("image"), async (req, res) => {
-  try {
-    const { groupId } = req.body;
-    const file = req.file;
-
-    if (!file) return res.status(400).json({ message: "No image uploaded" });
-
-    const imageUrl = await uploadToCloudinary(file.buffer);
-
-    const message = new Message({
-      sender: req.userId,
-      group: groupId,
-      text: "",
-      image: imageUrl,
-    });
-
-    await message.save();
-    await message.populate("sender", "username");
-
-    res.status(201).json(message);
-  } catch (err) {
-    console.error("❌ Group upload error:", err);
-    res.status(500).json({ error: "Upload failed" });
-  }
-});
-
-/* =====================================================
-   ✉️ PRIVATE MESSAGE TEXT SEND
-===================================================== */
+/* === 📨 PRIVATE TEXT MESSAGE SEND === */
 router.post("/private/send", auth, async (req, res) => {
   try {
     const { recipientId, content } = req.body;
-
-    if (!recipientId || (!content && !req.file)) {
-      return res.status(400).json({ error: "Message content is required." });
+    if (!recipientId || !content) {
+      return res.status(400).json({ error: "Content or recipient missing" });
     }
 
     const newMessage = new Message({
       sender: req.userId,
       recipient: recipientId,
-      content: content || "",
+      content,
       status: "sent",
     });
 
     await newMessage.save();
     await newMessage.populate("sender", "username");
 
-    // ⚡ Emit message via Socket.IO (req.io must be set in server.js)
     req.io?.to(recipientId).emit("privateMessage", {
       senderId: req.userId,
       content,
@@ -79,45 +43,32 @@ router.post("/private/send", auth, async (req, res) => {
 
     res.status(201).json(newMessage);
   } catch (err) {
-    console.error("❌ Private message error:", err);
+    console.error("❌ Send error:", err);
     res.status(500).json({ error: "Failed to send message" });
   }
 });
 
-/* =====================================================
-   📸 PRIVATE CHAT MULTIPLE IMAGE UPLOAD
-===================================================== */
+/* === 🖼️ PRIVATE IMAGE UPLOAD === */
 router.post("/private/image", auth, upload.array("images", 5), async (req, res) => {
   try {
     const { receiverId } = req.body;
-
-    if (!req.files?.length) return res.status(400).json({ message: "No images uploaded" });
+    if (!req.files?.length) return res.status(400).json({ message: "No images" });
 
     const messages = await Promise.all(req.files.map(async (file) => {
       const imageUrl = await uploadToCloudinary(file.buffer);
-
-      const msg = new Message({
-        sender: req.userId,
-        recipient: receiverId,
-        content: "",
-        image: imageUrl,
-        status: "sent",
-      });
-
+      const msg = new Message({ sender: req.userId, recipient: receiverId, image: imageUrl });
       await msg.save();
       return msg;
     }));
 
     res.status(201).json({ success: true, messages });
   } catch (err) {
-    console.error("❌ Private image upload error:", err);
+    console.error("❌ Upload error:", err);
     res.status(500).json({ error: "Image upload failed" });
   }
 });
 
-/* =====================================================
-   🕓 GET PRIVATE CHAT HISTORY
-===================================================== */
+/* === 📚 GET PRIVATE CHAT HISTORY === */
 router.get("/history/:receiverId", auth, async (req, res) => {
   try {
     const { receiverId } = req.params;
@@ -131,8 +82,44 @@ router.get("/history/:receiverId", auth, async (req, res) => {
 
     res.status(200).json({ success: true, messages });
   } catch (err) {
-    console.error("❌ Fetch history error:", err);
-    res.status(500).json({ success: false, error: "Failed to fetch messages" });
+    console.error("❌ History error:", err);
+    res.status(500).json({ error: "Failed to fetch messages" });
+  }
+});
+
+/* === 📝 EDIT MESSAGE === */
+router.put("/edit/:id", auth, async (req, res) => {
+  try {
+    const { content } = req.body;
+    const message = await Message.findById(req.params.id);
+    if (!message) return res.status(404).json({ error: "Not found" });
+
+    if (message.sender.toString() !== req.userId) return res.status(403).json({ error: "Unauthorized" });
+
+    message.content = content;
+    message.isEdited = true;
+    await message.save();
+
+    res.status(200).json({ success: true, message });
+  } catch (err) {
+    res.status(500).json({ error: "Edit failed" });
+  }
+});
+
+/* === ❌ DELETE MESSAGE === */
+router.delete("/delete/:id", auth, async (req, res) => {
+  try {
+    const message = await Message.findById(req.params.id);
+    if (!message) return res.status(404).json({ error: "Not found" });
+
+    if (message.sender.toString() !== req.userId) return res.status(403).json({ error: "Unauthorized" });
+
+    message.isDeleted = true;
+    await message.save();
+
+    res.status(200).json({ success: true, message });
+  } catch (err) {
+    res.status(500).json({ error: "Delete failed" });
   }
 });
 
