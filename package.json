@@ -1,8 +1,7 @@
-
 {
   "name": "smarttalk-backend",
   "version": "1.0.0",
-  "description": "SmartTalk chat app backend with real-time messaging, file uploads, and friend features",
+  "description": "SmartTalk chat app backend with real-time messaging, file uploads, JWT auth, and cloud integration",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -14,7 +13,12 @@
     "socket.io",
     "nodejs",
     "express",
-    "mongodb"
+    "mongodb",
+    "cloudinary",
+    "multer",
+    "jwt",
+    "file-upload",
+    "smarttalk"
   ],
   "author": "Adeloye Joshua",
   "license": "MIT",
