@@ -37,6 +37,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const content = messageInput.value.trim();
     if (!content) return;
 
+    await sendMessage({ content });
+    messageInput.value = "";
+  });
+
+  async function sendMessage({ content }) {
     await fetch(`/api/messages/private/send`, {
       method: "POST",
       headers: {
@@ -45,9 +50,7 @@ document.addEventListener("DOMContentLoaded", () => {
       },
       body: JSON.stringify({ recipientId: receiverId, content }),
     });
-
-    messageInput.value = "";
-  });
+  }
 
   messageInput.addEventListener("input", () => {
     socket.emit("typing", { to: receiverId, from: myUserId });
@@ -73,25 +76,17 @@ document.addEventListener("DOMContentLoaded", () => {
     const data = await res.json();
     if (data.success && data.urls) {
       for (const url of data.urls) {
-        await fetch(`/api/messages/private/send`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            recipientId: receiverId,
-            content: `<img src='${url}' class='w-40 rounded'/>`,
-          }),
+        await sendMessage({
+          content: `<img src='${url}' class='w-40 rounded'/>`,
         });
       }
     }
   });
 
   socket.on("privateMessage", (msg) => {
-    const isMine = msg.senderId === myUserId || msg.sender === myUserId;
     const isFromOrToReceiver =
-      msg.senderId === receiverId || msg.sender === receiverId;
+      msg.senderId === receiverId ||
+      msg.sender === receiverId;
 
     if (isFromOrToReceiver) {
       appendMessage(
@@ -192,31 +187,34 @@ document.addEventListener("DOMContentLoaded", () => {
   function appendMessage({ _id, sender, content, timestamp, status }, toBottom) {
     const isMine = sender === myUserId;
     const li = document.createElement("li");
-    li.className = `${isMine ? "sent self-end text-right" : "received self-start text-left"} group relative`;
+    li.className = `${isMine ? "sent self-end text-right" : "received self-start text-left"} relative group`;
 
-    li.innerHTML = `
-      <div class="bubble bg-${isMine ? 'blue-600 text-white' : 'gray-200 text-black'} p-2 rounded-xl max-w-[75%]">
-        ${content}
-        <div class="meta text-xs mt-1 opacity-70">
-          ${new Date(timestamp).toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
-          <span class="ml-2 text-xs">
-            ${status === "delivered" ? "Delivered" : status === "read" ? "Seen" : ""}
-          </span>
-        </div>
-        ${
-          isMine
-            ? `<div class="absolute top-0 right-0 hidden group-hover:flex space-x-2 text-xs">
-                <button onclick="editMessage('${_id}')" class="text-yellow-500">Edit</button>
-                <button onclick="deleteMessage('${_id}')" class="text-red-500">Delete</button>
-              </div>`
-            : ""
-        }
+    const bubble = document.createElement("div");
+    bubble.className = "bubble bg-white dark:bg-gray-800 rounded-xl p-2 max-w-[75%]";
+    bubble.innerHTML = `
+      ${content}
+      <div class="meta text-xs mt-1 opacity-60 text-right">
+        ${new Date(timestamp).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        })}
+        <span class="ml-2">${status === "delivered" ? "Delivered" : status === "read" ? "Seen" : ""}</span>
       </div>
     `;
 
+    // Long press menu
+    let pressTimer;
+    bubble.addEventListener("touchstart", (e) => {
+      pressTimer = setTimeout(() => showEmojiMenu(li, _id, isMine), 600);
+    });
+    bubble.addEventListener("touchend", () => clearTimeout(pressTimer));
+    bubble.addEventListener("mousedown", () => {
+      pressTimer = setTimeout(() => showEmojiMenu(li, _id, isMine), 600);
+    });
+    bubble.addEventListener("mouseup", () => clearTimeout(pressTimer));
+    bubble.addEventListener("mouseleave", () => clearTimeout(pressTimer));
+
+    li.appendChild(bubble);
     if (toBottom) {
       messageList.appendChild(li);
     } else {
@@ -224,8 +222,85 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  function scrollToBottom() {
-    messageList.scrollTop = messageList.scrollHeight;
+  function showEmojiMenu(li, messageId, isMine) {
+    let menu = li.querySelector(".emoji-menu");
+    if (menu) {
+      menu.remove();
+      return;
+    }
+
+    menu = document.createElement("div");
+    menu.className = "emoji-menu absolute z-10 bottom-full mb-2 bg-white border rounded p-1 shadow text-sm flex gap-1";
+
+    ["😂", "❤️", "👍"].forEach((emoji) => {
+      const btn = document.createElement("button");
+      btn.textContent = emoji;
+      btn.className = "hover:scale-110";
+      btn.onclick = () => {
+        editMessageContent(messageId, emoji, true);
+        menu.remove();
+      };
+      menu.appendChild(btn);
+    });
+
+    if (isMine) {
+      const editBtn = document.createElement("button");
+      editBtn.textContent = "✏️";
+      editBtn.onclick = () => {
+        const newContent = prompt("Edit your message:");
+        if (newContent) editMessageContent(messageId, newContent, false);
+        menu.remove();
+      };
+      const deleteBtn = document.createElement("button");
+      deleteBtn.textContent = "🗑️";
+      deleteBtn.onclick = () => {
+        if (confirm("Delete this message?")) deleteMessage(messageId);
+        menu.remove();
+      };
+      menu.appendChild(editBtn);
+      menu.appendChild(deleteBtn);
+    }
+
+    li.appendChild(menu);
+  }
+
+  async function editMessageContent(id, newText, isAppend = false) {
+    const msgLi = [...messageList.children].find((li) =>
+      li.innerHTML.includes(`editMessage('${id}')`)
+    );
+    let newContent;
+    if (isAppend && msgLi) {
+      const oldHTML = msgLi.querySelector(".bubble").innerHTML;
+      newContent = oldHTML.split('<div class="meta')[0] + newText;
+    } else {
+      newContent = newText;
+    }
+
+    try {
+      await fetch(`/api/messages/private/${id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ content: newContent }),
+      });
+      loadMessages(true);
+    } catch {
+      alert("Failed to edit");
+    }
+  }
+
+  async function deleteMessage(id) {
+    try {
+      await fetch(`/api/messages/private/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      loadMessages(true);
+    } catch {
+      alert("Failed to delete");
+    }
   }
 
   async function getMyUserId(token) {
@@ -239,35 +314,4 @@ document.addEventListener("DOMContentLoaded", () => {
       return null;
     }
   }
-
-  window.editMessage = async function (id) {
-    const newContent = prompt("Edit your message:");
-    if (!newContent) return;
-    try {
-      await fetch(`/api/messages/private/${id}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ content: newContent }),
-      });
-      loadMessages(true);
-    } catch (err) {
-      alert("Failed to edit message");
-    }
-  };
-
-  window.deleteMessage = async function (id) {
-    if (!confirm("Are you sure you want to delete this message?")) return;
-    try {
-      await fetch(`/api/messages/private/${id}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      loadMessages(true);
-    } catch (err) {
-      alert("Failed to delete message");
-    }
-  };
 });
