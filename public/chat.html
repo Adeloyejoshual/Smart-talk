@@ -1,62 +1,83 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Private Chat - SmartTalk</title>
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <title>SmartTalk - Private Chat</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- Tailwind CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
+
+  <!-- Socket.IO -->
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+
+  <!-- Custom styles -->
   <style>
     .sent .bubble {
-      @apply bg-blue-500 text-white self-end;
+      background-color: #2563eb; /* blue-600 */
+      color: white;
+      align-self: flex-end;
     }
     .received .bubble {
-      @apply bg-gray-200 text-black self-start;
+      background-color: #e5e7eb; /* gray-200 */
+      color: black;
+      align-self: flex-start;
     }
     .bubble {
-      @apply p-2 rounded-xl max-w-xs break-words;
+      padding: 0.5rem;
+      border-radius: 1rem;
+      max-width: 75%;
+      word-wrap: break-word;
     }
     .meta {
-      @apply text-xs text-right mt-1 opacity-70;
+      font-size: 0.75rem;
+      text-align: right;
+      margin-top: 0.25rem;
+      opacity: 0.7;
     }
     .seen {
-      @apply text-blue-300 ml-1;
+      color: #93c5fd; /* blue-300 */
+      margin-left: 0.25rem;
     }
   </style>
+
+  <!-- Main Script -->
+  <script defer src="/scripts/chat.js"></script>
 </head>
-<body class="bg-gray-100 h-screen flex flex-col">
+
+<body class="bg-blue-50 min-h-screen flex flex-col">
 
   <!-- Header -->
-  <header class="bg-white shadow p-4 flex justify-between items-center">
-    <button id="backButton" class="text-blue-600 font-bold">&larr; Back</button>
-    <h1 class="text-lg font-bold text-center flex-1 -ml-6">Private Chat</h1>
-    <button id="exportBtn" class="text-sm text-blue-600">Export</button>
+  <header class="bg-blue-600 text-white p-4 flex justify-between items-center shadow">
+    <button id="backButton" class="text-white text-lg font-semibold">&larr;</button>
+    <h1 id="chat-username" class="text-lg font-bold flex-1 text-center truncate">Loading...</h1>
+    <button id="exportBtn" class="text-sm text-white font-medium">Export</button>
   </header>
 
-  <!-- Message list -->
-  <ul id="messageList" class="flex-1 overflow-y-auto p-4 space-y-2 flex flex-col">
-    <!-- Messages will be appended here -->
+  <!-- Message List -->
+  <ul id="messageList" class="flex-1 overflow-y-auto p-4 space-y-3 flex flex-col bg-blue-100">
+    <!-- Messages rendered by JS -->
   </ul>
 
-  <!-- Chat form -->
-  <form id="messageForm" class="flex p-2 bg-white shadow">
+  <!-- Chat Input -->
+  <form id="messageForm" class="flex items-center gap-2 p-3 bg-white border-t border-gray-300">
     <input
       id="messageInput"
       type="text"
       placeholder="Type your message..."
-      class="flex-1 p-2 border rounded-l focus:outline-none"
+      class="flex-1 p-2 border rounded focus:outline-none"
       required
     />
+    <label class="cursor-pointer bg-blue-100 px-3 py-2 rounded border border-blue-300 hover:bg-blue-200">
+      📷
+      <input type="file" id="imageInput" accept="image/*" class="hidden" multiple />
+    </label>
     <button
       type="submit"
-      class="bg-blue-600 text-white px-4 rounded-r hover:bg-blue-700"
+      class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
     >
       Send
     </button>
   </form>
-
-  <!-- Socket.IO -->
-  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-  <!-- Your chat script -->
-  <script src="/scripts/chat.js"></script>
 </body>
 </html>
