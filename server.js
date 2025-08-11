@@ -5,7 +5,7 @@ const mongoose = require("mongoose");
 const socketIO = require("socket.io");
 const path = require("path");
 const jwt = require("jsonwebtoken");
-const User = require("./models/User"); // Assuming you have User model
+const User = require("./models/User"); 
 const Message = require("./models/Message");
 
 dotenv.config();
@@ -35,7 +35,7 @@ const server = app.listen(PORT, () =>
 
 const io = socketIO(server, {
   cors: {
-    origin: "*", // Change to your frontend domain in production
+    origin: "*", // Change this to your frontend URL in production
     methods: ["GET", "POST"],
   },
 });
@@ -43,7 +43,7 @@ const io = socketIO(server, {
 // Map to track userId -> socket.id for online status
 const onlineUsers = new Map();
 
-// Middleware to verify token on socket connection
+// Socket.IO middleware for JWT authentication
 io.use((socket, next) => {
   const token = socket.handshake.auth?.token;
   if (!token) return next(new Error("Authentication error: Token missing"));
@@ -58,21 +58,18 @@ io.use((socket, next) => {
 io.on("connection", (socket) => {
   console.log(`📡 New connection: ${socket.id} (User: ${socket.userId})`);
 
-  // Add to online users map
+  // Add user to online list and join their private room
   onlineUsers.set(socket.userId, socket.id);
-
-  // Join room for this user (for private messaging)
   socket.join(socket.userId);
 
-  // Broadcast to all users that this user is online
+  // Broadcast online status to all connected clients
   io.emit("user-online", { userId: socket.userId });
 
-  // Handle disconnect
-  socket.on("disconnect", async () => {
+  // Handle disconnection
+  socket.on("disconnect", () => {
     console.log(`❌ Disconnected: ${socket.id} (User: ${socket.userId})`);
     onlineUsers.delete(socket.userId);
 
-    // Broadcast to all users that this user is offline with timestamp
     io.emit("user-offline", { userId: socket.userId, lastSeen: new Date() });
   });
 
@@ -82,7 +79,7 @@ io.on("connection", (socket) => {
     console.log(`👥 User ${socket.userId} joined group ${groupId}`);
   });
 
-  // Typing indicator
+  // Typing indicator events
   socket.on("typing", ({ to }) => {
     if (to) {
       io.to(to).emit("typing", { from: socket.userId });
@@ -95,35 +92,35 @@ io.on("connection", (socket) => {
     }
   });
 
-  // Private message with delivered & read support
-  socket.on("privateMessage", async ({ receiverId, content }) => {
+  // Handle private messages
+  socket.on("privateMessage", async ({ receiverId, content, replyTo = null, isForwarded = false }) => {
+    if (!receiverId || !content) return;
+
     try {
       const newMessage = new Message({
         sender: socket.userId,
         recipient: receiverId,
         content,
-        status: "sent", // initially sent
+        replyTo,
+        isForwarded,
+        status: "sent",
+        type: "text",
       });
 
       await newMessage.save();
 
-      // Emit message to receiver and sender
-      io.to(receiverId).emit("privateMessage", {
-        _id: newMessage._id,
-        senderId: socket.userId,
-        receiverId,
-        content,
-        timestamp: newMessage.createdAt,
-        status: "sent",
-      });
-
-      io.to(socket.userId).emit("privateMessage", {
-        _id: newMessage._id,
-        senderId: socket.userId,
-        receiverId,
-        content,
-        timestamp: newMessage.createdAt,
-        status: "sent",
+      // Emit to receiver and sender to update their UI
+      [receiverId, socket.userId].forEach((userId) => {
+        io.to(userId).emit("privateMessage", {
+          _id: newMessage._id,
+          senderId: socket.userId,
+          receiverId,
+          content,
+          replyTo,
+          timestamp: newMessage.createdAt,
+          status: newMessage.status,
+          isForwarded,
+        });
       });
 
       console.log(`📩 Private message from ${socket.userId} to ${receiverId}: ${content}`);
@@ -132,7 +129,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  // Delivered receipt
+  // Handle delivery receipts
   socket.on("messageDelivered", async ({ messageId, to }) => {
     try {
       const msg = await Message.findById(messageId);
@@ -142,7 +139,6 @@ io.on("connection", (socket) => {
         msg.status = "delivered";
         await msg.save();
 
-        // Notify sender that message was delivered
         io.to(msg.sender.toString()).emit("messageStatusUpdate", {
           messageId,
           status: "delivered",
@@ -154,7 +150,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  // Read receipt
+  // Handle read receipts
   socket.on("messageRead", async ({ messageId, to }) => {
     try {
       const msg = await Message.findById(messageId);
@@ -164,7 +160,6 @@ io.on("connection", (socket) => {
         msg.status = "read";
         await msg.save();
 
-        // Notify sender that message was read
         io.to(msg.sender.toString()).emit("messageStatusUpdate", {
           messageId,
           status: "read",
@@ -176,14 +171,19 @@ io.on("connection", (socket) => {
     }
   });
 
-  // Group chat message
-  socket.on("groupMessage", async ({ groupId, content }) => {
+  // Handle group chat messages
+  socket.on("groupMessage", async ({ groupId, content, replyTo = null, isForwarded = false }) => {
+    if (!groupId || !content) return;
+
     try {
       const newMessage = new Message({
         sender: socket.userId,
         group: groupId,
         content,
+        replyTo,
+        isForwarded,
         status: "sent",
+        type: "text",
       });
 
       await newMessage.save();
@@ -193,8 +193,10 @@ io.on("connection", (socket) => {
         senderId: socket.userId,
         groupId,
         content,
+        replyTo,
         timestamp: newMessage.createdAt,
-        status: "sent",
+        status: newMessage.status,
+        isForwarded,
       });
 
       console.log(`📨 Group message in ${groupId}: ${content}`);
