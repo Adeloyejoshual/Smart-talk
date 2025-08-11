@@ -27,6 +27,16 @@ const userSchema = new mongoose.Schema(
       default: "", // Optional profile picture URL (Cloudinary, etc.)
     },
 
+    bio: {
+      type: String,
+      default: "",
+    },
+
+    phoneNumber: {
+      type: String,
+      default: "",
+    },
+
     friends: [
       {
         type: mongoose.Schema.Types.ObjectId,
@@ -57,6 +67,22 @@ const userSchema = new mongoose.Schema(
     banned: {
       type: Boolean,
       default: false,
+    },
+
+    lastSeen: {
+      type: Date,
+      default: Date.now,
+    },
+
+    isEmailVerified: {
+      type: Boolean,
+      default: false,
+    },
+
+    onlineStatus: {
+      type: String,
+      enum: ["online", "offline", "away", "busy"],
+      default: "offline",
     },
   },
   { timestamps: true }
