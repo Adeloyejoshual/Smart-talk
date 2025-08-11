@@ -67,6 +67,7 @@ router.post("/private/upload", auth, upload.array("files", 5), async (req, res) 
         const msg = new Message({
           sender: req.userId,
           recipient: receiverId,
+          type: mime.startsWith("image/") ? "image" : "file",
           ...(mime.startsWith("image/")
             ? { image: url }
             : { file: url, fileType: mime.split("/")[1] }),
@@ -117,6 +118,7 @@ router.put("/edit/:id", auth, async (req, res) => {
 
     message.content = content;
     message.isEdited = true;
+    message.editedAt = new Date();
     await message.save();
 
     res.status(200).json({ success: true, message });
@@ -133,6 +135,8 @@ router.delete("/delete/:id", auth, async (req, res) => {
     if (message.sender.toString() !== req.userId) return res.status(403).json({ error: "Unauthorized" });
 
     message.isDeleted = true;
+    message.deletedFor = message.deletedFor || [];
+    message.deletedFor.push(req.userId);
     await message.save();
 
     res.status(200).json({ success: true, message });
@@ -184,7 +188,7 @@ router.post("/react/:id", auth, async (req, res) => {
     );
 
     if (existing > -1) {
-      message.emojiReactions.splice(existing, 1); // Remove
+      message.emojiReactions.splice(existing, 1); // Remove reaction
     } else {
       message.emojiReactions.push({ user: req.userId, emoji });
     }
