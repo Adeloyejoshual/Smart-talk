@@ -1,94 +1,141 @@
+
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 <head>
   <meta charset="UTF-8" />
-  <title>SmartTalk - Private Chat</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-  <!-- Tailwind CSS -->
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
-
-  <!-- Socket.IO -->
-  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-
-  <!-- Styles -->
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Private Chat</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <script defer src="chat.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
   <style>
+    /* Scrollbar for message list */
+    #messageList {
+      scrollbar-width: thin;
+      scrollbar-color: #a0aec0 #f7fafc;
+    }
+    #messageList::-webkit-scrollbar {
+      width: 6px;
+    }
+    #messageList::-webkit-scrollbar-thumb {
+      background-color: #a0aec0;
+      border-radius: 3px;
+    }
+    /* Bubble colors */
     .sent .bubble {
-      background-color: #2563eb;
+      background-color: #3b82f6; /* blue-500 */
       color: white;
     }
     .received .bubble {
-      background-color: #e5e7eb;
+      background-color: #e5e7eb; /* gray-200 */
       color: black;
     }
-    .bubble {
-      padding: 0.5rem;
-      border-radius: 1rem;
-      max-width: 75%;
-      word-wrap: break-word;
-      position: relative;
-    }
-    .meta {
-      font-size: 0.75rem;
-      opacity: 0.6;
-      text-align: right;
-      margin-top: 0.25rem;
-    }
-    .preview-container img,
-    .preview-container video,
-    .preview-container audio {
-      max-height: 100px;
-      max-width: 100px;
-      object-fit: cover;
-      margin-right: 0.5rem;
+    /* Hide scrollbar on input file */
+    input[type="file"] {
+      display: none;
     }
   </style>
-
-  <!-- JS -->
-  <script defer src="/scripts/chat.js"></script>
 </head>
-
-<body class="bg-blue-50 min-h-screen flex flex-col">
+<body class="bg-gray-100 dark:bg-gray-900 flex flex-col h-screen">
 
   <!-- Header -->
-  <header class="bg-blue-600 text-white px-4 py-3 flex items-center justify-between shadow">
-    <button id="backButton" class="text-white text-lg font-semibold">&larr;</button>
-    <div class="flex-1 text-center">
-      <div id="chat-username" class="text-lg font-bold truncate">Loading...</div>
-      <div id="user-status" class="text-xs text-gray-200">Connecting...</div>
+  <header id="chat-header" class="flex items-center justify-between bg-white dark:bg-gray-800 px-4 py-2 shadow-md sticky top-0 z-20">
+    <button id="backButton" aria-label="Back" class="text-xl font-bold text-gray-700 dark:text-gray-200">&#8592;</button>
+
+    <div class="flex flex-col items-center flex-1 mx-4 cursor-pointer" id="username-container">
+      <span id="chat-username" class="font-semibold text-lg text-gray-900 dark:text-gray-100">Loading...</span>
+      <span id="statusIndicator" class="text-xs text-gray-500 dark:text-gray-400">...</span>
     </div>
-    <select id="filterDropdown" class="bg-blue-700 text-white text-sm rounded px-2 py-1">
-      <option value="all">All</option>
-      <option value="starred">⭐ Starred</option>
-      <option value="pinned">📌 Pinned</option>
-      <option value="forwarded">🔁 Forwarded</option>
-    </select>
+
+    <!-- 3-dot menu -->
+    <div class="relative">
+      <button id="menu-btn" aria-label="Menu" class="text-2xl font-bold text-gray-700 dark:text-gray-300 select-none">⋮</button>
+
+      <!-- Dropdown menu -->
+      <ul id="menu-dropdown" class="hidden absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded shadow-lg text-gray-900 dark:text-gray-100 z-30">
+        <li><button id="menu-search-chat" class="w-full px-4 py-2 hover:bg-gray-200 dark:hover:bg-gray-700 text-left">Search chat</button></li>
+        <li><button id="menu-mute-notif" class="w-full px-4 py-2 hover:bg-gray-200 dark:hover:bg-gray-700 text-left">Mute notifications</button></li>
+        <li><button id="menu-media-docs" class="w-full px-4 py-2 hover:bg-gray-200 dark:hover:bg-gray-700 text-left">Media, links & docs</button></li>
+        <li><button id="menu-chat-theme" class="w-full px-4 py-2 hover:bg-gray-200 dark:hover:bg-gray-700 text-left">Chat theme</button></li>
+        <li>
+          <button id="menu-more" class="w-full px-4 py-2 hover:bg-gray-200 dark:hover:bg-gray-700 text-left flex justify-between items-center">
+            More
+            <span class="text-xs">▶</span>
+          </button>
+          <!-- More submenu -->
+          <ul id="more-menu" class="hidden mt-1 ml-2 bg-white dark:bg-gray-800 rounded shadow-lg text-gray-900 dark:text-gray-100 z-40 absolute w-40">
+            <li><button id="more-block" class="w-full px-4 py-2 hover:bg-gray-200 dark:hover:bg-gray-700 text-left">Block</button></li>
+            <li><button id="more-clear-chat" class="w-full px-4 py-2 hover:bg-gray-200 dark:hover:bg-gray-700 text-left">Clear chat</button></li>
+            <li><button id="more-export-chat" class="w-full px-4 py-2 hover:bg-gray-200 dark:hover:bg-gray-700 text-left">Export chat</button></li>
+            <li><button id="more-report-user" class="w-full px-4 py-2 hover:bg-gray-200 dark:hover:bg-gray-700 text-left">Report</button></li>
+          </ul>
+        </li>
+      </ul>
+    </div>
   </header>
 
-  <!-- Message List -->
-  <ul id="messageList" class="flex-1 overflow-y-auto p-4 space-y-3 flex flex-col bg-blue-100 scroll-smooth">
-    <!-- Messages rendered by JS -->
-  </ul>
+  <!-- Message list -->
+  <ul id="messageList" class="flex-1 overflow-y-auto p-4 space-y-1 bg-gray-50 dark:bg-gray-900"></ul>
 
-  <!-- Preview Area (before sending) -->
-  <div id="previewArea" class="preview-container flex gap-2 px-4 pb-2 overflow-x-auto"></div>
+  <!-- Scroll Down Button -->
+  <button id="scrollDownBtn" class="hidden fixed bottom-20 right-5 bg-blue-600 text-white p-2 rounded-full shadow-lg z-20" aria-label="Scroll to bottom">
+    ↓
+  </button>
 
-  <!-- Chat Form -->
-  <form id="messageForm" class="flex items-center gap-2 p-3 bg-white border-t border-gray-300">
+  <!-- Message input form -->
+  <form id="messageForm" class="sticky bottom-0 bg-white dark:bg-gray-800 flex items-center p-3 shadow-inner z-20">
+    <label for="imageInput" class="cursor-pointer text-gray-600 dark:text-gray-300 mr-2" title="Send image">&#128247;</label>
+    <input type="file" id="imageInput" accept="image/*" multiple />
+
+    <label for="fileInput" class="cursor-pointer text-gray-600 dark:text-gray-300 mr-2" title="Send file">&#128206;</label>
+    <input type="file" id="fileInput" multiple />
+
     <input
       id="messageInput"
       type="text"
-      placeholder="Type your message..."
-      class="flex-1 p-2 border rounded focus:outline-none"
-      required
+      placeholder="Type a message"
+      class="flex-1 rounded-full border border-gray-300 dark:border-gray-700 px-4 py-2 text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-700 focus:outline-none"
+      autocomplete="off"
     />
-    <label class="cursor-pointer bg-blue-100 px-3 py-2 rounded border border-blue-300 hover:bg-blue-200">
-      📎
-      <input type="file" id="fileInput" class="hidden" multiple />
-    </label>
-    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+
+    <button type="submit" class="ml-3 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-full font-semibold">
       Send
     </button>
   </form>
+
+  <!-- View Contact Modal -->
+  <div id="contact-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex flex-col items-center justify-center z-40">
+    <div class="bg-white dark:bg-gray-800 rounded-lg w-11/12 max-w-md p-6 relative shadow-lg">
+      <button id="contact-back-btn" class="absolute top-3 left-3 text-xl font-bold text-gray-700 dark:text-gray-200">&#8592;</button>
+      <h2 class="text-xl font-semibold mb-4 text-gray-900 dark:text-gray-100">Contact Info</h2>
+      <p id="contact-bio" class="text-gray-700 dark:text-gray-300 whitespace-pre-wrap"></p>
+    </div>
+  </div>
+
+  <script>
+    // Toggle dropdown menus on click
+    document.getElementById("menu-btn").addEventListener("click", () => {
+      const menu = document.getElementById("menu-dropdown");
+      menu.classList.toggle("hidden");
+      // Hide More submenu if open
+      document.getElementById("more-menu").classList.add("hidden");
+    });
+
+    document.getElementById("menu-more").addEventListener("click", (e) => {
+      e.stopPropagation();
+      const moreMenu = document.getElementById("more-menu");
+      moreMenu.classList.toggle("hidden");
+    });
+
+    // Close dropdowns if clicked outside
+    window.addEventListener("click", () => {
+      document.getElementById("menu-dropdown").classList.add("hidden");
+      document.getElementById("more-menu").classList.add("hidden");
+    });
+
+    // Prevent closing when clicking inside menus
+    document.getElementById("menu-dropdown").addEventListener("click", (e) => e.stopPropagation());
+    document.getElementById("more-menu").addEventListener("click", (e) => e.stopPropagation());
+  </script>
 </body>
 </html>
