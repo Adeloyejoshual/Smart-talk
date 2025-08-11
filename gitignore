@@ -1,40 +1,43 @@
-# Node modules
+
+# Node modules: dependencies (big folder, rebuildable)
 node_modules/
 
-# Environment variables
+# Environment variables: secrets, never commit
 .env
 .env.local
 .env.*.local
 
-# Logs
+# Logs: useful locally but not in repo
 logs
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# OS files
+# OS files: macOS & Windows system files
 .DS_Store
 Thumbs.db
 
-# Optional npm cache directory
+# NPM/Yarn caches & PnP files
 .npm
 .pnp.*
 
-# IDE settings
+# IDE/editor settings
 .vscode/
 .idea/
 
-# Build outputs
+# Build outputs: React production build folder
 dist/
 build/
 
-# Test coverage
+# Test coverage reports
 coverage/
 
 # Temporary files
 *.tmp
 *.temp
+*.swp
 
 # Miscellaneous
-*.swp
+*.bak
+*.orig
