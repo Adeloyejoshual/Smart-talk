@@ -1,43 +1,48 @@
-
-# Node modules: dependencies (big folder, rebuildable)
+# Node modules
 node_modules/
 
-# Environment variables: secrets, never commit
+# Environment variables
 .env
-.env.local
-.env.*.local
 
-# Logs: useful locally but not in repo
-logs
+# Logs
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
-yarn-error.log*
 
-# OS files: macOS & Windows system files
+# OS junk files
 .DS_Store
 Thumbs.db
 
-# NPM/Yarn caches & PnP files
-.npm
-.pnp.*
+# Debug files
+*.pid
+*.seed
+*.pid.lock
 
-# IDE/editor settings
+# IDE/editor configs
 .vscode/
 .idea/
 
-# Build outputs: React production build folder
-dist/
-build/
-
-# Test coverage reports
-coverage/
+# npm cache
+.npm
 
 # Temporary files
 *.tmp
 *.temp
 *.swp
 
-# Miscellaneous
-*.bak
-*.orig
+# Coverage reports
+coverage/
+
+# Build output
+dist/
+build/
+
+# Uploaded files or temp uploads (if any)
+uploads/
+
+# Cloudinary cache or temp files if used
+cloudinary-cache/
+
+# PM2 logs (if using pm2)
+pm2.log
