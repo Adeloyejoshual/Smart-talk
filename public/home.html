@@ -21,7 +21,7 @@
       <button onclick="openAddGroupModal()" title="Add to Group" class="hover:text-orange-500">➕ Add to Group</button>
       <button id="selectAllBtn" title="Select All" class="hover:text-orange-500">✅ Select All</button>
       <button id="deleteAllBtn" title="Delete All" class="hover:text-orange-500">🗑️ Delete All</button>
-      <!-- Removed settings button as requested -->
+      <button onclick="window.location.href='/settings.html'" title="Settings" class="hover:text-orange-500">⚙️</button>
     </div>
   </div>
 
@@ -41,7 +41,7 @@
   </div>
 
   <!-- Fixed Action Toolbar -->
-  <div id="actionToolbar" class="hidden fixed bottom-16 left-0 right-0 bg-[#5C2C24] p-3 flex justify-around items-center z-50 border-t border-gray-700">
+  <div id="actionToolbar" class="hidden fixed bottom-0 left-0 right-0 bg-[#5C2C24] p-3 flex justify-around items-center z-50 border-t border-gray-700">
     <button id="pinBtn" class="text-white text-lg">📌 Pin</button>
     <button id="deleteBtn" class="text-white text-lg">❌ Delete</button>
     <button id="archiveBtn" class="text-white text-lg">📦 Archive</button>
@@ -52,12 +52,12 @@
   <button
     id="addFriendBtn"
     onclick="openAddFriendModal()"
-    class="fixed bottom-24 right-5 bg-orange-600 hover:bg-orange-700 text-white px-5 py-3 rounded-full shadow-lg text-2xl z-50"
+    class="fixed bottom-20 right-5 bg-orange-600 hover:bg-orange-700 text-white px-5 py-3 rounded-full shadow-lg text-2xl"
     title="Add Friend"
   >+</button>
 
   <!-- Add Friend Modal -->
-  <div id="addFriendModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+  <div id="addFriendModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center">
     <div class="bg-[#1F1F1F] p-6 rounded shadow w-80">
       <h3 class="text-lg font-bold mb-4 text-orange-400">Add Friend</h3>
       <input id="friendIdentifier" type="text" placeholder="Enter Username or Gmail" class="w-full p-2 border border-gray-600 bg-black text-white rounded mb-4" />
@@ -69,7 +69,7 @@
   </div>
 
   <!-- Add to Group Modal -->
-  <div id="addGroupModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+  <div id="addGroupModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center">
     <div class="bg-[#1F1F1F] p-6 rounded shadow w-80">
       <h3 class="text-lg font-bold mb-4 text-orange-400">Add Member to Group</h3>
       <input id="groupNameInput" type="text" placeholder="Enter Group Name" class="w-full p-2 border border-gray-600 bg-black text-white rounded mb-2" />
@@ -81,149 +81,195 @@
     </div>
   </div>
 
-  <!-- Permanent Bottom Navigation Bar -->
-  <nav class="fixed bottom-0 left-0 right-0 bg-[#5C2C24] border-t border-gray-700 flex justify-around items-center py-3 z-50">
-    <button onclick="window.location.href='/home.html'" class="flex flex-col items-center text-orange-400">
-      <span class="text-3xl">💬</span>
-      <span class="text-xs mt-1">Chats</span>
-    </button>
-    <button onclick="window.location.href='/groups.html'" class="flex flex-col items-center text-white hover:text-orange-400">
-      <span class="text-3xl">👥</span>
-      <span class="text-xs mt-1">Groups</span>
-    </button>
-  </nav>
+<script>
+  const token = localStorage.getItem("token");
+  let allChats = [];
+  let selectedChats = new Set();
+  let longPressTimer;
 
-  <!-- Spacer so content won't be hidden behind bottom nav -->
-  <div class="h-20"></div>
+  // Fetch chats with last messages
+  async function fetchChats() {
+    try {
+      const res = await fetch("/api/users/friends-with-last-message", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      let chats = await res.json();
+      if (!Array.isArray(chats)) return;
 
-  <script>
-    const token = localStorage.getItem("token");
-    let allChats = [];
-    let selectedChats = new Set();
-
-    // Fetch chats
-    async function fetchChats() {
-      try {
-        const res = await fetch("/api/users/friends-with-last-message", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        let chats = await res.json();
-        if (!Array.isArray(chats)) return;
-
-        chats.forEach(chat => {
-          chat.lastMessage = chat.lastMessage || "Start chatting...";
-          chat.time = new Date(chat.lastMessageTime || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          chat.unread = chat.unread || 0;
-        });
-
-        chats.sort((a, b) => new Date(b.lastMessageTime || 0) - new Date(a.lastMessageTime || 0));
-        allChats = chats;
-        displayChats(chats);
-      } catch (err) {
-        console.error("❌ Fetch chats failed:", err);
-      }
-    }
-
-    function displayChats(chats) {
-      const list = document.getElementById("chatList");
-      list.innerHTML = "";
       chats.forEach(chat => {
-        const div = document.createElement("div");
-        div.className = "flex items-center p-3 hover:bg-[#2c2c2c] cursor-pointer";
-        div.setAttribute("data-chat-id", chat._id);
-        div.onclick = () => {
-          if (selectedChats.size > 0) {
-            toggleChatSelection(div, chat._id);
-          } else {
-            window.location.href = `/private-chat.html?user=${chat._id}`;
-          }
-        };
-        div.innerHTML = `
-          <img src="${chat.avatar || '/default-avatar.png'}" class="w-10 h-10 rounded-full mr-3 border border-gray-600" />
-          <div class="flex-1">
-            <div class="flex justify-between">
-              <span class="font-semibold">${chat.username || chat.name}</span>
-              <span class="text-xs text-gray-500">${chat.time}</span>
-            </div>
-            <div class="flex justify-between">
-              <span class="text-sm text-gray-400 truncate">${chat.lastMessage}</span>
-              ${chat.unread > 0 ? `<span class="bg-red-500 text-xs px-2 rounded-full">${chat.unread}</span>` : ""}
-            </div>
+        chat.lastMessage = chat.lastMessage || "Start chatting...";
+        chat.time = new Date(chat.lastMessageTime || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        chat.unread = chat.unread || 0;
+      });
+
+      chats.sort((a, b) => new Date(b.lastMessageTime || 0) - new Date(a.lastMessageTime || 0));
+      allChats = chats;
+      displayChats(chats);
+    } catch (err) {
+      console.error("❌ Fetch chats failed:", err);
+    }
+  }
+
+  function displayChats(chats) {
+    const list = document.getElementById("chatList");
+    list.innerHTML = "";
+    chats.forEach(chat => {
+      const div = document.createElement("div");
+      div.className = "flex items-center p-3 hover:bg-[#2c2c2c] cursor-pointer select-none";
+      div.setAttribute("data-chat-id", chat._id);
+      div.onclick = () => {
+        if (selectedChats.size > 0) {
+          toggleChatSelection(div, chat._id);
+        } else {
+          window.location.href = `/private-chat.html?user=${chat._id}`;
+        }
+      };
+
+      div.innerHTML = `
+        <img src="${chat.avatar || '/default-avatar.png'}" class="w-10 h-10 rounded-full mr-3 border border-gray-600" />
+        <div class="flex-1">
+          <div class="flex justify-between items-center">
+            <span class="font-semibold text-white text-base">${chat.username || chat.name}</span>
+            <span class="text-xs text-gray-500">${chat.time}</span>
           </div>
-        `;
-        list.appendChild(div);
-      });
-    }
+          <div class="flex justify-between items-center">
+            <span class="text-sm text-gray-400 truncate">${chat.lastMessage}</span>
+            ${chat.unread > 0 ? `<span class="bg-red-500 text-xs text-white px-2 rounded-full">${chat.unread}</span>` : ""}
+          </div>
+        </div>
+      `;
 
-    document.getElementById("searchInput").addEventListener("input", () => {
-      const q = document.getElementById("searchInput").value.toLowerCase();
-      const filtered = allChats.filter(chat =>
-        (chat.username || "").toLowerCase().includes(q) ||
-        (chat.name || "").toLowerCase().includes(q) ||
-        (chat.email || "").toLowerCase().includes(q)
-      );
-      displayChats(filtered);
+      addLongPressListeners(div, chat._id);
+
+      list.appendChild(div);
     });
+  }
 
-    function toggleChatSelection(chatDiv, chatId) {
-      if (selectedChats.has(chatId)) {
-        selectedChats.delete(chatId);
-        chatDiv.classList.remove("chat-selected");
-      } else {
-        selectedChats.add(chatId);
-        chatDiv.classList.add("chat-selected");
-      }
-      document.getElementById("actionToolbar").classList.toggle("hidden", selectedChats.size === 0);
-    }
+  // Search filter
+  document.getElementById("searchInput").addEventListener("input", () => {
+    const q = document.getElementById("searchInput").value.toLowerCase();
+    const filtered = allChats.filter(chat =>
+      (chat.username || "").toLowerCase().includes(q) ||
+      (chat.name || "").toLowerCase().includes(q) ||
+      (chat.email || "").toLowerCase().includes(q)
+    );
+    displayChats(filtered);
+  });
 
-    // Add Friend modal
-    function openAddFriendModal() {
-      document.getElementById("addFriendModal").classList.remove("hidden");
-    }
-    function closeAddFriendModal() {
-      document.getElementById("addFriendModal").classList.add("hidden");
-    }
-    function confirmAddFriend() {
-      const id = document.getElementById("friendIdentifier").value.trim();
-      if (!id) return alert("Enter username or Gmail.");
-      fetch("/api/users/add-friend", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ identifier: id }),
-      })
-      .then(res => res.json())
-      .then(data => {
-        if (data.error) return alert("❌ " + data.error);
-        alert("✅ Friend added successfully!");
-        window.location.href = `/private-chat.html?user=${data.friendId || id}`;
-      });
-    }
+  // Long press handlers for multi-select
+  function addLongPressListeners(chatDiv, chatId) {
+    chatDiv.addEventListener("mousedown", () => {
+      longPressTimer = setTimeout(() => {
+        toggleChatSelection(chatDiv, chatId);
+      }, 500);
+    });
+    chatDiv.addEventListener("mouseup", () => clearTimeout(longPressTimer));
+    chatDiv.addEventListener("mouseleave", () => clearTimeout(longPressTimer));
 
-    // Add to Group modal
-    function openAddGroupModal() {
-      document.getElementById("addGroupModal").classList.remove("hidden");
-    }
-    function closeAddGroupModal() {
-      document.getElementById("addGroupModal").classList.add("hidden");
-    }
-    function confirmAddGroupMember() {
-      const group = document.getElementById("groupNameInput").value.trim();
-      const member = document.getElementById("memberIdentifier").value.trim();
-      if (!group || !member) return alert("Fill in all fields.");
-      fetch("/api/groups/add-member", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ groupName: group, identifier: member }),
-      })
-      .then(res => res.json())
-      .then(data => {
-        if (data.error) return alert("❌ " + data.error);
-        alert(`✅ Member added to ${group}!`);
-        closeAddGroupModal();
-      });
+    chatDiv.addEventListener("touchstart", () => {
+      longPressTimer = setTimeout(() => {
+        toggleChatSelection(chatDiv, chatId);
+      }, 500);
+    });
+    chatDiv.addEventListener("touchend", () => clearTimeout(longPressTimer));
+  }
+
+  // Toggle chat selection
+  function toggleChatSelection(chatDiv, chatId) {
+    if (selectedChats.has(chatId)) {
+      selectedChats.delete(chatId);
+      chatDiv.classList.remove("chat-selected");
+    } else {
+      selectedChats.add(chatId);
+      chatDiv.classList.add("chat-selected");
     }
 
-    fetchChats();
-  </script>
-</body>
-</html>
+    document.getElementById("actionToolbar").classList.toggle("hidden", selectedChats.size === 0);
+  }
+
+  // Clear all selection helper
+  function clearSelection() {
+    selectedChats.clear();
+    document.querySelectorAll(".chat-selected").forEach(el => el.classList.remove("chat-selected"));
+    document.getElementById("actionToolbar").classList.add("hidden");
+  }
+
+  // Toolbar button actions
+  document.getElementById("pinBtn").addEventListener("click", () => {
+    if(selectedChats.size === 0) return alert("Select chats first.");
+    alert(`Pinned chats: ${[...selectedChats].join(", ")}`);
+    clearSelection();
+  });
+
+  document.getElementById("deleteBtn").addEventListener("click", () => {
+    if(selectedChats.size === 0) return alert("Select chats first.");
+    alert(`Deleted chats: ${[...selectedChats].join(", ")}`);
+    clearSelection();
+  });
+
+  document.getElementById("archiveBtn").addEventListener("click", () => {
+    if(selectedChats.size === 0) return alert("Select chats first.");
+    alert(`Archived chats: ${[...selectedChats].join(", ")}`);
+    clearSelection();
+  });
+
+  document.getElementById("moreBtn").addEventListener("click", () => {
+    alert("More options...");
+  });
+
+  // Select All button
+  document.getElementById("selectAllBtn").addEventListener("click", () => {
+    selectedChats = new Set(allChats.map(c => c._id));
+    document.querySelectorAll("#chatList > div").forEach(div => {
+      div.classList.add("chat-selected");
+    });
+    document.getElementById("actionToolbar").classList.remove("hidden");
+  });
+
+  // Delete All button
+  document.getElementById("deleteAllBtn").addEventListener("click", () => {
+    if (selectedChats.size === 0) {
+      alert("No chats selected to delete.");
+      return;
+    }
+    alert(`Delete chats: ${[...selectedChats].join(", ")}`);
+    clearSelection();
+  });
+
+  // Add Friend Modal Controls
+  function openAddFriendModal() {
+    document.getElementById("addFriendModal").classList.remove("hidden");
+  }
+  function closeAddFriendModal() {
+    document.getElementById("addFriendModal").classList.add("hidden");
+  }
+  function confirmAddFriend() {
+    const id = document.getElementById("friendIdentifier").value.trim();
+    if (!id) return alert("Enter username or Gmail.");
+    fetch("/api/users/add-friend", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ identifier: id }),
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.error) return alert("❌ " + data.error);
+      alert("✅ Friend added successfully!");
+      closeAddFriendModal();
+      fetchChats();
+    })
+    .catch(err => {
+      console.error("Add friend error:", err);
+      alert("Error adding friend");
+    });
+  }
+
+  // Add to Group Modal Controls
+  function openAddGroupModal() {
+    document.getElementById("addGroupModal").classList.remove("hidden");
+  }
+  function closeAddGroupModal() {
+    document.getElementById("addGroupModal").classList.add("hidden");
+  }
+  function confirmAddGroupMember() {
+    const
