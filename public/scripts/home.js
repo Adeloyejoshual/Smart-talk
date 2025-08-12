@@ -1,132 +1,214 @@
-document.addEventListener("DOMContentLoaded", () => {
-  const token = localStorage.getItem("token");
-  if (!token) return (window.location.href = "/login.html");
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>SmartTalk - Home</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .chat-selected {
+      background-color: #5C2C24 !important;
+      border-left: 4px solid orange;
+    }
+  </style>
+</head>
+<body class="bg-black text-gray-200 min-h-screen flex flex-col">
 
-  const searchInput = document.getElementById("searchInput");
-  const searchResults = document.getElementById("searchResults");
-  const friendList = document.getElementById("friendList");
+  <!-- Header with Toolbar -->
+  <div class="flex items-center justify-between px-4 py-3 bg-[#5C2C24] shadow">
+    <h1 class="text-xl font-bold text-orange-400">SmartTalk</h1>
+    <div class="flex space-x-3 text-white text-lg">
+      <button onclick="openAddGroupModal()" title="Add to Group" class="hover:text-orange-500">➕ Add to Group</button>
+      <button id="selectAllBtn" title="Select All" class="hover:text-orange-500">✅ Select All</button>
+      <button id="deleteAllBtn" title="Delete All" class="hover:text-orange-500">🗑️ Delete All</button>
+      <button onclick="window.location.href='/settings.html'" title="Settings" class="hover:text-orange-500">⚙️</button>
+    </div>
+  </div>
 
-  const headers = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${token}`,
-  };
+  <!-- Search Bar -->
+  <div class="flex gap-2 px-4 pt-3 pb-2 bg-[#1F1F1F]">
+    <input
+      id="searchInput"
+      type="text"
+      placeholder="Search friends/groups..."
+      class="flex-1 bg-[#2B2B2B] border border-gray-700 text-sm text-white rounded-full px-4 py-2 focus:outline-none"
+    />
+  </div>
 
-  // Load all friends
-  async function loadFriends() {
-    try {
-      const res = await fetch("/api/users/list", { headers });
-      const data = await res.json();
-      friendList.innerHTML = "";
+  <!-- Chat List -->
+  <div id="chatList" class="flex-1 overflow-y-auto px-4 py-2 divide-y divide-gray-700 relative">
+    <!-- Chats injected here -->
+  </div>
 
-      data.forEach(user => {
-        const li = document.createElement("li");
-        li.innerHTML = `
-          <div class="bg-white p-2 rounded shadow flex justify-between items-center">
-            <span>${user.username} (${user.email})</span>
-            <div>
-              <button class="chatBtn text-green-600" data-id="${user._id}">💬</button>
-              <button class="removeBtn text-red-600 ml-2" data-id="${user._id}">❌</button>
+  <!-- Fixed Action Toolbar -->
+  <div id="actionToolbar" class="hidden fixed bottom-0 left-0 right-0 bg-[#5C2C24] p-3 flex justify-around items-center z-50 border-t border-gray-700">
+    <button id="pinBtn" class="text-white text-lg">📌 Pin</button>
+    <button id="deleteBtn" class="text-white text-lg">❌ Delete</button>
+    <button id="archiveBtn" class="text-white text-lg">📦 Archive</button>
+    <button id="moreBtn" class="text-white text-2xl font-bold">⋮</button>
+  </div>
+
+  <!-- Floating Add Friend Button -->
+  <button
+    id="addFriendBtn"
+    onclick="openAddFriendModal()"
+    class="fixed bottom-20 right-5 bg-orange-600 hover:bg-orange-700 text-white px-5 py-3 rounded-full shadow-lg text-2xl"
+    title="Add Friend"
+  >+</button>
+
+  <!-- Add Friend Modal -->
+  <div id="addFriendModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center">
+    <div class="bg-[#1F1F1F] p-6 rounded shadow w-80">
+      <h3 class="text-lg font-bold mb-4 text-orange-400">Add Friend</h3>
+      <input id="friendIdentifier" type="text" placeholder="Enter Username or Gmail" class="w-full p-2 border border-gray-600 bg-black text-white rounded mb-4" />
+      <div class="flex justify-end gap-2">
+        <button onclick="closeAddFriendModal()" class="px-4 py-2 border border-gray-500 rounded">Cancel</button>
+        <button onclick="confirmAddFriend()" class="bg-orange-600 text-white px-4 py-2 rounded">Add</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add to Group Modal -->
+  <div id="addGroupModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center">
+    <div class="bg-[#1F1F1F] p-6 rounded shadow w-80">
+      <h3 class="text-lg font-bold mb-4 text-orange-400">Add Member to Group</h3>
+      <input id="groupNameInput" type="text" placeholder="Enter Group Name" class="w-full p-2 border border-gray-600 bg-black text-white rounded mb-2" />
+      <input id="memberIdentifier" type="text" placeholder="Enter Username or Gmail" class="w-full p-2 border border-gray-600 bg-black text-white rounded mb-4" />
+      <div class="flex justify-end gap-2">
+        <button onclick="closeAddGroupModal()" class="px-4 py-2 border border-gray-500 rounded">Cancel</button>
+        <button onclick="confirmAddGroupMember()" class="bg-orange-600 text-white px-4 py-2 rounded">Add</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const token = localStorage.getItem("token");
+    let allChats = [];
+    let selectedChats = new Set();
+
+    // Fetch chats
+    async function fetchChats() {
+      try {
+        const res = await fetch("/api/users/friends-with-last-message", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        let chats = await res.json();
+        if (!Array.isArray(chats)) return;
+
+        chats.forEach(chat => {
+          chat.lastMessage = chat.lastMessage || "Start chatting...";
+          chat.time = new Date(chat.lastMessageTime || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          chat.unread = chat.unread || 0;
+        });
+
+        chats.sort((a, b) => new Date(b.lastMessageTime || 0) - new Date(a.lastMessageTime || 0));
+        allChats = chats;
+        displayChats(chats);
+      } catch (err) {
+        console.error("❌ Fetch chats failed:", err);
+      }
+    }
+
+    function displayChats(chats) {
+      const list = document.getElementById("chatList");
+      list.innerHTML = "";
+      chats.forEach(chat => {
+        const div = document.createElement("div");
+        div.className = "flex items-center p-3 hover:bg-[#2c2c2c] cursor-pointer";
+        div.setAttribute("data-chat-id", chat._id);
+        div.onclick = () => {
+          if (selectedChats.size > 0) {
+            toggleChatSelection(div, chat._id);
+          } else {
+            window.location.href = `/private-chat.html?user=${chat._id}`;
+          }
+        };
+        div.innerHTML = `
+          <img src="${chat.avatar || '/default-avatar.png'}" class="w-10 h-10 rounded-full mr-3 border border-gray-600" />
+          <div class="flex-1">
+            <div class="flex justify-between">
+              <span class="font-semibold">${chat.username || chat.name}</span>
+              <span class="text-xs text-gray-500">${chat.time}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-sm text-gray-400 truncate">${chat.lastMessage}</span>
+              ${chat.unread > 0 ? `<span class="bg-red-500 text-xs px-2 rounded-full">${chat.unread}</span>` : ""}
             </div>
           </div>
         `;
-        friendList.appendChild(li);
+        list.appendChild(div);
       });
-    } catch (err) {
-      console.error("Failed to load friends:", err);
     }
-  }
 
-  // Handle search
-  searchInput.addEventListener("input", async () => {
-    const query = searchInput.value.trim();
-    if (!query) return (searchResults.innerHTML = "");
+    document.getElementById("searchInput").addEventListener("input", () => {
+      const q = document.getElementById("searchInput").value.toLowerCase();
+      const filtered = allChats.filter(chat =>
+        (chat.username || "").toLowerCase().includes(q) ||
+        (chat.name || "").toLowerCase().includes(q) ||
+        (chat.email || "").toLowerCase().includes(q)
+      );
+      displayChats(filtered);
+    });
 
-    try {
-      const res = await fetch(`/api/users/search?q=${encodeURIComponent(query)}`, { headers });
-      const users = await res.json();
-      searchResults.innerHTML = "";
+    function toggleChatSelection(chatDiv, chatId) {
+      if (selectedChats.has(chatId)) {
+        selectedChats.delete(chatId);
+        chatDiv.classList.remove("chat-selected");
+      } else {
+        selectedChats.add(chatId);
+        chatDiv.classList.add("chat-selected");
+      }
+      document.getElementById("actionToolbar").classList.toggle("hidden", selectedChats.size === 0);
+    }
 
-      users.forEach(user => {
-        const div = document.createElement("div");
-        div.className = "bg-white p-2 rounded shadow flex justify-between items-center";
-        div.innerHTML = `
-          <span><strong>${user.username}</strong> (${user.email})</span>
-          <button class="addBtn text-blue-500" data-id="${user._id}">➕ Add</button>
-        `;
-        searchResults.appendChild(div);
+    // Add Friend modal
+    function openAddFriendModal() {
+      document.getElementById("addFriendModal").classList.remove("hidden");
+    }
+    function closeAddFriendModal() {
+      document.getElementById("addFriendModal").classList.add("hidden");
+    }
+    function confirmAddFriend() {
+      const id = document.getElementById("friendIdentifier").value.trim();
+      if (!id) return alert("Enter username or Gmail.");
+      fetch("/api/users/add-friend", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ identifier: id }),
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.error) return alert("❌ " + data.error);
+        alert("✅ Friend added successfully!");
+        window.location.href = `/private-chat.html?user=${data.friendId || id}`;
       });
-    } catch (err) {
-      console.error("Search failed:", err);
     }
-  });
 
-  // Add friend
-  searchResults.addEventListener("click", async (e) => {
-    if (e.target.classList.contains("addBtn")) {
-      const friendId = e.target.dataset.id;
-      try {
-        await fetch("/api/users/add-friend", {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ friendId }),
-        });
-        searchInput.value = "";
-        searchResults.innerHTML = "";
-        loadFriends();
-      } catch (err) {
-        console.error("Add friend failed:", err);
-      }
+    // Add to Group modal
+    function openAddGroupModal() {
+      document.getElementById("addGroupModal").classList.remove("hidden");
     }
-  });
-
-  // Remove friend
-  friendList.addEventListener("click", async (e) => {
-    if (e.target.classList.contains("removeBtn")) {
-      const friendId = e.target.dataset.id;
-      try {
-        await fetch(`/api/users/remove-friend/${friendId}`, {
-          method: "DELETE",
-          headers,
-        });
-        loadFriends();
-      } catch (err) {
-        console.error("Remove friend failed:", err);
-      }
+    function closeAddGroupModal() {
+      document.getElementById("addGroupModal").classList.add("hidden");
     }
-  });
-
-  // Start private chat
-  friendList.addEventListener("click", (e) => {
-    if (e.target.classList.contains("chatBtn")) {
-      const friendId = e.target.dataset.id;
-      localStorage.setItem("receiverId", friendId);
-      window.location.href = "/chat.html";
+    function confirmAddGroupMember() {
+      const group = document.getElementById("groupNameInput").value.trim();
+      const member = document.getElementById("memberIdentifier").value.trim();
+      if (!group || !member) return alert("Fill in all fields.");
+      fetch("/api/groups/add-member", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ groupName: group, identifier: member }),
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.error) return alert("❌ " + data.error);
+        alert(`✅ Member added to ${group}!`);
+        closeAddGroupModal();
+      });
     }
-  });
 
-  // Open settings modal
-  document.getElementById("settingsBtn").onclick = () => {
-    document.getElementById("settingsModal").classList.remove("hidden");
-  };
-
-  // Close settings modal
-  document.getElementById("closeSettings").onclick = () => {
-    document.getElementById("settingsModal").classList.add("hidden");
-  };
-
-  // Toggle theme
-  document.getElementById("themeToggle").onclick = () => {
-    document.documentElement.dataset.theme =
-      document.documentElement.dataset.theme === "dark" ? "light" : "dark";
-  };
-
-  // Logout
-  document.getElementById("logoutBtn").onclick = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    window.location.href = "/login.html";
-  };
-
-  // Initial load
-  loadFriends();
-});
+    fetchChats();
+  </script>
+</body>
+</html>
