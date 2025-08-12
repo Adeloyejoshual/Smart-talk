@@ -2,46 +2,39 @@ const token = localStorage.getItem("token");
 let allChats = [];
 let selectedChats = new Set();
 
-// Fetch chats from API
+const chatListEl = document.getElementById("chatList");
+const actionToolbar = document.getElementById("actionToolbar");
+
+// Fetch chats from API and render
 async function fetchChats() {
   try {
     const res = await fetch("/api/users/friends-with-last-message", {
       headers: { Authorization: `Bearer ${token}` },
     });
-    let chats = await res.json();
+    const chats = await res.json();
     if (!Array.isArray(chats)) return;
 
-    chats.forEach(chat => {
-      chat.lastMessage = chat.lastMessage || "Start chatting...";
-      chat.time = new Date(chat.lastMessageTime || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      chat.unread = chat.unread || 0;
-    });
+    allChats = chats.map(chat => ({
+      ...chat,
+      lastMessage: chat.lastMessage || "Start chatting...",
+      time: new Date(chat.lastMessageTime || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      unread: chat.unread || 0,
+    })).sort((a, b) => new Date(b.lastMessageTime || 0) - new Date(a.lastMessageTime || 0));
 
-    chats.sort((a, b) => new Date(b.lastMessageTime || 0) - new Date(a.lastMessageTime || 0));
-    allChats = chats;
-    displayChats(chats);
-  } catch (err) {
-    console.error("❌ Fetch chats failed:", err);
+    displayChats(allChats);
+  } catch (error) {
+    console.error("❌ Fetch chats failed:", error);
   }
 }
 
-// Display chats in the chat list
+// Render chat items
 function displayChats(chats) {
-  const list = document.getElementById("chatList");
-  list.innerHTML = "";
+  chatListEl.innerHTML = "";
 
   chats.forEach(chat => {
     const div = document.createElement("div");
     div.className = "flex items-center p-3 hover:bg-[#2c2c2c] cursor-pointer select-none";
-    div.setAttribute("data-chat-id", chat._id);
-
-    div.onclick = () => {
-      if (selectedChats.size > 0) {
-        toggleChatSelection(div, chat._id);
-      } else {
-        window.location.href = `/private-chat.html?user=${chat._id}`;
-      }
-    };
+    div.dataset.chatId = chat._id;
 
     div.innerHTML = `
       <img src="${chat.avatar || '/default-avatar.png'}" class="w-10 h-10 rounded-full mr-3 border border-gray-600" />
@@ -57,62 +50,63 @@ function displayChats(chats) {
       </div>
     `;
 
+    div.onclick = () => {
+      if (selectedChats.size > 0) {
+        toggleChatSelection(div, chat._id);
+      } else {
+        window.location.href = `/private-chat.html?user=${chat._id}`;
+      }
+    };
+
     addLongPressListeners(div, chat._id);
 
-    list.appendChild(div);
+    // Highlight if already selected
+    if (selectedChats.has(chat._id)) div.classList.add("chat-selected");
+
+    chatListEl.appendChild(div);
   });
 }
 
-// Search filter
-document.getElementById("searchInput").addEventListener("input", () => {
-  const q = document.getElementById("searchInput").value.toLowerCase();
+// Filter chats by search input
+function filterChats() {
+  const query = document.getElementById("searchInput").value.toLowerCase();
   const filtered = allChats.filter(chat =>
-    (chat.username || "").toLowerCase().includes(q) ||
-    (chat.name || "").toLowerCase().includes(q) ||
-    (chat.email || "").toLowerCase().includes(q)
+    (chat.username || "").toLowerCase().includes(query) ||
+    (chat.name || "").toLowerCase().includes(query) ||
+    (chat.email || "").toLowerCase().includes(query)
   );
   displayChats(filtered);
-});
+}
 
-// Long press handlers for multi-select toggle
+// Long press multi-select support
 let longPressTimer;
 
-function addLongPressListeners(chatDiv, chatId) {
-  chatDiv.addEventListener("mousedown", () => {
-    longPressTimer = setTimeout(() => {
-      toggleChatSelection(chatDiv, chatId);
-    }, 500);
+function addLongPressListeners(element, chatId) {
+  element.addEventListener("mousedown", () => {
+    longPressTimer = setTimeout(() => toggleChatSelection(element, chatId), 500);
   });
-  chatDiv.addEventListener("mouseup", () => clearTimeout(longPressTimer));
-  chatDiv.addEventListener("mouseleave", () => clearTimeout(longPressTimer));
+  element.addEventListener("mouseup", () => clearTimeout(longPressTimer));
+  element.addEventListener("mouseleave", () => clearTimeout(longPressTimer));
 
-  chatDiv.addEventListener("touchstart", () => {
-    longPressTimer = setTimeout(() => {
-      toggleChatSelection(chatDiv, chatId);
-    }, 500);
+  element.addEventListener("touchstart", () => {
+    longPressTimer = setTimeout(() => toggleChatSelection(element, chatId), 500);
   });
-  chatDiv.addEventListener("touchend", () => clearTimeout(longPressTimer));
+  element.addEventListener("touchend", () => clearTimeout(longPressTimer));
 }
 
-// Toggle chat selection in UI and in set
-function toggleChatSelection(chatDiv, chatId) {
+// Select/unselect a chat
+function toggleChatSelection(element, chatId) {
   if (selectedChats.has(chatId)) {
     selectedChats.delete(chatId);
-    chatDiv.classList.remove("chat-selected");
+    element.classList.remove("chat-selected");
   } else {
     selectedChats.add(chatId);
-    chatDiv.classList.add("chat-selected");
+    element.classList.add("chat-selected");
   }
-
-  if (selectedChats.size > 0) {
-    showToolbar();
-  } else {
-    hideToolbar();
-  }
+  selectedChats.size > 0 ? showToolbar() : hideToolbar();
 }
 
-// Show/hide action toolbar
-const actionToolbar = document.getElementById("actionToolbar");
+// Show/hide toolbar
 function showToolbar() {
   actionToolbar.classList.remove("hidden");
 }
@@ -120,51 +114,83 @@ function hideToolbar() {
   actionToolbar.classList.add("hidden");
 }
 
-// Clear selection (remove highlights + reset set + hide toolbar)
+// Clear all selection
 function clearSelection() {
   selectedChats.clear();
   document.querySelectorAll(".chat-selected").forEach(el => el.classList.remove("chat-selected"));
   hideToolbar();
 }
 
+// Generic API POST helper
+async function postApi(url, body) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+  return await res.json();
+}
+
 // Toolbar buttons handlers
-document.getElementById("pinBtn").addEventListener("click", () => {
-  alert(`📌 Pinned chats: ${[...selectedChats].join(", ")}`);
-  clearSelection();
-});
-
-document.getElementById("deleteBtn").addEventListener("click", () => {
-  alert(`❌ Deleted chats: ${[...selectedChats].join(", ")}`);
-  clearSelection();
-});
-
-document.getElementById("archiveBtn").addEventListener("click", () => {
-  alert(`📦 Archived chats: ${[...selectedChats].join(", ")}`);
-  clearSelection();
-});
-
-document.getElementById("moreBtn").addEventListener("click", () => {
+async function handlePin() {
+  if (selectedChats.size === 0) return alert("Select chats first.");
+  if (!confirm(`Pin ${selectedChats.size} chat(s)?`)) return;
+  try {
+    const data = await postApi("/api/chats/pin", { chatIds: [...selectedChats] });
+    if (data.error) return alert("❌ " + data.error);
+    alert(data.message || "Chats pinned!");
+    clearSelection();
+    fetchChats();
+  } catch {
+    alert("Error pinning chats.");
+  }
+}
+async function handleDelete() {
+  if (selectedChats.size === 0) return alert("Select chats first.");
+  if (!confirm(`Delete ${selectedChats.size} chat(s)? This cannot be undone.`)) return;
+  try {
+    const data = await postApi("/api/chats/delete", { chatIds: [...selectedChats] });
+    if (data.error) return alert("❌ " + data.error);
+    alert(data.message || "Chats deleted!");
+    clearSelection();
+    fetchChats();
+  } catch {
+    alert("Error deleting chats.");
+  }
+}
+async function handleArchive() {
+  if (selectedChats.size === 0) return alert("Select chats first.");
+  if (!confirm(`Archive ${selectedChats.size} chat(s)?`)) return;
+  try {
+    const data = await postApi("/api/chats/archive", { chatIds: [...selectedChats] });
+    if (data.error) return alert("❌ " + data.error);
+    alert(data.message || "Chats archived!");
+    clearSelection();
+    fetchChats();
+  } catch {
+    alert("Error archiving chats.");
+  }
+}
+function handleMore() {
   alert("⋮ More options...");
-});
+}
 
-// Select All button behavior
-document.getElementById("selectAllBtn").addEventListener("click", () => {
+// Select all chats
+function selectAllChats() {
   selectedChats = new Set(allChats.map(c => c._id));
   document.querySelectorAll("#chatList > div").forEach(div => div.classList.add("chat-selected"));
   showToolbar();
-});
-
-// Delete All button behavior
-document.getElementById("deleteAllBtn").addEventListener("click", () => {
+}
+// Delete all selected chats (trigger delete action)
+function deleteAllSelected() {
   if (selectedChats.size === 0) {
     alert("No chats selected to delete.");
     return;
   }
-  alert(`🗑️ Deleted chats: ${[...selectedChats].join(", ")}`);
-  clearSelection();
-});
+  handleDelete();
+}
 
-// Add Friend modal controls
+// Add friend modal controls
 function openAddFriendModal() {
   document.getElementById("addFriendModal").classList.remove("hidden");
 }
@@ -180,17 +206,17 @@ function confirmAddFriend() {
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({ identifier: id }),
   })
-  .then(res => res.json())
-  .then(data => {
-    if (data.error) return alert("❌ " + data.error);
-    alert("✅ Friend added successfully!");
-    closeAddFriendModal();
-    fetchChats();
-  })
-  .catch(() => alert("Error adding friend."));
+    .then(res => res.json())
+    .then(data => {
+      if (data.error) return alert("❌ " + data.error);
+      alert("✅ Friend added successfully!");
+      closeAddFriendModal();
+      fetchChats();
+    })
+    .catch(() => alert("Error adding friend."));
 }
 
-// Add Group modal controls
+// Add group modal controls
 function openAddGroupModal() {
   document.getElementById("addGroupModal").classList.remove("hidden");
 }
@@ -207,24 +233,36 @@ function confirmAddGroupMember() {
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({ groupName: group, identifier: member }),
   })
-  .then(res => res.json())
-  .then(data => {
-    if (data.error) return alert("❌ " + data.error);
-    alert(`✅ Member added to ${group}!`);
-    closeAddGroupModal();
-  })
-  .catch(() => alert("Error adding member to group."));
+    .then(res => res.json())
+    .then(data => {
+      if (data.error) return alert("❌ " + data.error);
+      alert(`✅ Member added to ${group}!`);
+      closeAddGroupModal();
+    })
+    .catch(() => alert("Error adding member to group."));
 }
 
-// Clear selection if click outside chat list and toolbar/buttons
+// Clear selection if clicking outside chat list or toolbar buttons
 document.body.addEventListener("click", (e) => {
-  const chatList = document.getElementById("chatList");
-  const targetIsChatListOrToolbar = chatList.contains(e.target) || actionToolbar.contains(e.target);
-  const clickedControlBtn = ["selectAllBtn", "deleteAllBtn", "pinBtn", "deleteBtn", "archiveBtn", "moreBtn", "addFriendBtn"].includes(e.target.id);
+  const targetIsChatListOrToolbar = chatListEl.contains(e.target) || actionToolbar.contains(e.target);
+  const clickedControlBtn = [
+    "selectAllBtn", "deleteAllBtn", "pinBtn", "deleteBtn", "archiveBtn", "moreBtn", "addFriendBtn"
+  ].includes(e.target.id);
+
   if (!targetIsChatListOrToolbar && !clickedControlBtn) {
     clearSelection();
   }
 });
 
-// Initial fetch of chats on load
+// Event listeners
+document.getElementById("searchInput").addEventListener("input", filterChats);
+
+document.getElementById("pinBtn").addEventListener("click", handlePin);
+document.getElementById("deleteBtn").addEventListener("click", handleDelete);
+document.getElementById("archiveBtn").addEventListener("click", handleArchive);
+document.getElementById("moreBtn").addEventListener("click", handleMore);
+document.getElementById("selectAllBtn").addEventListener("click", selectAllChats);
+document.getElementById("deleteAllBtn").addEventListener("click", deleteAllSelected);
+
+// Initial fetch on page load
 fetchChats();
