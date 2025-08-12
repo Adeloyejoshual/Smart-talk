@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" >
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <title>SmartTalk - Home</title>
@@ -14,7 +14,7 @@
 </head>
 <body class="bg-black text-gray-200 min-h-screen flex flex-col">
 
-  <!-- Header with Toolbar -->
+  <!-- Header -->
   <div class="flex items-center justify-between px-4 py-3 bg-[#5C2C24] shadow">
     <h1 class="text-xl font-bold text-orange-400">SmartTalk</h1>
     <div class="flex space-x-3 text-white text-lg">
@@ -25,7 +25,7 @@
     </div>
   </div>
 
-  <!-- Search Bar -->
+  <!-- Search -->
   <div class="flex gap-2 px-4 pt-3 pb-2 bg-[#1F1F1F]">
     <input
       id="searchInput"
@@ -37,10 +37,10 @@
 
   <!-- Chat List -->
   <div id="chatList" class="flex-1 overflow-y-auto px-4 py-2 divide-y divide-gray-700 relative">
-    <!-- JS will populate chat items here -->
+    <!-- JS will populate -->
   </div>
 
-  <!-- Fixed Action Toolbar (hidden by default) -->
+  <!-- Toolbar -->
   <div
     id="actionToolbar"
     class="hidden fixed bottom-0 left-0 right-0 bg-[#5C2C24] p-3 flex justify-around items-center z-50 border-t border-gray-700"
@@ -51,7 +51,7 @@
     <button id="moreBtn" class="text-white text-2xl font-bold">⋮</button>
   </div>
 
-  <!-- Floating Add Friend Button -->
+  <!-- Add Friend -->
   <button
     id="addFriendBtn"
     onclick="addFriendPrompt()"
@@ -61,11 +61,9 @@
 
   <script>
     const token = localStorage.getItem("token");
-    const user = JSON.parse(localStorage.getItem("user"));
     let allChats = [];
     let selectedChats = new Set();
 
-    // Fetch friends with last message, simulate from backend API
     async function fetchChats() {
       try {
         const res = await fetch("/api/users/friends-with-last-message", {
@@ -74,24 +72,20 @@
         let chats = await res.json();
         if (!Array.isArray(chats)) return;
 
-        // Normalize data, fallback placeholders
         chats.forEach(chat => {
           chat.lastMessage = chat.lastMessage || "Start chatting...";
           chat.time = chat.time || new Date(chat.lastMessageTime || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
           chat.unread = chat.unread || 0;
         });
 
-        // Sort by last message time desc
         chats.sort((a, b) => new Date(b.lastMessageTime || 0) - new Date(a.lastMessageTime || 0));
-
         allChats = chats;
         displayChats(chats);
       } catch (err) {
-        console.error("❌ Failed to fetch chats:", err);
+        console.error("❌ Fetch error:", err);
       }
     }
 
-    // Display chats in chatList container
     function displayChats(chats) {
       const list = document.getElementById("chatList");
       list.innerHTML = "";
@@ -122,14 +116,11 @@
           </div>
         `;
 
-        // Long press support for selection
         addLongPressListeners(div, chat._id);
-
         list.appendChild(div);
       });
     }
 
-    // Search filter
     document.getElementById("searchInput").addEventListener("input", () => {
       const q = document.getElementById("searchInput").value.toLowerCase();
       const filtered = allChats.filter(chat =>
@@ -140,28 +131,20 @@
       displayChats(filtered);
     });
 
-    // Long press handlers
     let longPressTimer;
-
     function addLongPressListeners(chatDiv, chatId) {
       chatDiv.addEventListener("mousedown", () => {
-        longPressTimer = setTimeout(() => {
-          toggleChatSelection(chatDiv, chatId);
-        }, 500);
+        longPressTimer = setTimeout(() => toggleChatSelection(chatDiv, chatId), 500);
       });
       chatDiv.addEventListener("mouseup", () => clearTimeout(longPressTimer));
       chatDiv.addEventListener("mouseleave", () => clearTimeout(longPressTimer));
 
-      // Touch events for mobile
       chatDiv.addEventListener("touchstart", () => {
-        longPressTimer = setTimeout(() => {
-          toggleChatSelection(chatDiv, chatId);
-        }, 500);
+        longPressTimer = setTimeout(() => toggleChatSelection(chatDiv, chatId), 500);
       });
       chatDiv.addEventListener("touchend", () => clearTimeout(longPressTimer));
     }
 
-    // Toggle chat selection
     function toggleChatSelection(chatDiv, chatId) {
       if (selectedChats.has(chatId)) {
         selectedChats.delete(chatId);
@@ -170,12 +153,7 @@
         selectedChats.add(chatId);
         chatDiv.classList.add("chat-selected");
       }
-
-      if (selectedChats.size > 0) {
-        showToolbar();
-      } else {
-        hideToolbar();
-      }
+      selectedChats.size > 0 ? showToolbar() : hideToolbar();
     }
 
     function clearSelection() {
@@ -184,7 +162,6 @@
       document.querySelectorAll(".chat-selected").forEach(el => el.classList.remove("chat-selected"));
     }
 
-    // Toolbar show/hide
     const actionToolbar = document.getElementById("actionToolbar");
     function showToolbar() {
       actionToolbar.classList.remove("hidden");
@@ -193,7 +170,18 @@
       actionToolbar.classList.add("hidden");
     }
 
-    // Toolbar button actions
+    document.getElementById("selectAllBtn").addEventListener("click", () => {
+      selectedChats = new Set(allChats.map(c => c._id));
+      document.querySelectorAll("#chatList > div").forEach(div => div.classList.add("chat-selected"));
+      showToolbar();
+    });
+
+    document.getElementById("deleteAllBtn").addEventListener("click", () => {
+      if (selectedChats.size === 0) return alert("No chats selected");
+      alert(`Delete chats: ${[...selectedChats].join(", ")}`);
+      clearSelection();
+    });
+
     document.getElementById("pinBtn").addEventListener("click", () => {
       alert(`Pin chats: ${[...selectedChats].join(", ")}`);
       clearSelection();
@@ -209,30 +197,7 @@
       clearSelection();
     });
 
-    document.getElementById("moreBtn").addEventListener("click", () => {
-      alert("Show more options...");
-    });
-
-    // Select All button
-    document.getElementById("selectAllBtn").addEventListener("click", () => {
-      selectedChats = new Set(allChats.map(c => c._id));
-      document.querySelectorAll("#chatList > div").forEach(div => {
-        div.classList.add("chat-selected");
-      });
-      showToolbar();
-    });
-
-    // Delete All button
-    document.getElementById("deleteAllBtn").addEventListener("click", () => {
-      if (selectedChats.size === 0) {
-        alert("No chats selected to delete.");
-        return;
-      }
-      alert(`Delete chats: ${[...selectedChats].join(", ")}`);
-      clearSelection();
-    });
-
-    // Add Friend prompt
+    // Add Friend with redirect to chat
     function addFriendPrompt() {
       const input = prompt("Enter friend's email or username:");
       if (!input) return;
@@ -248,8 +213,12 @@
       .then(res => res.json())
       .then(data => {
         if (data.error) return alert("❌ " + data.error);
-        alert("✅ Friend added successfully!");
-        fetchChats();
+        if (!data.friendId) {
+          alert("✅ Friend added, but missing friendId");
+          return fetchChats();
+        }
+        // Redirect straight to chat
+        window.location.href = `/private-chat.html?user=${data.friendId}`;
       })
       .catch(err => {
         console.error("Add friend error:", err);
@@ -257,7 +226,6 @@
       });
     }
 
-    // Clear selection if clicking outside chat or toolbar
     document.body.addEventListener("click", (e) => {
       if (!document.getElementById("chatList").contains(e.target) &&
           !actionToolbar.contains(e.target) &&
@@ -267,7 +235,6 @@
       }
     });
 
-    // Initial fetch chats
     fetchChats();
   </script>
 </body>
