@@ -80,7 +80,7 @@ function toggleChatSelection(chatDiv, chatId) {
   document.getElementById("actionToolbar").classList.toggle("hidden", selectedChats.size === 0);
 }
 
-// Add Friend Modal Controls
+// Add Friend modal controls
 function openAddFriendModal() {
   document.getElementById("addFriendModal").classList.remove("hidden");
 }
@@ -103,7 +103,7 @@ function confirmAddFriend() {
   });
 }
 
-// Add to Group Modal Controls
+// Add to Group modal controls
 function openAddGroupModal() {
   document.getElementById("addGroupModal").classList.remove("hidden");
 }
@@ -127,19 +127,19 @@ function confirmAddGroupMember() {
   });
 }
 
-// Toolbar button event listeners (example: pin, delete, archive)
+// Toolbar buttons event handlers
 document.getElementById("pinBtn").addEventListener("click", () => {
-  if(selectedChats.size === 0) return alert("Select chats first.");
+  if (selectedChats.size === 0) return alert("Select chats first.");
   alert(`Pinned chats: ${[...selectedChats].join(", ")}`);
   clearSelection();
 });
 document.getElementById("deleteBtn").addEventListener("click", () => {
-  if(selectedChats.size === 0) return alert("Select chats first.");
+  if (selectedChats.size === 0) return alert("Select chats first.");
   alert(`Deleted chats: ${[...selectedChats].join(", ")}`);
   clearSelection();
 });
 document.getElementById("archiveBtn").addEventListener("click", () => {
-  if(selectedChats.size === 0) return alert("Select chats first.");
+  if (selectedChats.size === 0) return alert("Select chats first.");
   alert(`Archived chats: ${[...selectedChats].join(", ")}`);
   clearSelection();
 });
@@ -173,17 +173,26 @@ function clearSelection() {
   document.getElementById("actionToolbar").classList.add("hidden");
 }
 
-// Close modals if click outside
+// Close modals if click outside (except when clicking buttons that open them)
 document.body.addEventListener("click", (e) => {
   const addFriendModal = document.getElementById("addFriendModal");
   const addGroupModal = document.getElementById("addGroupModal");
-  if (!addFriendModal.contains(e.target) && e.target.id !== "addFriendBtn") {
+  const addFriendBtn = document.getElementById("addFriendBtn");
+  const addGroupBtn = document.querySelector("button[onclick='openAddGroupModal()']");
+
+  if (
+    addFriendModal && !addFriendModal.contains(e.target) &&
+    e.target !== addFriendBtn
+  ) {
     closeAddFriendModal();
   }
-  if (!addGroupModal.contains(e.target) && e.target.id !== "addGroupBtn") {
+  if (
+    addGroupModal && !addGroupModal.contains(e.target) &&
+    e.target !== addGroupBtn
+  ) {
     closeAddGroupModal();
   }
 });
 
-// Initial fetch
+// Initial fetch of chats
 fetchChats();
