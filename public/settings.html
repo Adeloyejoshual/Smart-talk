@@ -1,92 +1,143 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Settings - SmartTalk</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-  </head>
-  <body class="bg-white dark:bg-gray-900 text-gray-900 dark:text-white transition-colors duration-300">
-    <div class="max-w-md mx-auto px-4 py-6">
-      <!-- Profile Picture -->
-      <div class="flex flex-col items-center gap-3">
-        <label for="avatarInput" class="cursor-pointer">
-          <img
-            id="avatarPreview"
-            src="default.jpg"
-            class="w-24 h-24 rounded-full border-2 border-gray-300 dark:border-white object-cover"
-            alt="Profile Picture"
-          />
-        </label>
-        <input type="file" id="avatarInput" accept="image/*" class="hidden" />
-        <p id="username" class="text-lg font-bold"></p>
-        <p id="email" class="text-sm text-gray-500 dark:text-gray-300"></p>
-      </div>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SmartTalk - Settings</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-white min-h-screen flex flex-col">
 
-      <!-- Divider -->
-      <hr class="my-6 border-gray-300 dark:border-gray-600" />
+  <!-- Header -->
+  <header class="bg-blue-600 dark:bg-blue-800 text-white p-4 flex items-center justify-between">
+    <h1 class="text-lg font-bold">Settings</h1>
+    <button onclick="history.back()" class="text-sm underline">Back</button>
+  </header>
 
-      <!-- Options -->
-      <div class="flex flex-col space-y-4">
-        <a href="#" class="block w-full text-center bg-green-600 text-white py-2 rounded-lg">Invite Friends</a>
-        <a href="contact.html" class="block w-full text-center bg-blue-600 text-white py-2 rounded-lg">Contact</a>
-        <button
-          onclick="logout()"
-          class="w-full bg-red-500 text-white py-2 rounded-lg"
-        >
-          Logout
-        </button>
-      </div>
+  <!-- Settings List -->
+  <main class="flex-1 p-4 space-y-6">
+
+    <!-- 1. Dark Mode Toggle -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 flex justify-between items-center">
+      <span class="font-semibold">Dark Mode</span>
+      <input type="checkbox" id="darkModeToggle" class="w-5 h-5">
     </div>
 
-    <script>
-      const token = localStorage.getItem("token");
-      const headers = { Authorization: "Bearer " + token };
+    <!-- 2. Notification Sounds -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+      <h2 class="font-semibold mb-2">Notification Sound</h2>
+      <select id="soundSelect" class="w-full p-2 rounded border dark:bg-gray-700 dark:border-gray-600">
+        <option value="">Select Sound</option>
+        <option value="plastic-bat.mp3">Plastic Bat</option>
+        <option value="ding.mp3">Ding</option>
+        <option value="pop.mp3">Pop</option>
+        <option value="chime.mp3">Chime</option>
+        <option value="click.mp3">Click</option>
+        <option value="ringtone1.mp3">Ringtone 1</option>
+        <option value="ringtone2.mp3">Ringtone 2</option>
+        <option value="alert1.mp3">Alert 1</option>
+        <option value="alert2.mp3">Alert 2</option>
+        <option value="bird.mp3">Bird</option>
+        <option value="cat.mp3">Cat</option>
+        <option value="dog.mp3">Dog</option>
+        <option value="water.mp3">Water Drop</option>
+        <option value="spark.mp3">Spark</option>
+        <option value="bubble.mp3">Bubble</option>
+        <option value="tone1.mp3">Tone 1</option>
+        <option value="tone2.mp3">Tone 2</option>
+        <option value="tone3.mp3">Tone 3</option>
+        <option value="tone4.mp3">Tone 4</option>
+        <option value="custom">Custom Ringtone...</option>
+      </select>
+      <input type="file" id="customSoundInput" accept="audio/*" class="mt-2 hidden">
+    </div>
 
-      // Load user profile
-      async function loadProfile() {
-        const res = await fetch("/api/users/me", { headers });
-        const data = await res.json();
-        document.getElementById("username").innerText = data.username;
-        document.getElementById("email").innerText = data.email;
-        document.getElementById("avatarPreview").src = data.avatar || "default.jpg";
+    <!-- 3. Change Theme Color -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+      <h2 class="font-semibold mb-2">Theme Color</h2>
+      <input type="color" id="themeColorPicker" value="#3B82F6" class="w-12 h-8 rounded border">
+    </div>
+
+    <!-- 4. Profile Management -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-2">
+      <h2 class="font-semibold">Profile</h2>
+      <input type="file" id="profilePicInput" accept="image/*" class="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600">
+      <input type="text" id="usernameInput" placeholder="Update Username" class="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600">
+      <textarea id="bioInput" placeholder="Update Bio" class="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600"></textarea>
+    </div>
+
+    <!-- 5. Privacy & Security -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-2">
+      <h2 class="font-semibold">Privacy & Security</h2>
+      <label class="flex justify-between">
+        <span>Show Last Seen</span>
+        <input type="checkbox" id="lastSeenToggle">
+      </label>
+      <label class="flex justify-between">
+        <span>Read Receipts</span>
+        <input type="checkbox" id="readReceiptsToggle">
+      </label>
+      <button class="bg-red-500 text-white p-2 rounded w-full">Manage Blocked Contacts</button>
+    </div>
+
+    <!-- 6. Backup & Restore -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+      <h2 class="font-semibold mb-2">Chat Backup</h2>
+      <button class="bg-green-500 text-white p-2 rounded w-full mb-2">Backup Now</button>
+      <button class="bg-blue-500 text-white p-2 rounded w-full">Restore Backup</button>
+    </div>
+
+    <!-- 7. Language Selection -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+      <h2 class="font-semibold mb-2">Language</h2>
+      <select id="languageSelect" class="w-full p-2 rounded border dark:bg-gray-700 dark:border-gray-600">
+        <option>English</option>
+        <option>French</option>
+        <option>Spanish</option>
+        <option>German</option>
+        <option>Chinese</option>
+      </select>
+    </div>
+
+    <!-- App Info -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+      <p class="text-sm">App Version: <span id="appVersion">1.0.0</span></p>
+      <a href="terms.html" class="text-blue-500 block">Terms & Conditions</a>
+      <a href="privacy.html" class="text-blue-500 block">Privacy Policy</a>
+    </div>
+
+  </main>
+
+  <script>
+    // Dark mode toggle
+    const darkModeToggle = document.getElementById('darkModeToggle');
+    darkModeToggle.addEventListener('change', () => {
+      document.documentElement.classList.toggle('dark', darkModeToggle.checked);
+      localStorage.setItem('darkMode', darkModeToggle.checked);
+    });
+    if (localStorage.getItem('darkMode') === 'true') {
+      document.documentElement.classList.add('dark');
+      darkModeToggle.checked = true;
+    }
+
+    // Notification sound
+    const soundSelect = document.getElementById('soundSelect');
+    const customSoundInput = document.getElementById('customSoundInput');
+    soundSelect.addEventListener('change', () => {
+      if (soundSelect.value === 'custom') {
+        customSoundInput.click();
+      } else if (soundSelect.value) {
+        new Audio(`sounds/${soundSelect.value}`).play();
       }
-
-      // Upload image when selected
-      document.getElementById("avatarInput").addEventListener("change", async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const formData = new FormData();
-        formData.append("avatar", file);
-
-        const res = await fetch("/api/users/upload-avatar", {
-          method: "POST",
-          headers,
-          body: formData,
-        });
-
-        const result = await res.json();
-        if (result.avatar) {
-          document.getElementById("avatarPreview").src = result.avatar;
-        } else {
-          alert("Upload failed");
-        }
-      });
-
-      // Logout
-      function logout() {
-        localStorage.removeItem("token");
-        window.location.href = "/login.html";
+    });
+    customSoundInput.addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (file) {
+        const url = URL.createObjectURL(file);
+        new Audio(url).play();
       }
+    });
+  </script>
 
-      // Dark mode toggle from localStorage
-      if (localStorage.getItem("darkToggle") === "true") {
-        document.documentElement.classList.add("dark");
-      } else {
-        document.documentElement.classList.remove("dark");
-      }
-
-      loadProfile();
-    </script>
-  </body>
+</body>
 </html>
