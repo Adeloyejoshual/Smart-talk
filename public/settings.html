@@ -1,140 +1,135 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="bg-gray-100 dark:bg-gray-900">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SmartTalk - Settings</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class'
+    }
+  </script>
 </head>
-<body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-white min-h-screen flex flex-col">
+<body class="text-gray-900 dark:text-gray-100">
 
   <!-- Header -->
-  <header class="bg-blue-600 dark:bg-blue-800 text-white p-4 flex items-center justify-between">
+  <header class="sticky top-0 bg-white dark:bg-gray-800 shadow p-4 flex items-center justify-between">
     <h1 class="text-lg font-bold">Settings</h1>
-    <button onclick="history.back()" class="text-sm underline">Back</button>
+    <button onclick="window.history.back()" class="text-blue-500">Back</button>
   </header>
 
-  <!-- Settings List -->
-  <main class="flex-1 p-4 space-y-6">
+  <!-- Content -->
+  <main class="p-4 space-y-6">
 
-    <!-- 1. Dark Mode Toggle -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 flex justify-between items-center">
-      <span class="font-semibold">Dark Mode</span>
-      <input type="checkbox" id="darkModeToggle" class="w-5 h-5">
-    </div>
-
-    <!-- 2. Notification Sounds -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-      <h2 class="font-semibold mb-2">Notification Sound</h2>
-      <select id="soundSelect" class="w-full p-2 rounded border dark:bg-gray-700 dark:border-gray-600">
-        <option value="">Select Sound</option>
-        <option value="plastic-bat.mp3">Plastic Bat</option>
-        <option value="ding.mp3">Ding</option>
-        <option value="pop.mp3">Pop</option>
-        <option value="chime.mp3">Chime</option>
-        <option value="click.mp3">Click</option>
-        <option value="ringtone1.mp3">Ringtone 1</option>
-        <option value="ringtone2.mp3">Ringtone 2</option>
-        <option value="alert1.mp3">Alert 1</option>
-        <option value="alert2.mp3">Alert 2</option>
-        <option value="bird.mp3">Bird</option>
-        <option value="cat.mp3">Cat</option>
-        <option value="dog.mp3">Dog</option>
-        <option value="water.mp3">Water Drop</option>
-        <option value="spark.mp3">Spark</option>
-        <option value="bubble.mp3">Bubble</option>
-        <option value="tone1.mp3">Tone 1</option>
-        <option value="tone2.mp3">Tone 2</option>
-        <option value="tone3.mp3">Tone 3</option>
-        <option value="tone4.mp3">Tone 4</option>
-        <option value="custom">Custom Ringtone...</option>
-      </select>
-      <input type="file" id="customSoundInput" accept="audio/*" class="mt-2 hidden">
-    </div>
-
-    <!-- 3. Change Theme Color -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-      <h2 class="font-semibold mb-2">Theme Color</h2>
-      <input type="color" id="themeColorPicker" value="#3B82F6" class="w-12 h-8 rounded border">
-    </div>
-
-    <!-- 4. Profile Management -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-2">
-      <h2 class="font-semibold">Profile</h2>
-      <input type="file" id="profilePicInput" accept="image/*" class="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600">
-      <input type="text" id="usernameInput" placeholder="Update Username" class="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600">
-      <textarea id="bioInput" placeholder="Update Bio" class="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600"></textarea>
-    </div>
-
-    <!-- 5. Privacy & Security -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-2">
-      <h2 class="font-semibold">Privacy & Security</h2>
-      <label class="flex justify-between">
-        <span>Show Last Seen</span>
-        <input type="checkbox" id="lastSeenToggle">
+    <!-- 1. Dark Mode -->
+    <section class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
+      <h2 class="font-semibold mb-3">Dark Mode</h2>
+      <label class="flex items-center space-x-3">
+        <input type="checkbox" id="darkModeToggle" class="w-5 h-5">
+        <span>Enable Dark Mode</span>
       </label>
-      <label class="flex justify-between">
-        <span>Read Receipts</span>
-        <input type="checkbox" id="readReceiptsToggle">
-      </label>
-      <button class="bg-red-500 text-white p-2 rounded w-full">Manage Blocked Contacts</button>
-    </div>
+    </section>
 
-    <!-- 6. Backup & Restore -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-      <h2 class="font-semibold mb-2">Chat Backup</h2>
-      <button class="bg-green-500 text-white p-2 rounded w-full mb-2">Backup Now</button>
-      <button class="bg-blue-500 text-white p-2 rounded w-full">Restore Backup</button>
-    </div>
-
-    <!-- 7. Language Selection -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-      <h2 class="font-semibold mb-2">Language</h2>
-      <select id="languageSelect" class="w-full p-2 rounded border dark:bg-gray-700 dark:border-gray-600">
-        <option>English</option>
-        <option>French</option>
-        <option>Spanish</option>
-        <option>German</option>
-        <option>Chinese</option>
+    <!-- 2. Notification Sound -->
+    <section class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
+      <h2 class="font-semibold mb-3">Notification Sound</h2>
+      <select id="notificationSound" class="w-full p-2 rounded border dark:bg-gray-700">
+        <option value="">Select a sound</option>
+        <option value="sound1.mp3">Chime</option>
+        <option value="sound2.mp3">Ping</option>
+        <option value="sound3.mp3">Pop</option>
+        <option value="sound4.mp3">Bell</option>
+        <option value="sound5.mp3">Digital</option>
+        <option value="sound6.mp3">Classic</option>
+        <option value="sound7.mp3">Soft Ding</option>
+        <option value="sound8.mp3">Wood Click</option>
+        <option value="sound9.mp3">Whistle</option>
+        <option value="sound10.mp3">Beep</option>
+        <option value="sound11.mp3">Pluck</option>
+        <option value="sound12.mp3">Knock</option>
+        <option value="sound13.mp3">Ripple</option>
+        <option value="sound14.mp3">Tap</option>
+        <option value="sound15.mp3">Twinkle</option>
+        <option value="sound16.mp3">Drop</option>
+        <option value="sound17.mp3">Bell Ring</option>
+        <option value="sound18.mp3">Tone</option>
+        <option value="sound19.mp3">Pulse</option>
+        <option value="sound20.mp3">Buzz</option>
       </select>
-    </div>
+      <button id="playSound" class="mt-2 bg-blue-500 hover:bg-blue-600 text-white py-1 px-3 rounded">Play</button>
+    </section>
 
-    <!-- App Info -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-      <p class="text-sm">App Version: <span id="appVersion">1.0.0</span></p>
-      <a href="terms.html" class="text-blue-500 block">Terms & Conditions</a>
-      <a href="privacy.html" class="text-blue-500 block">Privacy Policy</a>
-    </div>
+    <!-- 3. Custom Ringtone -->
+    <section class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
+      <h2 class="font-semibold mb-3">Custom Ringtone</h2>
+      <input type="file" id="customRingtone" accept="audio/*" class="block w-full">
+    </section>
+
+    <!-- 4. App Theme -->
+    <section class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
+      <h2 class="font-semibold mb-3">App Theme</h2>
+      <select id="themeSelect" class="w-full p-2 rounded border dark:bg-gray-700">
+        <option value="default">Default</option>
+        <option value="blue">Blue</option>
+        <option value="green">Green</option>
+        <option value="pink">Pink</option>
+        <option value="purple">Purple</option>
+      </select>
+    </section>
+
+    <!-- 5. Privacy Policy -->
+    <section class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
+      <h2 class="font-semibold mb-3">Privacy Policy</h2>
+      <a href="privacy.html" class="text-blue-500">View Privacy Policy</a>
+    </section>
+
+    <!-- 6. Terms of Service -->
+    <section class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
+      <h2 class="font-semibold mb-3">Terms of Service</h2>
+      <a href="terms.html" class="text-blue-500">View Terms</a>
+    </section>
+
+    <!-- 7. App Version -->
+    <section class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
+      <h2 class="font-semibold mb-3">App Version</h2>
+      <p>SmartTalk v1.0.0</p>
+    </section>
 
   </main>
 
   <script>
-    // Dark mode toggle
+    // Dark Mode Toggle
     const darkModeToggle = document.getElementById('darkModeToggle');
-    darkModeToggle.addEventListener('change', () => {
-      document.documentElement.classList.toggle('dark', darkModeToggle.checked);
-      localStorage.setItem('darkMode', darkModeToggle.checked);
-    });
-    if (localStorage.getItem('darkMode') === 'true') {
+    if (localStorage.getItem('darkMode') === 'enabled') {
       document.documentElement.classList.add('dark');
       darkModeToggle.checked = true;
     }
-
-    // Notification sound
-    const soundSelect = document.getElementById('soundSelect');
-    const customSoundInput = document.getElementById('customSoundInput');
-    soundSelect.addEventListener('change', () => {
-      if (soundSelect.value === 'custom') {
-        customSoundInput.click();
-      } else if (soundSelect.value) {
-        new Audio(`sounds/${soundSelect.value}`).play();
+    darkModeToggle.addEventListener('change', () => {
+      if (darkModeToggle.checked) {
+        document.documentElement.classList.add('dark');
+        localStorage.setItem('darkMode', 'enabled');
+      } else {
+        document.documentElement.classList.remove('dark');
+        localStorage.setItem('darkMode', 'disabled');
       }
     });
-    customSoundInput.addEventListener('change', e => {
+
+    // Play Selected Sound
+    document.getElementById('playSound').addEventListener('click', () => {
+      const sound = document.getElementById('notificationSound').value;
+      if (sound) {
+        new Audio(sound).play();
+      }
+    });
+
+    // Save Custom Ringtone
+    document.getElementById('customRingtone').addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (file) {
         const url = URL.createObjectURL(file);
-        new Audio(url).play();
+        localStorage.setItem('customRingtone', url);
+        alert('Custom ringtone set!');
       }
     });
   </script>
