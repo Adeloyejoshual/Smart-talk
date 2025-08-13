@@ -1,5 +1,5 @@
 /* =========================
-   SmartTalk Settings JS
+   SmartTalk Settings JS (Live Sync)
    ========================= */
 
 const DEFAULTS = {
@@ -21,6 +21,14 @@ const BUILTIN_SOUNDS = [
 
 const SOUND_BASE = "/sounds/";
 const $ = (id) => document.getElementById(id);
+
+/* ---------- Helpers ---------- */
+function triggerSettingsUpdate() {
+  // Tell other scripts in this page
+  window.dispatchEvent(new Event("settingsUpdated"));
+  // Sync with other tabs/windows
+  localStorage.setItem("settingsUpdatedAt", Date.now().toString());
+}
 
 /* ---------- DARK MODE ---------- */
 function applyDarkMode(mode) {
@@ -45,16 +53,21 @@ function initDarkMode() {
     const mode = toggle.checked ? "on" : "off";
     localStorage.setItem("darkMode", mode);
     applyDarkMode(mode);
+    triggerSettingsUpdate();
   });
 
   systemBtn?.addEventListener("click", () => {
     localStorage.setItem("darkMode", "system");
     applyDarkMode("system");
     if (toggle) toggle.checked = false;
+    triggerSettingsUpdate();
   });
 
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
-    if (localStorage.getItem("darkMode") === "system") applyDarkMode("system");
+    if (localStorage.getItem("darkMode") === "system") {
+      applyDarkMode("system");
+      triggerSettingsUpdate();
+    }
   });
 }
 
@@ -73,6 +86,7 @@ function initFontSize() {
       const value = select.value;
       localStorage.setItem("fontSize", value);
       applyFontSize(value);
+      triggerSettingsUpdate();
     });
   }
 }
@@ -84,6 +98,7 @@ function initNotificationToggle() {
     toggle.checked = DEFAULTS.notificationEnabled;
     toggle.addEventListener("change", () => {
       localStorage.setItem("notificationEnabled", toggle.checked);
+      triggerSettingsUpdate();
     });
   }
 }
@@ -154,6 +169,7 @@ function initNotificationSounds() {
       localStorage.setItem("notificationSound", value);
     }
     notificationAudio.src = getCurrentSoundSrc();
+    triggerSettingsUpdate();
   });
 
   previewBtn?.addEventListener("click", async () => {
@@ -173,13 +189,15 @@ function initNotificationSounds() {
     localStorage.setItem("notificationSoundKind", "custom");
     $("notificationSound").value = "__custom__";
     notificationAudio.src = url;
+    triggerSettingsUpdate();
   });
 }
 
-/* ---------- RESET ALL SETTINGS ---------- */
+/* ---------- RESET ALL SETTINGS (Live) ---------- */
 function resetSettings() {
   localStorage.clear();
-  location.reload();
+  triggerSettingsUpdate();
+  initSettings(); // Re-init instead of reload
 }
 
 function initResetButton() {
@@ -189,6 +207,13 @@ function initResetButton() {
     }
   });
 }
+
+/* ---------- Listen for updates from other tabs/pages ---------- */
+window.addEventListener("storage", (e) => {
+  if (e.key === "settingsUpdatedAt") {
+    initSettings();
+  }
+});
 
 /* ---------- INIT ---------- */
 function initSettings() {
