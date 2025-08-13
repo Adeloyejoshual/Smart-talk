@@ -5,8 +5,24 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SmartTalk - Settings</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* Fixed header */
+    header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 50;
+    }
+    main {
+      margin-top: 60px; /* Adjust according to header height */
+      overflow-y: auto;
+      height: calc(100vh - 60px);
+      padding: 1rem;
+    }
+  </style>
 </head>
-<body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 min-h-screen flex flex-col">
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 flex flex-col h-screen">
 
   <!-- Header -->
   <header class="p-4 bg-green-500 dark:bg-green-700 text-white flex items-center justify-between shadow-md">
@@ -14,9 +30,8 @@
     <button onclick="window.history.back()" class="bg-white text-green-600 px-3 py-1 rounded text-sm">Back</button>
   </header>
 
-  <!-- Settings Content -->
-  <main class="flex-1 p-4 space-y-6">
-
+  <!-- Scrollable Settings Content -->
+  <main class="space-y-6">
     <!-- Notification Sounds -->
     <section>
       <h2 class="text-lg font-semibold mb-2">Notification Sound</h2>
@@ -85,7 +100,6 @@
       <a href="terms.html" class="block text-green-500 hover:underline">Terms of Service</a>
       <a href="privacy.html" class="block text-green-500 hover:underline">Privacy Policy</a>
     </section>
-
   </main>
 
   <!-- Footer -->
