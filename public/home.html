@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -11,22 +10,30 @@
       background-color: #5C2C24 !important;
       border-left: 4px solid orange;
     }
+    .tab-active {
+      border-b-2 border-orange-500 font-semibold;
+    }
   </style>
 </head>
 <body class="bg-black text-gray-200 min-h-screen flex flex-col">
 
-  <!-- Header with Toolbar -->
+  <!-- Header -->
   <div class="flex items-center justify-between px-4 py-3 bg-[#5C2C24] shadow">
     <h1 class="text-xl font-bold text-orange-400">SmartTalk</h1>
     <div class="flex space-x-3 text-white text-lg">
-      <button onclick="openAddGroupModal()" title="Add to Group" class="hover:text-orange-500">➕ Add to Group</button>
       <button id="selectAllBtn" title="Select All" class="hover:text-orange-500">✅ Select All</button>
       <button id="deleteAllBtn" title="Delete All" class="hover:text-orange-500">🗑️ Delete All</button>
       <button onclick="window.location.href='/settings.html'" title="Settings" class="hover:text-orange-500">⚙️</button>
     </div>
   </div>
 
-  <!-- Search Bar -->
+  <!-- Tabs -->
+  <div class="flex bg-[#1F1F1F] border-b border-gray-700">
+    <button id="tabChats" class="flex-1 py-2 text-center tab-active">Chats</button>
+    <button id="tabGroups" class="flex-1 py-2 text-center">Groups</button>
+  </div>
+
+  <!-- Search -->
   <div class="flex gap-2 px-4 pt-3 pb-2 bg-[#1F1F1F]">
     <input
       id="searchInput"
@@ -36,12 +43,12 @@
     />
   </div>
 
-  <!-- Chat List -->
+  <!-- Chat/Group List -->
   <div id="chatList" class="flex-1 overflow-y-auto px-4 py-2 divide-y divide-gray-700 relative">
-    <!-- Chats will be injected here -->
+    <!-- Chats or Groups injected here -->
   </div>
 
-  <!-- Fixed Action Toolbar -->
+  <!-- Action Toolbar -->
   <div id="actionToolbar" class="hidden fixed bottom-0 left-0 right-0 bg-[#5C2C24] p-3 flex justify-around items-center z-50 border-t border-gray-700">
     <button id="pinBtn" class="text-white text-lg">📌 Pin</button>
     <button id="deleteBtn" class="text-white text-lg">❌ Delete</button>
@@ -69,251 +76,167 @@
     </div>
   </div>
 
-  <!-- Add to Group Modal -->
-  <div id="addGroupModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center">
-    <div class="bg-[#1F1F1F] p-6 rounded shadow w-80">
-      <h3 class="text-lg font-bold mb-4 text-orange-400">Add Member to Group</h3>
-      <input id="groupNameInput" type="text" placeholder="Enter Group Name" class="w-full p-2 border border-gray-600 bg-black text-white rounded mb-2" />
-      <input id="memberIdentifier" type="text" placeholder="Enter Username or Gmail" class="w-full p-2 border border-gray-600 bg-black text-white rounded mb-4" />
-      <div class="flex justify-end gap-2">
-        <button onclick="closeAddGroupModal()" class="px-4 py-2 border border-gray-500 rounded">Cancel</button>
-        <button onclick="confirmAddGroupMember()" class="bg-orange-600 text-white px-4 py-2 rounded">Add</button>
-      </div>
-    </div>
-  </div>
-
   <script>
     const token = localStorage.getItem("token");
+    if (!token) window.location.href = "/login.html";
+
     let allChats = [];
+    let allGroups = [];
     let selectedChats = new Set();
+    let activeTab = "chats"; // "chats" or "groups"
 
-    // Fetch chats from API
-    async function fetchChats() {
-      try {
-        const res = await fetch("/api/users/friends-with-last-message", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        let chats = await res.json();
-        if (!Array.isArray(chats)) return;
+    const chatListEl = document.getElementById("chatList");
+    const actionToolbar = document.getElementById("actionToolbar");
+    const tabChats = document.getElementById("tabChats");
+    const tabGroups = document.getElementById("tabGroups");
 
-        chats.forEach(chat => {
-          chat.lastMessage = chat.lastMessage || "Start chatting...";
-          chat.time = new Date(chat.lastMessageTime || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          chat.unread = chat.unread || 0;
-        });
+    // Tab switching
+    tabChats.addEventListener("click", () => switchTab("chats"));
+    tabGroups.addEventListener("click", () => switchTab("groups"));
 
-        chats.sort((a, b) => new Date(b.lastMessageTime || 0) - new Date(a.lastMessageTime || 0));
-        allChats = chats;
-        displayChats(chats);
-      } catch (err) {
-        console.error("❌ Fetch chats failed:", err);
+    function switchTab(tab) {
+      activeTab = tab;
+      if(tab === "chats"){
+        tabChats.classList.add("tab-active");
+        tabGroups.classList.remove("tab-active");
+        displayChats(allChats);
+      } else {
+        tabGroups.classList.add("tab-active");
+        tabChats.classList.remove("tab-active");
+        displayChats(allGroups);
       }
+      clearSelection();
     }
 
-    // Display chats in list
-    function displayChats(chats) {
-      const list = document.getElementById("chatList");
-      list.innerHTML = "";
+    // Fetch chats & groups
+    async function fetchChats() {
+      try {
+        const resChats = await fetch("/api/users/friends-with-last-message", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const chats = await resChats.json();
+        allChats = chats.map(c => ({
+          ...c,
+          lastMessage: c.lastMessage || "Start chatting...",
+          time: new Date(c.lastMessageTime || Date.now()).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}),
+          unread: c.unread || 0
+        })).sort((a,b) => new Date(b.lastMessageTime||0) - new Date(a.lastMessageTime||0));
+      } catch(err){ console.error(err); }
 
-      chats.forEach(chat => {
+      try {
+        const resGroups = await fetch("/api/groups/my-groups", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const groups = await resGroups.json();
+        allGroups = groups.map(g => ({
+          ...g,
+          lastMessage: g.lastMessage || "No messages yet",
+          time: new Date(g.lastMessageTime || Date.now()).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}),
+          unread: g.unread || 0
+        })).sort((a,b) => new Date(b.lastMessageTime||0) - new Date(a.lastMessageTime||0));
+      } catch(err){ console.error(err); }
+
+      switchTab(activeTab);
+    }
+
+    // Display chats or groups
+    function displayChats(list){
+      chatListEl.innerHTML = "";
+      list.forEach(item => {
         const div = document.createElement("div");
         div.className = "flex items-center p-3 hover:bg-[#2c2c2c] cursor-pointer select-none";
-        div.setAttribute("data-chat-id", chat._id);
+        div.dataset.id = item._id;
 
-        // Click behavior: navigate or toggle selection
         div.onclick = () => {
-          if (selectedChats.size > 0) {
-            toggleChatSelection(div, chat._id);
-          } else {
-            window.location.href = `/private-chat.html?user=${chat._id}`;
-          }
+          if(selectedChats.size > 0) toggleChatSelection(div, item._id);
+          else window.location.href = activeTab === "chats" ? `/private-chat.html?user=${item._id}` : `/group-chat.html?group=${item._id}`;
         };
 
         div.innerHTML = `
-          <img src="${chat.avatar || '/default-avatar.png'}" class="w-10 h-10 rounded-full mr-3 border border-gray-600" />
+          <img src="${item.avatar || '/default-avatar.png'}" class="w-10 h-10 rounded-full mr-3 border border-gray-600" />
           <div class="flex-1">
             <div class="flex justify-between items-center">
-              <span class="font-semibold text-white text-base">${chat.username || chat.name}</span>
-              <span class="text-xs text-gray-500">${chat.time}</span>
+              <span class="font-semibold text-white text-base">${item.username||item.name||item.groupName}</span>
+              <span class="text-xs text-gray-500">${item.time}</span>
             </div>
             <div class="flex justify-between items-center">
-              <span class="text-sm text-gray-400 truncate">${chat.lastMessage}</span>
-              ${chat.unread > 0 ? `<span class="bg-red-500 text-xs text-white px-2 rounded-full">${chat.unread}</span>` : ""}
+              <span class="text-sm text-gray-400 truncate">${item.lastMessage}</span>
+              ${item.unread>0 ? `<span class="bg-red-500 text-xs text-white px-2 rounded-full">${item.unread}</span>` : ""}
             </div>
           </div>
         `;
 
-        // Add long press for mobile multi-select toggle
-        addLongPressListeners(div, chat._id);
-
-        list.appendChild(div);
+        addLongPressListeners(div, item._id);
+        if(selectedChats.has(item._id)) div.classList.add("chat-selected");
+        chatListEl.appendChild(div);
       });
     }
 
     // Search filter
     document.getElementById("searchInput").addEventListener("input", () => {
       const q = document.getElementById("searchInput").value.toLowerCase();
-      const filtered = allChats.filter(chat =>
-        (chat.username || "").toLowerCase().includes(q) ||
-        (chat.name || "").toLowerCase().includes(q) ||
-        (chat.email || "").toLowerCase().includes(q)
-      );
-      displayChats(filtered);
+      const list = activeTab === "chats" ? allChats : allGroups;
+      displayChats(list.filter(item => (item.username||item.name||"").toLowerCase().includes(q)));
     });
 
-    // Long press handlers for multi-select toggle (desktop & mobile)
+    // Long press multi-select
     let longPressTimer;
-
-    function addLongPressListeners(chatDiv, chatId) {
-      chatDiv.addEventListener("mousedown", () => {
-        longPressTimer = setTimeout(() => {
-          toggleChatSelection(chatDiv, chatId);
-        }, 500);
-      });
-      chatDiv.addEventListener("mouseup", () => clearTimeout(longPressTimer));
-      chatDiv.addEventListener("mouseleave", () => clearTimeout(longPressTimer));
-
-      chatDiv.addEventListener("touchstart", () => {
-        longPressTimer = setTimeout(() => {
-          toggleChatSelection(chatDiv, chatId);
-        }, 500);
-      });
-      chatDiv.addEventListener("touchend", () => clearTimeout(longPressTimer));
+    function addLongPressListeners(div, id){
+      div.addEventListener("mousedown", ()=>{ longPressTimer=setTimeout(()=>toggleChatSelection(div,id),500); });
+      div.addEventListener("mouseup", ()=>clearTimeout(longPressTimer));
+      div.addEventListener("mouseleave", ()=>clearTimeout(longPressTimer));
+      div.addEventListener("touchstart", ()=>{ longPressTimer=setTimeout(()=>toggleChatSelection(div,id),500); });
+      div.addEventListener("touchend", ()=>clearTimeout(longPressTimer));
     }
 
-    // Toggle chat selection in UI and in set
-    function toggleChatSelection(chatDiv, chatId) {
-      if (selectedChats.has(chatId)) {
-        selectedChats.delete(chatId);
-        chatDiv.classList.remove("chat-selected");
-      } else {
-        selectedChats.add(chatId);
-        chatDiv.classList.add("chat-selected");
-      }
-
-      if (selectedChats.size > 0) {
-        showToolbar();
-      } else {
-        hideToolbar();
-      }
+    function toggleChatSelection(div,id){
+      if(selectedChats.has(id)){ selectedChats.delete(id); div.classList.remove("chat-selected"); }
+      else{ selectedChats.add(id); div.classList.add("chat-selected"); }
+      selectedChats.size>0 ? actionToolbar.classList.remove("hidden") : actionToolbar.classList.add("hidden");
     }
 
-    // Show/hide action toolbar
-    const actionToolbar = document.getElementById("actionToolbar");
-    function showToolbar() {
-      actionToolbar.classList.remove("hidden");
-    }
-    function hideToolbar() {
+    function clearSelection(){
+      selectedChats.clear();
+      document.querySelectorAll(".chat-selected").forEach(el=>el.classList.remove("chat-selected"));
       actionToolbar.classList.add("hidden");
     }
 
-    // Clear selection (remove highlights + reset set + hide toolbar)
-    function clearSelection() {
-      selectedChats.clear();
-      document.querySelectorAll(".chat-selected").forEach(el => el.classList.remove("chat-selected"));
-      hideToolbar();
-    }
+    // Toolbar buttons
+    document.getElementById("pinBtn").addEventListener("click", ()=>{ alert(`📌 Pinned: ${[...selectedChats].join(", ")}`); clearSelection(); });
+    document.getElementById("deleteBtn").addEventListener("click", ()=>{ alert(`❌ Deleted: ${[...selectedChats].join(", ")}`); clearSelection(); });
+    document.getElementById("archiveBtn").addEventListener("click", ()=>{ alert(`📦 Archived: ${[...selectedChats].join(", ")}`); clearSelection(); });
+    document.getElementById("moreBtn").addEventListener("click", ()=>{ alert("⋮ More options..."); });
 
-    // Toolbar buttons handlers
-    document.getElementById("pinBtn").addEventListener("click", () => {
-      alert(`📌 Pinned chats: ${[...selectedChats].join(", ")}`);
+    // Select / Delete All
+    document.getElementById("selectAllBtn").addEventListener("click", ()=>{
+      const list = activeTab === "chats" ? allChats : allGroups;
+      selectedChats = new Set(list.map(c=>c._id));
+      document.querySelectorAll("#chatList > div").forEach(div=>div.classList.add("chat-selected"));
+      actionToolbar.classList.remove("hidden");
+    });
+
+    document.getElementById("deleteAllBtn").addEventListener("click", ()=>{
+      if(selectedChats.size===0){ alert("No chats selected to delete."); return; }
+      alert(`🗑️ Deleted: ${[...selectedChats].join(", ")}`);
       clearSelection();
     });
 
-    document.getElementById("deleteBtn").addEventListener("click", () => {
-      alert(`❌ Deleted chats: ${[...selectedChats].join(", ")}`);
-      clearSelection();
-    });
-
-    document.getElementById("archiveBtn").addEventListener("click", () => {
-      alert(`📦 Archived chats: ${[...selectedChats].join(", ")}`);
-      clearSelection();
-    });
-
-    document.getElementById("moreBtn").addEventListener("click", () => {
-      alert("⋮ More options...");
-    });
-
-    // Select All button behavior
-    document.getElementById("selectAllBtn").addEventListener("click", () => {
-      selectedChats = new Set(allChats.map(c => c._id));
-      document.querySelectorAll("#chatList > div").forEach(div => div.classList.add("chat-selected"));
-      showToolbar();
-    });
-
-    // Delete All button behavior
-    document.getElementById("deleteAllBtn").addEventListener("click", () => {
-      if (selectedChats.size === 0) {
-        alert("No chats selected to delete.");
-        return;
-      }
-      alert(`🗑️ Deleted chats: ${[...selectedChats].join(", ")}`);
-      clearSelection();
-    });
-
-    // Add Friend modal controls
-    function openAddFriendModal() {
-      document.getElementById("addFriendModal").classList.remove("hidden");
-    }
-    function closeAddFriendModal() {
-      document.getElementById("addFriendModal").classList.add("hidden");
-    }
-    function confirmAddFriend() {
+    // Add Friend Modal
+    function openAddFriendModal(){ document.getElementById("addFriendModal").classList.remove("hidden"); }
+    function closeAddFriendModal(){ document.getElementById("addFriendModal").classList.add("hidden"); }
+    function confirmAddFriend(){
       const id = document.getElementById("friendIdentifier").value.trim();
-      if (!id) return alert("Enter username or Gmail.");
-
+      if(!id) return alert("Enter username or Gmail.");
       fetch("/api/users/add-friend", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ identifier: id }),
-      })
-      .then(res => res.json())
-      .then(data => {
-        if (data.error) return alert("❌ " + data.error);
-        alert("✅ Friend added successfully!");
-        closeAddFriendModal();
-        fetchChats();
-      })
-      .catch(() => alert("Error adding friend."));
+        method:"POST",
+        headers:{"Content-Type":"application/json", Authorization:`Bearer ${token}`},
+        body:JSON.stringify({identifier:id})
+      }).then(res=>res.json())
+        .then(data=>{ if(data.error) return alert("❌ "+data.error); alert("✅ Friend added!"); closeAddFriendModal(); fetchChats(); })
+        .catch(()=>alert("Error adding friend."));
     }
 
-    // Add Group modal controls
-    function openAddGroupModal() {
-      document.getElementById("addGroupModal").classList.remove("hidden");
-    }
-    function closeAddGroupModal() {
-      document.getElementById("addGroupModal").classList.add("hidden");
-    }
-    function confirmAddGroupMember() {
-      const group = document.getElementById("groupNameInput").value.trim();
-      const member = document.getElementById("memberIdentifier").value.trim();
-      if (!group || !member) return alert("Fill in all fields.");
-
-      fetch("/api/groups/add-member", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ groupName: group, identifier: member }),
-      })
-      .then(res => res.json())
-      .then(data => {
-        if (data.error) return alert("❌ " + data.error);
-        alert(`✅ Member added to ${group}!`);
-        closeAddGroupModal();
-      })
-      .catch(() => alert("Error adding member to group."));
-    }
-
-    // Clear selection if click outside chat list and toolbar/buttons
-    document.body.addEventListener("click", (e) => {
-      const chatList = document.getElementById("chatList");
-      const targetIsChatListOrToolbar = chatList.contains(e.target) || actionToolbar.contains(e.target);
-      const clickedControlBtn = ["selectAllBtn", "deleteAllBtn", "pinBtn", "deleteBtn", "archiveBtn", "moreBtn", "addFriendBtn"].includes(e.target.id);
-      if (!targetIsChatListOrToolbar && !clickedControlBtn) {
-        clearSelection();
-      }
-    });
-
-    // Initial fetch of chats on load
+    // Initial load
     fetchChats();
   </script>
 </body>
