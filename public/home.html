@@ -13,28 +13,26 @@
     .tab-active {
       border-b-2 border-orange-500 font-semibold;
     }
+    /* Fix header and bottom tabs */
+    #header { position: fixed; top: 0; left: 0; right: 0; z-index: 50; }
+    #bottomTabs { position: fixed; bottom: 0; left: 0; right: 0; z-index: 50; }
+    #chatList { margin-top: 96px; margin-bottom: 60px; overflow-y: auto; flex: 1; }
   </style>
 </head>
-<body class="bg-black text-gray-200 min-h-screen flex flex-col">
+<body class="bg-black text-gray-200 flex flex-col min-h-screen">
 
   <!-- Header -->
-  <div class="flex items-center justify-between px-4 py-3 bg-[#5C2C24] shadow">
+  <div id="header" class="flex items-center justify-between px-4 py-3 bg-[#5C2C24] shadow">
     <h1 class="text-xl font-bold text-orange-400">SmartTalk</h1>
     <div class="flex space-x-3 text-white text-lg">
-      <button id="selectAllBtn" title="Select All" class="hover:text-orange-500">✅ Select All</button>
-      <button id="deleteAllBtn" title="Delete All" class="hover:text-orange-500">🗑️ Delete All</button>
+      <button id="selectAllBtn" title="Select All" class="hover:text-orange-500">✅</button>
+      <button id="deleteAllBtn" title="Delete All" class="hover:text-orange-500">🗑️</button>
       <button onclick="window.location.href='/settings.html'" title="Settings" class="hover:text-orange-500">⚙️</button>
     </div>
   </div>
 
-  <!-- Tabs -->
-  <div class="flex bg-[#1F1F1F] border-b border-gray-700">
-    <button id="tabChats" class="flex-1 py-2 text-center tab-active">Chats</button>
-    <button id="tabGroups" class="flex-1 py-2 text-center">Groups</button>
-  </div>
-
   <!-- Search -->
-  <div class="flex gap-2 px-4 pt-3 pb-2 bg-[#1F1F1F]">
+  <div class="flex gap-2 px-4 pt-20 pb-2 bg-[#1F1F1F] fixed top-16 left-0 right-0 z-40">
     <input
       id="searchInput"
       type="text"
@@ -44,16 +42,14 @@
   </div>
 
   <!-- Chat/Group List -->
-  <div id="chatList" class="flex-1 overflow-y-auto px-4 py-2 divide-y divide-gray-700 relative">
+  <div id="chatList" class="flex-1 px-4 py-2 divide-y divide-gray-700">
     <!-- Chats or Groups injected here -->
   </div>
 
-  <!-- Action Toolbar -->
-  <div id="actionToolbar" class="hidden fixed bottom-0 left-0 right-0 bg-[#5C2C24] p-3 flex justify-around items-center z-50 border-t border-gray-700">
-    <button id="pinBtn" class="text-white text-lg">📌 Pin</button>
-    <button id="deleteBtn" class="text-white text-lg">❌ Delete</button>
-    <button id="archiveBtn" class="text-white text-lg">📦 Archive</button>
-    <button id="moreBtn" class="text-white text-2xl font-bold">⋮</button>
+  <!-- Bottom Tabs -->
+  <div id="bottomTabs" class="flex bg-[#5C2C24] border-t border-gray-700">
+    <button id="tabChats" class="flex-1 py-3 text-center tab-active">Chats</button>
+    <button id="tabGroups" class="flex-1 py-3 text-center">Groups</button>
   </div>
 
   <!-- Floating Add Friend Button -->
@@ -78,82 +74,48 @@
 
   <script>
     const token = localStorage.getItem("token");
-    if (!token) window.location.href = "/login.html";
+    if(!token) window.location.href="/login.html";
 
-    let allChats = [];
-    let allGroups = [];
-    let selectedChats = new Set();
-    let activeTab = "chats"; // "chats" or "groups"
+    let allChats = [], allGroups = [], selectedChats = new Set();
+    let activeTab = "chats";
 
     const chatListEl = document.getElementById("chatList");
-    const actionToolbar = document.getElementById("actionToolbar");
     const tabChats = document.getElementById("tabChats");
     const tabGroups = document.getElementById("tabGroups");
 
     // Tab switching
-    tabChats.addEventListener("click", () => switchTab("chats"));
-    tabGroups.addEventListener("click", () => switchTab("groups"));
+    tabChats.addEventListener("click", ()=>switchTab("chats"));
+    tabGroups.addEventListener("click", ()=>switchTab("groups"));
 
-    function switchTab(tab) {
+    function switchTab(tab){
       activeTab = tab;
-      if(tab === "chats"){
-        tabChats.classList.add("tab-active");
-        tabGroups.classList.remove("tab-active");
-        displayChats(allChats);
-      } else {
-        tabGroups.classList.add("tab-active");
-        tabChats.classList.remove("tab-active");
-        displayChats(allGroups);
-      }
+      if(tab==="chats"){ tabChats.classList.add("tab-active"); tabGroups.classList.remove("tab-active"); displayChats(allChats); }
+      else{ tabGroups.classList.add("tab-active"); tabChats.classList.remove("tab-active"); displayChats(allGroups); }
       clearSelection();
     }
 
-    // Fetch chats & groups
-    async function fetchChats() {
-      try {
-        const resChats = await fetch("/api/users/friends-with-last-message", {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const chats = await resChats.json();
-        allChats = chats.map(c => ({
-          ...c,
-          lastMessage: c.lastMessage || "Start chatting...",
-          time: new Date(c.lastMessageTime || Date.now()).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}),
-          unread: c.unread || 0
-        })).sort((a,b) => new Date(b.lastMessageTime||0) - new Date(a.lastMessageTime||0));
-      } catch(err){ console.error(err); }
-
-      try {
-        const resGroups = await fetch("/api/groups/my-groups", {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const groups = await resGroups.json();
-        allGroups = groups.map(g => ({
-          ...g,
-          lastMessage: g.lastMessage || "No messages yet",
-          time: new Date(g.lastMessageTime || Date.now()).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}),
-          unread: g.unread || 0
-        })).sort((a,b) => new Date(b.lastMessageTime||0) - new Date(a.lastMessageTime||0));
-      } catch(err){ console.error(err); }
-
+    async function fetchChats(){
+      try{
+        const res = await fetch("/api/users/friends-with-last-message",{ headers:{Authorization:`Bearer ${token}`}});
+        const chats = await res.json();
+        allChats = chats.map(c=>({...c,lastMessage:c.lastMessage||"Start chatting...",time:new Date(c.lastMessageTime||Date.now()).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}),unread:c.unread||0})).sort((a,b)=>new Date(b.lastMessageTime||0)-new Date(a.lastMessageTime||0));
+      }catch(e){console.error(e);}
+      try{
+        const res = await fetch("/api/groups/my-groups",{ headers:{Authorization:`Bearer ${token}`}});
+        const groups = await res.json();
+        allGroups = groups.map(g=>({...g,lastMessage:g.lastMessage||"No messages yet",time:new Date(g.lastMessageTime||Date.now()).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}),unread:g.unread||0})).sort((a,b)=>new Date(b.lastMessageTime||0)-new Date(a.lastMessageTime||0));
+      }catch(e){console.error(e);}
       switchTab(activeTab);
     }
 
-    // Display chats or groups
     function displayChats(list){
-      chatListEl.innerHTML = "";
-      list.forEach(item => {
+      chatListEl.innerHTML="";
+      list.forEach(item=>{
         const div = document.createElement("div");
-        div.className = "flex items-center p-3 hover:bg-[#2c2c2c] cursor-pointer select-none";
-        div.dataset.id = item._id;
-
-        div.onclick = () => {
-          if(selectedChats.size > 0) toggleChatSelection(div, item._id);
-          else window.location.href = activeTab === "chats" ? `/private-chat.html?user=${item._id}` : `/group-chat.html?group=${item._id}`;
-        };
-
-        div.innerHTML = `
-          <img src="${item.avatar || '/default-avatar.png'}" class="w-10 h-10 rounded-full mr-3 border border-gray-600" />
+        div.className="flex items-center p-3 hover:bg-[#2c2c2c] cursor-pointer select-none";
+        div.dataset.id=item._id;
+        div.onclick = ()=>{ if(selectedChats.size>0) toggleChatSelection(div,item._id); else window.location.href = activeTab==="chats"?`/private-chat.html?user=${item._id}`:`/group-chat.html?group=${item._id}`; }
+        div.innerHTML=`<img src="${item.avatar||'/default-avatar.png'}" class="w-10 h-10 rounded-full mr-3 border border-gray-600" />
           <div class="flex-1">
             <div class="flex justify-between items-center">
               <span class="font-semibold text-white text-base">${item.username||item.name||item.groupName}</span>
@@ -161,47 +123,35 @@
             </div>
             <div class="flex justify-between items-center">
               <span class="text-sm text-gray-400 truncate">${item.lastMessage}</span>
-              ${item.unread>0 ? `<span class="bg-red-500 text-xs text-white px-2 rounded-full">${item.unread}</span>` : ""}
+              ${item.unread>0?`<span class="bg-red-500 text-xs text-white px-2 rounded-full">${item.unread}</span>`:""}
             </div>
-          </div>
-        `;
-
-        addLongPressListeners(div, item._id);
+          </div>`;
+        addLongPressListeners(div,item._id);
         if(selectedChats.has(item._id)) div.classList.add("chat-selected");
         chatListEl.appendChild(div);
       });
     }
 
-    // Search filter
-    document.getElementById("searchInput").addEventListener("input", () => {
+    document.getElementById("searchInput").addEventListener("input", ()=>{
       const q = document.getElementById("searchInput").value.toLowerCase();
-      const list = activeTab === "chats" ? allChats : allGroups;
-      displayChats(list.filter(item => (item.username||item.name||"").toLowerCase().includes(q)));
+      const list = activeTab==="chats"?allChats:allGroups;
+      displayChats(list.filter(item=>(item.username||item.name||"").toLowerCase().includes(q)));
     });
 
-    // Long press multi-select
     let longPressTimer;
-    function addLongPressListeners(div, id){
-      div.addEventListener("mousedown", ()=>{ longPressTimer=setTimeout(()=>toggleChatSelection(div,id),500); });
-      div.addEventListener("mouseup", ()=>clearTimeout(longPressTimer));
-      div.addEventListener("mouseleave", ()=>clearTimeout(longPressTimer));
-      div.addEventListener("touchstart", ()=>{ longPressTimer=setTimeout(()=>toggleChatSelection(div,id),500); });
-      div.addEventListener("touchend", ()=>clearTimeout(longPressTimer));
+    function addLongPressListeners(div,id){
+      div.addEventListener("mousedown",()=>{longPressTimer=setTimeout(()=>toggleChatSelection(div,id),500);});
+      div.addEventListener("mouseup",()=>clearTimeout(longPressTimer));
+      div.addEventListener("mouseleave",()=>clearTimeout(longPressTimer));
+      div.addEventListener("touchstart",()=>{longPressTimer=setTimeout(()=>toggleChatSelection(div,id),500);});
+      div.addEventListener("touchend",()=>clearTimeout(longPressTimer));
     }
 
-    function toggleChatSelection(div,id){
-      if(selectedChats.has(id)){ selectedChats.delete(id); div.classList.remove("chat-selected"); }
-      else{ selectedChats.add(id); div.classList.add("chat-selected"); }
-      selectedChats.size>0 ? actionToolbar.classList.remove("hidden") : actionToolbar.classList.add("hidden");
-    }
-
-    function clearSelection(){
-      selectedChats.clear();
-      document.querySelectorAll(".chat-selected").forEach(el=>el.classList.remove("chat-selected"));
-      actionToolbar.classList.add("hidden");
-    }
+    function toggleChatSelection(div,id){ if(selectedChats.has(id)){ selectedChats.delete(id); div.classList.remove("chat-selected"); } else { selectedChats.add(id); div.classList.add("chat-selected"); } actionToolbar.classList.toggle("hidden", selectedChats.size===0); }
+    function clearSelection(){ selectedChats.clear(); document.querySelectorAll(".chat-selected").forEach(el=>el.classList.remove("chat-selected")); actionToolbar.classList.add("hidden"); }
 
     // Toolbar buttons
+    const actionToolbar = document.getElementById("actionToolbar");
     document.getElementById("pinBtn").addEventListener("click", ()=>{ alert(`📌 Pinned: ${[...selectedChats].join(", ")}`); clearSelection(); });
     document.getElementById("deleteBtn").addEventListener("click", ()=>{ alert(`❌ Deleted: ${[...selectedChats].join(", ")}`); clearSelection(); });
     document.getElementById("archiveBtn").addEventListener("click", ()=>{ alert(`📦 Archived: ${[...selectedChats].join(", ")}`); clearSelection(); });
@@ -209,14 +159,13 @@
 
     // Select / Delete All
     document.getElementById("selectAllBtn").addEventListener("click", ()=>{
-      const list = activeTab === "chats" ? allChats : allGroups;
-      selectedChats = new Set(list.map(c=>c._id));
+      const list = activeTab==="chats"?allChats:allGroups;
+      selectedChats=new Set(list.map(c=>c._id));
       document.querySelectorAll("#chatList > div").forEach(div=>div.classList.add("chat-selected"));
       actionToolbar.classList.remove("hidden");
     });
-
     document.getElementById("deleteAllBtn").addEventListener("click", ()=>{
-      if(selectedChats.size===0){ alert("No chats selected to delete."); return; }
+      if(selectedChats.size===0){ alert("No chats selected."); return; }
       alert(`🗑️ Deleted: ${[...selectedChats].join(", ")}`);
       clearSelection();
     });
@@ -227,16 +176,11 @@
     function confirmAddFriend(){
       const id = document.getElementById("friendIdentifier").value.trim();
       if(!id) return alert("Enter username or Gmail.");
-      fetch("/api/users/add-friend", {
-        method:"POST",
-        headers:{"Content-Type":"application/json", Authorization:`Bearer ${token}`},
-        body:JSON.stringify({identifier:id})
-      }).then(res=>res.json())
-        .then(data=>{ if(data.error) return alert("❌ "+data.error); alert("✅ Friend added!"); closeAddFriendModal(); fetchChats(); })
+      fetch("/api/users/add-friend",{ method:"POST", headers:{"Content-Type":"application/json", Authorization:`Bearer ${token}`}, body:JSON.stringify({identifier:id}) })
+        .then(res=>res.json()).then(data=>{ if(data.error) return alert("❌ "+data.error); alert("✅ Friend added!"); closeAddFriendModal(); fetchChats(); })
         .catch(()=>alert("Error adding friend."));
     }
 
-    // Initial load
     fetchChats();
   </script>
 </body>
