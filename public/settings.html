@@ -2,127 +2,120 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SmartTalk - Settings</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-200 min-h-screen flex flex-col">
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 min-h-screen flex flex-col">
 
   <!-- Header -->
-  <header class="bg-white dark:bg-gray-800 shadow p-4 flex justify-between items-center sticky top-0 z-10">
-    <h1 class="text-xl font-bold">Settings</h1>
-    <button onclick="window.history.back()" class="px-3 py-1 rounded bg-gray-200 dark:bg-gray-700">Back</button>
+  <header class="p-4 bg-green-500 dark:bg-green-700 text-white flex items-center justify-between shadow-md">
+    <h1 class="text-lg font-semibold">Settings</h1>
+    <button onclick="window.history.back()" class="bg-white text-green-600 px-3 py-1 rounded text-sm">Back</button>
   </header>
 
+  <!-- Settings Content -->
   <main class="flex-1 p-4 space-y-6">
 
-    <!-- Profile -->
-    <section class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-      <h2 class="font-semibold mb-2">Profile</h2>
-      <div class="flex items-center space-x-4">
-        <img src="profile.jpg" alt="Profile" class="w-14 h-14 rounded-full object-cover">
-        <div>
-          <p class="font-bold">John Doe</p>
-          <p class="text-sm text-gray-500 dark:text-gray-400">john@example.com</p>
-        </div>
-      </div>
-    </section>
-
-    <!-- 1. Change Notification Sound -->
-    <section class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-      <h2 class="font-semibold mb-2">Notification Sound</h2>
-      <select id="notificationSound" class="w-full p-2 rounded border dark:bg-gray-700 dark:border-gray-600">
+    <!-- Notification Sounds -->
+    <section>
+      <h2 class="text-lg font-semibold mb-2">Notification Sound</h2>
+      <select id="notificationSound" class="w-full p-2 rounded border dark:bg-gray-800 dark:border-gray-700">
         <option value="default">Default</option>
         <option value="plastic-bat-hits-ball.mp3">Plastic Bat Hit</option>
-        <option value="pop.mp3">Pop</option>
-        <option value="ding.mp3">Ding</option>
-        <option value="chime.mp3">Chime</option>
-        <option value="soft-tone.mp3">Soft Tone</option>
-        <option value="whistle.mp3">Whistle</option>
-        <option value="glass.mp3">Glass Break</option>
-        <option value="click.mp3">Click</option>
-        <option value="beep.mp3">Beep</option>
-        <option value="bird.mp3">Bird Chirp</option>
-        <option value="drum.mp3">Drum</option>
-        <option value="shake.mp3">Shake</option>
-        <option value="drop.mp3">Drop</option>
-        <option value="buzzer.mp3">Buzzer</option>
-        <option value="wave.mp3">Wave</option>
-        <option value="coin.mp3">Coin</option>
-        <option value="shoot.mp3">Shoot</option>
-        <option value="magic.mp3">Magic</option>
-        <option value="custom">Use My Ringtone</option>
+        <option value="chime-bell.mp3">Chime Bell</option>
+        <option value="message-pop.mp3">Message Pop</option>
+        <option value="ping-alert.mp3">Ping Alert</option>
+        <option value="soft-knock.mp3">Soft Knock</option>
+        <option value="twinkle-tone.mp3">Twinkle Tone</option>
+        <option value="user-custom">Custom Ringtone</option>
       </select>
-      <input type="file" id="customSound" accept="audio/*" class="hidden mt-2">
+      <input type="file" id="customRingtone" class="hidden mt-2" accept="audio/*">
     </section>
 
-    <!-- 2. Dark Mode Toggle -->
-    <section class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 flex justify-between items-center">
-      <h2 class="font-semibold">Dark Mode</h2>
-      <label class="inline-flex items-center cursor-pointer">
-        <input type="checkbox" id="darkModeToggle" class="sr-only">
-        <span class="w-11 h-6 bg-gray-300 dark:bg-gray-600 rounded-full relative">
-          <span class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition"></span>
-        </span>
+    <!-- Dark Mode -->
+    <section>
+      <h2 class="text-lg font-semibold mb-2">Theme</h2>
+      <label class="flex items-center gap-3 cursor-pointer">
+        <input type="checkbox" id="darkModeToggle" class="w-5 h-5">
+        <span>Enable Dark Mode</span>
       </label>
     </section>
 
-    <!-- 3. Privacy Policy -->
-    <section class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-      <h2 class="font-semibold mb-2">Privacy Policy</h2>
-      <p class="text-sm text-gray-600 dark:text-gray-400">Read our privacy policy to understand how we use your data.</p>
-      <button onclick="window.location.href='privacy-policy.html'" class="mt-2 px-4 py-2 bg-blue-500 text-white rounded">View</button>
+    <!-- Chat Background -->
+    <section>
+      <h2 class="text-lg font-semibold mb-2">Chat Background</h2>
+      <input type="color" id="chatBgColor" class="w-16 h-10 p-1 rounded border dark:border-gray-700">
     </section>
 
-    <!-- 4. Terms & Conditions -->
-    <section class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-      <h2 class="font-semibold mb-2">Terms & Conditions</h2>
-      <p class="text-sm text-gray-600 dark:text-gray-400">Understand the terms before using SmartTalk.</p>
-      <button onclick="window.location.href='terms.html'" class="mt-2 px-4 py-2 bg-blue-500 text-white rounded">View</button>
+    <!-- Privacy -->
+    <section>
+      <h2 class="text-lg font-semibold mb-2">Privacy Settings</h2>
+      <label class="flex items-center gap-3 cursor-pointer">
+        <input type="checkbox" id="readReceipts" class="w-5 h-5">
+        <span>Send Read Receipts</span>
+      </label>
+      <label class="flex items-center gap-3 cursor-pointer mt-2">
+        <input type="checkbox" id="lastSeen" class="w-5 h-5">
+        <span>Show Last Seen</span>
+      </label>
     </section>
 
-    <!-- 5. App Version -->
-    <section class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-      <h2 class="font-semibold">App Version</h2>
-      <p class="text-sm text-gray-600 dark:text-gray-400">SmartTalk v1.0.0</p>
+    <!-- Language -->
+    <section>
+      <h2 class="text-lg font-semibold mb-2">Language</h2>
+      <select id="languageSelect" class="w-full p-2 rounded border dark:bg-gray-800 dark:border-gray-700">
+        <option value="en">English</option>
+        <option value="fr">French</option>
+        <option value="es">Spanish</option>
+        <option value="ar">Arabic</option>
+        <option value="zh">Chinese</option>
+      </select>
     </section>
 
-    <!-- 6. Logout -->
-    <section class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-      <button id="logoutBtn" class="w-full px-4 py-2 bg-red-500 text-white rounded">Logout</button>
+    <!-- App Version -->
+    <section>
+      <h2 class="text-lg font-semibold mb-2">App Info</h2>
+      <p class="text-sm">SmartTalk Version: <span id="appVersion">1.0.0</span></p>
+    </section>
+
+    <!-- Terms & Privacy -->
+    <section>
+      <h2 class="text-lg font-semibold mb-2">Legal</h2>
+      <a href="terms.html" class="block text-green-500 hover:underline">Terms of Service</a>
+      <a href="privacy.html" class="block text-green-500 hover:underline">Privacy Policy</a>
     </section>
 
   </main>
 
+  <!-- Footer -->
+  <footer class="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
+    &copy; 2025 SmartTalk. All rights reserved.
+  </footer>
+
   <script>
-    // Dark Mode
-    const darkModeToggle = document.getElementById("darkModeToggle");
-    if(localStorage.getItem("theme") === "dark"){
-      document.documentElement.classList.add("dark");
+    // Dark Mode Toggle
+    const darkModeToggle = document.getElementById('darkModeToggle');
+    darkModeToggle.addEventListener('change', () => {
+      document.documentElement.classList.toggle('dark', darkModeToggle.checked);
+      localStorage.setItem('darkMode', darkModeToggle.checked);
+    });
+    if (localStorage.getItem('darkMode') === 'true') {
+      document.documentElement.classList.add('dark');
       darkModeToggle.checked = true;
     }
-    darkModeToggle.addEventListener("change", () => {
-      if(darkModeToggle.checked){
-        document.documentElement.classList.add("dark");
-        localStorage.setItem("theme", "dark");
+
+    // Custom Ringtone
+    const soundSelect = document.getElementById('notificationSound');
+    const customFile = document.getElementById('customRingtone');
+    soundSelect.addEventListener('change', () => {
+      if (soundSelect.value === 'user-custom') {
+        customFile.classList.remove('hidden');
       } else {
-        document.documentElement.classList.remove("dark");
-        localStorage.setItem("theme", "light");
+        customFile.classList.add('hidden');
       }
-    });
-
-    // Custom Sound
-    document.getElementById("notificationSound").addEventListener("change", function(){
-      if(this.value === "custom"){
-        document.getElementById("customSound").click();
-      }
-    });
-
-    // Logout
-    document.getElementById("logoutBtn").addEventListener("click", () => {
-      localStorage.removeItem("token");
-      window.location.href = "login.html";
     });
   </script>
+
 </body>
 </html>
