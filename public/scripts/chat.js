@@ -29,7 +29,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnExportChat = document.getElementById("more-export-chat");
   const btnReportUser = document.getElementById("more-report-user");
 
-  // View Contact modal elements
+  // Contact modal
   const contactModal = document.getElementById("contact-modal");
   const contactBackBtn = document.getElementById("contact-back-btn");
   const contactBio = document.getElementById("contact-bio");
@@ -48,6 +48,19 @@ document.addEventListener("DOMContentLoaded", () => {
     return;
   }
 
+  // SETTINGS HELPER
+  function applyChatSettings() {
+    // Font size
+    const fontSize = localStorage.getItem("fontSize") || "medium";
+    messageList.style.fontSize = fontSize === "small" ? "14px" :
+                                 fontSize === "large" ? "18px" : "16px";
+  }
+
+  // Update settings live
+  window.addEventListener("storage", (e) => {
+    if (e.key === "settingsUpdatedAt") applyChatSettings();
+  });
+
   // Join socket and load initial data
   getMyUserId(token).then((id) => {
     myUserId = id;
@@ -55,36 +68,30 @@ document.addEventListener("DOMContentLoaded", () => {
     loadMessages(true);
     fetchUsername();
     fetchUserStatus();
+    applyChatSettings(); // apply current settings
   });
 
-  // Scroll handling for showing scroll down button & loading more messages
+  // Scroll handling
   messageList.addEventListener("scroll", () => {
-    // Show scroll down button if not near bottom
     const threshold = 100;
-    isAtBottom =
-      messageList.scrollHeight - messageList.scrollTop - messageList.clientHeight < threshold;
-    if (!isAtBottom) scrollDownBtn.classList.remove("hidden");
-    else scrollDownBtn.classList.add("hidden");
+    isAtBottom = messageList.scrollHeight - messageList.scrollTop - messageList.clientHeight < threshold;
+    scrollDownBtn.classList.toggle("hidden", isAtBottom);
 
-    // Load more on scroll top
     if (messageList.scrollTop === 0 && !loading) loadMessages(false);
   });
 
-  scrollDownBtn.addEventListener("click", () => {
-    scrollToBottom();
-  });
+  scrollDownBtn.addEventListener("click", scrollToBottom);
 
-  // Message form submit (send text)
+  // Send message
   messageForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     const content = messageInput.value.trim();
     if (!content) return;
-
     await sendMessage({ content });
     messageInput.value = "";
   });
 
-  // Typing indicator events
+  // Typing indicator
   messageInput.addEventListener("input", () => {
     socket.emit("typing", { to: receiverId, from: myUserId });
     clearTimeout(typingTimeout);
@@ -99,19 +106,16 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!files.length) return;
 
     const formData = new FormData();
-    files.forEach((file) => formData.append("images", file));
+    files.forEach(f => formData.append("images", f));
 
     const res = await fetch(`/api/messages/private/upload`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
       body: formData,
     });
-
     const data = await res.json();
     if (data.success && data.messages) {
-      data.messages.forEach((msg) => {
-        appendMessage(msg, true);
-      });
+      data.messages.forEach(msg => appendMessage(msg, true));
       scrollToBottom();
     }
     imageInput.value = "";
@@ -123,19 +127,16 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!files.length) return;
 
     const formData = new FormData();
-    files.forEach((file) => formData.append("files", file));
+    files.forEach(f => formData.append("files", f));
 
     const res = await fetch(`/api/messages/private/upload`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
       body: formData,
     });
-
     const data = await res.json();
     if (data.success && data.messages) {
-      data.messages.forEach((msg) => {
-        appendMessage(msg, true);
-      });
+      data.messages.forEach(msg => appendMessage(msg, true));
       scrollToBottom();
     }
     fileInput.value = "";
@@ -162,18 +163,15 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Menu buttons functionality
-
+  // Menu buttons
   btnSearchChat.addEventListener("click", () => {
     const term = prompt("Search chat messages:");
     if (!term) return;
-
-    // Simple search + highlight
     const messages = messageList.querySelectorAll("li .bubble");
-    messages.forEach((bubble) => {
+    messages.forEach(bubble => {
       bubble.innerHTML = bubble.textContent.replace(
         new RegExp(term, "gi"),
-        (match) => `<mark>${match}</mark>`
+        match => `<mark>${match}</mark>`
       );
     });
   });
@@ -184,13 +182,8 @@ document.addEventListener("DOMContentLoaded", () => {
     alert(`Notifications muted for option ${choice}`);
   });
 
-  btnMediaDocs.addEventListener("click", () => {
-    alert("Show media, links and docs screen (to be implemented)");
-  });
-
-  btnChatTheme.addEventListener("click", () => {
-    alert("Theme picker modal (to be implemented)");
-  });
+  btnMediaDocs.addEventListener("click", () => alert("Show media, links and docs screen (to be implemented)"));
+  btnChatTheme.addEventListener("click", () => alert("Theme picker modal (to be implemented)"));
 
   btnMore.addEventListener("click", () => {
     const moreMenu = document.getElementById("more-menu");
@@ -202,26 +195,17 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   btnClearChat.addEventListener("click", () => {
-    if (confirm("Clear chat? This will only clear your messages.")) {
-      clearMyMessages();
-    }
+    if (confirm("Clear chat? This will only clear your messages.")) clearMyMessages();
   });
 
-  btnExportChat.addEventListener("click", () => {
-    alert("Export chat feature coming soon.");
-  });
+  btnExportChat.addEventListener("click", () => alert("Export chat feature coming soon."));
+  btnReportUser.addEventListener("click", () => alert("User reported (to be implemented)."));
 
-  btnReportUser.addEventListener("click", () => {
-    alert("User reported (to be implemented).");
-  });
-
-  // View Contact Modal - open by clicking username header
+  // Contact modal
   usernameHeader.addEventListener("click", () => {
-    fetch(`/api/users/${receiverId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => res.json())
-      .then((user) => {
+    fetch(`/api/users/${receiverId}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(res => res.json())
+      .then(user => {
         contactBio.textContent = user.bio || "No bio available";
         contactModal.classList.remove("hidden");
       })
@@ -231,12 +215,9 @@ document.addEventListener("DOMContentLoaded", () => {
       });
   });
 
-  contactBackBtn.addEventListener("click", () => {
-    contactModal.classList.add("hidden");
-  });
+  contactBackBtn.addEventListener("click", () => contactModal.classList.add("hidden"));
 
   // Functions
-
   async function loadMessages(initial = false) {
     if (loading) return;
     loading = true;
@@ -249,9 +230,8 @@ document.addEventListener("DOMContentLoaded", () => {
       if (data.success && data.messages.length) {
         if (initial) messageList.innerHTML = "";
 
-        // Insert date separators
         let lastDate = null;
-        data.messages.reverse().forEach((msg) => {
+        data.messages.reverse().forEach(msg => {
           const msgDate = new Date(msg.timestamp || msg.createdAt).toDateString();
           if (msgDate !== lastDate) {
             lastDate = msgDate;
@@ -292,6 +272,17 @@ document.addEventListener("DOMContentLoaded", () => {
     li.appendChild(bubble);
     messageList.appendChild(li);
 
+    // Play notification if incoming message & enabled
+    if (!isMine && localStorage.getItem("notificationEnabled") === "true") {
+      const kind = localStorage.getItem("notificationSoundKind") || "builtin";
+      const src = kind === "custom" ? localStorage.getItem("notificationCustomUrl") :
+                  `/sounds/${localStorage.getItem("notificationSound") || "sound01.mp3"}`;
+      if (src) {
+        const audio = new Audio(src);
+        audio.play().catch(() => console.log("Notification sound blocked"));
+      }
+    }
+
     if (scroll) scrollToBottom();
   }
 
@@ -304,15 +295,11 @@ document.addEventListener("DOMContentLoaded", () => {
       },
       body: JSON.stringify({ recipientId: receiverId, content }),
     });
-    const data = await res.json();
-    return data;
+    return res.json();
   }
 
   async function clearMyMessages() {
-    // This assumes backend has API to clear messages by user
-    // Otherwise, simply clear from UI only:
-    // Remove all messages sent by me from UI
-    [...messageList.children].forEach((li) => {
+    [...messageList.children].forEach(li => {
       if (li.classList.contains("sent")) li.remove();
     });
   }
@@ -346,18 +333,11 @@ document.addEventListener("DOMContentLoaded", () => {
       const now = new Date();
       const diffMs = now - lastSeenDate;
 
-      if (diffMs < 60000) {
-        statusIndicator.textContent = "Online 🟢";
-      } else if (diffMs < 3600000) {
-        statusIndicator.textContent = `${Math.floor(diffMs / 60000)} min ago`;
-      } else if (diffMs < 86400000) {
-        statusIndicator.textContent = `${Math.floor(diffMs / 3600000)} hr ago`;
-      } else {
-        statusIndicator.textContent = lastSeenDate.toLocaleDateString();
-      }
-    } else {
-      statusIndicator.textContent = "Offline";
-    }
+      if (diffMs < 60000) statusIndicator.textContent = "Online 🟢";
+      else if (diffMs < 3600000) statusIndicator.textContent = `${Math.floor(diffMs / 60000)} min ago`;
+      else if (diffMs < 86400000) statusIndicator.textContent = `${Math.floor(diffMs / 3600000)} hr ago`;
+      else statusIndicator.textContent = lastSeenDate.toLocaleDateString();
+    } else statusIndicator.textContent = "Offline";
   }
 
   function scrollToBottom() {
@@ -367,22 +347,4 @@ document.addEventListener("DOMContentLoaded", () => {
   function formatDateForSeparator(date) {
     const today = new Date();
     const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-
-    if (date.toDateString() === today.toDateString()) return "Today";
-    if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
-    return date.toLocaleDateString();
-  }
-
-  async function getMyUserId(token) {
-    try {
-      const res = await fetch("/api/users/me", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const user = await res.json();
-      return user._id;
-    } catch {
-      return null;
-    }
-  }
-});
+    yesterday.setDate(yesterday.getDate() - 1
