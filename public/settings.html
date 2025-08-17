@@ -5,130 +5,108 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SmartTalk - Settings</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    /* Fixed header */
-    header {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      z-index: 50;
-    }
-    main {
-      margin-top: 60px; /* Adjust according to header height */
-      overflow-y: auto;
-      height: calc(100vh - 60px);
-      padding: 1rem;
-    }
-  </style>
 </head>
-<body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 flex flex-col h-screen">
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
 
   <!-- Header -->
-  <header class="p-4 bg-green-500 dark:bg-green-700 text-white flex items-center justify-between shadow-md">
-    <h1 class="text-lg font-semibold">Settings</h1>
-    <button onclick="window.history.back()" class="bg-white text-green-600 px-3 py-1 rounded text-sm">Back</button>
+  <header class="p-4 flex items-center justify-between bg-white dark:bg-gray-800 shadow">
+    <h1 class="text-xl font-bold">⚙️ Settings</h1>
+    <button onclick="history.back()" class="text-blue-500">← Back</button>
   </header>
 
-  <!-- Scrollable Settings Content -->
-  <main class="space-y-6">
-    <!-- Notification Sounds -->
-    <section>
-      <h2 class="text-lg font-semibold mb-2">Notification Sound</h2>
-      <select id="notificationSound" class="w-full p-2 rounded border dark:bg-gray-800 dark:border-gray-700">
-        <option value="default">Default</option>
-        <option value="plastic-bat-hits-ball.mp3">Plastic Bat Hit</option>
-        <option value="chime-bell.mp3">Chime Bell</option>
-        <option value="message-pop.mp3">Message Pop</option>
-        <option value="ping-alert.mp3">Ping Alert</option>
-        <option value="soft-knock.mp3">Soft Knock</option>
-        <option value="twinkle-tone.mp3">Twinkle Tone</option>
-        <option value="user-custom">Custom Ringtone</option>
-      </select>
-      <input type="file" id="customRingtone" class="hidden mt-2" accept="audio/*">
+  <main class="p-4 space-y-6">
+
+    <!-- 1. Account -->
+    <section class="bg-white dark:bg-gray-800 rounded-2xl shadow p-4">
+      <h2 class="text-lg font-semibold mb-2">👤 Account</h2>
+      <ul class="space-y-2">
+        <li><button class="w-full text-left hover:text-blue-500">Edit Profile</button></li>
+        <li><button class="w-full text-left hover:text-blue-500">Change Password</button></li>
+        <li><button class="w-full text-left hover:text-blue-500">Privacy Controls</button></li>
+      </ul>
     </section>
 
-    <!-- Dark Mode -->
-    <section>
-      <h2 class="text-lg font-semibold mb-2">Theme</h2>
-      <label class="flex items-center gap-3 cursor-pointer">
-        <input type="checkbox" id="darkModeToggle" class="w-5 h-5">
-        <span>Enable Dark Mode</span>
-      </label>
+    <!-- 2. Wallet & Payments -->
+    <section class="bg-white dark:bg-gray-800 rounded-2xl shadow p-4">
+      <h2 class="text-lg font-semibold mb-2">💳 Wallet & Payments</h2>
+      <ul class="space-y-2">
+        <li><button class="w-full text-left hover:text-blue-500">My Wallet (Multi-currency)</button></li>
+        <li><button class="w-full text-left hover:text-blue-500">Add Money (Paystack / Flutterwave / Stripe)</button></li>
+        <li><button class="w-full text-left hover:text-blue-500">Transaction History</button></li>
+        <li><button class="w-full text-left hover:text-blue-500">Low Balance Alerts</button></li>
+        <li><button class="w-full text-left hover:text-blue-500">Daily Free Call Credit (60s)</button></li>
+      </ul>
     </section>
 
-    <!-- Chat Background -->
-    <section>
-      <h2 class="text-lg font-semibold mb-2">Chat Background</h2>
-      <input type="color" id="chatBgColor" class="w-16 h-10 p-1 rounded border dark:border-gray-700">
+    <!-- 3. Calls -->
+    <section class="bg-white dark:bg-gray-800 rounded-2xl shadow p-4">
+      <h2 class="text-lg font-semibold mb-2">📞 Calls</h2>
+      <ul class="space-y-2">
+        <li><button class="w-full text-left hover:text-blue-500">Call History</button></li>
+        <li><button class="w-full text-left hover:text-blue-500">Duration Tracking</button></li>
+        <li><button class="w-full text-left hover:text-blue-500">Daily Free Call Limit</button></li>
+      </ul>
     </section>
 
-    <!-- Privacy -->
-    <section>
-      <h2 class="text-lg font-semibold mb-2">Privacy Settings</h2>
-      <label class="flex items-center gap-3 cursor-pointer">
-        <input type="checkbox" id="readReceipts" class="w-5 h-5">
-        <span>Send Read Receipts</span>
-      </label>
-      <label class="flex items-center gap-3 cursor-pointer mt-2">
-        <input type="checkbox" id="lastSeen" class="w-5 h-5">
-        <span>Show Last Seen</span>
-      </label>
+    <!-- 4. Notifications -->
+    <section class="bg-white dark:bg-gray-800 rounded-2xl shadow p-4">
+      <h2 class="text-lg font-semibold mb-2">🔔 Notifications</h2>
+      <ul class="space-y-2">
+        <li><label><input type="checkbox" checked> Message Notifications</label></li>
+        <li><label><input type="checkbox" checked> Call Notifications</label></li>
+        <li>
+          <label class="block">Sound & Vibration
+            <select id="tone" class="mt-1 w-full p-2 rounded bg-gray-200 dark:bg-gray-700">
+              <option value="default" selected>Default Tone (SmartTalk)</option>
+              <option value="tone1">Tone 1</option>
+              <option value="tone2">Tone 2</option>
+            </select>
+          </label>
+          <audio id="soundPreview" src="default-tone.mp3"></audio>
+          <button onclick="document.getElementById('soundPreview').play()" class="text-blue-500 mt-2">▶ Preview</button>
+        </li>
+        <li><button class="w-full text-left hover:text-blue-500">Do Not Disturb</button></li>
+      </ul>
     </section>
 
-    <!-- Language -->
-    <section>
-      <h2 class="text-lg font-semibold mb-2">Language</h2>
-      <select id="languageSelect" class="w-full p-2 rounded border dark:bg-gray-800 dark:border-gray-700">
-        <option value="en">English</option>
-        <option value="fr">French</option>
-        <option value="es">Spanish</option>
-        <option value="ar">Arabic</option>
-        <option value="zh">Chinese</option>
-      </select>
+    <!-- 5. Theme & Display -->
+    <section class="bg-white dark:bg-gray-800 rounded-2xl shadow p-4">
+      <h2 class="text-lg font-semibold mb-2">🎨 Theme & Display</h2>
+      <ul class="space-y-2">
+        <li><button onclick="toggleDarkMode()" class="w-full text-left hover:text-blue-500">Toggle Dark/Light Mode</button></li>
+        <li><button class="w-full text-left hover:text-blue-500">Chat Wallpaper</button></li>
+        <li><button class="w-full text-left hover:text-blue-500">Font Size</button></li>
+      </ul>
     </section>
 
-    <!-- App Version -->
-    <section>
-      <h2 class="text-lg font-semibold mb-2">App Info</h2>
-      <p class="text-sm">SmartTalk Version: <span id="appVersion">1.0.0</span></p>
+    <!-- 6. Security & Privacy -->
+    <section class="bg-white dark:bg-gray-800 rounded-2xl shadow p-4">
+      <h2 class="text-lg font-semibold mb-2">🔒 Security & Privacy</h2>
+      <ul class="space-y-2">
+        <li><button class="w-full text-left hover:text-blue-500">Two-Factor Authentication</button></li>
+        <li><button class="w-full text-left hover:text-blue-500">Encryption Toggle</button></li>
+        <li><button class="w-full text-left hover:text-blue-500">Blocked Contacts</button></li>
+        <li><button class="w-full text-left hover:text-blue-500">Active Sessions</button></li>
+      </ul>
     </section>
 
-    <!-- Terms & Privacy -->
-    <section>
-      <h2 class="text-lg font-semibold mb-2">Legal</h2>
-      <a href="terms.html" class="block text-green-500 hover:underline">Terms of Service</a>
-      <a href="privacy.html" class="block text-green-500 hover:underline">Privacy Policy</a>
+    <!-- 7. Admin Controls -->
+    <section class="bg-white dark:bg-gray-800 rounded-2xl shadow p-4">
+      <h2 class="text-lg font-semibold mb-2">🛠️ Admin Controls</h2>
+      <ul class="space-y-2">
+        <li><button class="w-full text-left hover:text-blue-500">User Management</button></li>
+        <li><button class="w-full text-left hover:text-blue-500">Broadcast Messages</button></li>
+        <li><button class="w-full text-left hover:text-blue-500">Monitor Wallet Activity</button></li>
+        <li><button class="w-full text-left hover:text-blue-500">Manage Payment Gateways</button></li>
+      </ul>
     </section>
+
   </main>
 
-  <!-- Footer -->
-  <footer class="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
-    &copy; 2025 SmartTalk. All rights reserved.
-  </footer>
-
   <script>
-    // Dark Mode Toggle
-    const darkModeToggle = document.getElementById('darkModeToggle');
-    darkModeToggle.addEventListener('change', () => {
-      document.documentElement.classList.toggle('dark', darkModeToggle.checked);
-      localStorage.setItem('darkMode', darkModeToggle.checked);
-    });
-    if (localStorage.getItem('darkMode') === 'true') {
-      document.documentElement.classList.add('dark');
-      darkModeToggle.checked = true;
+    function toggleDarkMode() {
+      document.documentElement.classList.toggle('dark');
     }
-
-    // Custom Ringtone
-    const soundSelect = document.getElementById('notificationSound');
-    const customFile = document.getElementById('customRingtone');
-    soundSelect.addEventListener('change', () => {
-      if (soundSelect.value === 'user-custom') {
-        customFile.classList.remove('hidden');
-      } else {
-        customFile.classList.add('hidden');
-      }
-    });
   </script>
 
 </body>
