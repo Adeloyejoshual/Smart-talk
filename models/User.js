@@ -1,89 +1,33 @@
-const mongoose = require("mongoose");
-const bcrypt = require("bcryptjs");
+import mongoose from "mongoose";
+import bcrypt from "bcryptjs";
 
 const UserSchema = new mongoose.Schema(
   {
-    username: {
-      type: String,
-      unique: true,
-      required: true,
-      trim: true,
-    },
+    username: { type: String, required: true, unique: true, trim: true },
+    email: { type: String, required: true, unique: true, lowercase: true },
+    password: { type: String, required: true },
 
-    email: {
-      type: String,
-      unique: true,
-      required: true,
-      lowercase: true,
-    },
+    avatar: { type: String, default: "" },
+    bio: { type: String, default: "" },
+    phoneNumber: { type: String, default: "" },
 
-    password: {
-      type: String,
-      required: true,
-    },
+    friends: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+    blockedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+    reports: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
 
-    avatar: {
-      type: String,
-      default: "",
-    },
+    role: { type: String, enum: ["user", "admin"], default: "user" },
+    banned: { type: Boolean, default: false },
 
-    bio: {
-      type: String,
-      default: "",
-    },
-
-    phoneNumber: {
-      type: String,
-      default: "",
-    },
-
-    friends: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-      },
-    ],
-
-    blockedUsers: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-      },
-    ],
-
-    reports: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-      },
-    ],
-
-    role: {
-      type: String,
-      enum: ["user", "admin"],
-      default: "user",
-    },
-
-    banned: {
-      type: Boolean,
-      default: false,
-    },
-
-    lastSeen: {
-      type: Date,
-      default: Date.now,
-    },
-
-    isEmailVerified: {
-      type: Boolean,
-      default: false,
-    },
+    lastSeen: { type: Date, default: Date.now },
+    isEmailVerified: { type: Boolean, default: false },
 
     onlineStatus: {
       type: String,
       enum: ["online", "offline", "away", "busy"],
       default: "offline",
     },
+
+    status: { type: String, enum: ["active", "banned"], default: "active" }, // for quick status check
   },
   { timestamps: true }
 );
@@ -100,4 +44,5 @@ UserSchema.methods.comparePassword = async function (plainPassword) {
   return await bcrypt.compare(plainPassword, this.password);
 };
 
-module.exports = mongoose.model("User", UserSchema);
+const User = mongoose.model("User", UserSchema);
+export default User;
