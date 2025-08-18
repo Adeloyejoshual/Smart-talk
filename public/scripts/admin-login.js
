@@ -1,33 +1,22 @@
-document.addEventListener("DOMContentLoaded", () => {
-  const form = document.getElementById("adminLoginForm");
-  const message = document.getElementById("message");
+// public/scripts/admin-login.js
+document.getElementById("adminLoginForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const username = document.getElementById("username").value.trim();
+  const passcode = document.getElementById("passcode").value.trim();
 
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-
-    const email = form.email.value.trim();
-    const password = form.password.value.trim();
-
-    try {
-      const res = await fetch("/api/admin/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password })
-      });
-
-      const data = await res.json();
-
-      if (res.ok && data.token) {
-        localStorage.setItem("adminToken", data.token);
-        window.location.href = "/admin.html";
-      } else {
-        message.innerText = data.message || "Invalid admin credentials";
-        message.style.color = "red";
-      }
-    } catch (err) {
-      console.error("Login error:", err);
-      message.innerText = "Server error";
-      message.style.color = "red";
-    }
-  });
+  try {
+    const res = await fetch("/api/admin/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, passcode })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || "Login failed");
+    localStorage.setItem("adminToken", data.token);
+    window.location.href = "/admin-dashboard.html";
+  } catch (err) {
+    const el = document.getElementById("error");
+    el.textContent = err.message;
+    el.classList.remove("hidden");
+  }
 });
