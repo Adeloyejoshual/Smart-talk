@@ -1,207 +1,176 @@
-const express = require("express");
-const cors = require("cors");
-const dotenv = require("dotenv");
-const mongoose = require("mongoose");
-const socketIO = require("socket.io");
-const path = require("path");
-const jwt = require("jsonwebtoken");
-const User = require("./models/User"); 
-const Message = require("./models/Message");
+// backend/server.js
+require('dotenv').config();
+const express = require('express');
+const http = require('http');
+const mongoose = require('mongoose');
+const cors = require('cors');
+const { Server } = require('socket.io');
+const path = require('path');
+const jwt = require('jsonwebtoken');
 
-dotenv.config();
+// Models
+const Message = require('./models/Message');
+const User = require('./models/User');
+
+const authRoutes = require('./routes/authRoutes');
+const userRoutes = require('./routes/userRoutes');
+const privateChatRoutes = require('./routes/privateChatRoutes');
+const groupChatRoutes = require('./routes/groupChatRoutes');
+const adminRoutes = require('./routes/adminRoutes');
+const billingRoutes = require('./routes/billingRoutes');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const server = http.createServer(app);
+const io = new Server(server, { cors: { origin: '*', methods: ['GET','POST'] } });
 
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, "public")));
-app.use("/uploads", express.static(path.join(__dirname, "public/uploads")));
+app.use(express.urlencoded({ extended: true }));
 
-mongoose
-  .connect(process.env.MONGO_URI)
-  .then(() => console.log("✅ MongoDB connected"))
-  .catch((err) => console.error("❌ MongoDB connection error:", err));
+// Serve React frontend
+app.use(express.static(path.join(__dirname, '../frontend/build')));
 
-app.use("/api/auth", require("./routes/auth"));
-app.use("/api/users", require("./routes/users"));
-app.use("/api/messages", require("./routes/messages"));
-app.use("/api/groups", require("./routes/groups"));
-app.use("/api/admin", require("./routes/admin"));
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => console.log('✅ MongoDB connected'))
+  .catch(err => { console.error('❌ MongoDB connection error:', err); process.exit(1); });
 
-const server = app.listen(PORT, () =>
-  console.log(`🚀 Server running on http://localhost:${PORT}`)
-);
+// API Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/messages/private', privateChatRoutes);
+app.use('/api/messages/group', groupChatRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/billing', billingRoutes);
 
-const io = socketIO(server, {
-  cors: {
-    origin: "*", // Change this to your frontend URL in production
-    methods: ["GET", "POST"],
-  },
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../frontend/build', 'index.html'));
 });
 
-// Map to track userId -> socket.id for online status
+// Online users
 const onlineUsers = new Map();
 
-// Socket.IO middleware for JWT authentication
+// Socket.IO JWT middleware
 io.use((socket, next) => {
   const token = socket.handshake.auth?.token;
-  if (!token) return next(new Error("Authentication error: Token missing"));
-
+  if (!token) return next(new Error('Authentication error: Token missing'));
   jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
-    if (err) return next(new Error("Authentication error: Invalid token"));
+    if (err) return next(new Error('Authentication error: Invalid token'));
     socket.userId = decoded.id;
     next();
   });
 });
 
-io.on("connection", (socket) => {
-  console.log(`📡 New connection: ${socket.id} (User: ${socket.userId})`);
+// Per-second call rates
+const CALL_RATE = {
+  private: 0.0033, // $0.20/min
+  group: 0.005     // $0.30/min
+};
 
-  // Add user to online list and join their private room
+const activeCalls = new Map(); // callId -> { users: [], interval }
+
+// Socket.IO connection
+io.on('connection', (socket) => {
+  console.log(`📡 Connected: ${socket.id} (User: ${socket.userId})`);
   onlineUsers.set(socket.userId, socket.id);
   socket.join(socket.userId);
+  io.emit('user-online', { userId: socket.userId });
 
-  // Broadcast online status to all connected clients
-  io.emit("user-online", { userId: socket.userId });
-
-  // Handle disconnection
-  socket.on("disconnect", () => {
-    console.log(`❌ Disconnected: ${socket.id} (User: ${socket.userId})`);
+  socket.on('disconnect', () => {
     onlineUsers.delete(socket.userId);
-
-    io.emit("user-offline", { userId: socket.userId, lastSeen: new Date() });
+    io.emit('user-offline', { userId: socket.userId, lastSeen: new Date() });
   });
 
-  // Join a group room
-  socket.on("join-group", (groupId) => {
-    socket.join(groupId);
-    console.log(`👥 User ${socket.userId} joined group ${groupId}`);
-  });
+  socket.on('join-group', (groupId) => socket.join(groupId));
+  socket.on('typing', ({ to }) => { if (to) io.to(to).emit('typing', { from: socket.userId }); });
+  socket.on('stopTyping', ({ to }) => { if (to) io.to(to).emit('stopTyping', { from: socket.userId }); });
 
-  // Typing indicator events
-  socket.on("typing", ({ to }) => {
-    if (to) {
-      io.to(to).emit("typing", { from: socket.userId });
-    }
-  });
-
-  socket.on("stopTyping", ({ to }) => {
-    if (to) {
-      io.to(to).emit("stopTyping", { from: socket.userId });
-    }
-  });
-
-  // Handle private messages
-  socket.on("privateMessage", async ({ receiverId, content, replyTo = null, isForwarded = false }) => {
+  // Private messages
+  socket.on('privateMessage', async ({ receiverId, content, replyTo = null, isForwarded = false }) => {
     if (!receiverId || !content) return;
-
     try {
-      const newMessage = new Message({
-        sender: socket.userId,
-        recipient: receiverId,
-        content,
-        replyTo,
-        isForwarded,
-        status: "sent",
-        type: "text",
-      });
-
+      const newMessage = new Message({ sender: socket.userId, recipient: receiverId, content, replyTo, isForwarded, status:'sent', type:'text' });
       await newMessage.save();
-
-      // Emit to receiver and sender to update their UI
-      [receiverId, socket.userId].forEach((userId) => {
-        io.to(userId).emit("privateMessage", {
-          _id: newMessage._id,
-          senderId: socket.userId,
-          receiverId,
-          content,
-          replyTo,
-          timestamp: newMessage.createdAt,
-          status: newMessage.status,
-          isForwarded,
-        });
+      [receiverId, socket.userId].forEach(uid => {
+        io.to(uid).emit('privateMessage', { _id:newMessage._id, senderId:socket.userId, receiverId:uid, content, replyTo, timestamp:newMessage.createdAt, status:newMessage.status, isForwarded });
       });
-
-      console.log(`📩 Private message from ${socket.userId} to ${receiverId}: ${content}`);
-    } catch (err) {
-      console.error("❌ Error sending private message:", err);
-    }
+    } catch (err) { console.error(err); }
   });
 
-  // Handle delivery receipts
-  socket.on("messageDelivered", async ({ messageId, to }) => {
+  socket.on('messageDelivered', async ({ messageId, to }) => {
     try {
       const msg = await Message.findById(messageId);
-      if (!msg) return;
-
-      if (msg.status === "sent") {
-        msg.status = "delivered";
-        await msg.save();
-
-        io.to(msg.sender.toString()).emit("messageStatusUpdate", {
-          messageId,
-          status: "delivered",
-          to,
-        });
-      }
-    } catch (err) {
-      console.error("❌ Error updating message delivered status:", err);
-    }
+      if (!msg || msg.status!=='sent') return;
+      msg.status='delivered'; await msg.save();
+      io.to(msg.sender.toString()).emit('messageStatusUpdate', { messageId, status:'delivered', to });
+    } catch(err){console.error(err);}
   });
 
-  // Handle read receipts
-  socket.on("messageRead", async ({ messageId, to }) => {
+  socket.on('messageRead', async ({ messageId, to }) => {
     try {
       const msg = await Message.findById(messageId);
-      if (!msg) return;
-
-      if (msg.status !== "read") {
-        msg.status = "read";
-        await msg.save();
-
-        io.to(msg.sender.toString()).emit("messageStatusUpdate", {
-          messageId,
-          status: "read",
-          to,
-        });
-      }
-    } catch (err) {
-      console.error("❌ Error updating message read status:", err);
-    }
+      if (!msg || msg.status==='read') return;
+      msg.status='read'; await msg.save();
+      io.to(msg.sender.toString()).emit('messageStatusUpdate', { messageId, status:'read', to });
+    } catch(err){console.error(err);}
   });
 
-  // Handle group chat messages
-  socket.on("groupMessage", async ({ groupId, content, replyTo = null, isForwarded = false }) => {
+  socket.on('groupMessage', async ({ groupId, content, replyTo = null, isForwarded = false }) => {
     if (!groupId || !content) return;
-
     try {
-      const newMessage = new Message({
-        sender: socket.userId,
-        group: groupId,
-        content,
-        replyTo,
-        isForwarded,
-        status: "sent",
-        type: "text",
-      });
-
+      const newMessage = new Message({ sender: socket.userId, group: groupId, content, replyTo, isForwarded, status:'sent', type:'text' });
       await newMessage.save();
+      io.to(groupId).emit('groupMessage', { _id:newMessage._id, senderId:socket.userId, groupId, content, replyTo, timestamp:newMessage.createdAt, status:newMessage.status, isForwarded });
+    } catch(err){console.error(err);}
+  });
 
-      io.to(groupId).emit("groupMessage", {
-        _id: newMessage._id,
-        senderId: socket.userId,
-        groupId,
-        content,
-        replyTo,
-        timestamp: newMessage.createdAt,
-        status: newMessage.status,
-        isForwarded,
-      });
+  // ----------------------
+  // Per-second call billing
+  // ----------------------
+  socket.on('startCall', async ({ callId, type, participants }) => {
+    if (!callId || !type || !participants || !Array.isArray(participants)) return;
 
-      console.log(`📨 Group message in ${groupId}: ${content}`);
-    } catch (err) {
-      console.error("❌ Error sending group message:", err);
+    // Check balances
+    for (let userId of participants) {
+      const user = await User.findById(userId);
+      const rate = CALL_RATE[type] || CALL_RATE.private;
+      if (!user || user.wallet < rate) {
+        socket.emit('callError', { message:`User ${userId} has insufficient balance` });
+        return;
+      }
+    }
+
+    // Start per-second billing
+    const interval = setInterval(async () => {
+      for (let userId of participants) {
+        const user = await User.findById(userId);
+        const rate = CALL_RATE[type] || CALL_RATE.private;
+        if (user.wallet >= rate) {
+          user.wallet -= rate;
+          await user.save();
+        } else {
+          // End call for everyone
+          clearInterval(activeCalls.get(callId).interval);
+          io.to(participants).emit('endCall', { callId, reason:'Insufficient balance' });
+          activeCalls.delete(callId);
+          return;
+        }
+      }
+    }, 1000);
+
+    activeCalls.set(callId, { users: participants, interval });
+    io.to(participants).emit('callStarted', { callId, type });
+  });
+
+  socket.on('endCall', ({ callId }) => {
+    const call = activeCalls.get(callId);
+    if (call) {
+      clearInterval(call.interval);
+      io.to(call.users).emit('endCall', { callId, reason:'Ended by user' });
+      activeCalls.delete(callId);
     }
   });
+
 });
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
