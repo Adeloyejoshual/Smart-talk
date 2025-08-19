@@ -5,9 +5,15 @@
   <title>SmartTalk - Home</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="home.css">
   <style>
-    .chat-selected { background-color: #5C2C24 !important; border-left: 4px solid orange; }
-    .tab-active { border-b-2 border-orange-500 font-semibold; }
+    .chat-selected {
+      background-color: #5C2C24 !important;
+      border-left: 4px solid orange;
+    }
+    .tab-active {
+      border-b-2 border-orange-500 font-semibold;
+    }
     #header { position: fixed; top: 0; left: 0; right: 0; z-index: 50; }
     #bottomTabs { position: fixed; bottom: 0; left: 0; right: 0; z-index: 50; }
     #chatList { margin-top: 96px; margin-bottom: 60px; overflow-y: auto; flex: 1; }
@@ -27,19 +33,17 @@
 
   <!-- Search -->
   <div class="flex gap-2 px-4 pt-20 pb-2 bg-[#1F1F1F] fixed top-16 left-0 right-0 z-40">
-    <input id="searchInput" type="text" placeholder="Search friends/groups..."
-      class="flex-1 bg-[#2B2B2B] border border-gray-700 text-sm text-white rounded-full px-4 py-2 focus:outline-none" />
+    <input
+      id="searchInput"
+      type="text"
+      placeholder="Search friends/groups..."
+      class="flex-1 bg-[#2B2B2B] border border-gray-700 text-sm text-white rounded-full px-4 py-2 focus:outline-none"
+    />
   </div>
 
   <!-- Chat/Group List -->
-  <div id="chatList" class="flex-1 px-4 py-2 divide-y divide-gray-700"></div>
-
-  <!-- Action Toolbar -->
-  <div id="actionToolbar" class="hidden fixed bottom-12 left-0 right-0 bg-[#2C2C2C] flex justify-around items-center p-2 z-40 rounded-t shadow">
-    <button id="pinBtn" class="text-white px-4 py-2 hover:bg-gray-700 rounded">📌 Pin</button>
-    <button id="deleteBtn" class="text-white px-4 py-2 hover:bg-gray-700 rounded">🗑️ Delete</button>
-    <button id="archiveBtn" class="text-white px-4 py-2 hover:bg-gray-700 rounded">📦 Archive</button>
-    <button id="moreBtn" class="text-white px-4 py-2 hover:bg-gray-700 rounded">⋮ More</button>
+  <div id="chatList" class="flex-1 px-4 py-2 divide-y divide-gray-700">
+    <!-- Chats or Groups injected here -->
   </div>
 
   <!-- Bottom Tabs -->
@@ -49,8 +53,12 @@
   </div>
 
   <!-- Floating Add Friend Button -->
-  <button id="addFriendBtn" onclick="openAddFriendModal()"
-    class="fixed bottom-20 right-5 bg-orange-600 hover:bg-orange-700 text-white px-5 py-3 rounded-full shadow-lg text-2xl" title="Add Friend">+</button>
+  <button
+    id="addFriendBtn"
+    onclick="openAddFriendModal()"
+    class="fixed bottom-20 right-5 bg-orange-600 hover:bg-orange-700 text-white px-5 py-3 rounded-full shadow-lg text-2xl"
+    title="Add Friend"
+  >+</button>
 
   <!-- Add Friend Modal -->
   <div id="addFriendModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center">
@@ -64,6 +72,14 @@
     </div>
   </div>
 
-  <script src="/home.js"></script>
+  <!-- Action Toolbar -->
+  <div id="actionToolbar" class="hidden fixed bottom-16 left-0 right-0 bg-[#2B2B2B] flex justify-around py-2 border-t border-gray-700">
+    <button id="pinBtn" title="Pin Chat">📌</button>
+    <button id="deleteBtn" title="Delete Chat">🗑️</button>
+    <button id="archiveBtn" title="Archive Chat">📦</button>
+    <button id="moreBtn" title="More">⋮</button>
+  </div>
+
+  <script src="home.js"></script>
 </body>
 </html>
