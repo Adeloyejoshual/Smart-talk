@@ -1,113 +1,63 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SmartTalk - Settings</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SmartTalk Settings</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+<body class="bg-gray-900 text-white flex flex-col min-h-screen">
 
   <!-- Header -->
-  <header class="p-4 flex items-center justify-between bg-white dark:bg-gray-800 shadow">
-    <h1 class="text-xl font-bold">⚙️ Settings</h1>
-    <button onclick="history.back()" class="text-blue-500">← Back</button>
+  <header class="bg-gray-800 p-4 flex justify-between items-center shadow-md">
+    <h1 class="text-xl font-bold">Settings</h1>
+    <button onclick="window.location.href='home.html'" class="text-sm text-gray-300 hover:text-white">Back</button>
   </header>
 
-  <main class="p-4 space-y-6">
+  <!-- Settings List -->
+  <main class="flex-1 p-4 space-y-4">
+    <div class="bg-gray-800 rounded-2xl p-4 shadow-md cursor-pointer hover:bg-gray-700" onclick="openWallet()">
+      <h2 class="text-lg font-semibold">💳 Wallet</h2>
+      <p class="text-gray-400 text-sm">Check your call charges & balance</p>
+    </div>
 
-    <!-- 1. Account -->
-    <section class="bg-white dark:bg-gray-800 rounded-2xl shadow p-4">
-      <h2 class="text-lg font-semibold mb-2">👤 Account</h2>
-      <ul class="space-y-2">
-        <li><button class="w-full text-left hover:text-blue-500">Edit Profile</button></li>
-        <li><button class="w-full text-left hover:text-blue-500">Change Password</button></li>
-        <li><button class="w-full text-left hover:text-blue-500">Privacy Controls</button></li>
-      </ul>
-    </section>
+    <div class="bg-gray-800 rounded-2xl p-4 shadow-md cursor-pointer hover:bg-gray-700">
+      <h2 class="text-lg font-semibold">🌙 Dark Mode</h2>
+      <p class="text-gray-400 text-sm">Toggle theme</p>
+    </div>
 
-    <!-- 2. Wallet & Payments -->
-    <section class="bg-white dark:bg-gray-800 rounded-2xl shadow p-4">
-      <h2 class="text-lg font-semibold mb-2">💳 Wallet & Payments</h2>
-      <ul class="space-y-2">
-        <li><button class="w-full text-left hover:text-blue-500">My Wallet (Multi-currency)</button></li>
-        <li><button class="w-full text-left hover:text-blue-500">Add Money (Paystack / Flutterwave / Stripe)</button></li>
-        <li><button class="w-full text-left hover:text-blue-500">Transaction History</button></li>
-        <li><button class="w-full text-left hover:text-blue-500">Low Balance Alerts</button></li>
-        <li><button class="w-full text-left hover:text-blue-500">Daily Free Call Credit (60s)</button></li>
-      </ul>
-    </section>
+    <div class="bg-gray-800 rounded-2xl p-4 shadow-md cursor-pointer hover:bg-gray-700">
+      <h2 class="text-lg font-semibold">⚙️ Preferences</h2>
+      <p class="text-gray-400 text-sm">Manage notifications & privacy</p>
+    </div>
 
-    <!-- 3. Calls -->
-    <section class="bg-white dark:bg-gray-800 rounded-2xl shadow p-4">
-      <h2 class="text-lg font-semibold mb-2">📞 Calls</h2>
-      <ul class="space-y-2">
-        <li><button class="w-full text-left hover:text-blue-500">Call History</button></li>
-        <li><button class="w-full text-left hover:text-blue-500">Duration Tracking</button></li>
-        <li><button class="w-full text-left hover:text-blue-500">Daily Free Call Limit</button></li>
-      </ul>
-    </section>
+    <div class="bg-gray-800 rounded-2xl p-4 shadow-md cursor-pointer hover:bg-gray-700">
+      <h2 class="text-lg font-semibold">🔒 Security</h2>
+      <p class="text-gray-400 text-sm">Password, 2FA, recovery</p>
+    </div>
 
-    <!-- 4. Notifications -->
-    <section class="bg-white dark:bg-gray-800 rounded-2xl shadow p-4">
-      <h2 class="text-lg font-semibold mb-2">🔔 Notifications</h2>
-      <ul class="space-y-2">
-        <li><label><input type="checkbox" checked> Message Notifications</label></li>
-        <li><label><input type="checkbox" checked> Call Notifications</label></li>
-        <li>
-          <label class="block">Sound & Vibration
-            <select id="tone" class="mt-1 w-full p-2 rounded bg-gray-200 dark:bg-gray-700">
-              <option value="default" selected>Default Tone (SmartTalk)</option>
-              <option value="tone1">Tone 1</option>
-              <option value="tone2">Tone 2</option>
-            </select>
-          </label>
-          <audio id="soundPreview" src="default-tone.mp3"></audio>
-          <button onclick="document.getElementById('soundPreview').play()" class="text-blue-500 mt-2">▶ Preview</button>
-        </li>
-        <li><button class="w-full text-left hover:text-blue-500">Do Not Disturb</button></li>
-      </ul>
-    </section>
-
-    <!-- 5. Theme & Display -->
-    <section class="bg-white dark:bg-gray-800 rounded-2xl shadow p-4">
-      <h2 class="text-lg font-semibold mb-2">🎨 Theme & Display</h2>
-      <ul class="space-y-2">
-        <li><button onclick="toggleDarkMode()" class="w-full text-left hover:text-blue-500">Toggle Dark/Light Mode</button></li>
-        <li><button class="w-full text-left hover:text-blue-500">Chat Wallpaper</button></li>
-        <li><button class="w-full text-left hover:text-blue-500">Font Size</button></li>
-      </ul>
-    </section>
-
-    <!-- 6. Security & Privacy -->
-    <section class="bg-white dark:bg-gray-800 rounded-2xl shadow p-4">
-      <h2 class="text-lg font-semibold mb-2">🔒 Security & Privacy</h2>
-      <ul class="space-y-2">
-        <li><button class="w-full text-left hover:text-blue-500">Two-Factor Authentication</button></li>
-        <li><button class="w-full text-left hover:text-blue-500">Encryption Toggle</button></li>
-        <li><button class="w-full text-left hover:text-blue-500">Blocked Contacts</button></li>
-        <li><button class="w-full text-left hover:text-blue-500">Active Sessions</button></li>
-      </ul>
-    </section>
-
-    <!-- 7. Admin Controls -->
-    <section class="bg-white dark:bg-gray-800 rounded-2xl shadow p-4">
-      <h2 class="text-lg font-semibold mb-2">🛠️ Admin Controls</h2>
-      <ul class="space-y-2">
-        <li><button class="w-full text-left hover:text-blue-500">User Management</button></li>
-        <li><button class="w-full text-left hover:text-blue-500">Broadcast Messages</button></li>
-        <li><button class="w-full text-left hover:text-blue-500">Monitor Wallet Activity</button></li>
-        <li><button class="w-full text-left hover:text-blue-500">Manage Payment Gateways</button></li>
-      </ul>
-    </section>
-
+    <div class="bg-gray-800 rounded-2xl p-4 shadow-md cursor-pointer hover:bg-gray-700">
+      <h2 class="text-lg font-semibold">🚪 Logout</h2>
+      <p class="text-gray-400 text-sm">Sign out from SmartTalk</p>
+    </div>
   </main>
 
-  <script>
-    function toggleDarkMode() {
-      document.documentElement.classList.toggle('dark');
-    }
-  </script>
+  <!-- Wallet Modal -->
+  <div id="walletModal" class="hidden fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center">
+    <div class="bg-gray-800 rounded-2xl p-6 w-11/12 max-w-md shadow-lg">
+      <h2 class="text-xl font-bold mb-4">💳 Wallet Summary</h2>
+      <p class="mb-2">Balance: <span id="walletBalance" class="font-semibold text-green-400">$10.00</span></p>
+      <p class="mb-2">Rate: <span class="font-semibold">$0.20 / min</span> (<span class="font-semibold">$0.0033 / sec</span>)</p>
+
+      <h3 class="mt-4 mb-2 text-lg font-semibold">📞 Call History</h3>
+      <ul id="callHistory" class="space-y-2 max-h-40 overflow-y-auto text-sm">
+        <!-- Filled by JS -->
+      </ul>
+
+      <button onclick="closeWallet()" class="mt-4 bg-red-500 hover:bg-red-600 px-4 py-2 rounded-lg w-full">Close</button>
+    </div>
+  </div>
 
 </body>
+<script src="settings.js"></script>
 </html>
