@@ -7,7 +7,6 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     .chat-selected { background-color: #5C2C24 !important; border-left: 4px solid orange; }
-    .tab-active { border-b-2 border-orange-500 font-semibold; }
     #header { position: fixed; top: 0; left: 0; right: 0; z-index: 50; }
     #bottomTabs { position: fixed; bottom: 0; left: 0; right: 0; z-index: 50; }
     #chatList { margin-top: 96px; margin-bottom: 60px; overflow-y: auto; flex: 1; }
@@ -40,7 +39,7 @@
 
   <!-- Bottom Tabs -->
   <div id="bottomTabs" class="flex bg-[#5C2C24] border-t border-gray-700">
-    <button id="tabChats" class="flex-1 py-3 text-center tab-active">Chats</button>
+    <button id="tabChats" class="flex-1 py-3 text-center border-b-2 border-orange-500 font-semibold">Chats</button>
     <button id="tabGroups" class="flex-1 py-3 text-center">Groups</button>
   </div>
 
