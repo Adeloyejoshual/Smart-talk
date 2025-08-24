@@ -1,227 +1,95 @@
-/* =========================
-   SmartTalk Settings JS (Live Sync)
-   ========================= */
+<!-- ⚙️ Settings Modal -->
+<div id="settingsModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center">
+  <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
+    <!-- Header -->
+    <div class="flex items-center justify-between px-4 py-3 border-b dark:border-gray-700">
+      <h2 class="text-xl font-bold text-gray-800 dark:text-gray-100">⚙️ Settings</h2>
+      <button onclick="document.getElementById('settingsModal').classList.add('hidden')" class="text-gray-500 hover:text-red-500">✖</button>
+    </div>
 
-const DEFAULTS = {
-  darkMode: localStorage.getItem("darkMode") ?? "system",
-  notificationEnabled: localStorage.getItem("notificationEnabled") === "true", 
-  notificationSound: localStorage.getItem("notificationSound") || "sound01.mp3",
-  notificationSoundKind: localStorage.getItem("notificationSoundKind") || "builtin",
-  notificationCustomUrl: localStorage.getItem("notificationCustomUrl") || "",
-  username: localStorage.getItem("username") || "",
-  fontSize: localStorage.getItem("fontSize") || "medium"
-};
+    <!-- Body -->
+    <div class="divide-y dark:divide-gray-700">
+      
+      <!-- 1. Account -->
+      <div class="p-4">
+        <h3 class="text-lg font-semibold mb-2">👤 Account</h3>
+        <ul class="space-y-2 text-gray-700 dark:text-gray-200">
+          <li>Profile (name, photo, about)</li>
+          <li>Phone number</li>
+          <li>Change password</li>
+        </ul>
+      </div>
 
-const BUILTIN_SOUNDS = [
-  "sound01.mp3","sound02.mp3","sound03.mp3","sound04.mp3","sound05.mp3",
-  "sound06.mp3","sound07.mp3","sound08.mp3","sound09.mp3","sound10.mp3",
-  "sound11.mp3","sound12.mp3","sound13.mp3","sound14.mp3","sound15.mp3",
-  "sound16.mp3","sound17.mp3","sound18.mp3","sound19.mp3","sound20.mp3",
-];
+      <!-- 2. Wallet -->
+      <div class="p-4">
+        <h3 class="text-lg font-semibold mb-2">💳 Wallet</h3>
+        <ul class="space-y-2 text-gray-700 dark:text-gray-200">
+          <li>Balance</li>
+          <li>Transactions history</li>
+          <li>Add funds / Withdraw</li>
+          <li>Pricing summary</li>
+        </ul>
+      </div>
 
-const SOUND_BASE = "/sounds/";
-const $ = (id) => document.getElementById(id);
+      <!-- 3. Chats -->
+      <div class="p-4">
+        <h3 class="text-lg font-semibold mb-2">💬 Chats</h3>
+        <ul class="space-y-2 text-gray-700 dark:text-gray-200">
+          <li>Chat wallpaper</li>
+          <li>Chat backup</li>
+          <li>Clear all chats</li>
+        </ul>
+      </div>
 
-/* ---------- Helpers ---------- */
-function triggerSettingsUpdate() {
-  // Tell other scripts in this page
-  window.dispatchEvent(new Event("settingsUpdated"));
-  // Sync with other tabs/windows
-  localStorage.setItem("settingsUpdatedAt", Date.now().toString());
-}
+      <!-- 4. Notifications -->
+      <div class="p-4">
+        <h3 class="text-lg font-semibold mb-2">🔔 Notifications</h3>
+        <ul class="space-y-2 text-gray-700 dark:text-gray-200">
+          <li>Choose from 20 built-in sounds</li>
+          <li>Use custom music from device as ringtone</li>
+          <li>Vibration toggle</li>
+          <li>Popup notifications</li>
+        </ul>
+      </div>
 
-/* ---------- DARK MODE ---------- */
-function applyDarkMode(mode) {
-  const root = document.documentElement;
-  root.classList.remove("dark");
-  if (mode === "on") root.classList.add("dark");
-  if (mode === "system") {
-    if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
-      root.classList.add("dark");
-    }
-  }
-}
+      <!-- 5. Storage & Data -->
+      <div class="p-4">
+        <h3 class="text-lg font-semibold mb-2">📦 Storage & Data</h3>
+        <ul class="space-y-2 text-gray-700 dark:text-gray-200">
+          <li>Network usage</li>
+          <li>Storage usage</li>
+          <li>Media auto-download</li>
+        </ul>
+      </div>
 
-function initDarkMode() {
-  const toggle = $("darkModeToggle");
-  const systemBtn = $("darkModeSystemBtn");
+      <!-- 6. Privacy & Security -->
+      <div class="p-4">
+        <h3 class="text-lg font-semibold mb-2">🔒 Privacy & Security</h3>
+        <ul class="space-y-2 text-gray-700 dark:text-gray-200">
+          <li>Last seen & online</li>
+          <li>Profile photo</li>
+          <li>Blocked contacts</li>
+          <li>Two-step verification</li>
+        </ul>
+      </div>
 
-  applyDarkMode(DEFAULTS.darkMode);
-  if (toggle) toggle.checked = DEFAULTS.darkMode === "on";
+      <!-- 7. Language -->
+      <div class="p-4">
+        <h3 class="text-lg font-semibold mb-2">🌍 Language</h3>
+        <ul class="space-y-2 text-gray-700 dark:text-gray-200">
+          <li>Select preferred language</li>
+        </ul>
+      </div>
 
-  toggle?.addEventListener("change", () => {
-    const mode = toggle.checked ? "on" : "off";
-    localStorage.setItem("darkMode", mode);
-    applyDarkMode(mode);
-    triggerSettingsUpdate();
-  });
-
-  systemBtn?.addEventListener("click", () => {
-    localStorage.setItem("darkMode", "system");
-    applyDarkMode("system");
-    if (toggle) toggle.checked = false;
-    triggerSettingsUpdate();
-  });
-
-  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
-    if (localStorage.getItem("darkMode") === "system") {
-      applyDarkMode("system");
-      triggerSettingsUpdate();
-    }
-  });
-}
-
-/* ---------- FONT SIZE ---------- */
-function applyFontSize(size) {
-  document.body.style.fontSize = size === "small" ? "14px" :
-                                 size === "large" ? "18px" : "16px";
-}
-
-function initFontSize() {
-  const select = $("fontSizeSelect");
-  if (select) {
-    select.value = DEFAULTS.fontSize;
-    applyFontSize(DEFAULTS.fontSize);
-    select.addEventListener("change", () => {
-      const value = select.value;
-      localStorage.setItem("fontSize", value);
-      applyFontSize(value);
-      triggerSettingsUpdate();
-    });
-  }
-}
-
-/* ---------- NOTIFICATION ENABLE TOGGLE ---------- */
-function initNotificationToggle() {
-  const toggle = $("notificationToggle");
-  if (toggle) {
-    toggle.checked = DEFAULTS.notificationEnabled;
-    toggle.addEventListener("change", () => {
-      localStorage.setItem("notificationEnabled", toggle.checked);
-      triggerSettingsUpdate();
-    });
-  }
-}
-
-/* ---------- SOUND OPTIONS ---------- */
-let notificationAudio = null;
-
-function getCurrentSoundSrc() {
-  const kind = localStorage.getItem("notificationSoundKind") || DEFAULTS.notificationSoundKind;
-  if (kind === "custom") {
-    return localStorage.getItem("notificationCustomUrl") || DEFAULTS.notificationCustomUrl || "";
-  }
-  const file = localStorage.getItem("notificationSound") || DEFAULTS.notificationSound;
-  return SOUND_BASE + file;
-}
-
-function buildSoundOptions() {
-  const sel = $("notificationSound");
-  if (!sel) return;
-
-  sel.innerHTML = "";
-
-  const groupBuiltin = document.createElement("optgroup");
-  groupBuiltin.label = "Built-in";
-  BUILTIN_SOUNDS.forEach((file, idx) => {
-    const opt = document.createElement("option");
-    opt.value = file;
-    opt.textContent = `Sound ${String(idx + 1).padStart(2, "0")}`;
-    groupBuiltin.appendChild(opt);
-  });
-  sel.appendChild(groupBuiltin);
-
-  const customGroup = document.createElement("optgroup");
-  customGroup.label = "Custom";
-  const customOpt = document.createElement("option");
-  customOpt.value = "__custom__";
-  customOpt.textContent = "Your uploaded sound";
-  customGroup.appendChild(customOpt);
-  sel.appendChild(customGroup);
-
-  const kind = localStorage.getItem("notificationSoundKind") || DEFAULTS.notificationSoundKind;
-  sel.value = kind === "custom" ? "__custom__" :
-              localStorage.getItem("notificationSound") || DEFAULTS.notificationSound;
-}
-
-function initNotificationSounds() {
-  buildSoundOptions();
-
-  notificationAudio = new Audio(getCurrentSoundSrc());
-  notificationAudio.preload = "auto";
-
-  const select = $("notificationSound");
-  const previewBtn = $("previewSound");
-  const uploadInput = $("customSoundInput");
-
-  select?.addEventListener("change", (e) => {
-    const value = e.target.value;
-    if (value === "__custom__") {
-      const url = localStorage.getItem("notificationCustomUrl");
-      if (!url) {
-        alert("Upload a custom sound first.");
-        buildSoundOptions();
-        return;
-      }
-      localStorage.setItem("notificationSoundKind", "custom");
-    } else {
-      localStorage.setItem("notificationSoundKind", "builtin");
-      localStorage.setItem("notificationSound", value);
-    }
-    notificationAudio.src = getCurrentSoundSrc();
-    triggerSettingsUpdate();
-  });
-
-  previewBtn?.addEventListener("click", async () => {
-    try {
-      notificationAudio.currentTime = 0;
-      await notificationAudio.play();
-    } catch (err) {
-      console.log("Audio play blocked:", err);
-    }
-  });
-
-  uploadInput?.addEventListener("change", () => {
-    const file = uploadInput.files?.[0];
-    if (!file) return;
-    const url = URL.createObjectURL(file);
-    localStorage.setItem("notificationCustomUrl", url);
-    localStorage.setItem("notificationSoundKind", "custom");
-    $("notificationSound").value = "__custom__";
-    notificationAudio.src = url;
-    triggerSettingsUpdate();
-  });
-}
-
-/* ---------- RESET ALL SETTINGS (Live) ---------- */
-function resetSettings() {
-  localStorage.clear();
-  triggerSettingsUpdate();
-  initSettings(); // Re-init instead of reload
-}
-
-function initResetButton() {
-  $("resetSettingsBtn")?.addEventListener("click", () => {
-    if (confirm("Reset all settings to default?")) {
-      resetSettings();
-    }
-  });
-}
-
-/* ---------- Listen for updates from other tabs/pages ---------- */
-window.addEventListener("storage", (e) => {
-  if (e.key === "settingsUpdatedAt") {
-    initSettings();
-  }
-});
-
-/* ---------- INIT ---------- */
-function initSettings() {
-  initDarkMode();
-  initFontSize();
-  initNotificationToggle();
-  initNotificationSounds();
-  initResetButton();
-}
-
-document.addEventListener("DOMContentLoaded", initSettings);
+      <!-- 8. Help -->
+      <div class="p-4">
+        <h3 class="text-lg font-semibold mb-2">❓ Help</h3>
+        <ul class="space-y-2 text-gray-700 dark:text-gray-200">
+          <li>FAQ</li>
+          <li>Contact support</li>
+          <li>Report a problem</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
