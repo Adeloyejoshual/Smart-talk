@@ -1,63 +1,95 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SmartTalk Settings</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-gray-900 text-white flex flex-col min-h-screen">
-
-  <!-- Header -->
-  <header class="bg-gray-800 p-4 flex justify-between items-center shadow-md">
-    <h1 class="text-xl font-bold">Settings</h1>
-    <button onclick="window.location.href='home.html'" class="text-sm text-gray-300 hover:text-white">Back</button>
-  </header>
-
-  <!-- Settings List -->
-  <main class="flex-1 p-4 space-y-4">
-    <div class="bg-gray-800 rounded-2xl p-4 shadow-md cursor-pointer hover:bg-gray-700" onclick="openWallet()">
-      <h2 class="text-lg font-semibold">💳 Wallet</h2>
-      <p class="text-gray-400 text-sm">Check your call charges & balance</p>
+<!-- ⚙️ Settings Modal -->
+<div id="settingsModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center">
+  <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
+    <!-- Header -->
+    <div class="flex items-center justify-between px-4 py-3 border-b dark:border-gray-700">
+      <h2 class="text-xl font-bold text-gray-800 dark:text-gray-100">⚙️ Settings</h2>
+      <button onclick="document.getElementById('settingsModal').classList.add('hidden')" class="text-gray-500 hover:text-red-500">✖</button>
     </div>
 
-    <div class="bg-gray-800 rounded-2xl p-4 shadow-md cursor-pointer hover:bg-gray-700">
-      <h2 class="text-lg font-semibold">🌙 Dark Mode</h2>
-      <p class="text-gray-400 text-sm">Toggle theme</p>
-    </div>
+    <!-- Body -->
+    <div class="divide-y dark:divide-gray-700">
+      
+      <!-- 1. Account -->
+      <div class="p-4">
+        <h3 class="text-lg font-semibold mb-2">👤 Account</h3>
+        <ul class="space-y-2 text-gray-700 dark:text-gray-200">
+          <li>Profile (name, photo, about)</li>
+          <li>Phone number</li>
+          <li>Change password</li>
+        </ul>
+      </div>
 
-    <div class="bg-gray-800 rounded-2xl p-4 shadow-md cursor-pointer hover:bg-gray-700">
-      <h2 class="text-lg font-semibold">⚙️ Preferences</h2>
-      <p class="text-gray-400 text-sm">Manage notifications & privacy</p>
-    </div>
+      <!-- 2. Wallet -->
+      <div class="p-4">
+        <h3 class="text-lg font-semibold mb-2">💳 Wallet</h3>
+        <ul class="space-y-2 text-gray-700 dark:text-gray-200">
+          <li>Balance</li>
+          <li>Transactions history</li>
+          <li>Add funds / Withdraw</li>
+          <li>Pricing summary</li>
+        </ul>
+      </div>
 
-    <div class="bg-gray-800 rounded-2xl p-4 shadow-md cursor-pointer hover:bg-gray-700">
-      <h2 class="text-lg font-semibold">🔒 Security</h2>
-      <p class="text-gray-400 text-sm">Password, 2FA, recovery</p>
-    </div>
+      <!-- 3. Chats -->
+      <div class="p-4">
+        <h3 class="text-lg font-semibold mb-2">💬 Chats</h3>
+        <ul class="space-y-2 text-gray-700 dark:text-gray-200">
+          <li>Chat wallpaper</li>
+          <li>Chat backup</li>
+          <li>Clear all chats</li>
+        </ul>
+      </div>
 
-    <div class="bg-gray-800 rounded-2xl p-4 shadow-md cursor-pointer hover:bg-gray-700">
-      <h2 class="text-lg font-semibold">🚪 Logout</h2>
-      <p class="text-gray-400 text-sm">Sign out from SmartTalk</p>
-    </div>
-  </main>
+      <!-- 4. Notifications -->
+      <div class="p-4">
+        <h3 class="text-lg font-semibold mb-2">🔔 Notifications</h3>
+        <ul class="space-y-2 text-gray-700 dark:text-gray-200">
+          <li>Choose from 20 built-in sounds</li>
+          <li>Use custom music from device as ringtone</li>
+          <li>Vibration toggle</li>
+          <li>Popup notifications</li>
+        </ul>
+      </div>
 
-  <!-- Wallet Modal -->
-  <div id="walletModal" class="hidden fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center">
-    <div class="bg-gray-800 rounded-2xl p-6 w-11/12 max-w-md shadow-lg">
-      <h2 class="text-xl font-bold mb-4">💳 Wallet Summary</h2>
-      <p class="mb-2">Balance: <span id="walletBalance" class="font-semibold text-green-400">$10.00</span></p>
-      <p class="mb-2">Rate: <span class="font-semibold">$0.20 / min</span> (<span class="font-semibold">$0.0033 / sec</span>)</p>
+      <!-- 5. Storage & Data -->
+      <div class="p-4">
+        <h3 class="text-lg font-semibold mb-2">📦 Storage & Data</h3>
+        <ul class="space-y-2 text-gray-700 dark:text-gray-200">
+          <li>Network usage</li>
+          <li>Storage usage</li>
+          <li>Media auto-download</li>
+        </ul>
+      </div>
 
-      <h3 class="mt-4 mb-2 text-lg font-semibold">📞 Call History</h3>
-      <ul id="callHistory" class="space-y-2 max-h-40 overflow-y-auto text-sm">
-        <!-- Filled by JS -->
-      </ul>
+      <!-- 6. Privacy & Security -->
+      <div class="p-4">
+        <h3 class="text-lg font-semibold mb-2">🔒 Privacy & Security</h3>
+        <ul class="space-y-2 text-gray-700 dark:text-gray-200">
+          <li>Last seen & online</li>
+          <li>Profile photo</li>
+          <li>Blocked contacts</li>
+          <li>Two-step verification</li>
+        </ul>
+      </div>
 
-      <button onclick="closeWallet()" class="mt-4 bg-red-500 hover:bg-red-600 px-4 py-2 rounded-lg w-full">Close</button>
+      <!-- 7. Language -->
+      <div class="p-4">
+        <h3 class="text-lg font-semibold mb-2">🌍 Language</h3>
+        <ul class="space-y-2 text-gray-700 dark:text-gray-200">
+          <li>Select preferred language</li>
+        </ul>
+      </div>
+
+      <!-- 8. Help -->
+      <div class="p-4">
+        <h3 class="text-lg font-semibold mb-2">❓ Help</h3>
+        <ul class="space-y-2 text-gray-700 dark:text-gray-200">
+          <li>FAQ</li>
+          <li>Contact support</li>
+          <li>Report a problem</li>
+        </ul>
+      </div>
     </div>
   </div>
-
-</body>
-<script src="settings.js"></script>
-</html>
+</div>
