@@ -40,8 +40,9 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// (Optional) If serving frontend build
-// app.use(express.static(path.join(__dirname, '../frontend/build')));
+// Serve frontend static files
+const path = require('path');
+app.use(express.static(path.join(__dirname, '../frontend')));
 
 // --------------------
 // Database Connection
@@ -62,6 +63,11 @@ app.use('/api/messages', messageRoutes);
 app.use('/api/groups', groupRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/payments', paymentRoutes);
+
+// Optional: redirect root to register.html
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, '../frontend/register.html'));
+});
 
 // (Optional) React frontend fallback
 // app.get('*', (req, res) => {
