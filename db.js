@@ -1,6 +1,7 @@
+require('dotenv').config();
 const mongoose = require('mongoose');
 
-const MONGO_URI = 'mongodb+srv://adeloyejoshua2020:MyRealPass123@smarttalk.3gxk7it.mongodb.net/smart-talk?retryWrites=true&w=majority&appName=Smarttalk';
+const MONGO_URI = process.env.MONGO_URI;
 
 mongoose.connect(MONGO_URI, {
   useNewUrlParser: true,
