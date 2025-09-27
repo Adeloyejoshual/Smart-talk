@@ -1,4 +1,3 @@
-// backend/server.js
 require('dotenv').config();
 const express = require('express');
 const http = require('http');
@@ -22,19 +21,22 @@ const paymentRoutes = require('./routes/payments');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, {
-  cors: { origin: '*', methods: ['GET', 'POST'] }
-});
+const io = new Server(server, { cors: { origin: '*', methods: ['GET','POST'] } });
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Serve frontend static files
-app.use(express.static(path.join(__dirname, '../frontend')));
+// --------------------
+// Serve static files (CSS, JS, images, HTML)
+// --------------------
+app.use(express.static(path.join(__dirname, 'public'))); // for CSS, JS, assets
+app.use(express.static(__dirname)); // for root HTML files
 
-// DB Connection
+// --------------------
+// Database
+// --------------------
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('✅ MongoDB connected'))
   .catch(err => {
@@ -42,7 +44,9 @@ mongoose.connect(process.env.MONGO_URI)
     process.exit(1);
   });
 
+// --------------------
 // API Routes
+// --------------------
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/messages', messageRoutes);
@@ -51,7 +55,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/payments', paymentRoutes);
 
 // --------------------
-// New: Chat history API
+// Chat history API
 // --------------------
 app.get('/api/messages/history/:userId', async (req, res) => {
   const { userId } = req.params;
@@ -61,16 +65,24 @@ app.get('/api/messages/history/:userId', async (req, res) => {
         { sender: userId, recipient: req.query.userId },
         { sender: req.query.userId, recipient: userId }
       ]
-    }).sort({ createdAt: 1 }); // oldest first
+    }).sort({ createdAt: 1 });
     res.json(messages);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch chat history' });
   }
 });
 
-// Root route
+// --------------------
+// Root routes
+// --------------------
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/login.html')); // change to home.html if user logged in
+  res.sendFile(path.join(__dirname, 'login.html'));
+});
+app.get('/register', (req, res) => {
+  res.sendFile(path.join(__dirname, 'register.html'));
+});
+app.get('/home', (req, res) => {
+  res.sendFile(path.join(__dirname, 'home.html'));
 });
 
 // --------------------
@@ -103,106 +115,18 @@ io.on('connection', (socket) => {
   });
 
   // Private messages
-  socket.on('privateMessage', async ({ receiverId, content, replyTo = null, isForwarded = false }) => {
+  socket.on('privateMessage', async ({ receiverId, content }) => {
     if (!receiverId || !content) return;
-    try {
-      const newMessage = new Message({
-        sender: socket.userId,
-        recipient: receiverId,
-        content,
-        replyTo,
-        isForwarded,
-        status: 'sent',
-        type: 'text',
-      });
-      await newMessage.save();
-
-      [receiverId, socket.userId].forEach(uid => {
-        io.to(uid).emit('privateMessage', {
-          _id: newMessage._id,
-          senderId: socket.userId,
-          receiverId: uid,
-          content,
-          replyTo,
-          timestamp: newMessage.createdAt,
-          status: newMessage.status,
-          isForwarded,
-        });
-      });
-    } catch (err) {
-      console.error('❌ Private message error:', err);
-    }
-  });
-
-  // Group messages
-  socket.on('groupMessage', async ({ groupId, content, replyTo = null, isForwarded = false }) => {
-    if (!groupId || !content) return;
-    try {
-      const newMessage = new Message({
-        sender: socket.userId,
-        group: groupId,
-        content,
-        replyTo,
-        isForwarded,
-        status: 'sent',
-        type: 'text',
-      });
-      await newMessage.save();
-      io.to(groupId).emit('groupMessage', {
-        _id: newMessage._id,
-        senderId: socket.userId,
-        groupId,
-        content,
-        replyTo,
-        timestamp: newMessage.createdAt,
-        status: newMessage.status,
-        isForwarded,
-      });
-    } catch (err) {
-      console.error('❌ Group message error:', err);
-    }
-  });
-
-  // Calls with billing
-  socket.on('startCall', async ({ callId, type, participants }) => {
-    if (!callId || !type || !participants || !Array.isArray(participants)) return;
-    for (let userId of participants) {
-      const user = await User.findById(userId);
-      const rate = CALL_RATE[type] || CALL_RATE.private;
-      if (!user || user.wallet < rate) {
-        socket.emit('callError', { message: `User ${userId} has insufficient balance` });
-        return;
-      }
-    }
-    const interval = setInterval(async () => {
-      for (let userId of participants) {
-        const user = await User.findById(userId);
-        const rate = CALL_RATE[type] || CALL_RATE.private;
-        if (user.wallet >= rate) {
-          user.wallet -= rate;
-          await user.save();
-        } else {
-          clearInterval(activeCalls.get(callId).interval);
-          io.to(participants).emit('endCall', { callId, reason: 'Insufficient balance' });
-          activeCalls.delete(callId);
-          return;
-        }
-      }
-    }, 1000);
-    activeCalls.set(callId, { users: participants, interval });
-    io.to(participants).emit('callStarted', { callId, type });
-  });
-
-  socket.on('endCall', ({ callId }) => {
-    const call = activeCalls.get(callId);
-    if (call) {
-      clearInterval(call.interval);
-      io.to(call.users).emit('endCall', { callId, reason: 'Ended by user' });
-      activeCalls.delete(callId);
-    }
+    const newMessage = new Message({ sender: socket.userId, recipient: receiverId, content, status: 'sent', type: 'text' });
+    await newMessage.save();
+    [receiverId, socket.userId].forEach(uid => {
+      io.to(uid).emit('privateMessage', { _id: newMessage._id, senderId: socket.userId, receiverId: uid, content, timestamp: newMessage.createdAt });
+    });
   });
 });
 
-// Server
+// --------------------
+// Start server
+// --------------------
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
