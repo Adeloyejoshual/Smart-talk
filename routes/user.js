@@ -25,9 +25,7 @@ const authMiddleware = (req, res, next) => {
 
 // =================== FILE UPLOAD CONFIG ===================
 const uploadPath = path.join(__dirname, "../public/uploads");
-if (!fs.existsSync(uploadPath)) {
-  fs.mkdirSync(uploadPath, { recursive: true });
-}
+if (!fs.existsSync(uploadPath)) fs.mkdirSync(uploadPath, { recursive: true });
 
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -42,7 +40,7 @@ const upload = multer({ storage });
 
 // =================== ROUTES ===================
 
-// ✅ Get current user info
+// Get current user info
 router.get("/me", authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select("-password");
@@ -52,29 +50,29 @@ router.get("/me", authMiddleware, async (req, res) => {
   }
 });
 
-// ✅ Search users
+// Search users by username/email
 router.get("/search", authMiddleware, async (req, res) => {
   try {
-    const q = req.query.q;
+    const q = req.query.q || "";
     const users = await User.find({
       $or: [
         { username: new RegExp(q, "i") },
         { email: new RegExp(q, "i") },
       ],
       _id: { $ne: req.user.id },
-    }).select("username email");
+    }).select("_id username email avatar");
     res.json(users);
   } catch (err) {
     res.status(500).json({ message: "Search failed" });
   }
 });
 
-// ✅ NEW: Get all users (except current)
+// Get all users except current
 router.get("/all", authMiddleware, async (req, res) => {
   try {
     const users = await User.find(
       { _id: { $ne: req.user.id } },
-      "username email avatar"
+      "_id username email avatar"
     );
     res.json(users);
   } catch (err) {
@@ -82,7 +80,7 @@ router.get("/all", authMiddleware, async (req, res) => {
   }
 });
 
-// ✅ Add friend
+// Add friend
 router.post("/add-friend", authMiddleware, async (req, res) => {
   try {
     const { identifier } = req.body;
@@ -93,28 +91,26 @@ router.post("/add-friend", authMiddleware, async (req, res) => {
     });
 
     if (!friendUser) return res.status(404).json({ error: "User not found" });
-    if (friendUser._id.equals(currentUser._id)) {
+    if (friendUser._id.equals(currentUser._id))
       return res.status(400).json({ error: "Cannot add yourself" });
-    }
-    if (currentUser.friends.includes(friendUser._id)) {
+    if (currentUser.friends.includes(friendUser._id))
       return res.status(400).json({ error: "Already friends" });
-    }
 
     currentUser.friends.push(friendUser._id);
     await currentUser.save();
 
-    res.json({ message: "Friend added!" });
+    res.json({ message: "Friend added!", friend: { _id: friendUser._id, username: friendUser.username, email: friendUser.email, avatar: friendUser.avatar } });
   } catch (err) {
     res.status(500).json({ message: "Could not add friend" });
   }
 });
 
-// ✅ Get friend list
+// Get friend list
 router.get("/chats", authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).populate(
       "friends",
-      "username email avatar"
+      "_id username email avatar"
     );
     res.json(user.friends);
   } catch (err) {
@@ -122,7 +118,7 @@ router.get("/chats", authMiddleware, async (req, res) => {
   }
 });
 
-// ✅ Remove friend
+// Remove friend
 router.delete("/remove-friend/:friendId", authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
@@ -136,21 +132,16 @@ router.delete("/remove-friend/:friendId", authMiddleware, async (req, res) => {
   }
 });
 
-// ✅ Upload avatar
-router.post(
-  "/upload-avatar",
-  authMiddleware,
-  upload.single("avatar"),
-  async (req, res) => {
-    try {
-      const user = await User.findById(req.user.id);
-      user.avatar = "/uploads/" + req.file.filename;
-      await user.save();
-      res.json({ avatar: user.avatar });
-    } catch (err) {
-      res.status(500).json({ message: "Upload failed" });
-    }
+// Upload avatar
+router.post("/upload-avatar", authMiddleware, upload.single("avatar"), async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    user.avatar = "/uploads/" + req.file.filename;
+    await user.save();
+    res.json({ avatar: user.avatar });
+  } catch (err) {
+    res.status(500).json({ message: "Upload failed" });
   }
-);
+});
 
 module.exports = router;
