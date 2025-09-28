@@ -1,70 +1,48 @@
-document.addEventListener("DOMContentLoaded", async () => {
-  const token = localStorage.getItem("token");
-  const userList = document.getElementById("user-list");
-  const floatingBtn = document.getElementById("floating-add-btn");
+document.addEventListener("DOMContentLoaded", () => {
+  const addFriendBtn = document.getElementById("addFriendBtn");
+  const addFriendModal = document.getElementById("addFriendModal");
+  const closeBtn = document.querySelector(".close");
 
-  if (!token) {
-    alert("Please log in first.");
-    window.location.href = "/login.html";
-    return;
-  }
+  // Open modal on + button click
+  addFriendBtn.addEventListener("click", () => {
+    addFriendModal.style.display = "block";
+  });
 
-  // 🔹 Load all users (except logged-in user)
-  async function loadUsers() {
-    try {
-      const res = await fetch("/api/users/list", {
-        headers: { "Authorization": `Bearer ${token}` }
-      });
+  // Close modal on × click
+  closeBtn.addEventListener("click", () => {
+    addFriendModal.style.display = "none";
+  });
 
-      const users = await res.json();
-      userList.innerHTML = "";
-
-      users.forEach(user => {
-        const div = document.createElement("div");
-        div.classList.add("user-card");
-        div.innerHTML = `
-          <p><strong>${user.username}</strong> (${user.email})</p>
-          <button class="add-friend-btn" data-id="${user._id}">➕ Add Friend</button>
-        `;
-        userList.appendChild(div);
-      });
-    } catch (err) {
-      console.error("Error loading users:", err);
-    }
-  }
-
-  await loadUsers();
-
-  // 🔹 Handle Add Friend button inside user list
-  document.body.addEventListener("click", async (e) => {
-    if (e.target.classList.contains("add-friend-btn")) {
-      const friendId = e.target.getAttribute("data-id");
-
-      try {
-        const res = await fetch(`/api/users/add-friend/${friendId}`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`
-          }
-        });
-
-        const data = await res.json();
-        if (res.ok) {
-          alert("Friend added ✅");
-          console.log("Updated friends:", data.friends);
-        } else {
-          alert(data.message || "Failed to add friend ❌");
-        }
-      } catch (err) {
-        console.error("Error adding friend:", err);
-      }
+  // Close modal when clicking outside
+  window.addEventListener("click", (e) => {
+    if (e.target === addFriendModal) {
+      addFriendModal.style.display = "none";
     }
   });
 
-  // 🔹 Floating Button → reload user list
-  floatingBtn.addEventListener("click", async () => {
-    alert("Refreshing user list...");
-    await loadUsers();
+  // Handle Add Friend form submit
+  document.getElementById("addFriendForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const username = document.getElementById("friendUsername").value;
+
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("/api/users/add-friend", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ username }),
+      });
+
+      const data = await res.json();
+      alert(data.message || "Friend added!");
+
+      addFriendModal.style.display = "none";
+      document.getElementById("friendUsername").value = "";
+    } catch (err) {
+      console.error("Error adding friend:", err);
+    }
   });
 });
