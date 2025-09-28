@@ -1,53 +1,70 @@
-// ==============================
-// Add Friend Modal
-// ==============================
-addFriendBtn.addEventListener("click", () => {
-  addFriendModal.classList.remove("hidden");
-});
+document.addEventListener("DOMContentLoaded", async () => {
+  const token = localStorage.getItem("token");
+  const userList = document.getElementById("user-list");
+  const floatingBtn = document.getElementById("floating-add-btn");
 
-closeModalBtn.addEventListener("click", () => {
-  addFriendModal.classList.add("hidden");
-  friendIdentifierInput.value = "";
-});
-
-// Close modal when clicking outside
-window.addEventListener("click", (e) => {
-  if (e.target === addFriendModal) {
-    addFriendModal.classList.add("hidden");
-    friendIdentifierInput.value = "";
-  }
-});
-
-confirmAddFriendBtn.addEventListener("click", () => {
-  const id = friendIdentifierInput.value.trim();
-  if (!id) {
-    alert("Enter username or Gmail");
+  if (!token) {
+    alert("Please log in first.");
+    window.location.href = "/login.html";
     return;
   }
 
-  fetch("/api/users/add-friend", {
-    method: "POST",
-    headers: { 
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`
-    },
-    body: JSON.stringify({ identifier: id }),
-  })
-    .then(res => res.json())
-    .then(async data => {
-      if (data.error) {
-        alert(data.error);
-        return;
-      }
-      alert("Friend added!");
-      addFriendModal.classList.add("hidden");
-      friendIdentifierInput.value = "";
-      await fetchChats(); // reload chat list
-    })
-    .catch(() => alert("Error adding friend."));
-});
+  // 🔹 Load all users (except logged-in user)
+  async function loadUsers() {
+    try {
+      const res = await fetch("/api/users/list", {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
 
-// ==============================
-// Settings
-// ==============================
-settingsBtn.addEventListener("click", () => window.location.href = "/settings.html");
+      const users = await res.json();
+      userList.innerHTML = "";
+
+      users.forEach(user => {
+        const div = document.createElement("div");
+        div.classList.add("user-card");
+        div.innerHTML = `
+          <p><strong>${user.username}</strong> (${user.email})</p>
+          <button class="add-friend-btn" data-id="${user._id}">➕ Add Friend</button>
+        `;
+        userList.appendChild(div);
+      });
+    } catch (err) {
+      console.error("Error loading users:", err);
+    }
+  }
+
+  await loadUsers();
+
+  // 🔹 Handle Add Friend button inside user list
+  document.body.addEventListener("click", async (e) => {
+    if (e.target.classList.contains("add-friend-btn")) {
+      const friendId = e.target.getAttribute("data-id");
+
+      try {
+        const res = await fetch(`/api/users/add-friend/${friendId}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          }
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+          alert("Friend added ✅");
+          console.log("Updated friends:", data.friends);
+        } else {
+          alert(data.message || "Failed to add friend ❌");
+        }
+      } catch (err) {
+        console.error("Error adding friend:", err);
+      }
+    }
+  });
+
+  // 🔹 Floating Button → reload user list
+  floatingBtn.addEventListener("click", async () => {
+    alert("Refreshing user list...");
+    await loadUsers();
+  });
+});
