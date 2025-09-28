@@ -7,62 +7,104 @@ if (!token) window.location.href = "/login.html";
 // ==============================
 // State
 // ==============================
-let allFriends = [];
-let selectedFriend = null;
+let allChats = [];
+let allGroups = [];
+let selectedChats = new Set();
+let activeTab = "chats";
 
 // ==============================
 // DOM Elements
 // ==============================
 const chatListEl = document.getElementById("chatList");
+const tabChats = document.getElementById("tabChats");
+const tabGroups = document.getElementById("tabGroups");
+const actionToolbar = document.getElementById("actionToolbar");
 const searchInput = document.getElementById("searchInput");
+
 const addFriendBtn = document.getElementById("addFriendBtn");
 const addFriendModal = document.getElementById("addFriendModal");
 const closeModalBtn = document.getElementById("closeModal");
 const confirmAddFriendBtn = document.getElementById("confirmAddFriendBtn");
 const friendIdentifierInput = document.getElementById("friendIdentifier");
+
 const settingsBtn = document.getElementById("settingsBtn");
 
 // ==============================
-// Fetch Friends
+// Tab Switching
 // ==============================
-async function fetchFriends() {
-  try {
-    const res = await fetch("/api/users/friends", {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    const friends = await res.json();
-    if (Array.isArray(friends)) {
-      allFriends = friends;
-      renderFriends(allFriends);
-    }
-  } catch (err) {
-    console.error("Error fetching friends:", err);
-  }
+tabChats.addEventListener("click", () => switchTab("chats"));
+tabGroups.addEventListener("click", () => switchTab("groups"));
+
+function switchTab(tab) {
+  activeTab = tab;
+  tabChats.classList.toggle("border-b-2", tab === "chats");
+  tabChats.classList.toggle("border-orange-500", tab === "chats");
+  tabChats.classList.toggle("font-semibold", tab === "chats");
+  tabGroups.classList.toggle("border-b-2", tab === "groups");
+  tabGroups.classList.toggle("border-orange-500", tab === "groups");
+  tabGroups.classList.toggle("font-semibold", tab === "groups");
+  renderChats();
+  clearSelection();
 }
 
 // ==============================
-// Render Friends
+// Fetch Friends & Groups
 // ==============================
-function renderFriends(friends) {
+async function fetchChats() {
+  try {
+    const res = await fetch("/api/users/friends", { headers: { Authorization: `Bearer ${token}` } });
+    const chats = await res.json();
+    allChats = Array.isArray(chats) ? chats : [];
+  } catch (err) {
+    console.error("Error fetching friends:", err);
+    allChats = [];
+  }
+
+  try {
+    const resG = await fetch("/api/groups/my-groups", { headers: { Authorization: `Bearer ${token}` } });
+    const groups = await resG.json();
+    allGroups = Array.isArray(groups) ? groups : [];
+  } catch (err) {
+    console.error("Error fetching groups:", err);
+    allGroups = [];
+  }
+
+  renderChats();
+}
+
+// ==============================
+// Render Chats / Groups
+// ==============================
+function renderChats() {
   chatListEl.innerHTML = "";
-  if (!friends || friends.length === 0) {
-    chatListEl.innerHTML = `<p style="color:#999; text-align:center; margin-top:1rem;">No friends yet.</p>`;
+  const list = activeTab === "chats" ? allChats : allGroups;
+  if (!list.length) {
+    chatListEl.innerHTML = `<p class="text-center text-gray-500 mt-10">No ${activeTab} yet.</p>`;
     return;
   }
 
-  friends.forEach(friend => {
+  list.forEach(item => {
     const div = document.createElement("div");
-    div.className = "chat-item";
+    div.className = "flex items-center p-3 hover:bg-[#2c2c2c] cursor-pointer select-none";
+    div.dataset.id = item._id;
+
+    div.onclick = () => {
+      if (activeTab === "chats") {
+        window.location.href = `/private-chat.html?user=${item._id}`;
+      } else {
+        window.location.href = `/group-chat.html?group=${item._id}`;
+      }
+    };
+
     div.innerHTML = `
-      <img class="chat-avatar" src="${friend.avatar || '/default-avatar.png'}" />
-      <div class="chat-info">
-        <div class="name">${friend.username}</div>
-        <div class="last-message">${friend.email}</div>
+      <img src="${item.avatar || "/default-avatar.png"}" class="w-10 h-10 rounded-full mr-3 border border-gray-600" />
+      <div class="flex-1">
+        <div class="flex justify-between items-center">
+          <span class="font-semibold text-white text-base">${item.username || item.groupName}</span>
+        </div>
       </div>
     `;
-    div.addEventListener("click", () => {
-      window.location.href = `/private-chat.html?user=${friend._id}`;
-    });
+
     chatListEl.appendChild(div);
   });
 }
@@ -72,65 +114,54 @@ function renderFriends(friends) {
 // ==============================
 searchInput.addEventListener("input", () => {
   const q = searchInput.value.toLowerCase();
-  const filtered = allFriends.filter(f =>
-    f.username.toLowerCase().includes(q) || f.email.toLowerCase().includes(q)
-  );
-  renderFriends(filtered);
+  const list = activeTab === "chats" ? allChats : allGroups;
+  renderChats(list.filter(item => (item.username || "").toLowerCase().includes(q) || (item.groupName || "").toLowerCase().includes(q)));
 });
 
 // ==============================
 // Add Friend Modal
 // ==============================
-addFriendBtn.addEventListener("click", () => {
-  addFriendModal.style.display = "flex";
-});
-
-closeModalBtn.addEventListener("click", () => {
-  addFriendModal.style.display = "none";
-  friendIdentifierInput.value = "";
-});
+addFriendBtn.addEventListener("click", () => addFriendModal.classList.remove("hidden"));
+closeModalBtn.addEventListener("click", () => addFriendModal.classList.add("hidden"));
 
 confirmAddFriendBtn.addEventListener("click", async () => {
   const identifier = friendIdentifierInput.value.trim();
-  if (!identifier) {
-    alert("Enter username or email");
-    return;
-  }
+  if (!identifier) return alert("Enter username or email");
 
   try {
-    const res = await fetch("/api/users/add-friend-by-identifier", {
+    const res = await fetch(`/api/users/add-friend/${identifier}`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`
-      },
-      body: JSON.stringify({ identifier })
+      headers: { Authorization: `Bearer ${token}` },
     });
     const data = await res.json();
-
-    if (data.error) {
+    if (data.message) {
+      alert(data.message);
+      friendIdentifierInput.value = "";
+      addFriendModal.classList.add("hidden");
+      await fetchChats(); // Refresh friends list
+    } else if (data.error) {
       alert(data.error);
-      return;
     }
-
-    alert("Friend added!");
-    addFriendModal.style.display = "none";
-    friendIdentifierInput.value = "";
-    fetchFriends(); // Refresh friend list
   } catch (err) {
-    alert("Failed to add friend.");
+    alert("Failed to add friend");
     console.error(err);
   }
 });
 
 // ==============================
-// Settings Button
+// Settings
 // ==============================
-settingsBtn.addEventListener("click", () => {
-  window.location.href = "/settings.html";
+settingsBtn.addEventListener("click", () => window.location.href = "/settings.html");
+
+// ==============================
+// Selection Toolbar (optional)
+// ==============================
+["pinBtn","deleteBtn","archiveBtn","moreBtn"].forEach(id => {
+  const btn = document.getElementById(id);
+  if(btn) btn.addEventListener("click", () => alert(`${id} clicked`));
 });
 
 // ==============================
 // Initial Load
 // ==============================
-fetchFriends();
+fetchChats();
