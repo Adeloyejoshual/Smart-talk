@@ -16,7 +16,7 @@ const Message = require("./models/Chat");
 
 // Routes
 const authRoutes = require("./routes/auth");
-const userRoutes = require("./routes/user");
+const userRoutes = require("./routes/users");
 const messageRoutes = require("./routes/messages");
 const uploadRoutes = require("./routes/upload"); // For file uploads
 
