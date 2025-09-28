@@ -1,154 +1,88 @@
-// ==============================
-// Auth Check
-// ==============================
+// Auth check
 const token = localStorage.getItem("token");
 if (!token) window.location.href = "/login.html";
 
-// ==============================
 // DOM Elements
-// ==============================
 const chatListEl = document.getElementById("chatList");
-const tabChats = document.getElementById("tabChats");
-const tabGroups = document.getElementById("tabGroups");
-
+const searchInput = document.getElementById("searchInput");
 const addFriendBtn = document.getElementById("addFriendBtn");
 const addFriendModal = document.getElementById("addFriendModal");
 const closeModalBtn = document.getElementById("closeModal");
 const confirmAddFriendBtn = document.getElementById("confirmAddFriendBtn");
 const friendIdentifierInput = document.getElementById("friendIdentifier");
 
-const settingsBtn = document.getElementById("settingsBtn");
-const searchInput = document.getElementById("searchInput");
+let friends = [];
 
-// ==============================
-// State
-// ==============================
-let allChats = [];
-let allGroups = [];
-let activeTab = "chats";
-
-// ==============================
-// Tab Switching
-// ==============================
-tabChats.addEventListener("click", () => switchTab("chats"));
-tabGroups.addEventListener("click", () => switchTab("groups"));
-
-function switchTab(tab) {
-  activeTab = tab;
-  tabChats.classList.toggle("active-tab", tab === "chats");
-  tabGroups.classList.toggle("active-tab", tab === "groups");
-  renderChats();
-}
-
-// ==============================
-// Fetch Friends & Groups
-// ==============================
-async function fetchChats() {
+// Fetch friends
+async function fetchFriends() {
   try {
-    const res = await fetch("/api/users/chats", { headers: { Authorization: `Bearer ${token}` } });
-    allChats = await res.json();
+    const res = await fetch("/api/users/chats", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    friends = await res.json();
+    renderFriends(friends);
   } catch (err) {
-    console.error(err);
-    allChats = [];
+    console.error("Error fetching friends:", err);
   }
-
-  // Groups can be added similarly
-  allGroups = [];
-  renderChats();
 }
 
-// ==============================
-// Render Chats / Groups
-// ==============================
-function renderChats() {
+// Render friends list
+function renderFriends(list) {
   chatListEl.innerHTML = "";
-  const list = activeTab === "chats" ? allChats : allGroups;
-
   if (!list.length) {
-    chatListEl.innerHTML = `<p class="text-center text-gray-500 mt-10">No ${activeTab} yet.</p>`;
+    chatListEl.innerHTML = "<p>No friends yet.</p>";
     return;
   }
 
-  list.forEach(item => {
+  list.forEach(friend => {
     const div = document.createElement("div");
     div.className = "chat-item";
-    div.dataset.id = item._id;
-
-    div.onclick = () => {
-      if (activeTab === "chats") {
-        window.location.href = `/private-chat.html?user=${item._id}`;
-      } else {
-        window.location.href = `/group-chat.html?group=${item._id}`;
-      }
-    };
-
     div.innerHTML = `
-      <img src="${item.avatar || '/default-avatar.png'}" class="chat-avatar">
+      <img src="${friend.avatar || '/default-avatar.png'}" class="chat-avatar" />
       <div class="chat-info">
-        <span class="name">${item.username || item.groupName}</span>
+        <span class="name">${friend.username}</span>
+        <span class="last-message">${friend.email}</span>
       </div>
     `;
-
+    div.onclick = () => alert("Chat with " + friend.username); // placeholder
     chatListEl.appendChild(div);
   });
 }
 
-// ==============================
 // Search
-// ==============================
 searchInput.addEventListener("input", () => {
   const q = searchInput.value.toLowerCase();
-  const list = activeTab === "chats" ? allChats : allGroups;
-  const filtered = list.filter(item => (item.username || "").toLowerCase().includes(q));
-  chatListEl.innerHTML = "";
-  filtered.forEach(item => {
-    const div = document.createElement("div");
-    div.className = "chat-item";
-    div.dataset.id = item._id;
-    div.onclick = () => window.location.href = `/private-chat.html?user=${item._id}`;
-    div.innerHTML = `
-      <img src="${item.avatar || '/default-avatar.png'}" class="chat-avatar">
-      <div class="chat-info">
-        <span class="name">${item.username}</span>
-      </div>
-    `;
-    chatListEl.appendChild(div);
-  });
+  renderFriends(friends.filter(f => f.username.toLowerCase().includes(q) || f.email.toLowerCase().includes(q)));
 });
 
-// ==============================
 // Add Friend Modal
-// ==============================
 addFriendBtn.addEventListener("click", () => addFriendModal.classList.remove("hidden"));
 closeModalBtn.addEventListener("click", () => addFriendModal.classList.add("hidden"));
 
+// Confirm add friend
 confirmAddFriendBtn.addEventListener("click", async () => {
   const identifier = friendIdentifierInput.value.trim();
   if (!identifier) return alert("Enter username or email");
 
   try {
-    const res = await fetch(`/api/users/add-friend`, {
+    const res = await fetch("/api/users/add-friend", {
       method: "POST",
-      headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+      headers: { 
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}` 
+      },
       body: JSON.stringify({ identifier }),
     });
     const data = await res.json();
     alert(data.message || data.error);
     friendIdentifierInput.value = "";
     addFriendModal.classList.add("hidden");
-    await fetchChats();
+    fetchFriends(); // refresh list
   } catch (err) {
-    console.error(err);
     alert("Failed to add friend");
+    console.error(err);
   }
 });
 
-// ==============================
-// Settings
-// ==============================
-settingsBtn.addEventListener("click", () => window.location.href = "/settings.html");
-
-// ==============================
-// Initial Load
-// ==============================
-fetchChats();
+// Initial load
+fetchFriends();
