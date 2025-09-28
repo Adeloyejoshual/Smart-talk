@@ -1,42 +1,25 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SmartTalk - Home</title>
-  <link rel="stylesheet" href="/styles/home.css">
+  <link rel="stylesheet" href="/styles/home.css" />
 </head>
 <body>
   <div class="container">
-
-    <!-- Sidebar -->
     <div class="sidebar">
-      <div class="sidebar-header">
-        <h2>Friends</h2>
-        <button id="settingsBtn">⚙</button>
-      </div>
-
-      <!-- Search -->
-      <input type="text" id="searchInput" placeholder="Search users...">
-
-      <!-- Tabs -->
-      <div class="tabs">
-        <button id="tabChats" class="active-tab">Chats</button>
-        <button id="tabGroups">Groups</button>
-      </div>
-
-      <!-- Friends / Groups list -->
+      <h2>Friends</h2>
+      <input type="text" id="searchInput" placeholder="Search friends..." />
       <div id="chatList" class="chat-list"></div>
 
-      <!-- Floating Add Friend Button -->
-      <button id="addFriendBtn" class="floating-btn">+</button>
+      <!-- Add Friend Button -->
+      <button id="addFriendBtn">+ Add Friend</button>
     </div>
 
-    <!-- Main chat area placeholder -->
     <div class="main">
-      <p>Select a friend to start chatting</p>
+      <p>Select a friend to start chatting.</p>
     </div>
-
   </div>
 
   <!-- Add Friend Modal -->
@@ -44,8 +27,8 @@
     <div class="modal-content">
       <span id="closeModal" class="close">&times;</span>
       <h3>Add Friend</h3>
-      <input type="text" id="friendIdentifier" placeholder="Username or Email">
-      <button id="confirmAddFriendBtn">Add Friend</button>
+      <input type="text" id="friendIdentifier" placeholder="Username or Email" />
+      <button id="confirmAddFriendBtn">Add</button>
     </div>
   </div>
 
