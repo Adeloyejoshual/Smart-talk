@@ -7,48 +7,48 @@
   <link rel="stylesheet" href="/styles/home.css">
 </head>
 <body>
+  <div class="container">
 
-<div class="container">
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <h2>Friends</h2>
+        <button id="settingsBtn">⚙</button>
+      </div>
 
-  <!-- Sidebar -->
-  <div class="sidebar">
-    <div class="sidebar-header">
-      <h2>Friends</h2>
-      <button id="settingsBtn">⚙️</button>
+      <!-- Search -->
+      <input type="text" id="searchInput" placeholder="Search users...">
+
+      <!-- Tabs -->
+      <div class="tabs">
+        <button id="tabChats" class="active-tab">Chats</button>
+        <button id="tabGroups">Groups</button>
+      </div>
+
+      <!-- Friends / Groups list -->
+      <div id="chatList" class="chat-list"></div>
+
+      <!-- Floating Add Friend Button -->
+      <button id="addFriendBtn" class="floating-btn">+</button>
     </div>
 
-    <input type="text" id="searchInput" placeholder="Search friends or groups" />
-
-    <div class="tabs">
-      <button id="tabChats" class="tab active">Chats</button>
-      <button id="tabGroups" class="tab">Groups</button>
+    <!-- Main chat area placeholder -->
+    <div class="main">
+      <p>Select a friend to start chatting</p>
     </div>
 
-    <div id="chatList" class="chat-list"></div>
   </div>
-
-  <!-- Main Chat Area -->
-  <div class="main">
-    Select a chat to start messaging
-  </div>
-
-  <!-- Add Friend Floating Button -->
-  <button id="addFriendBtn" class="floating-btn">+</button>
 
   <!-- Add Friend Modal -->
   <div id="addFriendModal" class="modal hidden">
     <div class="modal-content">
-      <h2>Add Friend</h2>
-      <input type="text" id="friendIdentifier" placeholder="Username or email" />
-      <div class="modal-actions">
-        <button id="confirmAddFriendBtn">Add</button>
-        <button id="closeModal">Close</button>
-      </div>
+      <span id="closeModal" class="close">&times;</span>
+      <h3>Add Friend</h3>
+      <input type="text" id="friendIdentifier" placeholder="Username or Email">
+      <button id="confirmAddFriendBtn">Add Friend</button>
     </div>
   </div>
 
-</div>
-
-<script src="/js/home.js" defer></script>
+  <script src="/js/home.js"></script>
 </body>
 </html>
