@@ -1,48 +1,43 @@
-import mongoose from "mongoose";
-import bcrypt from "bcryptjs";
+const express = require("express");
+const jwt = require("jsonwebtoken");
+const User = require("../models/User");
 
-const UserSchema = new mongoose.Schema(
-  {
-    username: { type: String, required: true, unique: true, trim: true },
-    email: { type: String, required: true, unique: true, lowercase: true },
-    password: { type: String, required: true },
+const router = express.Router();
 
-    avatar: { type: String, default: "" },
-    bio: { type: String, default: "" },
-    phoneNumber: { type: String, default: "" },
-
-    friends: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
-    blockedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
-    reports: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
-
-    role: { type: String, enum: ["user", "admin"], default: "user" },
-    banned: { type: Boolean, default: false },
-
-    lastSeen: { type: Date, default: Date.now },
-    isEmailVerified: { type: Boolean, default: false },
-
-    onlineStatus: {
-      type: String,
-      enum: ["online", "offline", "away", "busy"],
-      default: "offline",
-    },
-
-    status: { type: String, enum: ["active", "banned"], default: "active" }, // for quick status check
-  },
-  { timestamps: true }
-);
-
-// Hash password before save
-UserSchema.pre("save", async function (next) {
-  if (!this.isModified("password")) return next();
-  this.password = await bcrypt.hash(this.password, 10);
-  next();
+// Register
+router.post("/register", async (req, res) => {
+  try {
+    const { username, email, password } = req.body;
+    const user = new User({ username, email, password });
+    await user.save();
+    res.status(201).json({ message: "User registered successfully" });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
-// Compare password method
-UserSchema.methods.comparePassword = async function (plainPassword) {
-  return await bcrypt.compare(plainPassword, this.password);
-};
+// Login
+router.post("/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ error: "User not found" });
 
-const User = mongoose.model("User", UserSchema);
-export default User;
+    const isMatch = await user.comparePassword(password);
+    if (!isMatch) return res.status(400).json({ error: "Invalid credentials" });
+
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+      expiresIn: "7d",
+    });
+
+    res.json({
+      message: "Login successful",
+      token,
+      user: { id: user._id, username: user.username, email: user.email },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+module.exports = router;
