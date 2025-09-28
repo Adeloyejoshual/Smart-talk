@@ -234,27 +234,42 @@ document.getElementById("deleteAllBtn").addEventListener("click", () => {
 // ==============================
 // Add Friend Modal
 // ==============================
-addFriendBtn.addEventListener("click", () => addFriendModal.classList.remove("hidden"));
-closeModalBtn.addEventListener("click", () => addFriendModal.classList.add("hidden"));
-confirmAddFriendBtn.addEventListener("click", confirmAddFriend);
+addFriendBtn.addEventListener("click", () => {
+  addFriendModal.classList.remove("hidden");
+});
 
-function confirmAddFriend() {
+closeModalBtn.addEventListener("click", () => {
+  addFriendModal.classList.add("hidden");
+});
+
+confirmAddFriendBtn.addEventListener("click", () => {
   const id = friendIdentifierInput.value.trim();
-  if (!id) { alert("Enter username or Gmail"); return; }
+  if (!id) {
+    alert("Enter username or Gmail");
+    return;
+  }
 
   fetch("/api/users/add-friend", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    headers: { 
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`
+    },
     body: JSON.stringify({ identifier: id }),
-  }).then(res => res.json())
+  })
+    .then(res => res.json())
     .then(async data => {
-      if (data.error) { alert(data.error); return; }
+      if (data.error) {
+        alert(data.error);
+        return;
+      }
       alert("Friend added!");
       addFriendModal.classList.add("hidden");
       friendIdentifierInput.value = "";
-      await fetchChats();
-    }).catch(() => alert("Error adding friend."));
-}
+      await fetchChats(); // reload chat list
+    })
+    .catch(() => alert("Error adding friend."));
+});
 
 // ==============================
 // Settings
