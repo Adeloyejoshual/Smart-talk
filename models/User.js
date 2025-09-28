@@ -1,43 +1,53 @@
-const express = require("express");
-const jwt = require("jsonwebtoken");
-const User = require("../models/User");
+const mongoose = require("mongoose");
+const bcrypt = require("bcryptjs");
 
-const router = express.Router();
+const userSchema = new mongoose.Schema(
+  {
+    username: {
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
+      minlength: 3,
+    },
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      lowercase: true,
+      trim: true,
+    },
+    password: {
+      type: String,
+      required: true,
+      minlength: 6,
+    },
+    friends: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
+  },
+  { timestamps: true }
+);
 
-// Register
-router.post("/register", async (req, res) => {
+// ✅ Hash password before saving
+userSchema.pre("save", async function (next) {
+  if (!this.isModified("password")) return next();
   try {
-    const { username, email, password } = req.body;
-    const user = new User({ username, email, password });
-    await user.save();
-    res.status(201).json({ message: "User registered successfully" });
+    const salt = await bcrypt.genSalt(10);
+    this.password = await bcrypt.hash(this.password, salt);
+    next();
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    next(err);
   }
 });
 
-// Login
-router.post("/login", async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ error: "User not found" });
+// ✅ Compare entered password with hashed password
+userSchema.methods.comparePassword = async function (candidatePassword) {
+  return bcrypt.compare(candidatePassword, this.password);
+};
 
-    const isMatch = await user.comparePassword(password);
-    if (!isMatch) return res.status(400).json({ error: "Invalid credentials" });
-
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-      expiresIn: "7d",
-    });
-
-    res.json({
-      message: "Login successful",
-      token,
-      user: { id: user._id, username: user.username, email: user.email },
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-module.exports = router;
+const User = mongoose.model("User", userSchema);
+module.exports = User;
