@@ -1,37 +1,101 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SmartTalk - Home</title>
-  <link rel="stylesheet" href="/styles/home.css" />
+  <style>
+    body { font-family: sans-serif; background: #1c1c1c; color: #fff; margin:0; padding:0; }
+    .container { padding: 1rem; }
+    #addFriendBtn { position: fixed; bottom: 20px; right: 20px; width: 50px; height: 50px; font-size: 2rem; background: #c1440e; border:none; border-radius: 50%; cursor:pointer; }
+    #addFriendModal { display:none; position: fixed; top: 50%; left:50%; transform: translate(-50%, -50%); background: #222; padding: 1rem; border-radius: 6px; width: 300px; }
+    #addFriendModal input { width: 100%; padding: 0.5rem; margin-bottom: 0.5rem; border-radius: 4px; border:none; }
+    #addFriendModal button { padding: 0.5rem 1rem; margin-right: 0.5rem; border:none; border-radius: 4px; cursor:pointer; }
+    #chatList { margin-top: 2rem; }
+    .chat-item { padding: 0.5rem; border-bottom: 1px solid #444; cursor:pointer; }
+  </style>
 </head>
 <body>
   <div class="container">
-    <div class="sidebar">
-      <h2>Friends</h2>
-      <input type="text" id="searchInput" placeholder="Search friends..." />
-      <div id="chatList" class="chat-list"></div>
-
-      <!-- Add Friend Button -->
-      <button id="addFriendBtn">+ Add Friend</button>
-    </div>
-
-    <div class="main">
-      <p>Select a friend to start chatting.</p>
-    </div>
+    <h1>SmartTalk Home</h1>
+    <div id="chatList"></div>
   </div>
+
+  <!-- Add Friend Button -->
+  <button id="addFriendBtn">+</button>
 
   <!-- Add Friend Modal -->
-  <div id="addFriendModal" class="modal hidden">
-    <div class="modal-content">
-      <span id="closeModal" class="close">&times;</span>
-      <h3>Add Friend</h3>
-      <input type="text" id="friendIdentifier" placeholder="Username or Email" />
-      <button id="confirmAddFriendBtn">Add</button>
-    </div>
+  <div id="addFriendModal">
+    <input type="text" id="friendIdentifier" placeholder="Enter username or email" />
+    <button id="confirmAddFriendBtn">Add Friend</button>
+    <button id="closeModal">Cancel</button>
   </div>
 
-  <script src="/js/home.js"></script>
+  <script>
+    const token = localStorage.getItem("token") || prompt("Enter your JWT token");
+
+    const addFriendBtn = document.getElementById("addFriendBtn");
+    const addFriendModal = document.getElementById("addFriendModal");
+    const closeModalBtn = document.getElementById("closeModal");
+    const confirmAddFriendBtn = document.getElementById("confirmAddFriendBtn");
+    const friendIdentifierInput = document.getElementById("friendIdentifier");
+    const chatListEl = document.getElementById("chatList");
+
+    // Show modal
+    addFriendBtn.addEventListener("click", () => addFriendModal.style.display = "block");
+    closeModalBtn.addEventListener("click", () => addFriendModal.style.display = "none");
+
+    // Add friend
+    confirmAddFriendBtn.addEventListener("click", async () => {
+      const identifier = friendIdentifierInput.value.trim();
+      if (!identifier) return alert("Enter username or email");
+
+      try {
+        const res = await fetch("/api/users/add-friend", {
+          method: "POST",
+          headers: { 
+            "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ identifier })
+        });
+
+        const data = await res.json();
+        if (data.message) {
+          alert(data.message);
+          friendIdentifierInput.value = "";
+          addFriendModal.style.display = "none";
+          await fetchFriends(); // refresh friends list
+        } else if (data.error) {
+          alert(data.error);
+        }
+      } catch (err) {
+        alert("Failed to add friend");
+        console.error(err);
+      }
+    });
+
+    // Fetch friends
+    async function fetchFriends() {
+      try {
+        const res = await fetch("/api/users/chats", {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        const friends = await res.json();
+        chatListEl.innerHTML = "";
+        friends.forEach(f => {
+          const div = document.createElement("div");
+          div.className = "chat-item";
+          div.textContent = f.username + " (" + f.email + ")";
+          chatListEl.appendChild(div);
+        });
+      } catch (err) {
+        console.error("Failed to fetch friends", err);
+      }
+    }
+
+    // Initial load
+    fetchFriends();
+  </script>
 </body>
 </html>
