@@ -9,24 +9,30 @@
 <body>
   <header>
     <h1>Welcome to SmartTalk</h1>
+    <div id="user-info">
+      Logged in as: <span id="loggedInUser"></span>
+    </div>
   </header>
 
-  <!-- User List -->
   <main>
-    <h2>All Users</h2>
-    <div id="user-list" class="user-list"></div>
+    <h2>Friends List</h2>
+    <ul id="friendsList">
+      <!-- Friends will be loaded here -->
+    </ul>
   </main>
 
   <!-- Floating Add Friend Button -->
-  <button id="floating-add-btn" class="floating-btn">➕</button>
+  <button id="addFriendBtn" class="floating-btn">+</button>
 
   <!-- Add Friend Modal -->
   <div id="addFriendModal" class="modal">
     <div class="modal-content">
       <span class="close">&times;</span>
-      <h3>Add Friend</h3>
-      <input type="text" id="searchInput" placeholder="Search by username or email..." />
-      <div id="searchResults"></div>
+      <h2>Add New Friend</h2>
+      <form id="addFriendForm">
+        <input type="text" id="friendUsername" placeholder="Enter username or email" required />
+        <button type="submit">Add Friend</button>
+      </form>
     </div>
   </div>
 
