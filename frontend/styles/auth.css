@@ -1,0 +1,57 @@
+body {
+  background: linear-gradient(to right, #004466, #001f33);
+  font-family: 'Segoe UI', sans-serif;
+  color: #fff;
+}
+
+.auth-container {
+  background: #111;
+  padding: 2rem;
+  border-radius: 10px;
+  box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
+  width: 100%;
+  max-width: 400px;
+  margin: auto;
+  margin-top: 10%;
+}
+
+.auth-container h2 {
+  text-align: center;
+  margin-bottom: 1rem;
+}
+
+input[type="text"],
+input[type="password"] {
+  width: 100%;
+  padding: 0.75rem;
+  margin: 0.5rem 0;
+  border-radius: 8px;
+  border: none;
+  background: #222;
+  color: #fff;
+}
+
+button {
+  width: 100%;
+  padding: 0.75rem;
+  background-color: #0066cc;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: bold;
+  margin-top: 0.5rem;
+}
+
+label {
+  font-size: 0.9rem;
+  display: block;
+  margin-top: 0.25rem;
+}
+
+#message {
+  text-align: center;
+  margin: 1rem 0;
+  font-size: 0.95rem;
+  color: red;
+}
