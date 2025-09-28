@@ -1,214 +1,194 @@
-// backend/server.js
-require('dotenv').config();
-const express = require('express');
-const http = require('http');
-const mongoose = require('mongoose');
-const cors = require('cors');
-const { Server } = require('socket.io');
-const jwt = require('jsonwebtoken');
-const path = require('path');
+// server.js
+const express = require("express");
+const http = require("http");
+const cors = require("cors");
+const mongoose = require("mongoose");
+const path = require("path");
+const dotenv = require("dotenv");
+const jwt = require("jsonwebtoken");
+const socketIo = require("socket.io");
+
+dotenv.config();
 
 // Models
-const User = require('./models/User');
-const Message = require('./models/Message');
+const User = require("./models/User");
+const Message = require("./models/Chat");
 
 // Routes
-const authRoutes = require('./routes/auth');
-const userRoutes = require('./routes/users');
-const messageRoutes = require('./routes/messages');
-const groupRoutes = require('./routes/groups');
-const adminRoutes = require('./routes/admin');
-const paymentRoutes = require('./routes/payments');
+const authRoutes = require("./routes/auth");
+const userRoutes = require("./routes/user");
+const messageRoutes = require("./routes/messages");
+const uploadRoutes = require("./routes/upload"); // For file uploads
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, {
-  cors: { origin: '*', methods: ['GET', 'POST'] }
+const io = socketIo(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"],
+  },
 });
 
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// Serve frontend static files
-app.use(express.static(path.join(__dirname, '../frontend')));
-
-// MongoDB Connection
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log('✅ MongoDB connected'))
-  .catch(err => {
-    console.error('❌ MongoDB connection error:', err);
-    process.exit(1);
-  });
+app.use(express.static(path.join(__dirname, "public")));
+// Serve uploads folder to serve uploaded files
+app.use("/uploads", express.static(path.join(__dirname, "public/uploads")));
 
 // API Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/messages', messageRoutes);
-app.use('/api/groups', groupRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/payments', paymentRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/messages", messageRoutes);
+app.use("/api/upload", uploadRoutes); // Upload endpoint
 
-// --------------------
-// Chat History API
-// --------------------
-app.get('/api/messages/history/:receiverId', async (req, res) => {
-  const { receiverId } = req.params;
-  const senderId = req.query.senderId;
-
-  if (!senderId) return res.status(400).json({ error: 'senderId query required' });
-
-  try {
-    const messages = await Message.find({
-      $or: [
-        { sender: senderId, recipient: receiverId },
-        { sender: receiverId, recipient: senderId }
-      ]
-    }).sort({ createdAt: 1 }); // oldest first
-    res.json(messages);
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch chat history' });
-  }
+// Static HTML routes
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "login.html"));
+});
+app.get("/home", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "home.html"));
+});
+app.get("/chat", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "chat.html"));
+});
+app.get("/settings", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "settings.html"));
 });
 
-// Root route (serves login by default)
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/login.html'));
-});
-
-// --------------------
-// Socket.IO
-// --------------------
+// Online users map
 const onlineUsers = new Map();
-const CALL_RATE = { private: 0.0033, group: 0.005 };
-const activeCalls = new Map();
 
+// Socket.IO JWT auth middleware
 io.use((socket, next) => {
-  const token = socket.handshake.auth?.token;
-  if (!token) return next(new Error('Authentication error: Token missing'));
-  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
-    if (err) return next(new Error('Authentication error: Invalid token'));
-    socket.userId = decoded.id;
+  const token = socket.handshake.auth.token;
+  if (!token) return next(new Error("Token required"));
+
+  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+    if (err) return next(new Error("Invalid token"));
+    socket.user = user;
     next();
   });
 });
 
-io.on('connection', (socket) => {
-  console.log(`📡 Connected: ${socket.id} (User: ${socket.userId})`);
-  onlineUsers.set(socket.userId, socket.id);
-  socket.join(socket.userId);
-  io.emit('user-online', { userId: socket.userId });
+// Socket.IO events
+io.on("connection", (socket) => {
+  const userId = socket.user.id;
+  console.log(`🔌 User connected: ${userId}`);
+  onlineUsers.set(userId, socket.id);
 
-  socket.on('disconnect', () => {
-    onlineUsers.delete(socket.userId);
-    io.emit('user-offline', { userId: socket.userId, lastSeen: new Date() });
+  // Mark user online and update lastSeen
+  User.findByIdAndUpdate(userId, { online: true, lastSeen: new Date() }).catch(console.error);
+
+  // Join private room (optional for group/private chat segregation)
+  socket.on("joinPrivateRoom", ({ sender, receiverId }) => {
+    const roomId = [sender, receiverId].sort().join("_");
+    socket.join(roomId);
+    socket.data.roomId = roomId;
   });
 
-  // Private messages
-  socket.on('privateMessage', async ({ receiverId, content, replyTo = null, isForwarded = false }) => {
-    if (!receiverId || !content) return;
-    try {
-      const newMessage = new Message({
-        sender: socket.userId,
-        recipient: receiverId,
-        content,
-        replyTo,
-        isForwarded,
-        status: 'sent',
-        type: 'text',
-      });
-      await newMessage.save();
+  // Handle private message (text or file)
+  socket.on("private message", async ({ to, message, fileUrl, fileType }) => {
+    const from = userId;
 
-      [receiverId, socket.userId].forEach(uid => {
-        io.to(uid).emit('privateMessage', {
-          _id: newMessage._id,
-          senderId: socket.userId,
-          receiverId: uid,
-          content,
-          replyTo,
-          timestamp: newMessage.createdAt,
-          status: newMessage.status,
-          isForwarded,
+    const newMsg = new Message({
+      sender: from,
+      receiver: to,
+      content: message || "",
+      fileUrl: fileUrl || null,
+      fileType: fileType || null,
+      status: "sent", // Initial status
+      createdAt: new Date(),
+    });
+
+    await newMsg.save();
+
+    const toSocketId = onlineUsers.get(to);
+    if (toSocketId) {
+      io.to(toSocketId).emit("private message", {
+        from,
+        message: newMsg.content,
+        fileUrl: newMsg.fileUrl,
+        fileType: newMsg.fileType,
+        status: newMsg.status,
+        timestamp: newMsg.createdAt.toISOString(),
+        messageId: newMsg._id.toString(),
+      });
+    }
+
+    // Echo to sender as well
+    socket.emit("private message", {
+      from,
+      message: newMsg.content,
+      fileUrl: newMsg.fileUrl,
+      fileType: newMsg.fileType,
+      status: newMsg.status,
+      timestamp: newMsg.createdAt.toISOString(),
+      messageId: newMsg._id.toString(),
+    });
+  });
+
+  // Handle message status update (e.g., read)
+  socket.on("message status update", async ({ messageId, status }) => {
+    if (!messageId || !status) return;
+
+    try {
+      const msg = await Message.findById(messageId);
+      if (!msg) return;
+
+      msg.status = status; // e.g., "read"
+      await msg.save();
+
+      // Notify sender if online
+      const senderSocketId = onlineUsers.get(msg.sender.toString());
+      if (senderSocketId) {
+        io.to(senderSocketId).emit("message status update", {
+          messageId,
+          status,
         });
-      });
-    } catch (err) {
-      console.error('❌ Private message error:', err);
-    }
-  });
-
-  // Group messages
-  socket.on('groupMessage', async ({ groupId, content, replyTo = null, isForwarded = false }) => {
-    if (!groupId || !content) return;
-    try {
-      const newMessage = new Message({
-        sender: socket.userId,
-        group: groupId,
-        content,
-        replyTo,
-        isForwarded,
-        status: 'sent',
-        type: 'text',
-      });
-      await newMessage.save();
-      io.to(groupId).emit('groupMessage', {
-        _id: newMessage._id,
-        senderId: socket.userId,
-        groupId,
-        content,
-        replyTo,
-        timestamp: newMessage.createdAt,
-        status: newMessage.status,
-        isForwarded,
-      });
-    } catch (err) {
-      console.error('❌ Group message error:', err);
-    }
-  });
-
-  // Calls with billing
-  socket.on('startCall', async ({ callId, type, participants }) => {
-    if (!callId || !type || !participants || !Array.isArray(participants)) return;
-
-    for (let userId of participants) {
-      const user = await User.findById(userId);
-      const rate = CALL_RATE[type] || CALL_RATE.private;
-      if (!user || user.wallet < rate) {
-        socket.emit('callError', { message: `User ${userId} has insufficient balance` });
-        return;
       }
+    } catch (err) {
+      console.error("Error updating message status:", err.message);
     }
-
-    const interval = setInterval(async () => {
-      for (let userId of participants) {
-        const user = await User.findById(userId);
-        const rate = CALL_RATE[type] || CALL_RATE.private;
-        if (user.wallet >= rate) {
-          user.wallet -= rate;
-          await user.save();
-        } else {
-          clearInterval(activeCalls.get(callId).interval);
-          io.to(participants).emit('endCall', { callId, reason: 'Insufficient balance' });
-          activeCalls.delete(callId);
-          return;
-        }
-      }
-    }, 1000);
-
-    activeCalls.set(callId, { users: participants, interval });
-    io.to(participants).emit('callStarted', { callId, type });
   });
 
-  socket.on('endCall', ({ callId }) => {
-    const call = activeCalls.get(callId);
-    if (call) {
-      clearInterval(call.interval);
-      io.to(call.users).emit('endCall', { callId, reason: 'Ended by user' });
-      activeCalls.delete(callId);
+  // Typing indicators
+  socket.on("typing", ({ to }) => {
+    const toSocketId = onlineUsers.get(to);
+    if (toSocketId) {
+      io.to(toSocketId).emit("typing", { from: userId });
     }
+  });
+
+  socket.on("stop typing", ({ to }) => {
+    const toSocketId = onlineUsers.get(to);
+    if (toSocketId) {
+      io.to(toSocketId).emit("stop typing", { from: userId });
+    }
+  });
+
+  // Disconnect
+  socket.on("disconnect", async () => {
+    console.log(`❌ User disconnected: ${userId}`);
+    onlineUsers.delete(userId);
+    await User.findByIdAndUpdate(userId, {
+      online: false,
+      lastSeen: new Date(),
+    }).catch(console.error);
   });
 });
 
-// Start Server
-const PORT = process.env.PORT || 10000;
-server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+// Connect to MongoDB
+mongoose
+  .connect(process.env.MONGO_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  })
+  .then(() => console.log("✅ MongoDB connected"))
+  .catch((err) => console.error("❌ MongoDB error:", err));
+
+// Start server
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`🚀 SmartTalk server running on port ${PORT}`);
+});
