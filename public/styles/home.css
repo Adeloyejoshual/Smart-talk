@@ -1,6 +1,3 @@
-/* =======================
-   General Styles
-   ======================= */
 body {
   margin: 0;
   padding: 0;
@@ -9,215 +6,162 @@ body {
   color: #f0f0f0;
 }
 
-/* =======================
-   Container & Sidebar
-   ======================= */
 .container {
   display: flex;
   height: 100vh;
-  width: 100%;
 }
 
 /* Sidebar */
 .sidebar {
-  width: 280px;
+  width: 300px;
   background-color: #101010;
-  border-right: 1px solid #333;
+  padding: 1rem;
   display: flex;
   flex-direction: column;
-  padding: 1rem;
+  border-right: 1px solid #333;
 }
 
-/* Sidebar Header (Tabs + Settings) */
 .sidebar-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 1rem;
+  color: #ff9933;
 }
 
-.tabs {
-  display: flex;
-  gap: 1rem;
-}
-
-.tabs div {
-  cursor: pointer;
+.sidebar input[type="text"] {
   padding: 0.5rem;
-  border-bottom: 2px solid transparent;
-  font-weight: 500;
-  color: #fff;
-  transition: all 0.2s;
-}
-
-.tabs div.border-b-2 {
-  border-color: #ff9933;
-  font-weight: 600;
-}
-
-/* Search Input */
-#searchInput {
-  padding: 0.6rem;
-  border: none;
-  border-radius: 6px;
   margin-bottom: 1rem;
   width: 100%;
+  border-radius: 6px;
+  border: none;
   background-color: #2a2a2a;
   color: #fff;
 }
 
-/* =======================
-   Chat / Friend List
-   ======================= */
-#chatList {
+.tabs button {
+  padding: 0.5rem;
+  width: 50%;
+  border: none;
+  background: none;
+  color: #ccc;
+  cursor: pointer;
+}
+.tabs .active {
+  border-bottom: 2px solid #ff9933;
+  color: #fff;
+}
+
+.chat-list {
   flex-grow: 1;
   overflow-y: auto;
 }
 
-#chatList::-webkit-scrollbar {
-  display: none;
-}
-
-#chatList .flex {
+.chat-item {
   display: flex;
   align-items: center;
+  gap: 0.5rem;
   padding: 0.7rem 0.5rem;
-  gap: 0.8rem;
-  cursor: pointer;
-  transition: background 0.2s;
   border-bottom: 1px solid #2e2e2e;
+  cursor: pointer;
+  transition: background 0.3s;
 }
-
-#chatList .flex:hover {
+.chat-item:hover {
   background-color: #252525;
 }
 
-#chatList img {
-  width: 40px;
-  height: 40px;
+.chat-avatar {
+  width: 45px;
+  height: 45px;
   border-radius: 50%;
+  background-color: #444;
   object-fit: cover;
-  border: 1px solid #444;
 }
 
-#chatList .flex-1 {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-
-#chatList .font-semibold {
-  font-weight: 600;
+.chat-info .name {
+  font-weight: bold;
   color: #ff9933;
 }
 
-#chatList .text-gray-500 {
+/* Main Chat Area */
+.main {
+  flex-grow: 1;
+  background-color: #141414;
+  display: flex;
+  justify-content: center;
+  align-items: center;
   color: #999;
+  font-size: 1.2rem;
 }
 
-/* =======================
-   Add Friend Floating Button
-   ======================= */
-#addFriendBtn {
+/* Floating Button */
+.floating-btn {
   position: fixed;
-  bottom: 25px;
-  right: 25px;
+  bottom: 2rem;
+  right: 2rem;
   width: 55px;
   height: 55px;
   border-radius: 50%;
-  background-color: #ff9933;
-  color: #fff;
   border: none;
+  background-color: #c1440e;
+  color: #fff;
   font-size: 2rem;
-  font-weight: bold;
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 4px 8px rgba(0,0,0,0.3);
-  z-index: 100;
-  transition: background 0.2s;
+  z-index: 9999;
 }
 
-#addFriendBtn:hover {
-  background-color: #e68a00;
-}
-
-/* =======================
-   Add Friend Modal
-   ======================= */
-#addFriendModal {
-  display: none; /* hidden by default */
+/* Modal */
+.modal {
   position: fixed;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  background-color: rgba(0,0,0,0.7);
-  align-items: center;
+  background: rgba(0,0,0,0.7);
+  display: flex;
   justify-content: center;
-  z-index: 200;
+  align-items: center;
+  z-index: 10000;
 }
 
-#addFriendModal .modal-content {
-  background-color: #1a1a1a;
+.modal.hidden {
+  display: none;
+}
+
+.modal-content {
+  background: #1c1c1c;
   padding: 2rem;
   border-radius: 10px;
-  width: 90%;
-  max-width: 400px;
+  width: 300px;
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  color: #fff;
 }
 
-#addFriendModal input {
-  padding: 0.6rem;
+.modal-content input {
+  padding: 0.5rem;
   border-radius: 5px;
   border: none;
   background-color: #2a2a2a;
   color: #fff;
-  width: 100%;
 }
 
-#addFriendModal button {
-  padding: 0.6rem;
-  border-radius: 5px;
-  border: none;
-  background-color: #ff9933;
-  color: #fff;
-  font-weight: bold;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-#addFriendModal button:hover {
-  background-color: #e68a00;
-}
-
-/* =======================
-   Main Chat Area
-   ======================= */
-.main {
-  flex-grow: 1;
-  background-color: #141414;
+.modal-actions {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #999;
-  font-size: 1.2rem;
-  flex-direction: column;
+  justify-content: space-between;
 }
-
-/* =======================
-   Responsive
-   ======================= */
-@media (max-width: 768px) {
-  .sidebar {
-    width: 100%;
-    height: auto;
-  }
-  .container {
-    flex-direction: column;
-  }
+.modal-actions button {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-weight: bold;
+}
+.modal-actions button:first-child {
+  background-color: #c1440e;
+  color: #fff;
+}
+.modal-actions button:last-child {
+  background-color: #555;
+  color: #fff;
 }
