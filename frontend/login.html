@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <title>SmartTalk - Login</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="/styles/auth.css" />
+</head>
+<body>
+  <div class="auth-container">
+    <h2>Login</h2>
+    <form id="loginForm">
+      <input type="text" placeholder="Email or Username" name="email" required />
+      <input type="password" placeholder="Password" name="password" id="loginPassword" required />
+      <label>
+        <input type="checkbox" onclick="togglePassword('loginPassword')"> Show Password
+      </label>
+      <button type="submit">Login</button>
+    </form>
+    <div id="message"></div>
+  </div>
+
+  <script>
+    function togglePassword(id) {
+      const field = document.getElementById(id);
+      field.type = field.type === 'password' ? 'text' : 'password';
+    }
+  </script>
+  <script src="/scripts/login.js"></script>
+  <script src="/scripts/theme.js"></script>
+</body>
+</html>
