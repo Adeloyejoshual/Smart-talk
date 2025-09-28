@@ -7,11 +7,16 @@
   <style>
     body { font-family: sans-serif; background: #1c1c1c; color: #fff; margin:0; padding:0; }
     .container { padding: 1rem; }
-    #addFriendBtn {
-      position: fixed; bottom: 20px; right: 20px;
-      width: 50px; height: 50px; font-size: 2rem;
-      background: #c1440e; border:none; border-radius: 50%; cursor:pointer;
+    
+    /* Floating buttons */
+    #addFriendBtn, #settingsBtn {
+      position: fixed; width: 50px; height: 50px; font-size: 2rem;
+      border:none; border-radius: 50%; cursor:pointer;
     }
+    #addFriendBtn { bottom: 20px; right: 20px; background: #c1440e; }
+    #settingsBtn { top: 20px; right: 20px; background: #3399ff; }
+
+    /* Modal */
     #addFriendModal {
       display:none; position: fixed; top: 50%; left:50%;
       transform: translate(-50%, -50%);
@@ -26,17 +31,18 @@
       padding: 0.5rem 1rem; margin-right: 0.5rem;
       border:none; border-radius: 4px; cursor:pointer;
     }
+    #modalOverlay {
+      display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.5); z-index: 999;
+    }
+
+    /* Chat list */
     #chatList { margin-top: 2rem; }
     .chat-item {
       padding: 0.5rem; border-bottom: 1px solid #444;
       cursor:pointer; transition: background 0.2s;
     }
     .chat-item:hover { background: #2c2c2c; }
-    /* Overlay for modal */
-    #modalOverlay {
-      display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0,0,0,0.5); z-index: 999;
-    }
   </style>
 </head>
 <body>
@@ -45,8 +51,9 @@
     <div id="chatList"></div>
   </div>
 
-  <!-- Add Friend Button -->
+  <!-- Floating Buttons -->
   <button id="addFriendBtn">+</button>
+  <button id="settingsBtn">&#9881;</button> <!-- Gear icon -->
 
   <!-- Modal Overlay -->
   <div id="modalOverlay"></div>
@@ -69,11 +76,13 @@
     const confirmAddFriendBtn = document.getElementById("confirmAddFriendBtn");
     const friendIdentifierInput = document.getElementById("friendIdentifier");
     const chatListEl = document.getElementById("chatList");
+    const settingsBtn = document.getElementById("settingsBtn");
 
-    // Show modal
+    // Open/Close Modal
     function openModal() {
       addFriendModal.style.display = "block";
       modalOverlay.style.display = "block";
+      friendIdentifierInput.focus();
     }
     function closeModal() {
       addFriendModal.style.display = "none";
@@ -84,7 +93,7 @@
     closeModalBtn.addEventListener("click", closeModal);
     modalOverlay.addEventListener("click", closeModal);
 
-    // Add friend
+    // Add Friend
     confirmAddFriendBtn.addEventListener("click", async () => {
       const identifier = friendIdentifierInput.value.trim();
       if (!identifier) return alert("Enter username or email");
@@ -103,7 +112,7 @@
           alert(data.message);
           friendIdentifierInput.value = "";
           closeModal();
-          await fetchFriends(); // refresh friends list
+          await fetchFriends();
         } else if (data.error) {
           alert(data.error);
         }
@@ -113,7 +122,7 @@
       }
     });
 
-    // Fetch friends
+    // Fetch Friends
     async function fetchFriends() {
       try {
         const res = await fetch("/api/users/chats", {
@@ -129,15 +138,18 @@
           const div = document.createElement("div");
           div.className = "chat-item";
           div.textContent = f.username + " (" + f.email + ")";
-          div.onclick = () => {
-            window.location.href = `/private-chat.html?user=${f._id}`;
-          };
+          div.onclick = () => window.location.href = `/private-chat.html?user=${f._id}`;
           chatListEl.appendChild(div);
         });
       } catch (err) {
         console.error("Failed to fetch friends", err);
       }
     }
+
+    // Settings Button
+    settingsBtn.addEventListener("click", () => {
+      window.location.href = "/settings.html";
+    });
 
     // Initial load
     fetchFriends();
