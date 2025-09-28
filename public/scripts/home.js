@@ -7,17 +7,16 @@ if (!token) window.location.href = "/login.html";
 // ==============================
 // State
 // ==============================
-let allChats = [];   // friends DM threads
-let allGroups = [];  // group threads
+let allChats = [];
+let allGroups = [];
 let selectedChats = new Set();
-let activeTab = "chats"; // "chats" | "groups"
+let activeTab = "chats";
 
 let socket = null;
-let joinedThreadIds = { chats: new Set(), groups: new Set() }; // server rooms we joined
+let joinedThreadIds = { chats: new Set(), groups: new Set() };
 
-// Quick lookup maps for faster realtime updates
-const chatIndexById = new Map();   // friendId -> index in allChats
-const groupIndexById = new Map();  // groupId  -> index in allGroups
+const chatIndexById = new Map();
+const groupIndexById = new Map();
 
 // ==============================
 // DOM Elements
@@ -26,8 +25,17 @@ const chatListEl = document.getElementById("chatList");
 const tabChats = document.getElementById("tabChats");
 const tabGroups = document.getElementById("tabGroups");
 const actionToolbar = document.getElementById("actionToolbar");
-const friendMessage = document.getElementById("friendMessage");
 const searchInput = document.getElementById("searchInput");
+
+// Add Friend Modal Elements
+const addFriendModal = document.getElementById("addFriendModal");
+const friendIdentifierInput = document.getElementById("friendIdentifier");
+const confirmAddFriendBtn = document.getElementById("confirmAddFriendBtn");
+const addFriendBtn = document.getElementById("addFriendBtn");
+const closeModalBtn = document.getElementById("closeModal");
+
+// Settings Button
+const settingsBtn = document.getElementById("settingsBtn");
 
 // ==============================
 // Tab Switching
@@ -37,12 +45,9 @@ tabGroups.addEventListener("click", () => switchTab("groups"));
 
 function switchTab(tab) {
   activeTab = tab;
-
-  // Tailwind class toggles for active tab
   tabChats.classList.toggle("border-b-2", tab === "chats");
   tabChats.classList.toggle("border-orange-500", tab === "chats");
   tabChats.classList.toggle("font-semibold", tab === "chats");
-
   tabGroups.classList.toggle("border-b-2", tab === "groups");
   tabGroups.classList.toggle("border-orange-500", tab === "groups");
   tabGroups.classList.toggle("font-semibold", tab === "groups");
@@ -52,7 +57,7 @@ function switchTab(tab) {
 }
 
 // ==============================
-// Fetch friends & groups
+// Fetch Chats & Groups
 // ==============================
 async function fetchChats() {
   try {
@@ -60,9 +65,7 @@ async function fetchChats() {
       headers: { Authorization: `Bearer ${token}` },
     });
     const chats = await res.json();
-
     if (Array.isArray(chats)) {
-      // Sort newest first
       allChats = chats
         .map((c) => ({
           ...c,
@@ -70,7 +73,6 @@ async function fetchChats() {
           unread: Number(c.unread || 0),
         }))
         .sort((a, b) => new Date(b.lastMessageTime) - new Date(a.lastMessageTime));
-
       rebuildIndex("chats");
     }
   } catch (e) {
@@ -82,7 +84,6 @@ async function fetchChats() {
       headers: { Authorization: `Bearer ${token}` },
     });
     const groups = await resG.json();
-
     if (Array.isArray(groups)) {
       allGroups = groups
         .map((g) => ({
@@ -91,7 +92,6 @@ async function fetchChats() {
           unread: Number(g.unread || 0),
         }))
         .sort((a, b) => new Date(b.lastMessageTime) - new Date(a.lastMessageTime));
-
       rebuildIndex("groups");
     }
   } catch (e) {
@@ -99,8 +99,6 @@ async function fetchChats() {
   }
 
   displayChats(activeTab === "chats" ? allChats : allGroups);
-
-  // Join/refresh socket rooms after we know our thread IDs
   joinAllThreads();
 }
 
@@ -115,27 +113,23 @@ function rebuildIndex(kind) {
 }
 
 // ==============================
-// Render chats / groups
+// Display Chats/Groups
 // ==============================
 function displayChats(list) {
   chatListEl.innerHTML = "";
-
   if (!list || list.length === 0) {
     chatListEl.innerHTML = `<p class="text-center text-gray-500 mt-10">No ${activeTab} yet.</p>`;
     return;
   }
-
   list.forEach((item) => {
     const div = document.createElement("div");
-    div.className =
-      "flex items-center p-3 hover:bg-[#2c2c2c] cursor-pointer select-none";
+    div.className = "flex items-center p-3 hover:bg-[#2c2c2c] cursor-pointer select-none";
     div.dataset.id = item._id;
 
     div.onclick = () => {
       if (selectedChats.size > 0) {
         toggleChatSelection(div, item._id);
       } else {
-        // Navigate to chat screen
         if (activeTab === "chats") {
           window.location.href = `/private-chat.html?user=${item._id}`;
         } else {
@@ -149,70 +143,47 @@ function displayChats(list) {
            class="w-10 h-10 rounded-full mr-3 border border-gray-600" />
       <div class="flex-1">
         <div class="flex justify-between items-center">
-          <span class="font-semibold text-white text-base">
-            ${item.username || item.groupName}
-          </span>
-          <span class="text-xs text-gray-500">
-            ${formatTime(item.lastMessageTime)}
-          </span>
+          <span class="font-semibold text-white text-base">${item.username || item.groupName}</span>
+          <span class="text-xs text-gray-500">${formatTime(item.lastMessageTime)}</span>
         </div>
         <div class="flex justify-between items-center gap-2">
-          <span class="text-sm text-gray-400 truncate">
-            ${item.lastMessage || "Start chatting..."}
-          </span>
-          ${
-            item.unread > 0
-              ? `<span class="bg-red-500 text-xs text-white px-2 rounded-full">${item.unread}</span>`
-              : ""
-          }
+          <span class="text-sm text-gray-400 truncate">${item.lastMessage || "Start chatting..."}</span>
+          ${item.unread > 0 ? `<span class="bg-red-500 text-xs text-white px-2 rounded-full">${item.unread}</span>` : ""}
         </div>
       </div>`;
 
     addLongPressListeners(div, item._id);
-
     if (selectedChats.has(item._id)) div.classList.add("chat-selected");
-
     chatListEl.appendChild(div);
   });
 }
 
 function formatTime(ts) {
-  try {
-    return new Date(ts || Date.now()).toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch {
-    return "";
-  }
+  try { return new Date(ts || Date.now()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } 
+  catch { return ""; }
 }
 
 // ==============================
-// Search (client-side)
+// Search
 // ==============================
 searchInput.addEventListener("input", () => {
   const q = searchInput.value.toLowerCase();
   const list = activeTab === "chats" ? allChats : allGroups;
-  displayChats(
-    list.filter(
-      (item) =>
-        (item.username || "").toLowerCase().includes(q) ||
-        (item.email || "").toLowerCase().includes(q) ||
-        (item.groupName || "").toLowerCase().includes(q)
-    )
-  );
+  displayChats(list.filter(
+    (item) =>
+      (item.username || "").toLowerCase().includes(q) ||
+      (item.email || "").toLowerCase().includes(q) ||
+      (item.groupName || "").toLowerCase().includes(q)
+  ));
 });
 
 // ==============================
-// Long press multi-select
+// Long Press Selection
 // ==============================
 let longPressTimer;
-
 function addLongPressListeners(div, id) {
-  const start = () =>
-    (longPressTimer = setTimeout(() => toggleChatSelection(div, id), 500));
+  const start = () => longPressTimer = setTimeout(() => toggleChatSelection(div, id), 500);
   const clear = () => clearTimeout(longPressTimer);
-
   div.addEventListener("mousedown", start);
   div.addEventListener("mouseup", clear);
   div.addEventListener("mouseleave", clear);
@@ -233,285 +204,112 @@ function toggleChatSelection(div, id) {
 
 function clearSelection() {
   selectedChats.clear();
-  document
-    .querySelectorAll(".chat-selected")
-    .forEach((el) => el.classList.remove("chat-selected"));
+  document.querySelectorAll(".chat-selected").forEach(el => el.classList.remove("chat-selected"));
   actionToolbar.classList.add("hidden");
 }
 
 // ==============================
-// Toolbar buttons (placeholder)
+// Toolbar buttons
 // ==============================
-document.getElementById("pinBtn").addEventListener("click", () => {
-  alert(`📌 Pinned: ${[...selectedChats].join(", ")}`);
-  clearSelection();
+["pinBtn", "deleteBtn", "archiveBtn", "moreBtn"].forEach(id => {
+  document.getElementById(id).addEventListener("click", () => {
+    alert(`${id.replace("Btn", "")} action: ${[...selectedChats].join(", ")}`);
+    clearSelection();
+  });
 });
 
-document.getElementById("deleteBtn").addEventListener("click", () => {
-  alert(`❌ Deleted: ${[...selectedChats].join(", ")}`);
-  clearSelection();
-});
-
-document.getElementById("archiveBtn").addEventListener("click", () => {
-  alert(`📦 Archived: ${[...selectedChats].join(", ")}`);
-  clearSelection();
-});
-
-document.getElementById("moreBtn").addEventListener("click", () => {
-  alert("⋮ More options...");
-});
-
-// ==============================
-// Select/Delete All
-// ==============================
 document.getElementById("selectAllBtn").addEventListener("click", () => {
   const list = activeTab === "chats" ? allChats : allGroups;
-  selectedChats = new Set(list.map((c) => c._id));
-  document
-    .querySelectorAll("#chatList > div")
-    .forEach((div) => div.classList.add("chat-selected"));
+  selectedChats = new Set(list.map(c => c._id));
+  document.querySelectorAll("#chatList > div").forEach(div => div.classList.add("chat-selected"));
   actionToolbar.classList.remove("hidden");
 });
 
 document.getElementById("deleteAllBtn").addEventListener("click", () => {
-  if (selectedChats.size === 0) {
-    alert("No chats selected.");
-    return;
-  }
-  alert(`🗑️ Deleted: ${[...selectedChats].join(", ")}`);
+  if (selectedChats.size === 0) { alert("No chats selected."); return; }
+  alert(`Deleted: ${[...selectedChats].join(", ")}`);
   clearSelection();
 });
 
 // ==============================
 // Add Friend Modal
 // ==============================
-function openAddFriendModal() {
-  document.getElementById("addFriendModal").classList.remove("hidden");
-  friendMessage.textContent = "";
-}
-
-function closeAddFriendModal() {
-  document.getElementById("addFriendModal").classList.add("hidden");
-  friendMessage.textContent = "";
-}
+addFriendBtn.addEventListener("click", () => addFriendModal.classList.remove("hidden"));
+closeModalBtn.addEventListener("click", () => addFriendModal.classList.add("hidden"));
+confirmAddFriendBtn.addEventListener("click", confirmAddFriend);
 
 function confirmAddFriend() {
-  const id = document.getElementById("friendIdentifier").value.trim();
-  if (!id) {
-    friendMessage.textContent = "⚠️ Enter username or Gmail.";
-    return;
-  }
+  const id = friendIdentifierInput.value.trim();
+  if (!id) { alert("Enter username or Gmail"); return; }
 
   fetch("/api/users/add-friend", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({ identifier: id }),
-  })
-    .then((res) => res.json())
-    .then(async (data) => {
-      if (data.error) {
-        friendMessage.textContent = data.error;
-        return;
-      }
-      friendMessage.textContent = "✅ Friend added!";
-      closeAddFriendModal();
-      await fetchChats(); // refresh lists
-    })
-    .catch(() => {
-      friendMessage.textContent = "❌ Error adding friend.";
-    });
+  }).then(res => res.json())
+    .then(async data => {
+      if (data.error) { alert(data.error); return; }
+      alert("Friend added!");
+      addFriendModal.classList.add("hidden");
+      friendIdentifierInput.value = "";
+      await fetchChats();
+    }).catch(() => alert("Error adding friend."));
 }
 
 // ==============================
-// Socket.IO (Realtime)
+// Settings
 // ==============================
+settingsBtn.addEventListener("click", () => window.location.href = "/settings.html");
 
-// Load socket.io client if not present, then init
-(function ensureSocketIoAndInit() {
+// ==============================
+// Socket.IO
+// ==============================
+(function initSocketClient() {
   if (window.io) return initSocket();
   const s = document.createElement("script");
   s.src = "https://cdn.socket.io/4.7.5/socket.io.min.js";
   s.onload = initSocket;
-  s.onerror = () => console.warn("Socket.IO client failed to load.");
   document.head.appendChild(s);
 })();
 
 function initSocket() {
-  try {
-    socket = io("/", {
-      auth: { token },
-      transports: ["websocket", "polling"],
-      reconnection: true,
-      reconnectionAttempts: Infinity,
-      reconnectionDelay: 500,
-      reconnectionDelayMax: 5000,
-    });
-
-    socket.on("connect", () => {
-      // Join rooms after connection (if we already fetched)
-      joinAllThreads();
-    });
-
-    socket.on("connect_error", (err) => {
-      console.warn("Socket connect_error:", err?.message || err);
-    });
-
-    // ----- Assumed server events -----
-    // Private message came in
-    socket.on("chat:newMessage", (payload) => {
-      // expected: { from, to, text, createdAt }
-      // If 'from' is a friend, update that thread
-      if (!payload) return refetchOnUnknown();
-      const friendId = payload.from;
-      upsertChatThread(friendId, {
-        lastMessage: payload.text,
-        lastMessageTime: payload.createdAt || Date.now(),
-        incUnread: true,
-      });
-    });
-
-    // Group message came in
-    socket.on("group:newMessage", (payload) => {
-      // expected: { groupId, from, text, createdAt }
-      if (!payload) return refetchOnUnknown();
-      const groupId = payload.groupId;
-      upsertGroupThread(groupId, {
-        lastMessage: payload.text,
-        lastMessageTime: payload.createdAt || Date.now(),
-        incUnread: true,
-      });
-    });
-
-    // Some servers use a single "message" event with context
-    socket.on("message", (msg) => {
-      if (!msg) return;
-      if (msg.groupId) {
-        upsertGroupThread(msg.groupId, {
-          lastMessage: msg.text,
-          lastMessageTime: msg.createdAt || Date.now(),
-          incUnread: true,
-        });
-      } else if (msg.from) {
-        upsertChatThread(msg.from, {
-          lastMessage: msg.text,
-          lastMessageTime: msg.createdAt || Date.now(),
-          incUnread: true,
-        });
-      } else {
-        refetchOnUnknown();
-      }
-    });
-
-    // Optional: presence updates (if your server emits)
-    socket.on("presence:update", ({ userId, online }) => {
-      // You could reflect presence in UI if you store it in allChats
-      // For now we ignore; left as a hook.
-    });
-  } catch (e) {
-    console.error("Socket init error:", e);
-  }
+  socket = io("/", { auth: { token }, transports: ["websocket","polling"] });
+  socket.on("connect", () => joinAllThreads());
+  socket.on("chat:newMessage", payload => { if(payload) upsertChatThread(payload.from, {lastMessage:payload.text,lastMessageTime:payload.createdAt||Date.now(),incUnread:true}); });
+  socket.on("group:newMessage", payload => { if(payload) upsertGroupThread(payload.groupId, {lastMessage:payload.text,lastMessageTime:payload.createdAt||Date.now(),incUnread:true}); });
 }
 
-// Tell server which rooms/threads we want realtime for
+// ==============================
+// Join rooms
+// ==============================
 function joinAllThreads() {
   if (!socket || !socket.connected) return;
-
-  const chatIds = allChats.map((c) => c._id);
-  const groupIds = allGroups.map((g) => g._id);
-
-  // Avoid rejoining the same rooms every time
-  const newChatIds = chatIds.filter((id) => !joinedThreadIds.chats.has(id));
-  const newGroupIds = groupIds.filter((id) => !joinedThreadIds.groups.has(id));
-
-  if (newChatIds.length > 0) {
-    socket.emit("chat:joinMany", { threadIds: newChatIds });
-    newChatIds.forEach((id) => joinedThreadIds.chats.add(id));
-  }
-  if (newGroupIds.length > 0) {
-    socket.emit("group:joinMany", { groupIds: newGroupIds });
-    newGroupIds.forEach((id) => joinedThreadIds.groups.add(id));
-  }
+  const chatIds = allChats.map(c => c._id).filter(id => !joinedThreadIds.chats.has(id));
+  const groupIds = allGroups.map(g => g._id).filter(id => !joinedThreadIds.groups.has(id));
+  if(chatIds.length>0){socket.emit("chat:joinMany",{threadIds:chatIds}); chatIds.forEach(id=>joinedThreadIds.chats.add(id));}
+  if(groupIds.length>0){socket.emit("group:joinMany",{groupIds:groupIds}); groupIds.forEach(id=>joinedThreadIds.groups.add(id));}
 }
 
-// If an event arrives we can't map, just refetch to stay consistent
-let refetchTimeout = null;
-function refetchOnUnknown() {
-  if (refetchTimeout) return; // debounce bursty events
-  refetchTimeout = setTimeout(async () => {
-    refetchTimeout = null;
-    await fetchChats();
-  }, 400);
-}
+// ==============================
+// Upsert threads
+// ==============================
+function upsertChatThread(friendId,{lastMessage,lastMessageTime,incUnread}){let idx=chatIndexById.get(friendId);if(idx==null)return fetchChats();const t=allChats[idx];allChats[idx]={...t,lastMessage,lastMessageTime,unread:incUnread?Number(t.unread||0)+1:t.unread||0};allChats.sort((a,b)=>new Date(b.lastMessageTime)-new Date(a.lastMessageTime));rebuildIndex("chats");if(activeTab==="chats")applyCurrentFilterAndRender();}
+function upsertGroupThread(groupId,{lastMessage,lastMessageTime,incUnread}){let idx=groupIndexById.get(groupId);if(idx==null)return fetchChats();const t=allGroups[idx];allGroups[idx]={...t,lastMessage,lastMessageTime,unread:incUnread?Number(t.unread||0)+1:t.unread||0};allGroups.sort((a,b)=>new Date(b.lastMessageTime)-new Date(a.lastMessageTime));rebuildIndex("groups");if(activeTab==="groups")applyCurrentFilterAndRender();}
 
-// Upsert helpers (update or insert thread, resort, re-render section if visible)
-function upsertChatThread(friendId, { lastMessage, lastMessageTime, incUnread }) {
-  let idx = chatIndexById.get(friendId);
-  if (idx == null) {
-    // Unknown thread -> refetch (safer than guessing fields)
-    return refetchOnUnknown();
-  }
-
-  const t = allChats[idx];
-  const unread = incUnread ? (Number(t.unread || 0) + 1) : t.unread || 0;
-
-  const updated = { ...t, lastMessage, lastMessageTime, unread };
-  allChats[idx] = updated;
-
-  // Re-sort
-  allChats.sort((a, b) => new Date(b.lastMessageTime) - new Date(a.lastMessageTime));
-  rebuildIndex("chats");
-
-  if (activeTab === "chats") {
-    // Keep current search filter applied
-    applyCurrentFilterAndRender();
-  }
-}
-
-function upsertGroupThread(groupId, { lastMessage, lastMessageTime, incUnread }) {
-  let idx = groupIndexById.get(groupId);
-  if (idx == null) {
-    return refetchOnUnknown();
-  }
-
-  const t = allGroups[idx];
-  const unread = incUnread ? (Number(t.unread || 0) + 1) : t.unread || 0;
-
-  const updated = { ...t, lastMessage, lastMessageTime, unread };
-  allGroups[idx] = updated;
-
-  allGroups.sort((a, b) => new Date(b.lastMessageTime) - new Date(a.lastMessageTime));
-  rebuildIndex("groups");
-
-  if (activeTab === "groups") {
-    applyCurrentFilterAndRender();
-  }
-}
-
+// ==============================
+// Filter & Render
+// ==============================
 function applyCurrentFilterAndRender() {
-  const q = (searchInput.value || "").toLowerCase();
-  const list = activeTab === "chats" ? allChats : allGroups;
-  if (!q) return displayChats(list);
-  displayChats(
-    list.filter(
-      (item) =>
-        (item.username || "").toLowerCase().includes(q) ||
-        (item.email || "").toLowerCase().includes(q) ||
-        (item.groupName || "").toLowerCase().includes(q)
-    )
-  );
+  const q=(searchInput.value||"").toLowerCase();
+  const list=activeTab==="chats"?allChats:allGroups;
+  if(!q){displayChats(list);return;}
+  displayChats(list.filter(item=>(item.username||"").toLowerCase().includes(q)||(item.email||"").toLowerCase().includes(q)||(item.groupName||"").toLowerCase().includes(q)));
 }
 
 // ==============================
-// Page visibility: refresh when returning to tab
+// Visibility change refresh
 // ==============================
-document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") {
-    fetchChats();
-  }
-});
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")fetchChats();});
 
 // ==============================
 // Initial Load
