@@ -1,3 +1,6 @@
+/* ==============================
+   General Body
+============================== */
 body {
   margin: 0;
   padding: 0;
@@ -6,66 +9,96 @@ body {
   color: #f0f0f0;
 }
 
+/* ==============================
+   Container
+============================== */
 .container {
   display: flex;
   height: 100vh;
+  width: 100%;
+  overflow: hidden;
 }
 
-/* Sidebar */
+/* ==============================
+   Sidebar
+============================== */
 .sidebar {
   width: 300px;
   background-color: #101010;
-  padding: 1rem;
+  border-right: 1px solid #333;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid #333;
+  padding: 1rem;
+  position: relative;
+  z-index: 1;
 }
 
 .sidebar-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1rem;
   color: #ff9933;
+  margin-bottom: 1rem;
+  font-size: 1.2rem;
+  font-weight: bold;
 }
 
 .sidebar input[type="text"] {
-  padding: 0.5rem;
+  padding: 0.6rem;
+  border: none;
+  border-radius: 6px;
   margin-bottom: 1rem;
   width: 100%;
-  border-radius: 6px;
-  border: none;
   background-color: #2a2a2a;
   color: #fff;
 }
 
-.tabs button {
-  padding: 0.5rem;
-  width: 50%;
-  border: none;
-  background: none;
-  color: #ccc;
-  cursor: pointer;
-}
-.tabs .active {
-  border-bottom: 2px solid #ff9933;
-  color: #fff;
+.sidebar .tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
 }
 
+.sidebar .tabs button {
+  flex: 1;
+  padding: 0.5rem;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: #fff;
+  cursor: pointer;
+  font-weight: bold;
+  transition: all 0.2s;
+}
+
+.sidebar .tabs button.border-b-2 {
+  border-bottom: 2px solid #ff9933;
+  color: #ff9933;
+}
+
+/* ==============================
+   Chat List
+============================== */
 .chat-list {
   flex-grow: 1;
   overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.chat-list::-webkit-scrollbar {
+  display: none;
 }
 
 .chat-item {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 1rem;
   padding: 0.7rem 0.5rem;
   border-bottom: 1px solid #2e2e2e;
   cursor: pointer;
   transition: background 0.3s;
 }
+
 .chat-item:hover {
   background-color: #252525;
 }
@@ -78,90 +111,146 @@ body {
   object-fit: cover;
 }
 
+.chat-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
 .chat-info .name {
   font-weight: bold;
   color: #ff9933;
 }
 
-/* Main Chat Area */
+.chat-info .last-message {
+  font-size: 0.85rem;
+  color: #ccc;
+}
+
+/* ==============================
+   Main Chat Area Placeholder
+============================== */
 .main {
   flex-grow: 1;
   background-color: #141414;
   display: flex;
-  justify-content: center;
   align-items: center;
+  justify-content: center;
   color: #999;
   font-size: 1.2rem;
 }
 
-/* Floating Button */
+/* ==============================
+   Floating Add Friend Button
+============================== */
 .floating-btn {
   position: fixed;
-  bottom: 2rem;
-  right: 2rem;
+  bottom: 1.5rem;
+  right: 1.5rem;
   width: 55px;
   height: 55px;
   border-radius: 50%;
-  border: none;
   background-color: #c1440e;
   color: #fff;
   font-size: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
-  z-index: 9999;
+  z-index: 1000;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+  transition: background 0.3s, transform 0.2s;
 }
 
-/* Modal */
-.modal {
+.floating-btn:hover {
+  background-color: #a93700;
+  transform: scale(1.1);
+}
+
+/* ==============================
+   Add Friend Modal
+============================== */
+#addFriendModal {
   position: fixed;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(0,0,0,0.7);
+  background-color: rgba(0,0,0,0.7);
   display: flex;
-  justify-content: center;
   align-items: center;
-  z-index: 10000;
+  justify-content: center;
+  z-index: 2000;
+  padding: 1rem;
 }
 
-.modal.hidden {
+#addFriendModal.hidden {
   display: none;
 }
 
 .modal-content {
-  background: #1c1c1c;
+  background-color: #1c1c1c;
   padding: 2rem;
-  border-radius: 10px;
-  width: 300px;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
+  border-radius: 8px;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 6px 12px rgba(0,0,0,0.5);
 }
 
-.modal-content input {
-  padding: 0.5rem;
-  border-radius: 5px;
+.modal-content h2 {
+  margin-top: 0;
+  color: #ff9933;
+}
+
+.modal-content input[type="text"] {
+  width: 100%;
+  padding: 0.6rem;
+  margin: 1rem 0;
+  border-radius: 6px;
   border: none;
   background-color: #2a2a2a;
   color: #fff;
 }
 
-.modal-actions {
-  display: flex;
-  justify-content: space-between;
-}
-.modal-actions button {
-  padding: 0.5rem 1rem;
+.modal-content button {
+  padding: 0.6rem 1rem;
   border: none;
-  border-radius: 5px;
-  cursor: pointer;
-  font-weight: bold;
-}
-.modal-actions button:first-child {
+  border-radius: 6px;
   background-color: #c1440e;
   color: #fff;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.3s;
 }
-.modal-actions button:last-child {
-  background-color: #555;
+
+.modal-content button:hover {
+  background-color: #a93700;
+}
+
+/* ==============================
+   Toast Messages
+============================== */
+#toast {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  background-color: #d2691e;
   color: #fff;
+  padding: 0.75rem 1.2rem;
+  border-radius: 6px;
+  display: none;
+  z-index: 3000;
+  font-weight: bold;
+}
+
+/* ==============================
+   Scrollbar Fix
+============================== */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #555;
+  border-radius: 4px;
 }
