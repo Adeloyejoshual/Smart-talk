@@ -17,8 +17,18 @@
     <div id="user-list" class="user-list"></div>
   </main>
 
-  <!-- Floating Add Friend Button (global) -->
+  <!-- Floating Add Friend Button -->
   <button id="floating-add-btn" class="floating-btn">➕</button>
+
+  <!-- Add Friend Modal -->
+  <div id="addFriendModal" class="modal">
+    <div class="modal-content">
+      <span class="close">&times;</span>
+      <h3>Add Friend</h3>
+      <input type="text" id="searchInput" placeholder="Search by username or email..." />
+      <div id="searchResults"></div>
+    </div>
+  </div>
 
   <script src="/scripts/home.js"></script>
 </body>
