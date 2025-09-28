@@ -12,6 +12,12 @@ We welcome contributions! Please see our [Contributing Guide](./CONTRIBUTING.md)
 
 ---
 
+## 🌐 Live Demo
+
+Check out the deployed app here: [https://smart-talk-t6yy.onrender.com](https://smart-talk-t6yy.onrender.com)
+
+---
+
 ## 🚀 Features
 
 - ✅ User registration and login (MongoDB)
