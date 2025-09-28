@@ -2,18 +2,25 @@ document.addEventListener("DOMContentLoaded", () => {
   const addFriendBtn = document.getElementById("addFriendBtn");
   const addFriendModal = document.getElementById("addFriendModal");
   const closeBtn = document.querySelector(".close");
+  const loggedInUser = document.getElementById("loggedInUser");
+  const friendsList = document.getElementById("friendsList");
 
-  // Open modal on + button click
+  // Load logged-in user info
+  const token = localStorage.getItem("token");
+  const user = localStorage.getItem("username");
+  if (user) loggedInUser.textContent = user;
+
+  // Open modal
   addFriendBtn.addEventListener("click", () => {
     addFriendModal.style.display = "block";
   });
 
-  // Close modal on × click
+  // Close modal (× button)
   closeBtn.addEventListener("click", () => {
     addFriendModal.style.display = "none";
   });
 
-  // Close modal when clicking outside
+  // Close modal (outside click)
   window.addEventListener("click", (e) => {
     if (e.target === addFriendModal) {
       addFriendModal.style.display = "none";
@@ -26,7 +33,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const username = document.getElementById("friendUsername").value;
 
     try {
-      const token = localStorage.getItem("token");
       const res = await fetch("/api/users/add-friend", {
         method: "POST",
         headers: {
@@ -41,8 +47,34 @@ document.addEventListener("DOMContentLoaded", () => {
 
       addFriendModal.style.display = "none";
       document.getElementById("friendUsername").value = "";
+      loadFriends(); // refresh list
     } catch (err) {
       console.error("Error adding friend:", err);
     }
   });
+
+  // Load friends from API
+  async function loadFriends() {
+    try {
+      const res = await fetch("/api/users/friends", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+
+      friendsList.innerHTML = "";
+      if (data.friends && data.friends.length > 0) {
+        data.friends.forEach(friend => {
+          const li = document.createElement("li");
+          li.textContent = friend.username || friend.email;
+          friendsList.appendChild(li);
+        });
+      } else {
+        friendsList.innerHTML = "<li>No friends yet</li>";
+      }
+    } catch (err) {
+      console.error("Error loading friends:", err);
+    }
+  }
+
+  loadFriends();
 });
