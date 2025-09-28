@@ -5,19 +5,11 @@ const token = localStorage.getItem("token");
 if (!token) window.location.href = "/login.html";
 
 // ==============================
-// State
-// ==============================
-let allChats = [];
-let allGroups = [];
-let activeTab = "chats";
-
-// ==============================
 // DOM Elements
 // ==============================
 const chatListEl = document.getElementById("chatList");
 const tabChats = document.getElementById("tabChats");
 const tabGroups = document.getElementById("tabGroups");
-const searchInput = document.getElementById("searchInput");
 
 const addFriendBtn = document.getElementById("addFriendBtn");
 const addFriendModal = document.getElementById("addFriendModal");
@@ -26,6 +18,14 @@ const confirmAddFriendBtn = document.getElementById("confirmAddFriendBtn");
 const friendIdentifierInput = document.getElementById("friendIdentifier");
 
 const settingsBtn = document.getElementById("settingsBtn");
+const searchInput = document.getElementById("searchInput");
+
+// ==============================
+// State
+// ==============================
+let allChats = [];
+let allGroups = [];
+let activeTab = "chats";
 
 // ==============================
 // Tab Switching
@@ -35,8 +35,8 @@ tabGroups.addEventListener("click", () => switchTab("groups"));
 
 function switchTab(tab) {
   activeTab = tab;
-  tabChats.classList.toggle("active", tab === "chats");
-  tabGroups.classList.toggle("active", tab === "groups");
+  tabChats.classList.toggle("active-tab", tab === "chats");
+  tabGroups.classList.toggle("active-tab", tab === "groups");
   renderChats();
 }
 
@@ -45,36 +45,25 @@ function switchTab(tab) {
 // ==============================
 async function fetchChats() {
   try {
-    const res = await fetch("/api/users/friends", {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    const chats = await res.json();
-    allChats = Array.isArray(chats) ? chats : [];
+    const res = await fetch("/api/users/chats", { headers: { Authorization: `Bearer ${token}` } });
+    allChats = await res.json();
   } catch (err) {
-    console.error("Error fetching friends:", err);
+    console.error(err);
     allChats = [];
   }
 
-  try {
-    const resG = await fetch("/api/groups/my-groups", {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    const groups = await resG.json();
-    allGroups = Array.isArray(groups) ? groups : [];
-  } catch (err) {
-    console.error("Error fetching groups:", err);
-    allGroups = [];
-  }
-
+  // Groups can be added similarly
+  allGroups = [];
   renderChats();
 }
 
 // ==============================
 // Render Chats / Groups
 // ==============================
-function renderChats(filteredList) {
+function renderChats() {
   chatListEl.innerHTML = "";
-  const list = filteredList || (activeTab === "chats" ? allChats : allGroups);
+  const list = activeTab === "chats" ? allChats : allGroups;
+
   if (!list.length) {
     chatListEl.innerHTML = `<p class="text-center text-gray-500 mt-10">No ${activeTab} yet.</p>`;
     return;
@@ -85,16 +74,16 @@ function renderChats(filteredList) {
     div.className = "chat-item";
     div.dataset.id = item._id;
 
-    div.addEventListener("click", () => {
+    div.onclick = () => {
       if (activeTab === "chats") {
         window.location.href = `/private-chat.html?user=${item._id}`;
       } else {
         window.location.href = `/group-chat.html?group=${item._id}`;
       }
-    });
+    };
 
     div.innerHTML = `
-      <img src="${item.avatar || '/default-avatar.png'}" class="chat-avatar" />
+      <img src="${item.avatar || '/default-avatar.png'}" class="chat-avatar">
       <div class="chat-info">
         <span class="name">${item.username || item.groupName}</span>
       </div>
@@ -110,11 +99,21 @@ function renderChats(filteredList) {
 searchInput.addEventListener("input", () => {
   const q = searchInput.value.toLowerCase();
   const list = activeTab === "chats" ? allChats : allGroups;
-  const filtered = list.filter(item =>
-    (item.username || "").toLowerCase().includes(q) ||
-    (item.groupName || "").toLowerCase().includes(q)
-  );
-  renderChats(filtered);
+  const filtered = list.filter(item => (item.username || "").toLowerCase().includes(q));
+  chatListEl.innerHTML = "";
+  filtered.forEach(item => {
+    const div = document.createElement("div");
+    div.className = "chat-item";
+    div.dataset.id = item._id;
+    div.onclick = () => window.location.href = `/private-chat.html?user=${item._id}`;
+    div.innerHTML = `
+      <img src="${item.avatar || '/default-avatar.png'}" class="chat-avatar">
+      <div class="chat-info">
+        <span class="name">${item.username}</span>
+      </div>
+    `;
+    chatListEl.appendChild(div);
+  });
 });
 
 // ==============================
@@ -128,20 +127,16 @@ confirmAddFriendBtn.addEventListener("click", async () => {
   if (!identifier) return alert("Enter username or email");
 
   try {
-    const res = await fetch(`/api/users/add-friend/${identifier}`, {
+    const res = await fetch(`/api/users/add-friend`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}` }
+      headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ identifier }),
     });
     const data = await res.json();
-
-    if (data.message) {
-      alert(data.message);
-      friendIdentifierInput.value = "";
-      addFriendModal.classList.add("hidden");
-      await fetchChats();
-    } else if (data.error) {
-      alert(data.error);
-    }
+    alert(data.message || data.error);
+    friendIdentifierInput.value = "";
+    addFriendModal.classList.add("hidden");
+    await fetchChats();
   } catch (err) {
     console.error(err);
     alert("Failed to add friend");
@@ -149,11 +144,9 @@ confirmAddFriendBtn.addEventListener("click", async () => {
 });
 
 // ==============================
-// Settings Button
+// Settings
 // ==============================
-settingsBtn.addEventListener("click", () => {
-  window.location.href = "/settings.html";
-});
+settingsBtn.addEventListener("click", () => window.location.href = "/settings.html");
 
 // ==============================
 // Initial Load
