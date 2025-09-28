@@ -24,14 +24,11 @@ const authMiddleware = (req, res, next) => {
 };
 
 // =================== FILE UPLOAD CONFIG ===================
-
-// Ensure 'public/uploads' exists
 const uploadPath = path.join(__dirname, "../public/uploads");
 if (!fs.existsSync(uploadPath)) {
   fs.mkdirSync(uploadPath, { recursive: true });
 }
 
-// Configure multer
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     cb(null, uploadPath);
@@ -72,6 +69,19 @@ router.get("/search", authMiddleware, async (req, res) => {
   }
 });
 
+// ✅ NEW: Get all users (except current)
+router.get("/all", authMiddleware, async (req, res) => {
+  try {
+    const users = await User.find(
+      { _id: { $ne: req.user.id } },
+      "username email avatar"
+    );
+    res.json(users);
+  } catch (err) {
+    res.status(500).json({ message: "Could not load users" });
+  }
+});
+
 // ✅ Add friend
 router.post("/add-friend", authMiddleware, async (req, res) => {
   try {
@@ -104,17 +114,9 @@ router.get("/chats", authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).populate(
       "friends",
-      "username name email avatar"
+      "username email avatar"
     );
-    const friends = user.friends.map((friend) => ({
-      _id: friend._id,
-      username: friend.username,
-      name: friend.name,
-      email: friend.email,
-      avatar: friend.avatar,
-      lastMessage: null,
-    }));
-    res.json(friends);
+    res.json(user.friends);
   } catch (err) {
     res.status(500).json({ message: "Could not retrieve friends" });
   }
@@ -134,7 +136,7 @@ router.delete("/remove-friend/:friendId", authMiddleware, async (req, res) => {
   }
 });
 
-// ✅ Upload avatar route
+// ✅ Upload avatar
 router.post(
   "/upload-avatar",
   authMiddleware,
@@ -142,41 +144,13 @@ router.post(
   async (req, res) => {
     try {
       const user = await User.findById(req.user.id);
-      user.avatar = "/uploads/" + req.file.filename; // Save relative path
+      user.avatar = "/uploads/" + req.file.filename;
       await user.save();
       res.json({ avatar: user.avatar });
     } catch (err) {
-      console.error("Upload error:", err);
       res.status(500).json({ message: "Upload failed" });
     }
   }
 );
-
-// ✅ Block user
-router.post("/block", async (req, res) => {
-  const { userId, blockId } = req.body;
-  await User.findByIdAndUpdate(userId, {
-    $addToSet: { blockedUsers: blockId },
-  });
-  res.send("Blocked");
-});
-
-// ✅ Unblock user
-router.post("/unblock", async (req, res) => {
-  const { userId, blockId } = req.body;
-  await User.findByIdAndUpdate(userId, {
-    $pull: { blockedUsers: blockId },
-  });
-  res.send("Unblocked");
-});
-
-// ✅ Report user
-router.post("/report", async (req, res) => {
-  const { userId, reportId } = req.body;
-  await User.findByIdAndUpdate(userId, {
-    $addToSet: { reports: reportId },
-  });
-  res.send("Reported");
-});
 
 module.exports = router;
