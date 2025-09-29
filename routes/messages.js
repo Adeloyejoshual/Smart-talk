@@ -9,6 +9,7 @@ const uploadToCloudinary = require("../utils/cloudinaryUpload");
 
 dotenv.config();
 
+// Cloudinary config
 cloudinary.config({
   cloud_name: process.env.CLOUD_NAME,
   api_key: process.env.CLOUD_API_KEY,
@@ -38,16 +39,21 @@ router.post("/private/send", auth, async (req, res) => {
     await newMessage.save();
     await newMessage.populate("sender", "username");
 
-    req.io?.to(recipientId).emit("privateMessage", {
+    // Emit to receiver
+    req.io?.to(recipientId.toString()).emit("privateMessage", {
       _id: newMessage._id,
       senderId: req.userId,
-      content,
-      replyTo: newMessage.replyTo,
+      senderName: newMessage.sender.username,
+      content: newMessage.content,
+      image: newMessage.image || "",
+      file: newMessage.file || "",
+      fileType: newMessage.fileType || "",
       timestamp: newMessage.createdAt,
-      isForwarded,
+      replyTo: newMessage.replyTo,
+      isForwarded: newMessage.isForwarded,
     });
 
-    res.status(201).json(newMessage);
+    res.status(201).json({ success: true, message: newMessage });
   } catch (err) {
     console.error("❌ Send error:", err);
     res.status(500).json({ error: "Failed to send message" });
@@ -73,6 +79,20 @@ router.post("/private/upload", auth, upload.array("files", 5), async (req, res) 
             : { file: url, fileType: mime.split("/")[1] }),
         });
         await msg.save();
+        await msg.populate("sender", "username");
+
+        // Emit to receiver
+        req.io?.to(receiverId.toString()).emit("privateMessage", {
+          _id: msg._id,
+          senderId: req.userId,
+          senderName: msg.sender.username,
+          content: msg.content || "",
+          image: msg.image || "",
+          file: msg.file || "",
+          fileType: msg.fileType || "",
+          timestamp: msg.createdAt,
+        });
+
         return msg;
       })
     );
@@ -99,130 +119,13 @@ router.get("/history/:receiverId", auth, async (req, res) => {
       .sort({ createdAt: -1 })
       .skip(parseInt(skip))
       .limit(parseInt(limit))
+      .populate("sender", "username")
       .populate("replyTo");
 
     res.status(200).json({ success: true, messages });
   } catch (err) {
     console.error("❌ History error:", err);
     res.status(500).json({ error: "Failed to fetch messages" });
-  }
-});
-
-/* === 📝 EDIT MESSAGE === */
-router.put("/edit/:id", auth, async (req, res) => {
-  try {
-    const { content } = req.body;
-    const message = await Message.findById(req.params.id);
-    if (!message) return res.status(404).json({ error: "Message not found" });
-    if (message.sender.toString() !== req.userId) return res.status(403).json({ error: "Unauthorized" });
-
-    message.content = content;
-    message.isEdited = true;
-    message.editedAt = new Date();
-    await message.save();
-
-    res.status(200).json({ success: true, message });
-  } catch (err) {
-    res.status(500).json({ error: "Edit failed" });
-  }
-});
-
-/* === ❌ DELETE MESSAGE === */
-router.delete("/delete/:id", auth, async (req, res) => {
-  try {
-    const message = await Message.findById(req.params.id);
-    if (!message) return res.status(404).json({ error: "Message not found" });
-    if (message.sender.toString() !== req.userId) return res.status(403).json({ error: "Unauthorized" });
-
-    message.isDeleted = true;
-    message.deletedFor = message.deletedFor || [];
-    message.deletedFor.push(req.userId);
-    await message.save();
-
-    res.status(200).json({ success: true, message });
-  } catch (err) {
-    res.status(500).json({ error: "Delete failed" });
-  }
-});
-
-/* === ⭐ STAR OR UNSTAR === */
-router.put("/star/:id", auth, async (req, res) => {
-  try {
-    const message = await Message.findById(req.params.id);
-    if (!message) return res.status(404).json({ error: "Message not found" });
-
-    message.isStarred = !message.isStarred;
-    await message.save();
-
-    res.json({ success: true, isStarred: message.isStarred });
-  } catch (err) {
-    res.status(500).json({ error: "Failed to star/unstar" });
-  }
-});
-
-/* === 📌 PIN OR UNPIN === */
-router.put("/pin/:id", auth, async (req, res) => {
-  try {
-    const message = await Message.findById(req.params.id);
-    if (!message) return res.status(404).json({ error: "Message not found" });
-    if (message.sender.toString() !== req.userId) return res.status(403).json({ error: "Unauthorized" });
-
-    message.isPinned = !message.isPinned;
-    await message.save();
-
-    res.json({ success: true, isPinned: message.isPinned });
-  } catch (err) {
-    res.status(500).json({ error: "Failed to pin/unpin" });
-  }
-});
-
-/* === 😊 REACT TO A MESSAGE === */
-router.post("/react/:id", auth, async (req, res) => {
-  try {
-    const { emoji } = req.body;
-    const message = await Message.findById(req.params.id);
-    if (!message) return res.status(404).json({ error: "Message not found" });
-
-    const existing = message.emojiReactions.findIndex(
-      (r) => r.user.toString() === req.userId && r.emoji === emoji
-    );
-
-    if (existing > -1) {
-      message.emojiReactions.splice(existing, 1); // Remove reaction
-    } else {
-      message.emojiReactions.push({ user: req.userId, emoji });
-    }
-
-    await message.save();
-    res.json({ success: true, reactions: message.emojiReactions });
-  } catch (err) {
-    res.status(500).json({ error: "React failed" });
-  }
-});
-
-/* === 🔁 FORWARD MESSAGE === */
-router.post("/forward/:id", auth, async (req, res) => {
-  try {
-    const { recipientId } = req.body;
-    const original = await Message.findById(req.params.id);
-    if (!original || !recipientId) return res.status(400).json({ error: "Missing data" });
-
-    const newMsg = new Message({
-      sender: req.userId,
-      recipient: recipientId,
-      content: original.content,
-      image: original.image,
-      file: original.file,
-      fileType: original.fileType,
-      isForwarded: true,
-      forwardedFrom: original.sender,
-    });
-
-    await newMsg.save();
-
-    res.status(201).json({ success: true, message: newMsg });
-  } catch (err) {
-    res.status(500).json({ error: "Forward failed" });
   }
 });
 
