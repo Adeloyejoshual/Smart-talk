@@ -1,108 +1,48 @@
-// routes/messages.js
-const express = require("express");
+import express from "express";
+import Message from "../models/Message.js";
+import authMiddleware from "../middleware/authMiddleware.js";
+
 const router = express.Router();
-const jwt = require("jsonwebtoken");
-const Message = require("../models/Chat");
-const User = require("../models/User");
 
-const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret";
-
-// ------------------ AUTH MIDDLEWARE ------------------
-const authMiddleware = (req, res, next) => {
-  const token = req.headers.authorization?.split(" ")[1];
-  if (!token) return res.status(401).json({ message: "No token provided" });
-
+// 📩 Send Message
+router.post("/send", authMiddleware, async (req, res) => {
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.userId = decoded.id || decoded.userId;
-    req.username = decoded.username || "me";
-    next();
-  } catch (err) {
-    return res.status(403).json({ message: "Invalid token" });
+    const { receiverId, content, type, fileUrl } = req.body;
+
+    const newMessage = new Message({
+      sender: req.user.id,
+      receiver: receiverId,
+      content,
+      type: type || "text",
+      fileUrl: fileUrl || "",
+      status: "sent",
+    });
+
+    await newMessage.save();
+
+    res.json(newMessage);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to send message" });
   }
-};
+});
 
-// ------------------ FETCH PRIVATE MESSAGES ------------------
-// GET /api/messages/:partnerId
-router.get("/:partnerId", authMiddleware, async (req, res) => {
-  const { partnerId } = req.params;
-  const userId = req.userId;
-
+// 📜 Get chat history
+router.get("/history/:userId", authMiddleware, async (req, res) => {
   try {
     const messages = await Message.find({
       $or: [
-        { sender: userId, receiver: partnerId },
-        { sender: partnerId, receiver: userId },
+        { sender: req.user.id, receiver: req.params.userId },
+        { sender: req.params.userId, receiver: req.user.id },
       ],
     })
-      .sort({ createdAt: 1 })
-      .populate("sender", "username avatar")
-      .populate("receiver", "username avatar");
+      .populate("sender", "username")
+      .populate("receiver", "username")
+      .sort({ createdAt: 1 });
 
-    const formatted = messages.map((msg) => ({
-      _id: msg._id,
-      sender: {
-        id: msg.sender._id,
-        username: msg.sender.username,
-        avatar: msg.sender.avatar,
-      },
-      receiver: {
-        id: msg.receiver?._id,
-        username: msg.receiver?.username,
-        avatar: msg.receiver?.avatar,
-      },
-      content: msg.content,
-      fileUrl: msg.fileUrl || null,
-      fileType: msg.fileType || "text",
-      status: msg.status,
-      createdAt: msg.createdAt,
-    }));
-
-    res.json(formatted);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Failed to load messages" });
+    res.json(messages);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch chat history" });
   }
 });
 
-// ------------------ SEND MESSAGE ------------------
-// POST /api/messages/send
-router.post("/send", authMiddleware, async (req, res) => {
-  const { recipient, content } = req.body;
-  if (!recipient) return res.status(400).json({ message: "Recipient required" });
-
-  try {
-    const newMsg = new Message({
-      sender: req.userId,
-      receiver: recipient,
-      content: content || "",
-      status: "sent",
-      createdAt: new Date(),
-      fileType: "text",
-    });
-
-    await newMsg.save();
-
-    const msgWithSender = await newMsg.populate("sender", "username avatar");
-
-    res.json({
-      _id: msgWithSender._id,
-      sender: {
-        id: msgWithSender.sender._id,
-        username: msgWithSender.sender.username,
-        avatar: msgWithSender.sender.avatar,
-      },
-      receiver: recipient,
-      content: msgWithSender.content,
-      fileUrl: null,
-      fileType: "text",
-      status: msgWithSender.status,
-      createdAt: msgWithSender.createdAt,
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Failed to send message" });
-  }
-});
-
-module.exports = router;
+export default router;
