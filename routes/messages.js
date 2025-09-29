@@ -1,6 +1,7 @@
-import express from "express";
-import Message from "../models/Message.js";
-import authMiddleware from "../middleware/authMiddleware.js";
+// routes/messages.js
+const express = require("express");
+const Message = require("../models/Message");
+const authMiddleware = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
@@ -19,7 +20,6 @@ router.post("/send", authMiddleware, async (req, res) => {
     });
 
     await newMessage.save();
-
     res.json(newMessage);
   } catch (error) {
     res.status(500).json({ error: "Failed to send message" });
@@ -45,4 +45,4 @@ router.get("/history/:userId", authMiddleware, async (req, res) => {
   }
 });
 
-export default router;
+module.exports = router;
