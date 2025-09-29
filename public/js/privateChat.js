@@ -1,127 +1,175 @@
-const socket = io();
-const messageList = document.getElementById("messageList");
-const messageForm = document.getElementById("messageForm");
-const messageInput = document.getElementById("messageInput");
-const chatUsername = document.getElementById("chat-username");
-const statusIndicator = document.getElementById("statusIndicator");
+document.addEventListener("DOMContentLoaded", () => {
+  const socket = io({
+    auth: { token: localStorage.getItem("token") }
+  });
 
-const token = localStorage.getItem("token");
-const chatUserId = localStorage.getItem("chatUserId"); // 👈 must be set when opening private chat
-const chatUserName = localStorage.getItem("chatUserName");
+  const messageForm = document.getElementById("messageForm");
+  const messageInput = document.getElementById("messageInput");
+  const messageList = document.getElementById("messageList");
+  const chatUsername = document.getElementById("chat-username");
+  const statusIndicator = document.getElementById("statusIndicator");
 
-if (!token || !chatUserId) {
-  alert("Invalid chat session. Please login again.");
-  window.location.href = "/login.html";
-}
+  const imageInput = document.getElementById("imageInput");
+  const fileInput = document.getElementById("fileInput");
+  const emojiButton = document.getElementById("emojiButton");
 
-// set chat username
-chatUsername.textContent = chatUserName || "User";
+  const userId = localStorage.getItem("userId");      // logged-in user
+  const chatUserId = localStorage.getItem("chatUserId"); // recipient
 
-// ✅ Function to format date
-function formatDate(date) {
-  const today = new Date();
-  const msgDate = new Date(date);
+  let lastMessageDate = null; // track last date for separators
 
-  if (
-    msgDate.toDateString() === today.toDateString()
-  ) return "Today";
+  // ---------------- Emoji Picker ----------------
+  const picker = new EmojiButton();
+  emojiButton.addEventListener("click", () => picker.togglePicker(emojiButton));
+  picker.on("emoji", emoji => {
+    messageInput.value += emoji;
+    messageInput.focus();
+  });
 
-  const yesterday = new Date();
-  yesterday.setDate(today.getDate() - 1);
+  // ---------------- Helpers ----------------
+  function formatDateHeader(date) {
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
 
-  if (msgDate.toDateString() === yesterday.toDateString())
-    return "Yesterday";
+    if (date.toDateString() === today.toDateString()) return "Today";
+    if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
+    return date.toLocaleDateString();
+  }
 
-  return msgDate.toLocaleDateString();
-}
+  function formatTime(date) {
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
 
-// ✅ Function to add message to UI
-function addMessage(msg, isOwn) {
-  const li = document.createElement("li");
-  li.className = isOwn ? "sent flex justify-end" : "received flex justify-start";
+  function addDateSeparatorIfNeeded(messageDate) {
+    if (!lastMessageDate || lastMessageDate.toDateString() !== messageDate.toDateString()) {
+      const li = document.createElement("li");
+      li.className = "date-separator";
+      li.textContent = formatDateHeader(messageDate);
+      messageList.appendChild(li);
+      lastMessageDate = messageDate;
+    }
+  }
 
-  const div = document.createElement("div");
-  div.className = "bubble max-w-xs md:max-w-md px-3 py-2 rounded-lg shadow";
-  div.innerHTML = `
-    <p class="text-sm">${msg.content}</p>
-    <span class="text-xs text-gray-500">${new Date(msg.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-  `;
+  function appendMessage(msg, isOwn) {
+    addDateSeparatorIfNeeded(new Date(msg.createdAt));
 
-  li.appendChild(div);
-  messageList.appendChild(li);
-  messageList.scrollTop = messageList.scrollHeight;
-}
+    const li = document.createElement("li");
+    li.className = `flex ${isOwn ? "justify-end" : "justify-start"} items-end`;
 
-// ✅ Fetch chat history
-async function loadHistory() {
-  try {
-    const res = await fetch(`/api/messages/history/${chatUserId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    const messages = await res.json();
+    const bubbleWrapper = document.createElement("div");
+    bubbleWrapper.className = `${isOwn ? "sent" : "received"} max-w-xs`;
 
-    messageList.innerHTML = "";
-    let lastDate = "";
+    const bubble = document.createElement("div");
+    bubble.className = "bubble shadow";
 
-    messages.forEach((msg) => {
-      const msgDate = formatDate(msg.createdAt);
-      if (msgDate !== lastDate) {
-        const sep = document.createElement("div");
-        sep.className = "date-separator";
-        sep.textContent = msgDate;
-        messageList.appendChild(sep);
-        lastDate = msgDate;
+    if (msg.fileUrl) {
+      if (msg.fileType === "image") {
+        const img = document.createElement("img");
+        img.src = msg.fileUrl;
+        img.className = "rounded-lg max-w-[200px] cursor-pointer";
+        bubble.appendChild(img);
+      } else {
+        const a = document.createElement("a");
+        a.href = msg.fileUrl;
+        a.textContent = "📎 " + (msg.content || "File");
+        a.target = "_blank";
+        a.className = "underline text-blue-600";
+        bubble.appendChild(a);
       }
-      addMessage(msg, msg.sender._id === parseJwt(token).id);
-    });
-  } catch (err) {
-    console.error("Failed to load messages:", err);
+    } else {
+      bubble.textContent = msg.content;
+    }
+
+    const time = document.createElement("div");
+    time.className = "msg-time text-right text-xs text-gray-500 mt-1";
+    time.textContent = formatTime(new Date(msg.createdAt));
+
+    bubbleWrapper.appendChild(bubble);
+    bubbleWrapper.appendChild(time);
+    li.appendChild(bubbleWrapper);
+    messageList.appendChild(li);
+
+    messageList.scrollTop = messageList.scrollHeight;
   }
-}
 
-// ✅ Parse JWT to get logged in user ID
-function parseJwt(token) {
-  try {
-    return JSON.parse(atob(token.split(".")[1]));
-  } catch (e) {
-    return null;
-  }
-}
+  // ---------------- Load chat history ----------------
+  fetch(`/api/messages/history/${chatUserId}`, {
+    headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
+  })
+    .then(res => res.json())
+    .then(messages => {
+      if (!Array.isArray(messages)) return;
+      messages.forEach(msg => {
+        appendMessage(
+          msg,
+          msg.sender._id?.toString() === userId || msg.sender.id?.toString() === userId
+        );
+      });
+    })
+    .catch(err => console.error("History load failed:", err));
 
-// ✅ Send message
-messageForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const content = messageInput.value.trim();
-  if (!content) return;
+  // ---------------- Send message ----------------
+  messageForm.addEventListener("submit", e => {
+    e.preventDefault();
+    const content = messageInput.value.trim();
+    if (!content) return;
 
-  try {
-    const res = await fetch("/api/messages/send", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ receiverId: chatUserId, content }),
-    });
-    const newMsg = await res.json();
-
-    addMessage(newMsg, true);
-    socket.emit("privateMessage", {
-      to: chatUserId,
-      message: newMsg,
-    });
+    socket.emit("private message", { to: chatUserId, message: content });
     messageInput.value = "";
-  } catch (err) {
-    console.error("Error sending message:", err);
-  }
-});
+    socket.emit("stop typing", { to: chatUserId });
+  });
 
-// ✅ Receive new messages in real-time
-socket.on("privateMessage", (msg) => {
-  if (msg.sender === chatUserId) {
-    addMessage(msg, false);
-  }
-});
+  // ---------------- File Upload ----------------
+  function uploadFile(file) {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("recipient", chatUserId);
 
-// Load chat history on page load
-loadHistory();
+    fetch("/api/messages/file", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      body: formData,
+    })
+      .then(res => res.json())
+      .then(msg => {
+        appendMessage(msg, true);
+      })
+      .catch(err => console.error("Upload failed:", err));
+  }
+
+  imageInput.addEventListener("change", e => {
+    [...e.target.files].forEach(file => uploadFile(file));
+    e.target.value = "";
+  });
+
+  fileInput.addEventListener("change", e => {
+    [...e.target.files].forEach(file => uploadFile(file));
+    e.target.value = "";
+  });
+
+  // ---------------- Typing Indicator ----------------
+  let typingTimeout;
+  messageInput.addEventListener("input", () => {
+    socket.emit("typing", { to: chatUserId });
+    clearTimeout(typingTimeout);
+    typingTimeout = setTimeout(() => {
+      socket.emit("stop typing", { to: chatUserId });
+    }, 2000);
+  });
+
+  // ---------------- Socket Events ----------------
+  socket.on("private message", msg => {
+    appendMessage(msg, msg.sender.id === userId || msg.sender._id === userId);
+  });
+
+  socket.on("typing", ({ from }) => {
+    if (from === chatUserId) statusIndicator.textContent = "typing...";
+  });
+  socket.on("stop typing", ({ from }) => {
+    if (from === chatUserId) statusIndicator.textContent = "Online";
+  });
+
+  // Default status
+  statusIndicator.textContent = "Online";
+});
