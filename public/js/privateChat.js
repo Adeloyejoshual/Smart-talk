@@ -1,160 +1,155 @@
+// /public/js/privateChat.js
 document.addEventListener("DOMContentLoaded", () => {
-  const socket = io();
-  const token = localStorage.getItem("token");
-  const urlParams = new URLSearchParams(window.location.search);
-  const receiverId = urlParams.get("user");
-  if (!token || !receiverId) window.location.href = "/home.html";
+  const socket = io(); // Connect to Socket.IO server
 
-  let myUserId = null;
-  let typingTimeout;
-  const messageList = document.getElementById("messageList");
   const messageForm = document.getElementById("messageForm");
   const messageInput = document.getElementById("messageInput");
-  const imageInput = document.getElementById("imageInput");
-  const fileInput = document.getElementById("fileInput");
+  const messageList = document.getElementById("messageList");
   const chatUsername = document.getElementById("chat-username");
   const statusIndicator = document.getElementById("statusIndicator");
 
-  const typingIndicator = document.createElement("li");
-  typingIndicator.className = "italic text-sm text-gray-500 px-2";
-  typingIndicator.textContent = "Typing...";
+  const imageInput = document.getElementById("imageInput");
+  const fileInput = document.getElementById("fileInput");
 
-  async function getMyUserId(token) {
-    try { return JSON.parse(atob(token.split(".")[1])).id; } catch { return null; }
+  // Get current user and chat partner from session/localStorage or URL
+  const currentUser = localStorage.getItem("currentUser") || "me";
+  const urlParams = new URLSearchParams(window.location.search);
+  const chatPartner = urlParams.get("user") || "Unknown";
+  chatUsername.textContent = chatPartner;
+
+  // Online status example
+  let lastSeen = null;
+  statusIndicator.textContent = "Online";
+
+  // Helper: format date for message header
+  function formatDateHeader(date) {
+    const msgDate = new Date(date);
+    const now = new Date();
+
+    const isToday = msgDate.toDateString() === now.toDateString();
+    const yesterday = new Date();
+    yesterday.setDate(now.getDate() - 1);
+    const isYesterday = msgDate.toDateString() === yesterday.toDateString();
+
+    if (isToday) return "Today";
+    if (isYesterday) return "Yesterday";
+    return msgDate.toLocaleDateString();
   }
 
-  getMyUserId(token).then(async id => {
-    myUserId = id;
-    socket.emit("join", myUserId);
-    await fetchUsername();
-    await fetchUserStatus();
-    loadMessages();
-  });
-
-  async function fetchUsername() {
-    const res = await fetch(`/api/users/${receiverId}`, { headers: { Authorization: `Bearer ${token}` } });
-    const user = await res.json();
-    chatUsername.textContent = user.username || "Chat";
+  // Helper: format time for messages
+  function formatTime(date) {
+    const d = new Date(date);
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   }
 
-  async function fetchUserStatus() {
-    const res = await fetch(`/api/users/status/${receiverId}`, { headers: { Authorization: `Bearer ${token}` } });
-    const data = await res.json();
-    statusIndicator.textContent = data.status === "online" ? "🟢 Online" : "Offline";
+  // Render message in the chat
+  function addMessage({ sender, content, date }) {
+    const msgDate = new Date(date);
+    const lastMessage = messageList.lastElementChild;
+
+    // Add date header if necessary
+    if (!lastMessage || lastMessage.dataset.date !== msgDate.toDateString()) {
+      const header = document.createElement("li");
+      header.textContent = formatDateHeader(msgDate);
+      header.className = "text-center text-gray-500 dark:text-gray-400 text-xs my-2";
+      header.dataset.date = msgDate.toDateString();
+      messageList.appendChild(header);
+    }
+
+    // Create message bubble
+    const li = document.createElement("li");
+    li.classList.add(sender === currentUser ? "sent" : "received", "flex");
+    li.dataset.date = msgDate.toDateString();
+
+    const bubble = document.createElement("div");
+    bubble.classList.add("bubble", "px-4", "py-2", "rounded-lg", "max-w-xs", "break-words");
+    bubble.textContent = content;
+
+    // Time
+    const time = document.createElement("div");
+    time.classList.add("text-xs", "text-gray-500", "mt-1", sender === currentUser ? "text-right" : "text-left");
+    time.textContent = formatTime(msgDate);
+    bubble.appendChild(time);
+
+    li.appendChild(bubble);
+    messageList.appendChild(li);
+
+    // Scroll to latest
+    messageList.scrollTop = messageList.scrollHeight;
   }
 
-  messageForm.addEventListener("submit", async e => {
+  // Send message
+  messageForm.addEventListener("submit", (e) => {
     e.preventDefault();
     const content = messageInput.value.trim();
     if (!content) return;
 
-    const res = await fetch(`/api/messages/private/send`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ recipientId, content })
-    });
-    const data = await res.json();
-    if (data.success && data.message) appendMessage(data.message, true);
+    const msg = {
+      sender: currentUser,
+      receiver: chatPartner,
+      content,
+      date: new Date(),
+    };
+
+    addMessage(msg); // Show instantly
+    socket.emit("private-message", msg); // Send to server
     messageInput.value = "";
   });
 
-  async function sendFiles(files) {
-    if (!files.length) return;
-    const formData = new FormData();
-    for (const f of files) formData.append("files", f);
-    formData.append("receiverId", receiverId);
+  // Receive message
+  socket.on("private-message", (msg) => {
+    if (msg.sender === chatPartner || msg.receiver === chatPartner) {
+      addMessage(msg);
+    }
+  });
 
-    const res = await fetch(`/api/messages/private/upload`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-      body: formData
-    });
-    const data = await res.json();
-    if (data.success) data.messages.forEach(msg => appendMessage(msg, true));
-  }
-
-  imageInput.addEventListener("change", e => sendFiles([...e.target.files]));
-  fileInput.addEventListener("change", e => sendFiles([...e.target.files]));
-
+  // Typing indicator
+  let typingTimeout;
   messageInput.addEventListener("input", () => {
-    socket.emit("typing", { to: receiverId, from: myUserId });
+    socket.emit("typing", { sender: currentUser, receiver: chatPartner });
     clearTimeout(typingTimeout);
-    typingTimeout = setTimeout(() => socket.emit("stopTyping", { to: receiverId, from: myUserId }), 1500);
+    typingTimeout = setTimeout(() => {
+      socket.emit("stop-typing", { sender: currentUser, receiver: chatPartner });
+    }, 1000);
   });
 
-  socket.on("typing", ({ from }) => {
-    if (from === receiverId && !messageList.contains(typingIndicator)) messageList.appendChild(typingIndicator);
+  socket.on("typing", ({ sender }) => {
+    if (sender === chatPartner) statusIndicator.textContent = "Typing...";
   });
-  socket.on("stopTyping", ({ from }) => {
-    if (from === receiverId && messageList.contains(typingIndicator)) messageList.removeChild(typingIndicator);
-  });
-
-  socket.on("privateMessage", msg => {
-    if (msg.senderId === receiverId || msg.senderId === myUserId) appendMessage(msg, true);
+  socket.on("stop-typing", ({ sender }) => {
+    if (sender === chatPartner) statusIndicator.textContent = lastSeen ? `Last seen: ${lastSeen}` : "Online";
   });
 
-  function appendMessage(msg, scroll = true) {
-    const isMine = msg.senderId === myUserId;
-    const li = document.createElement("li");
-    li.className = `${isMine ? "sent self-start" : "received self-end"} mb-1 relative`;
+  // File/Image upload
+  function handleFileUpload(input, type) {
+    input.addEventListener("change", (e) => {
+      Array.from(e.target.files).forEach((file) => {
+        const msg = {
+          sender: currentUser,
+          receiver: chatPartner,
+          content: `[${type}] ${file.name}`,
+          date: new Date(),
+        };
+        addMessage(msg);
+        socket.emit("private-message", msg);
+      });
+      input.value = "";
+    });
+  }
+  handleFileUpload(imageInput, "Image");
+  handleFileUpload(fileInput, "File");
 
-    // Date separator
-    const msgDate = new Date(msg.createdAt || msg.timestamp).toDateString();
-    const lastMessageDate = messageList.lastChild?.dataset?.date;
-    if (lastMessageDate !== msgDate) {
-      const dateLi = document.createElement("li");
-      dateLi.className = "text-center text-xs text-gray-400 my-1";
-      dateLi.textContent = msgDate === new Date().toDateString() ? "Today" :
-                           msgDate === new Date(Date.now()-86400000).toDateString() ? "Yesterday" :
-                           msgDate;
-      messageList.appendChild(dateLi);
+  // Load chat history via API (optional)
+  async function loadChatHistory() {
+    try {
+      const res = await fetch(`/api/messages/${chatPartner}`);
+      const messages = await res.json();
+      messages.forEach(addMessage);
+    } catch (err) {
+      console.error("Failed to load chat history:", err);
     }
-    li.dataset.date = msgDate;
-
-    // Message bubble
-    const bubble = document.createElement("div");
-    bubble.className = "bubble rounded-xl p-2 max-w-[75%]";
-    if (isMine) bubble.classList.add("bg-blue-600", "text-white", "border-tl-0");
-    else bubble.classList.add("bg-gray-200", "text-black", "border-tr-0");
-
-    if (!isMine) {
-      const header = document.createElement("div");
-      header.className = "text-xs opacity-70 mb-1";
-      header.innerHTML = `<strong>${msg.senderName || "User"}</strong>`;
-      bubble.appendChild(header);
-    }
-
-    if (msg.content) bubble.appendChild(document.createTextNode(msg.content));
-    if (msg.image) {
-      const img = document.createElement("img");
-      img.src = msg.image;
-      img.className = "max-w-full mt-1 rounded cursor-pointer";
-      bubble.appendChild(img);
-    }
-    if (msg.file) {
-      const a = document.createElement("a");
-      a.href = msg.file;
-      a.target = "_blank";
-      a.textContent = msg.fileType || "File";
-      a.className = "block mt-1 text-blue-600 underline";
-      bubble.appendChild(a);
-    }
-
-    const timeDiv = document.createElement("div");
-    timeDiv.className = "text-xs mt-1 opacity-60 text-right";
-    const t = new Date(msg.createdAt || msg.timestamp);
-    timeDiv.textContent = t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    bubble.appendChild(timeDiv);
-
-    li.appendChild(bubble);
-    messageList.appendChild(li);
-    if (scroll) messageList.scrollTop = messageList.scrollHeight;
   }
 
-  async function loadMessages() {
-    const res = await fetch(`/api/messages/history/${receiverId}?skip=0&limit=50`, { headers: { Authorization: `Bearer ${token}` } });
-    const data = await res.json();
-    if (data.success) data.messages.reverse().forEach(msg => appendMessage(msg, false));
-    messageList.scrollTop = messageList.scrollHeight;
-  }
+  loadChatHistory();
+
 });
