@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
@@ -6,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Private Chat</title>
   <script src="/socket.io/socket.io.js"></script>
-  <script defer src="chat.js"></script>
+  <script defer src="/js/privateChat.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     /* Scrollbar for message list */
@@ -21,6 +20,7 @@
       background-color: #a0aec0;
       border-radius: 3px;
     }
+
     /* Bubble colors */
     .sent .bubble {
       background-color: #3b82f6; /* blue-500 */
@@ -30,7 +30,8 @@
       background-color: #e5e7eb; /* gray-200 */
       color: black;
     }
-    /* Hide scrollbar on input file */
+
+    /* Hide file input */
     input[type="file"] {
       display: none;
     }
@@ -47,11 +48,9 @@
       <span id="statusIndicator" class="text-xs text-gray-500 dark:text-gray-400">...</span>
     </div>
 
-    <!-- 3-dot menu -->
+    <!-- Menu -->
     <div class="relative">
       <button id="menu-btn" aria-label="Menu" class="text-2xl font-bold text-gray-700 dark:text-gray-300 select-none">⋮</button>
-
-      <!-- Dropdown menu -->
       <ul id="menu-dropdown" class="hidden absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded shadow-lg text-gray-900 dark:text-gray-100 z-30">
         <li><button id="menu-search-chat" class="w-full px-4 py-2 hover:bg-gray-200 dark:hover:bg-gray-700 text-left">Search chat</button></li>
         <li><button id="menu-mute-notif" class="w-full px-4 py-2 hover:bg-gray-200 dark:hover:bg-gray-700 text-left">Mute notifications</button></li>
@@ -62,7 +61,6 @@
             More
             <span class="text-xs">▶</span>
           </button>
-          <!-- More submenu -->
           <ul id="more-menu" class="hidden mt-1 ml-2 bg-white dark:bg-gray-800 rounded shadow-lg text-gray-900 dark:text-gray-100 z-40 absolute w-40">
             <li><button id="more-block" class="w-full px-4 py-2 hover:bg-gray-200 dark:hover:bg-gray-700 text-left">Block</button></li>
             <li><button id="more-clear-chat" class="w-full px-4 py-2 hover:bg-gray-200 dark:hover:bg-gray-700 text-left">Clear chat</button></li>
@@ -78,9 +76,7 @@
   <ul id="messageList" class="flex-1 overflow-y-auto p-4 space-y-1 bg-gray-50 dark:bg-gray-900"></ul>
 
   <!-- Scroll Down Button -->
-  <button id="scrollDownBtn" class="hidden fixed bottom-20 right-5 bg-blue-600 text-white p-2 rounded-full shadow-lg z-20" aria-label="Scroll to bottom">
-    ↓
-  </button>
+  <button id="scrollDownBtn" class="hidden fixed bottom-20 right-5 bg-blue-600 text-white p-2 rounded-full shadow-lg z-20" aria-label="Scroll to bottom">↓</button>
 
   <!-- Message input form -->
   <form id="messageForm" class="sticky bottom-0 bg-white dark:bg-gray-800 flex items-center p-3 shadow-inner z-20">
@@ -103,7 +99,7 @@
     </button>
   </form>
 
-  <!-- View Contact Modal -->
+  <!-- Contact Modal -->
   <div id="contact-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex flex-col items-center justify-center z-40">
     <div class="bg-white dark:bg-gray-800 rounded-lg w-11/12 max-w-md p-6 relative shadow-lg">
       <button id="contact-back-btn" class="absolute top-3 left-3 text-xl font-bold text-gray-700 dark:text-gray-200">&#8592;</button>
@@ -113,29 +109,29 @@
   </div>
 
   <script>
-    // Toggle dropdown menus on click
+    // Toggle dropdown menus
     document.getElementById("menu-btn").addEventListener("click", () => {
-      const menu = document.getElementById("menu-dropdown");
-      menu.classList.toggle("hidden");
-      // Hide More submenu if open
+      document.getElementById("menu-dropdown").classList.toggle("hidden");
       document.getElementById("more-menu").classList.add("hidden");
     });
 
     document.getElementById("menu-more").addEventListener("click", (e) => {
       e.stopPropagation();
-      const moreMenu = document.getElementById("more-menu");
-      moreMenu.classList.toggle("hidden");
+      document.getElementById("more-menu").classList.toggle("hidden");
     });
 
-    // Close dropdowns if clicked outside
     window.addEventListener("click", () => {
       document.getElementById("menu-dropdown").classList.add("hidden");
       document.getElementById("more-menu").classList.add("hidden");
     });
 
-    // Prevent closing when clicking inside menus
-    document.getElementById("menu-dropdown").addEventListener("click", (e) => e.stopPropagation());
-    document.getElementById("more-menu").addEventListener("click", (e) => e.stopPropagation());
+    document.getElementById("menu-dropdown").addEventListener("click", e => e.stopPropagation());
+    document.getElementById("more-menu").addEventListener("click", e => e.stopPropagation());
+
+    // Back button
+    document.getElementById("backButton").addEventListener("click", () => {
+      window.location.href = "/home.html";
+    });
   </script>
 </body>
 </html>
