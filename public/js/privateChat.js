@@ -18,15 +18,19 @@ document.addEventListener("DOMContentLoaded", () => {
   typingIndicator.className = "italic text-sm text-gray-500 px-2";
   typingIndicator.textContent = "Typing...";
 
+  // GET my user ID from token
   async function getMyUserId(token) {
-    try { return JSON.parse(atob(token.split(".")[1])).id; }
-    catch { return null; }
+    try {
+      return JSON.parse(atob(token.split(".")[1])).id;
+    } catch {
+      return null;
+    }
   }
 
   getMyUserId(token).then(id => {
     myUserId = id;
     socket.emit("join", myUserId);
-    loadMessages(true);
+    loadMessages();
   });
 
   // SEND TEXT MESSAGE
@@ -41,7 +45,7 @@ document.addEventListener("DOMContentLoaded", () => {
       body: JSON.stringify({ recipientId, content })
     });
     const data = await res.json();
-    if (data._id) appendMessage(data, true);
+    if (data.success && data.message) appendMessage(data.message, true);
     messageInput.value = "";
   });
 
@@ -80,32 +84,37 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // RECEIVE MESSAGE
   socket.on("privateMessage", msg => {
-    if (msg.senderId === receiverId || msg.sender === receiverId) appendMessage(msg, true);
+    if (msg.senderId === receiverId) appendMessage(msg, true);
   });
 
+  // APPEND MESSAGE
   function appendMessage(msg, scroll = true) {
-    const isMine = msg.senderId === myUserId;
+    const senderId = msg.senderId || msg.sender?._id;
+    const senderName = msg.senderName || msg.sender?.username || "Unknown";
+    const isMine = senderId === myUserId;
+
     const li = document.createElement("li");
     li.className = `${isMine ? "sent self-start" : "received self-end"} mb-1 relative`;
 
     const bubble = document.createElement("div");
     bubble.className = "bubble rounded-xl p-2 max-w-[75%]";
-
-    if (isMine) bubble.classList.add("bg-blue-600", "text-white", "border-tl-0");
-    else bubble.classList.add("bg-gray-200", "text-black", "border-tr-0");
+    bubble.classList.add(isMine ? "bg-blue-600 text-white" : "bg-gray-200 text-black");
 
     bubble.innerHTML = `
+      ${!isMine ? `<strong>${senderName}</strong><br>` : ""}
       ${msg.content || ""}
       ${msg.image ? `<img src="${msg.image}" class="max-w-40 mt-1 rounded"/>` : ""}
       ${msg.file ? `<a href="${msg.file}" target="_blank" class="block mt-1 text-blue-600 underline">${msg.fileType || "File"}</a>` : ""}
-      <div class="text-xs mt-1 opacity-60 text-right">${new Date(msg.createdAt || msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
+      <div class="text-xs mt-1 opacity-60 text-right">
+        ${new Date(msg.createdAt || msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+      </div>
     `;
     li.appendChild(bubble);
     messageList.appendChild(li);
     if (scroll) messageList.scrollTop = messageList.scrollHeight;
   }
 
-  // LOAD HISTORY
+  // LOAD CHAT HISTORY
   async function loadMessages() {
     const res = await fetch(`/api/messages/history/${receiverId}?skip=0&limit=50`, { headers: { Authorization: `Bearer ${token}` } });
     const data = await res.json();
