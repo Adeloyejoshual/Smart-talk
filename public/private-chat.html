@@ -1,28 +1,92 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SmartTalk - Chat</title>
-  <link rel="stylesheet" href="styles/chat.css">
-</head>
-<body>
-  <div class="chat-container">
-    <header class="chat-header">
-      <button onclick="history.back()">⬅</button>
-      <h2 id="chatUsername">Chat</h2>
-    </header>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SmartTalk - Private Chat</title>
 
-    <main id="chatBox" class="chat-box"></main>
-
-    <footer class="chat-footer">
-      <input type="file" id="fileInput" hidden>
-      <button onclick="document.getElementById('fileInput').click()">📎</button>
-      <input id="messageInput" type="text" placeholder="Type a message...">
-      <button id="sendBtn">Send</button>
-    </footer>
-  </div>
+  <!-- Socket.IO -->
   <script src="/socket.io/socket.io.js"></script>
-  <script src="js/privateChat.js"></script>
+  <!-- JS logic -->
+  <script defer src="/js/privateChat.js"></script>
+  <!-- TailwindCSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Emoji Picker -->
+  <script src="https://cdn.jsdelivr.net/npm/@joeattardi/emoji-button@4.6.0/dist/index.min.js"></script>
+
+  <style>
+    #messageList {
+      scrollbar-width: thin;
+      scrollbar-color: #a0aec0 #f7fafc;
+    }
+    #messageList::-webkit-scrollbar { width: 6px; }
+    #messageList::-webkit-scrollbar-thumb { background-color: #a0aec0; border-radius: 3px; }
+
+    .sent .bubble { background-color: #3b82f6; color: white; border-top-left-radius: 0; }
+    .received .bubble { background-color: #e5e7eb; color: black; border-top-right-radius: 0; }
+    .bubble { max-width: 70%; word-wrap: break-word; padding: 8px 12px; border-radius: 18px; }
+    .bubble:hover { opacity: 0.9; transition: 0.2s; }
+
+    .date-separator {
+      font-weight: bold;
+      color: gray;
+      margin: 12px 0;
+      text-align: center;
+    }
+    .msg-time {
+      font-size: 0.7rem;
+      margin-top: 2px;
+      color: #9ca3af;
+    }
+  </style>
+</head>
+<body class="flex flex-col h-screen bg-gray-100 dark:bg-gray-900">
+
+  <!-- Chat Header -->
+  <header class="flex items-center justify-between bg-white dark:bg-gray-800 px-4 py-2 shadow-md sticky top-0 z-20">
+    <button id="backButton" class="text-xl font-bold text-gray-700 dark:text-gray-200">&#8592;</button>
+    <div class="flex flex-col items-center flex-1 mx-4">
+      <span id="chat-username" class="font-semibold text-lg text-gray-900 dark:text-gray-100">Loading...</span>
+      <span id="statusIndicator" class="text-xs text-gray-500 dark:text-gray-400">Offline</span>
+    </div>
+    <button id="emojiButton" class="ml-2 text-gray-600 dark:text-gray-300 text-xl">&#128512;</button>
+  </header>
+
+  <!-- Messages -->
+  <ul id="messageList" class="flex-1 overflow-y-auto p-4 space-y-2 bg-gray-50 dark:bg-gray-900"></ul>
+
+  <!-- Typing indicator -->
+  <div id="typingIndicator" class="px-4 text-sm text-gray-500 dark:text-gray-400" style="display:none;">
+    Typing...
+  </div>
+
+  <!-- Message Form -->
+  <form id="messageForm" class="sticky bottom-0 bg-white dark:bg-gray-800 flex items-center p-3 shadow-inner z-20">
+    <!-- Image input -->
+    <label for="imageInput" class="cursor-pointer text-gray-600 dark:text-gray-300 mr-2">&#128247;</label>
+    <input type="file" id="imageInput" accept="image/*" multiple hidden>
+    <!-- File input -->
+    <label for="fileInput" class="cursor-pointer text-gray-600 dark:text-gray-300 mr-2">&#128206;</label>
+    <input type="file" id="fileInput" multiple hidden>
+
+    <!-- Message input -->
+    <input id="messageInput" type="text" placeholder="Type a message"
+      class="flex-1 rounded-full border border-gray-300 dark:border-gray-700 px-4 py-2
+             text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-700 focus:outline-none"
+      autocomplete="off">
+
+    <!-- Send -->
+    <button type="submit"
+      class="ml-3 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-full font-semibold">
+      Send
+    </button>
+  </form>
+
+  <script>
+    // Back to home
+    document.getElementById("backButton").addEventListener("click", () => {
+      window.location.href = "/home.html";
+    });
+  </script>
 </body>
 </html>
