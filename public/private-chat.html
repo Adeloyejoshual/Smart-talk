@@ -1,92 +1,197 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SmartTalk - Private Chat</title>
-
-  <!-- Socket.IO -->
-  <script src="/socket.io/socket.io.js"></script>
-  <!-- JS logic -->
-  <script defer src="/js/privateChat.js"></script>
-  <!-- TailwindCSS -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Emoji Picker -->
-  <script src="https://cdn.jsdelivr.net/npm/@joeattardi/emoji-button@4.6.0/dist/index.min.js"></script>
-
   <style>
-    #messageList {
-      scrollbar-width: thin;
-      scrollbar-color: #a0aec0 #f7fafc;
+    body {
+      font-family: Arial, sans-serif;
+      background: #1c1c1c;
+      color: #fff;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
     }
-    #messageList::-webkit-scrollbar { width: 6px; }
-    #messageList::-webkit-scrollbar-thumb { background-color: #a0aec0; border-radius: 3px; }
-
-    .sent .bubble { background-color: #3b82f6; color: white; border-top-left-radius: 0; }
-    .received .bubble { background-color: #e5e7eb; color: black; border-top-right-radius: 0; }
-    .bubble { max-width: 70%; word-wrap: break-word; padding: 8px 12px; border-radius: 18px; }
-    .bubble:hover { opacity: 0.9; transition: 0.2s; }
-
-    .date-separator {
-      font-weight: bold;
-      color: gray;
-      margin: 12px 0;
+    header {
+      background: #333;
+      padding: 15px;
       text-align: center;
+      font-size: 20px;
+      font-weight: bold;
+      position: relative;
     }
-    .msg-time {
-      font-size: 0.7rem;
-      margin-top: 2px;
-      color: #9ca3af;
+    #backBtn {
+      position: absolute;
+      left: 15px;
+      top: 15px;
+      background: #444;
+      border: none;
+      color: white;
+      padding: 5px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    #chatBox {
+      flex: 1;
+      overflow-y: auto;
+      padding: 15px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .message {
+      max-width: 70%;
+      padding: 10px;
+      border-radius: 10px;
+      word-wrap: break-word;
+    }
+    .sent {
+      background: #4caf50;
+      align-self: flex-end;
+    }
+    .received {
+      background: #444;
+      align-self: flex-start;
+    }
+    .meta {
+      font-size: 12px;
+      opacity: 0.7;
+    }
+    #inputArea {
+      display: flex;
+      padding: 10px;
+      background: #222;
+    }
+    #messageInput {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      border-radius: 8px;
+    }
+    #sendBtn {
+      margin-left: 10px;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      background: #4caf50;
+      color: white;
+      cursor: pointer;
+    }
+    #sendBtn:hover {
+      background: #45a049;
+    }
+    #onlineStatus {
+      position: absolute;
+      right: 15px;
+      top: 15px;
+      font-size: 14px;
+      color: #0f0;
     }
   </style>
 </head>
-<body class="flex flex-col h-screen bg-gray-100 dark:bg-gray-900">
-
-  <!-- Chat Header -->
-  <header class="flex items-center justify-between bg-white dark:bg-gray-800 px-4 py-2 shadow-md sticky top-0 z-20">
-    <button id="backButton" class="text-xl font-bold text-gray-700 dark:text-gray-200">&#8592;</button>
-    <div class="flex flex-col items-center flex-1 mx-4">
-      <span id="chat-username" class="font-semibold text-lg text-gray-900 dark:text-gray-100">Loading...</span>
-      <span id="statusIndicator" class="text-xs text-gray-500 dark:text-gray-400">Offline</span>
-    </div>
-    <button id="emojiButton" class="ml-2 text-gray-600 dark:text-gray-300 text-xl">&#128512;</button>
+<body>
+  <header>
+    <button id="backBtn">← Back</button>
+    <span id="chatUser">Private Chat</span>
+    <span id="onlineStatus">Offline</span>
   </header>
 
-  <!-- Messages -->
-  <ul id="messageList" class="flex-1 overflow-y-auto p-4 space-y-2 bg-gray-50 dark:bg-gray-900"></ul>
+  <div id="chatBox"></div>
 
-  <!-- Typing indicator -->
-  <div id="typingIndicator" class="px-4 text-sm text-gray-500 dark:text-gray-400" style="display:none;">
-    Typing...
+  <div id="inputArea">
+    <input type="text" id="messageInput" placeholder="Type a message..." />
+    <button id="sendBtn">Send</button>
   </div>
 
-  <!-- Message Form -->
-  <form id="messageForm" class="sticky bottom-0 bg-white dark:bg-gray-800 flex items-center p-3 shadow-inner z-20">
-    <!-- Image input -->
-    <label for="imageInput" class="cursor-pointer text-gray-600 dark:text-gray-300 mr-2">&#128247;</label>
-    <input type="file" id="imageInput" accept="image/*" multiple hidden>
-    <!-- File input -->
-    <label for="fileInput" class="cursor-pointer text-gray-600 dark:text-gray-300 mr-2">&#128206;</label>
-    <input type="file" id="fileInput" multiple hidden>
-
-    <!-- Message input -->
-    <input id="messageInput" type="text" placeholder="Type a message"
-      class="flex-1 rounded-full border border-gray-300 dark:border-gray-700 px-4 py-2
-             text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-700 focus:outline-none"
-      autocomplete="off">
-
-    <!-- Send -->
-    <button type="submit"
-      class="ml-3 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-full font-semibold">
-      Send
-    </button>
-  </form>
-
+  <!-- Socket.IO -->
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
   <script>
-    // Back to home
-    document.getElementById("backButton").addEventListener("click", () => {
+    const token = localStorage.getItem("token");
+    const params = new URLSearchParams(window.location.search);
+    const friendId = params.get("user");
+    const chatBox = document.getElementById("chatBox");
+    const messageInput = document.getElementById("messageInput");
+    const sendBtn = document.getElementById("sendBtn");
+    const chatUserEl = document.getElementById("chatUser");
+    const backBtn = document.getElementById("backBtn");
+    const onlineStatus = document.getElementById("onlineStatus");
+
+    // Socket connection
+    const socket = io({ auth: { token } });
+
+    // Load chat history
+    async function loadMessages() {
+      try {
+        const res = await fetch(`/api/messages/history/${friendId}`, {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        const data = await res.json();
+        chatBox.innerHTML = "";
+        data.forEach(m => addMessage(m.content, m.sender === friendId ? "received" : "sent", m.timestamp));
+        scrollToBottom();
+      } catch (err) {
+        console.error("Error loading messages:", err);
+      }
+    }
+
+    // Add message to chat box
+    function addMessage(content, type, timestamp = new Date()) {
+      const div = document.createElement("div");
+      div.className = `message ${type}`;
+      div.innerHTML = `
+        <div>${content}</div>
+        <div class="meta">${new Date(timestamp).toLocaleTimeString()}</div>
+      `;
+      chatBox.appendChild(div);
+    }
+
+    // Scroll to bottom
+    function scrollToBottom() {
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    // Send message
+    sendBtn.addEventListener("click", sendMessage);
+    messageInput.addEventListener("keypress", e => {
+      if (e.key === "Enter") sendMessage();
+    });
+
+    function sendMessage() {
+      const msg = messageInput.value.trim();
+      if (!msg) return;
+      socket.emit("privateMessage", { to: friendId, content: msg });
+      addMessage(msg, "sent");
+      messageInput.value = "";
+      scrollToBottom();
+    }
+
+    // Receive message
+    socket.on("privateMessage", msg => {
+      if (msg.from === friendId) {
+        addMessage(msg.content, "received");
+        scrollToBottom();
+      }
+    });
+
+    // Online/offline status
+    socket.emit("checkOnline", friendId);
+    socket.on("userOnline", id => {
+      if (id === friendId) onlineStatus.textContent = "Online";
+    });
+    socket.on("userOffline", id => {
+      if (id === friendId) onlineStatus.textContent = "Offline";
+    });
+
+    // Back button
+    backBtn.addEventListener("click", () => {
       window.location.href = "/home.html";
     });
+
+    // Load chat history on start
+    loadMessages();
   </script>
 </body>
 </html>
