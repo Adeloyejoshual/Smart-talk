@@ -1,6 +1,6 @@
 // /public/js/privateChat.js
 document.addEventListener("DOMContentLoaded", () => {
-  const socket = io(); // Connect to Socket.IO server
+  const socket = io(); // Socket.IO connection
 
   const messageForm = document.getElementById("messageForm");
   const messageInput = document.getElementById("messageInput");
@@ -11,43 +11,37 @@ document.addEventListener("DOMContentLoaded", () => {
   const imageInput = document.getElementById("imageInput");
   const fileInput = document.getElementById("fileInput");
 
-  // Get current user and chat partner from session/localStorage or URL
+  // Get current user and chat partner
   const currentUser = localStorage.getItem("currentUser") || "me";
   const urlParams = new URLSearchParams(window.location.search);
   const chatPartner = urlParams.get("user") || "Unknown";
   chatUsername.textContent = chatPartner;
 
-  // Online status example
   let lastSeen = null;
   statusIndicator.textContent = "Online";
 
-  // Helper: format date for message header
+  // Helper: format date headers
   function formatDateHeader(date) {
     const msgDate = new Date(date);
     const now = new Date();
-
-    const isToday = msgDate.toDateString() === now.toDateString();
     const yesterday = new Date();
     yesterday.setDate(now.getDate() - 1);
-    const isYesterday = msgDate.toDateString() === yesterday.toDateString();
 
-    if (isToday) return "Today";
-    if (isYesterday) return "Yesterday";
+    if (msgDate.toDateString() === now.toDateString()) return "Today";
+    if (msgDate.toDateString() === yesterday.toDateString()) return "Yesterday";
     return msgDate.toLocaleDateString();
   }
 
-  // Helper: format time for messages
   function formatTime(date) {
     const d = new Date(date);
     return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   }
 
-  // Render message in the chat
   function addMessage({ sender, content, date }) {
     const msgDate = new Date(date);
     const lastMessage = messageList.lastElementChild;
 
-    // Add date header if necessary
+    // Add date header if needed
     if (!lastMessage || lastMessage.dataset.date !== msgDate.toDateString()) {
       const header = document.createElement("li");
       header.textContent = formatDateHeader(msgDate);
@@ -56,7 +50,7 @@ document.addEventListener("DOMContentLoaded", () => {
       messageList.appendChild(header);
     }
 
-    // Create message bubble
+    // Message bubble
     const li = document.createElement("li");
     li.classList.add(sender === currentUser ? "sent" : "received", "flex");
     li.dataset.date = msgDate.toDateString();
@@ -65,7 +59,6 @@ document.addEventListener("DOMContentLoaded", () => {
     bubble.classList.add("bubble", "px-4", "py-2", "rounded-lg", "max-w-xs", "break-words");
     bubble.textContent = content;
 
-    // Time
     const time = document.createElement("div");
     time.classList.add("text-xs", "text-gray-500", "mt-1", sender === currentUser ? "text-right" : "text-left");
     time.textContent = formatTime(msgDate);
@@ -74,7 +67,7 @@ document.addEventListener("DOMContentLoaded", () => {
     li.appendChild(bubble);
     messageList.appendChild(li);
 
-    // Scroll to latest
+    // Scroll to bottom
     messageList.scrollTop = messageList.scrollHeight;
   }
 
@@ -93,10 +86,18 @@ document.addEventListener("DOMContentLoaded", () => {
 
     addMessage(msg); // Show instantly
     socket.emit("private-message", msg); // Send to server
+
+    // Also save via API
+    fetch("/api/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(msg),
+    }).catch((err) => console.error("Message save failed:", err));
+
     messageInput.value = "";
   });
 
-  // Receive message
+  // Receive messages from server
   socket.on("private-message", (msg) => {
     if (msg.sender === chatPartner || msg.receiver === chatPartner) {
       addMessage(msg);
@@ -132,6 +133,13 @@ document.addEventListener("DOMContentLoaded", () => {
         };
         addMessage(msg);
         socket.emit("private-message", msg);
+
+        // Save via API
+        fetch("/api/messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(msg),
+        }).catch((err) => console.error("File save failed:", err));
       });
       input.value = "";
     });
@@ -139,17 +147,17 @@ document.addEventListener("DOMContentLoaded", () => {
   handleFileUpload(imageInput, "Image");
   handleFileUpload(fileInput, "File");
 
-  // Load chat history via API (optional)
+  // Load old messages
   async function loadChatHistory() {
     try {
       const res = await fetch(`/api/messages/${chatPartner}`);
+      if (!res.ok) throw new Error("Failed to fetch messages");
       const messages = await res.json();
       messages.forEach(addMessage);
     } catch (err) {
-      console.error("Failed to load chat history:", err);
+      console.error(err);
     }
   }
 
   loadChatHistory();
-
 });
