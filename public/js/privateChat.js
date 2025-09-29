@@ -11,7 +11,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const imageInput = document.getElementById("imageInput");
   const fileInput = document.getElementById("fileInput");
 
-  // Get current user & chat partner
   const currentUser = localStorage.getItem("currentUser") || "me";
   const urlParams = new URLSearchParams(window.location.search);
   const chatPartner = urlParams.get("user") || null;
@@ -53,8 +52,10 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     const li = document.createElement("li");
-    li.classList.add(msg.sender.username === currentUser ? "sent" : "received", "flex", "items-end", "space-x-2");
+    li.classList.add("flex", "items-end", "space-x-2", "my-1");
     li.dataset.date = msgDate.toDateString();
+
+    const isSent = msg.sender.username === currentUser;
 
     // Avatar
     const avatar = document.createElement("img");
@@ -63,7 +64,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Bubble
     const bubble = document.createElement("div");
-    bubble.classList.add("bubble", "px-4", "py-2", "rounded-lg", "max-w-xs", "break-words");
+    bubble.classList.add(
+      "bubble",
+      "px-4",
+      "py-2",
+      "rounded-lg",
+      "max-w-xs",
+      "break-words",
+      isSent
+        ? "bg-blue-600 text-white rounded-tl-lg"
+        : "bg-gray-200 dark:bg-gray-700 text-black dark:text-white rounded-tr-lg"
+    );
 
     if (msg.type === "text") {
       bubble.textContent = msg.content;
@@ -86,13 +97,27 @@ document.addEventListener("DOMContentLoaded", () => {
       bubble.appendChild(link);
     }
 
+    // Time
     const time = document.createElement("div");
-    time.classList.add("text-xs", "text-gray-500", "mt-1", msg.sender.username === currentUser ? "text-right" : "text-left");
+    time.classList.add(
+      "text-xs",
+      "text-gray-500",
+      "mt-1",
+      isSent ? "text-right" : "text-left"
+    );
     time.textContent = formatTime(msgDate);
     bubble.appendChild(time);
 
-    li.appendChild(msg.sender.username === currentUser ? bubble : avatar);
-    li.appendChild(msg.sender.username === currentUser ? avatar : bubble);
+    // Arrange bubble and avatar
+    if (isSent) {
+      li.classList.add("justify-end");
+      li.appendChild(bubble);
+      li.appendChild(avatar);
+    } else {
+      li.classList.add("justify-start");
+      li.appendChild(avatar);
+      li.appendChild(bubble);
+    }
 
     messageList.appendChild(li);
     messageList.scrollTop = messageList.scrollHeight;
@@ -106,7 +131,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const msg = {
       sender: currentUser,
-      receiver: chatPartner,
+      recipient: chatPartner,
       content,
       type: "text",
     };
@@ -114,7 +139,6 @@ document.addEventListener("DOMContentLoaded", () => {
     addMessage(msg);
     messageInput.value = "";
 
-    // Save via API
     try {
       const res = await fetch("/api/messages", {
         method: "POST",
@@ -131,7 +155,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Receive message
   socket.on("private-message", (msg) => {
-    if (msg.sender.username === chatPartner || msg.receiver === chatPartner) {
+    if (msg.sender.username === chatPartner || msg.recipient === chatPartner) {
       addMessage(msg);
     }
   });
@@ -149,7 +173,9 @@ document.addEventListener("DOMContentLoaded", () => {
     if (sender === chatPartner) statusIndicator.textContent = "Typing...";
   });
   socket.on("stop-typing", ({ sender }) => {
-    if (sender === chatPartner) statusIndicator.textContent = lastSeen ? `Last seen: ${lastSeen}` : "Online";
+    if (sender === chatPartner) statusIndicator.textContent = lastSeen
+      ? `Last seen: ${lastSeen}`
+      : "Online";
   });
 
   // Upload images/files
@@ -160,7 +186,6 @@ document.addEventListener("DOMContentLoaded", () => {
         formData.append("file", file);
         formData.append("type", type);
 
-        // Optional: upload to server and get URL
         const uploadRes = await fetch(`/api/upload`, {
           method: "POST",
           body: formData,
@@ -169,7 +194,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const msg = {
           sender: currentUser,
-          receiver: chatPartner,
+          recipient: chatPartner,
           type: type.toLowerCase(),
           content: file.name,
           image: type === "image" ? data.url : null,
