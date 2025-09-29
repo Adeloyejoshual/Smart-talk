@@ -14,6 +14,7 @@ dotenv.config();
 // Models
 const User = require("./models/User");
 const Message = require("./models/Chat");
+const Message = require("./models/Message");
 
 // Routes
 const authRoutes = require("./routes/auth");
