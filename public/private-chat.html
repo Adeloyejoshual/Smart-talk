@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Private Chat</title>
   <script src="/socket.io/socket.io.js"></script>
   <script defer src="/js/privateChat.js"></script>
@@ -23,34 +23,33 @@
 
     /* Bubble colors */
     .sent .bubble {
-      background-color: #3b82f6; /* blue-500 */
+      background-color: #3b82f6;
       color: white;
     }
     .received .bubble {
-      background-color: #e5e7eb; /* gray-200 */
+      background-color: #e5e7eb;
       color: black;
     }
 
-    /* Hide file input */
+    /* Hide file input buttons */
     input[type="file"] {
       display: none;
     }
   </style>
 </head>
-<body class="bg-gray-100 dark:bg-gray-900 flex flex-col h-screen">
+<body class="flex flex-col h-screen bg-gray-100 dark:bg-gray-900">
 
   <!-- Header -->
-  <header id="chat-header" class="flex items-center justify-between bg-white dark:bg-gray-800 px-4 py-2 shadow-md sticky top-0 z-20">
-    <button id="backButton" aria-label="Back" class="text-xl font-bold text-gray-700 dark:text-gray-200">&#8592;</button>
-
-    <div class="flex flex-col items-center flex-1 mx-4 cursor-pointer" id="username-container">
+  <header class="flex items-center justify-between bg-white dark:bg-gray-800 px-4 py-2 shadow-md sticky top-0 z-20">
+    <button id="backButton" class="text-xl font-bold text-gray-700 dark:text-gray-200">&#8592;</button>
+    <div class="flex flex-col items-center flex-1 mx-4 cursor-pointer">
       <span id="chat-username" class="font-semibold text-lg text-gray-900 dark:text-gray-100">Loading...</span>
       <span id="statusIndicator" class="text-xs text-gray-500 dark:text-gray-400">...</span>
     </div>
 
     <!-- Menu -->
     <div class="relative">
-      <button id="menu-btn" aria-label="Menu" class="text-2xl font-bold text-gray-700 dark:text-gray-300 select-none">⋮</button>
+      <button id="menu-btn" class="text-2xl font-bold text-gray-700 dark:text-gray-300 select-none">⋮</button>
       <ul id="menu-dropdown" class="hidden absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded shadow-lg text-gray-900 dark:text-gray-100 z-30">
         <li><button id="menu-search-chat" class="w-full px-4 py-2 hover:bg-gray-200 dark:hover:bg-gray-700 text-left">Search chat</button></li>
         <li><button id="menu-mute-notif" class="w-full px-4 py-2 hover:bg-gray-200 dark:hover:bg-gray-700 text-left">Mute notifications</button></li>
@@ -58,8 +57,7 @@
         <li><button id="menu-chat-theme" class="w-full px-4 py-2 hover:bg-gray-200 dark:hover:bg-gray-700 text-left">Chat theme</button></li>
         <li>
           <button id="menu-more" class="w-full px-4 py-2 hover:bg-gray-200 dark:hover:bg-gray-700 text-left flex justify-between items-center">
-            More
-            <span class="text-xs">▶</span>
+            More <span class="text-xs">▶</span>
           </button>
           <ul id="more-menu" class="hidden mt-1 ml-2 bg-white dark:bg-gray-800 rounded shadow-lg text-gray-900 dark:text-gray-100 z-40 absolute w-40">
             <li><button id="more-block" class="w-full px-4 py-2 hover:bg-gray-200 dark:hover:bg-gray-700 text-left">Block</button></li>
@@ -72,31 +70,20 @@
     </div>
   </header>
 
-  <!-- Message list -->
+  <!-- Messages -->
   <ul id="messageList" class="flex-1 overflow-y-auto p-4 space-y-1 bg-gray-50 dark:bg-gray-900"></ul>
 
-  <!-- Scroll Down Button -->
-  <button id="scrollDownBtn" class="hidden fixed bottom-20 right-5 bg-blue-600 text-white p-2 rounded-full shadow-lg z-20" aria-label="Scroll to bottom">↓</button>
+  <!-- Scroll Button -->
+  <button id="scrollDownBtn" class="hidden fixed bottom-20 right-5 bg-blue-600 text-white p-2 rounded-full shadow-lg z-20">↓</button>
 
-  <!-- Message input form -->
+  <!-- Message Input -->
   <form id="messageForm" class="sticky bottom-0 bg-white dark:bg-gray-800 flex items-center p-3 shadow-inner z-20">
     <label for="imageInput" class="cursor-pointer text-gray-600 dark:text-gray-300 mr-2" title="Send image">&#128247;</label>
-    <input type="file" id="imageInput" accept="image/*" multiple />
-
+    <input type="file" id="imageInput" accept="image/*" multiple>
     <label for="fileInput" class="cursor-pointer text-gray-600 dark:text-gray-300 mr-2" title="Send file">&#128206;</label>
-    <input type="file" id="fileInput" multiple />
-
-    <input
-      id="messageInput"
-      type="text"
-      placeholder="Type a message"
-      class="flex-1 rounded-full border border-gray-300 dark:border-gray-700 px-4 py-2 text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-700 focus:outline-none"
-      autocomplete="off"
-    />
-
-    <button type="submit" class="ml-3 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-full font-semibold">
-      Send
-    </button>
+    <input type="file" id="fileInput" multiple>
+    <input id="messageInput" type="text" placeholder="Type a message" class="flex-1 rounded-full border border-gray-300 dark:border-gray-700 px-4 py-2 text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-700 focus:outline-none" autocomplete="off">
+    <button type="submit" class="ml-3 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-full font-semibold">Send</button>
   </form>
 
   <!-- Contact Modal -->
@@ -109,28 +96,30 @@
   </div>
 
   <script>
-    // Toggle dropdown menus
+    // Dropdown toggle
     document.getElementById("menu-btn").addEventListener("click", () => {
       document.getElementById("menu-dropdown").classList.toggle("hidden");
       document.getElementById("more-menu").classList.add("hidden");
     });
-
-    document.getElementById("menu-more").addEventListener("click", (e) => {
+    document.getElementById("menu-more").addEventListener("click", e => {
       e.stopPropagation();
       document.getElementById("more-menu").classList.toggle("hidden");
     });
-
     window.addEventListener("click", () => {
       document.getElementById("menu-dropdown").classList.add("hidden");
       document.getElementById("more-menu").classList.add("hidden");
     });
-
     document.getElementById("menu-dropdown").addEventListener("click", e => e.stopPropagation());
     document.getElementById("more-menu").addEventListener("click", e => e.stopPropagation());
 
     // Back button
     document.getElementById("backButton").addEventListener("click", () => {
       window.location.href = "/home.html";
+    });
+
+    // Contact modal
+    document.getElementById("contact-back-btn").addEventListener("click", () => {
+      document.getElementById("contact-modal").classList.add("hidden");
     });
   </script>
 </body>
