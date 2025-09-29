@@ -10,23 +10,26 @@
       background: #1c1c1c;
       color: #fff;
       margin: 0;
-      padding: 0;
+      height: 100vh;
       display: flex;
       flex-direction: column;
-      height: 100vh;
     }
     header {
       background: #333;
       padding: 15px;
       text-align: center;
-      font-size: 20px;
+      font-size: 18px;
       font-weight: bold;
-      position: relative;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 10;
     }
     #backBtn {
-      position: absolute;
-      left: 15px;
-      top: 15px;
       background: #444;
       border: none;
       color: white;
@@ -34,10 +37,16 @@
       border-radius: 6px;
       cursor: pointer;
     }
+    #onlineStatus {
+      font-size: 14px;
+      color: #0f0;
+    }
     #chatBox {
       flex: 1;
-      overflow-y: auto;
+      margin-top: 60px; /* space for header */
+      margin-bottom: 70px; /* space for input */
       padding: 15px;
+      overflow-y: auto;
       display: flex;
       flex-direction: column;
       gap: 10px;
@@ -59,11 +68,18 @@
     .meta {
       font-size: 12px;
       opacity: 0.7;
+      margin-top: 5px;
     }
     #inputArea {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
       display: flex;
       padding: 10px;
       background: #222;
+      align-items: center;
+      gap: 8px;
     }
     #messageInput {
       flex: 1;
@@ -71,8 +87,17 @@
       border: none;
       border-radius: 8px;
     }
+    #fileInput {
+      display: none;
+    }
+    #fileLabel {
+      background: #555;
+      padding: 8px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      color: #fff;
+    }
     #sendBtn {
-      margin-left: 10px;
       padding: 10px 20px;
       border: none;
       border-radius: 8px;
@@ -82,13 +107,6 @@
     }
     #sendBtn:hover {
       background: #45a049;
-    }
-    #onlineStatus {
-      position: absolute;
-      right: 15px;
-      top: 15px;
-      font-size: 14px;
-      color: #0f0;
     }
   </style>
 </head>
@@ -102,6 +120,8 @@
   <div id="chatBox"></div>
 
   <div id="inputArea">
+    <label id="fileLabel" for="fileInput">📎</label>
+    <input type="file" id="fileInput" accept="image/*,.pdf,.doc,.docx,.txt" />
     <input type="text" id="messageInput" placeholder="Type a message..." />
     <button id="sendBtn">Send</button>
   </div>
@@ -115,9 +135,9 @@
     const chatBox = document.getElementById("chatBox");
     const messageInput = document.getElementById("messageInput");
     const sendBtn = document.getElementById("sendBtn");
-    const chatUserEl = document.getElementById("chatUser");
     const backBtn = document.getElementById("backBtn");
     const onlineStatus = document.getElementById("onlineStatus");
+    const fileInput = document.getElementById("fileInput");
 
     // Socket connection
     const socket = io({ auth: { token } });
@@ -130,14 +150,20 @@
         });
         const data = await res.json();
         chatBox.innerHTML = "";
-        data.forEach(m => addMessage(m.content, m.sender === friendId ? "received" : "sent", m.timestamp));
+        data.forEach(m => {
+          if (m.type === "file") {
+            addFileMessage(m.fileUrl, m.fileName, m.sender === friendId ? "received" : "sent", m.timestamp);
+          } else {
+            addMessage(m.content, m.sender === friendId ? "received" : "sent", m.timestamp);
+          }
+        });
         scrollToBottom();
       } catch (err) {
         console.error("Error loading messages:", err);
       }
     }
 
-    // Add message to chat box
+    // Add text message
     function addMessage(content, type, timestamp = new Date()) {
       const div = document.createElement("div");
       div.className = `message ${type}`;
@@ -148,35 +174,73 @@
       chatBox.appendChild(div);
     }
 
-    // Scroll to bottom
+    // Add file message
+    function addFileMessage(url, name, type, timestamp = new Date()) {
+      const div = document.createElement("div");
+      div.className = `message ${type}`;
+      div.innerHTML = `
+        <div><a href="${url}" target="_blank">📎 ${name}</a></div>
+        <div class="meta">${new Date(timestamp).toLocaleTimeString()}</div>
+      `;
+      chatBox.appendChild(div);
+    }
+
+    // Scroll
     function scrollToBottom() {
       chatBox.scrollTop = chatBox.scrollHeight;
     }
 
-    // Send message
+    // Send text
     sendBtn.addEventListener("click", sendMessage);
     messageInput.addEventListener("keypress", e => {
       if (e.key === "Enter") sendMessage();
     });
-
     function sendMessage() {
       const msg = messageInput.value.trim();
       if (!msg) return;
-      socket.emit("privateMessage", { to: friendId, content: msg });
+      socket.emit("privateMessage", { to: friendId, content: msg, type: "text" });
       addMessage(msg, "sent");
       messageInput.value = "";
       scrollToBottom();
     }
 
-    // Receive message
+    // Send file
+    fileInput.addEventListener("change", async () => {
+      const file = fileInput.files[0];
+      if (!file) return;
+      const formData = new FormData();
+      formData.append("file", file);
+      try {
+        const res = await fetch(`/api/messages/upload/${friendId}`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${token}` },
+          body: formData
+        });
+        const data = await res.json();
+        if (data.fileUrl) {
+          socket.emit("privateMessage", { to: friendId, fileUrl: data.fileUrl, fileName: file.name, type: "file" });
+          addFileMessage(data.fileUrl, file.name, "sent");
+          scrollToBottom();
+        }
+      } catch (err) {
+        console.error("File upload failed", err);
+      }
+      fileInput.value = "";
+    });
+
+    // Receive messages
     socket.on("privateMessage", msg => {
       if (msg.from === friendId) {
-        addMessage(msg.content, "received");
+        if (msg.type === "file") {
+          addFileMessage(msg.fileUrl, msg.fileName, "received");
+        } else {
+          addMessage(msg.content, "received");
+        }
         scrollToBottom();
       }
     });
 
-    // Online/offline status
+    // Online/offline
     socket.emit("checkOnline", friendId);
     socket.on("userOnline", id => {
       if (id === friendId) onlineStatus.textContent = "Online";
@@ -185,12 +249,11 @@
       if (id === friendId) onlineStatus.textContent = "Offline";
     });
 
-    // Back button
+    // Back
     backBtn.addEventListener("click", () => {
       window.location.href = "/home.html";
     });
 
-    // Load chat history on start
     loadMessages();
   </script>
 </body>
