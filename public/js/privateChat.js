@@ -1,6 +1,6 @@
 // /public/js/privateChat.js
 document.addEventListener("DOMContentLoaded", () => {
-  const socket = io(); // Socket.IO connection
+  const socket = io();
 
   const messageForm = document.getElementById("messageForm");
   const messageInput = document.getElementById("messageInput");
@@ -11,16 +11,16 @@ document.addEventListener("DOMContentLoaded", () => {
   const imageInput = document.getElementById("imageInput");
   const fileInput = document.getElementById("fileInput");
 
-  // Get current user and chat partner
+  // Get current user & chat partner
   const currentUser = localStorage.getItem("currentUser") || "me";
   const urlParams = new URLSearchParams(window.location.search);
-  const chatPartner = urlParams.get("user") || "Unknown";
+  const chatPartner = urlParams.get("user") || null;
   chatUsername.textContent = chatPartner;
 
   let lastSeen = null;
   statusIndicator.textContent = "Online";
 
-  // Helper: format date headers
+  // Format date header
   function formatDateHeader(date) {
     const msgDate = new Date(date);
     const now = new Date();
@@ -32,16 +32,18 @@ document.addEventListener("DOMContentLoaded", () => {
     return msgDate.toLocaleDateString();
   }
 
+  // Format time
   function formatTime(date) {
     const d = new Date(date);
     return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   }
 
-  function addMessage({ sender, content, date }) {
-    const msgDate = new Date(date);
+  // Add message to chat
+  function addMessage(msg) {
+    const msgDate = new Date(msg.createdAt || msg.date);
     const lastMessage = messageList.lastElementChild;
 
-    // Add date header if needed
+    // Date header
     if (!lastMessage || lastMessage.dataset.date !== msgDate.toDateString()) {
       const header = document.createElement("li");
       header.textContent = formatDateHeader(msgDate);
@@ -50,29 +52,54 @@ document.addEventListener("DOMContentLoaded", () => {
       messageList.appendChild(header);
     }
 
-    // Message bubble
     const li = document.createElement("li");
-    li.classList.add(sender === currentUser ? "sent" : "received", "flex");
+    li.classList.add(msg.sender.username === currentUser ? "sent" : "received", "flex", "items-end", "space-x-2");
     li.dataset.date = msgDate.toDateString();
 
+    // Avatar
+    const avatar = document.createElement("img");
+    avatar.src = msg.sender.avatar || "/default-avatar.png";
+    avatar.className = "w-6 h-6 rounded-full";
+
+    // Bubble
     const bubble = document.createElement("div");
     bubble.classList.add("bubble", "px-4", "py-2", "rounded-lg", "max-w-xs", "break-words");
-    bubble.textContent = content;
+
+    if (msg.type === "text") {
+      bubble.textContent = msg.content;
+    } else if (msg.type === "image") {
+      const img = document.createElement("img");
+      img.src = msg.image;
+      img.className = "max-w-xs rounded-lg";
+      bubble.appendChild(img);
+      if (msg.content) {
+        const text = document.createElement("div");
+        text.textContent = msg.content;
+        bubble.appendChild(text);
+      }
+    } else if (msg.type === "file") {
+      const link = document.createElement("a");
+      link.href = msg.file;
+      link.textContent = msg.content || msg.file.split("/").pop();
+      link.target = "_blank";
+      link.className = "underline text-blue-600";
+      bubble.appendChild(link);
+    }
 
     const time = document.createElement("div");
-    time.classList.add("text-xs", "text-gray-500", "mt-1", sender === currentUser ? "text-right" : "text-left");
+    time.classList.add("text-xs", "text-gray-500", "mt-1", msg.sender.username === currentUser ? "text-right" : "text-left");
     time.textContent = formatTime(msgDate);
     bubble.appendChild(time);
 
-    li.appendChild(bubble);
-    messageList.appendChild(li);
+    li.appendChild(msg.sender.username === currentUser ? bubble : avatar);
+    li.appendChild(msg.sender.username === currentUser ? avatar : bubble);
 
-    // Scroll to bottom
+    messageList.appendChild(li);
     messageList.scrollTop = messageList.scrollHeight;
   }
 
   // Send message
-  messageForm.addEventListener("submit", (e) => {
+  messageForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     const content = messageInput.value.trim();
     if (!content) return;
@@ -81,25 +108,30 @@ document.addEventListener("DOMContentLoaded", () => {
       sender: currentUser,
       receiver: chatPartner,
       content,
-      date: new Date(),
+      type: "text",
     };
 
-    addMessage(msg); // Show instantly
-    socket.emit("private-message", msg); // Send to server
-
-    // Also save via API
-    fetch("/api/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(msg),
-    }).catch((err) => console.error("Message save failed:", err));
-
+    addMessage(msg);
     messageInput.value = "";
+
+    // Save via API
+    try {
+      const res = await fetch("/api/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(msg),
+      });
+      const savedMsg = await res.json();
+      socket.emit("private-message", savedMsg);
+    } catch (err) {
+      console.error("Failed to send message:", err);
+      alert("Message failed to send.");
+    }
   });
 
-  // Receive messages from server
+  // Receive message
   socket.on("private-message", (msg) => {
-    if (msg.sender === chatPartner || msg.receiver === chatPartner) {
+    if (msg.sender.username === chatPartner || msg.receiver === chatPartner) {
       addMessage(msg);
     }
   });
@@ -113,7 +145,6 @@ document.addEventListener("DOMContentLoaded", () => {
       socket.emit("stop-typing", { sender: currentUser, receiver: chatPartner });
     }, 1000);
   });
-
   socket.on("typing", ({ sender }) => {
     if (sender === chatPartner) statusIndicator.textContent = "Typing...";
   });
@@ -121,41 +152,53 @@ document.addEventListener("DOMContentLoaded", () => {
     if (sender === chatPartner) statusIndicator.textContent = lastSeen ? `Last seen: ${lastSeen}` : "Online";
   });
 
-  // File/Image upload
-  function handleFileUpload(input, type) {
-    input.addEventListener("change", (e) => {
-      Array.from(e.target.files).forEach((file) => {
+  // Upload images/files
+  async function handleFileUpload(input, type) {
+    input.addEventListener("change", async (e) => {
+      for (const file of e.target.files) {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("type", type);
+
+        // Optional: upload to server and get URL
+        const uploadRes = await fetch(`/api/upload`, {
+          method: "POST",
+          body: formData,
+        });
+        const data = await uploadRes.json();
+
         const msg = {
           sender: currentUser,
           receiver: chatPartner,
-          content: `[${type}] ${file.name}`,
-          date: new Date(),
+          type: type.toLowerCase(),
+          content: file.name,
+          image: type === "image" ? data.url : null,
+          file: type === "file" ? data.url : null,
+          fileType: file.type,
         };
         addMessage(msg);
-        socket.emit("private-message", msg);
-
-        // Save via API
-        fetch("/api/messages", {
+        await fetch("/api/messages", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(msg),
-        }).catch((err) => console.error("File save failed:", err));
-      });
+        });
+        socket.emit("private-message", msg);
+      }
       input.value = "";
     });
   }
+
   handleFileUpload(imageInput, "Image");
   handleFileUpload(fileInput, "File");
 
-  // Load old messages
+  // Load chat history
   async function loadChatHistory() {
     try {
       const res = await fetch(`/api/messages/${chatPartner}`);
-      if (!res.ok) throw new Error("Failed to fetch messages");
       const messages = await res.json();
       messages.forEach(addMessage);
     } catch (err) {
-      console.error(err);
+      console.error("Failed to load history:", err);
     }
   }
 
