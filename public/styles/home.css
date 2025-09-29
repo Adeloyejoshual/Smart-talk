@@ -69,3 +69,21 @@ body {
   font-size: 12px;
   color: gray;
 }
+
+/* Unread Message Style */
+.unread .last-message {
+  font-weight: bold;
+  color: #000;
+}
+
+.unread-badge {
+  background: #25d366; /* WhatsApp green */
+  color: white;
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 50%;
+  margin-left: 8px;
+  display: inline-block;
+  min-width: 18px;
+  text-align: center;
+}
