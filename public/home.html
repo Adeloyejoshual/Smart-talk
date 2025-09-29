@@ -1,13 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>SmartTalk - Home</title>
   <style>
     body { font-family: sans-serif; background: #1c1c1c; color: #fff; margin:0; padding:0; }
     .container { padding: 1rem; }
-    
     /* Floating buttons */
     #addFriendBtn, #settingsBtn {
       position: fixed; width: 50px; height: 50px; font-size: 2rem;
@@ -15,7 +14,6 @@
     }
     #addFriendBtn { bottom: 20px; right: 20px; background: #c1440e; }
     #settingsBtn { top: 20px; right: 20px; background: #3399ff; }
-
     /* Modal */
     #addFriendModal {
       display:none; position: fixed; top: 50%; left:50%;
@@ -35,7 +33,6 @@
       display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
       background: rgba(0,0,0,0.5); z-index: 999;
     }
-
     /* Chat list */
     #chatList { margin-top: 2rem; }
     .chat-item {
@@ -43,6 +40,9 @@
       cursor:pointer; transition: background 0.2s;
     }
     .chat-item:hover { background: #2c2c2c; }
+    .chat-meta { display:flex; justify-content:space-between; gap:1rem; align-items:center; }
+    .chat-username { font-weight:600; }
+    .chat-email { font-size:0.85rem; color:#aaa; }
   </style>
 </head>
 <body>
@@ -53,7 +53,7 @@
 
   <!-- Floating Buttons -->
   <button id="addFriendBtn">+</button>
-  <button id="settingsBtn">&#9881;</button> <!-- Gear icon -->
+  <button id="settingsBtn">&#9881;</button>
 
   <!-- Modal Overlay -->
   <div id="modalOverlay"></div>
@@ -67,7 +67,13 @@
   </div>
 
   <script>
-    const token = localStorage.getItem("token") || prompt("Enter your JWT token");
+    // token (if not present prompt for quick local testing)
+    let token = localStorage.getItem("token");
+    if (!token) {
+      // optional: comment out prompt in production; used here for quick dev testing
+      token = prompt("Enter your JWT token (for testing)"); 
+      if (token) localStorage.setItem("token", token);
+    }
 
     const addFriendBtn = document.getElementById("addFriendBtn");
     const addFriendModal = document.getElementById("addFriendModal");
@@ -93,7 +99,7 @@
     closeModalBtn.addEventListener("click", closeModal);
     modalOverlay.addEventListener("click", closeModal);
 
-    // Add Friend
+    // Add Friend (calls your API)
     confirmAddFriendBtn.addEventListener("click", async () => {
       const identifier = friendIdentifierInput.value.trim();
       if (!identifier) return alert("Enter username or email");
@@ -102,19 +108,19 @@
         const res = await fetch("/api/users/add-friend", {
           method: "POST",
           headers: { 
-            "Authorization": `Bearer ${token}`,
+            "Authorization": `Bearer ${localStorage.getItem("token")}`,
             "Content-Type": "application/json"
           },
           body: JSON.stringify({ identifier })
         });
         const data = await res.json();
-        if (data.message) {
-          alert(data.message);
+        if (res.ok) {
+          alert(data.message || "Friend added");
           friendIdentifierInput.value = "";
           closeModal();
           await fetchFriends();
-        } else if (data.error) {
-          alert(data.error);
+        } else {
+          alert(data.message || data.error || "Could not add friend");
         }
       } catch (err) {
         alert("Failed to add friend");
@@ -122,28 +128,62 @@
       }
     });
 
-    // Fetch Friends
+    // Fetch friends / chats and show them
     async function fetchFriends() {
       try {
         const res = await fetch("/api/users/chats", {
-          headers: { "Authorization": `Bearer ${token}` }
+          headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
         });
+        if (!res.ok) {
+          console.error("Failed to fetch friends:", await res.text());
+          chatListEl.innerHTML = "<p>Failed to load chats.</p>";
+          return;
+        }
         const friends = await res.json();
         chatListEl.innerHTML = "";
-        if (!friends.length) {
+        if (!Array.isArray(friends) || friends.length === 0) {
           chatListEl.innerHTML = "<p>No friends yet.</p>";
           return;
         }
+
         friends.forEach(f => {
           const div = document.createElement("div");
           div.className = "chat-item";
-          div.textContent = f.username + " (" + f.email + ")";
-          div.onclick = () => window.location.href = `/private-chat.html?user=${f._id}`;
+          div.innerHTML = `
+            <div class="chat-meta">
+              <div>
+                <div class="chat-username">${escapeHtml(f.username || "Unknown")}</div>
+                <div class="chat-email">${escapeHtml(f.email || "")}</div>
+              </div>
+              <div class="chat-status" style="font-size:0.8rem; color:#9aa;">${f.online ? "Online" : (f.lastSeen ? `Last: ${new Date(f.lastSeen).toLocaleString()}` : "Offline")}</div>
+            </div>
+          `;
+
+          // When user clicks a chat: store chat info and go to private chat
+          div.addEventListener("click", () => {
+            // Save chat target in localStorage for private-chat to read
+            localStorage.setItem("chatUserId", f._id);
+            localStorage.setItem("chatUserName", f.username || f.email || "Unknown");
+            // Optional: store partner's online flag or avatar
+            if (f.online !== undefined) localStorage.setItem("chatUserOnline", f.online ? "1" : "0");
+            // Navigate to private chat page
+            window.location.href = "/private-chat.html";
+          });
+
           chatListEl.appendChild(div);
         });
       } catch (err) {
         console.error("Failed to fetch friends", err);
+        chatListEl.innerHTML = "<p>Error loading chats.</p>";
       }
+    }
+
+    // small helper to avoid XSS when injecting username/email
+    function escapeHtml(str) {
+      if (!str) return "";
+      return String(str).replace(/[&<>"']/g, (s) => ({
+        "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+      })[s]);
     }
 
     // Settings Button
