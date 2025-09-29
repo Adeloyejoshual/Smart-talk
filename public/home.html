@@ -1,27 +1,35 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SmartTalk - Home</title>
-  <link rel="stylesheet" href="/styles/home.css" />
+  <link rel="stylesheet" href="styles/home.css">
 </head>
 <body>
-  <!-- Top Bar -->
-  <header class="top-bar">
-    <h2>SmartTalk Home</h2>
-    <div class="top-icons">
-      <button id="settingsBtn">⚙️</button>
-      <button id="addFriendBtn">➕</button>
-    </div>
-  </header>
+  <!-- Fixed Header -->
+  <header>SmartTalk Home</header>
 
-  <!-- Scrollable Friend List -->
-  <main class="friend-list" id="friendList">
-    <!-- Example Friend Item -->
-    <!-- These will be loaded dynamically from backend -->
-  </main>
+  <!-- Scrollable Chat List -->
+  <div id="chatContainer">
+    <div id="chatList"></div>
+  </div>
 
-  <script src="/js/home.js"></script>
+  <!-- Floating Buttons -->
+  <button id="addFriendBtn">+</button>
+  <button id="settingsBtn">&#9881;</button> <!-- Gear icon -->
+
+  <!-- Modal Overlay -->
+  <div id="modalOverlay"></div>
+
+  <!-- Add Friend Modal -->
+  <div id="addFriendModal">
+    <h3>Add a Friend</h3>
+    <input type="text" id="friendIdentifier" placeholder="Enter username or email" />
+    <button id="confirmAddFriendBtn">Add Friend</button>
+    <button id="closeModal">Cancel</button>
+  </div>
+
+  <script src="js/home.js"></script>
 </body>
 </html>
