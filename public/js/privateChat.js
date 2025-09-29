@@ -6,7 +6,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const messageForm = document.getElementById("messageForm");
   const messageInput = document.getElementById("messageInput");
   const messageList = document.getElementById("messageList");
-  const typingIndicator = document.getElementById("typingIndicator");
   const chatUsername = document.getElementById("chat-username");
   const statusIndicator = document.getElementById("statusIndicator");
 
@@ -14,8 +13,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const fileInput = document.getElementById("fileInput");
   const emojiButton = document.getElementById("emojiButton");
 
-  const userId = localStorage.getItem("userId"); // logged in user
-  const chatUserId = localStorage.getItem("chatUserId"); // recipient user
+  const userId = localStorage.getItem("userId");      // logged-in user
+  const chatUserId = localStorage.getItem("chatUserId"); // recipient
+
+  let lastMessageDate = null; // track last date for separators
 
   // ---------------- Emoji Picker ----------------
   const picker = new EmojiButton();
@@ -40,34 +41,36 @@ document.addEventListener("DOMContentLoaded", () => {
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   }
 
-  function addDateSeparatorIfNeeded(lastDate, messageDate) {
-    if (!lastDate || lastDate.toDateString() !== messageDate.toDateString()) {
+  function addDateSeparatorIfNeeded(messageDate) {
+    if (!lastMessageDate || lastMessageDate.toDateString() !== messageDate.toDateString()) {
       const li = document.createElement("li");
       li.className = "date-separator";
       li.textContent = formatDateHeader(messageDate);
       messageList.appendChild(li);
-      return messageDate;
+      lastMessageDate = messageDate;
     }
-    return lastDate;
   }
 
   function appendMessage(msg, isOwn) {
-    let li = document.createElement("li");
+    addDateSeparatorIfNeeded(new Date(msg.createdAt));
+
+    const li = document.createElement("li");
     li.className = `flex ${isOwn ? "justify-end" : "justify-start"} items-end`;
 
-    let bubbleWrapper = document.createElement("div");
+    const bubbleWrapper = document.createElement("div");
     bubbleWrapper.className = `${isOwn ? "sent" : "received"} max-w-xs`;
 
-    let bubble = document.createElement("div");
+    const bubble = document.createElement("div");
     bubble.className = "bubble shadow";
+
     if (msg.fileUrl) {
       if (msg.fileType === "image") {
-        let img = document.createElement("img");
+        const img = document.createElement("img");
         img.src = msg.fileUrl;
         img.className = "rounded-lg max-w-[200px] cursor-pointer";
         bubble.appendChild(img);
       } else {
-        let a = document.createElement("a");
+        const a = document.createElement("a");
         a.href = msg.fileUrl;
         a.textContent = "📎 " + (msg.content || "File");
         a.target = "_blank";
@@ -78,8 +81,8 @@ document.addEventListener("DOMContentLoaded", () => {
       bubble.textContent = msg.content;
     }
 
-    let time = document.createElement("div");
-    time.className = "msg-time text-right";
+    const time = document.createElement("div");
+    time.className = "msg-time text-right text-xs text-gray-500 mt-1";
     time.textContent = formatTime(new Date(msg.createdAt));
 
     bubbleWrapper.appendChild(bubble);
@@ -90,19 +93,21 @@ document.addEventListener("DOMContentLoaded", () => {
     messageList.scrollTop = messageList.scrollHeight;
   }
 
-  // ---------------- Load history ----------------
+  // ---------------- Load chat history ----------------
   fetch(`/api/messages/history/${chatUserId}`, {
     headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
   })
     .then(res => res.json())
     .then(messages => {
-      let lastDate = null;
+      if (!Array.isArray(messages)) return;
       messages.forEach(msg => {
-        const date = new Date(msg.createdAt);
-        lastDate = addDateSeparatorIfNeeded(lastDate, date);
-        appendMessage(msg, msg.sender._id === userId);
+        appendMessage(
+          msg,
+          msg.sender._id?.toString() === userId || msg.sender.id?.toString() === userId
+        );
       });
-    });
+    })
+    .catch(err => console.error("History load failed:", err));
 
   // ---------------- Send message ----------------
   messageForm.addEventListener("submit", e => {
@@ -155,22 +160,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // ---------------- Socket Events ----------------
   socket.on("private message", msg => {
-    let lastDate = addDateSeparatorIfNeeded(
-      messageList.lastMessageDate,
-      new Date(msg.createdAt)
-    );
-    messageList.lastMessageDate = lastDate;
-    appendMessage(msg, msg.sender.id === userId);
+    appendMessage(msg, msg.sender.id === userId || msg.sender._id === userId);
   });
 
   socket.on("typing", ({ from }) => {
-    if (from === chatUserId) typingIndicator.style.display = "block";
+    if (from === chatUserId) statusIndicator.textContent = "typing...";
   });
   socket.on("stop typing", ({ from }) => {
-    if (from === chatUserId) typingIndicator.style.display = "none";
+    if (from === chatUserId) statusIndicator.textContent = "Online";
   });
 
-  // ---------------- Online/Offline ----------------
-  // Could be improved if you emit "online status" events in backend
+  // Default status
   statusIndicator.textContent = "Online";
 });
