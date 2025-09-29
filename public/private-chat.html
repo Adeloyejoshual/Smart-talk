@@ -15,8 +15,8 @@
     #messageList::-webkit-scrollbar { width: 6px; }
     #messageList::-webkit-scrollbar-thumb { background-color: #a0aec0; border-radius: 3px; }
 
-    .sent .bubble { background-color: #3b82f6; color: white; }
-    .received .bubble { background-color: #e5e7eb; color: black; }
+    .sent .bubble { background-color: #3b82f6; color: white; border-top-left-radius: 0; }
+    .received .bubble { background-color: #e5e7eb; color: black; border-top-right-radius: 0; }
 
     input[type="file"] { display: none; }
   </style>
@@ -31,7 +31,7 @@
     </div>
   </header>
 
-  <ul id="messageList" class="flex-1 overflow-y-auto p-4 space-y-1 bg-gray-50 dark:bg-gray-900"></ul>
+  <ul id="messageList" class="flex-1 overflow-y-auto p-4 space-y-2 bg-gray-50 dark:bg-gray-900"></ul>
 
   <form id="messageForm" class="sticky bottom-0 bg-white dark:bg-gray-800 flex items-center p-3 shadow-inner z-20">
     <label for="imageInput" class="cursor-pointer text-gray-600 dark:text-gray-300 mr-2">&#128247;</label>
