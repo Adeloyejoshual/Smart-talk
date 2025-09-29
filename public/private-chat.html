@@ -5,168 +5,197 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SmartTalk - Private Chat</title>
 <style>
-  body { font-family: sans-serif; margin: 0; background: #1c1c1c; color: #fff; height: 100vh; display: flex; flex-direction: column; }
-  header { background: #111; padding: 1rem; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 10; }
-  header h2 { margin: 0; font-size: 1.2rem; }
-  header .online { font-size: 0.8rem; color: #0f0; }
-  #messageList { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
-  li { list-style: none; display: flex; }
-  .sent { justify-content: flex-end; }
-  .received { justify-content: flex-start; }
-  .bubble { border-radius: 1rem; padding: 0.5rem 1rem; max-width: 75%; word-wrap: break-word; }
-  .sent .bubble { background: #0d6efd; color: white; border-bottom-right-radius: 0; }
-  .received .bubble { background: #444; color: white; border-bottom-left-radius: 0; }
-  .bubble img { max-width: 150px; margin-top: 0.5rem; border-radius: 0.5rem; }
-  .bubble a { display: block; margin-top: 0.5rem; color: #0d6efd; text-decoration: underline; }
-  .bubble .time { font-size: 0.7rem; opacity: 0.7; text-align: right; margin-top: 2px; }
-  form { display: flex; padding: 0.5rem; background: #111; position: sticky; bottom: 0; z-index: 10; gap: 0.5rem; }
-  input[type="text"] { flex: 1; padding: 0.5rem 1rem; border-radius: 1rem; border: none; }
-  input[type="file"] { display: none; }
-  button { padding: 0.5rem 1rem; border-radius: 1rem; border: none; background: #0d6efd; color: white; cursor: pointer; }
-  .date-separator { text-align: center; opacity: 0.6; margin: 0.5rem 0; font-size: 0.8rem; }
-  .typing { font-style: italic; opacity: 0.6; font-size: 0.8rem; }
+  /* Reset & base */
+  body, html { margin:0; padding:0; font-family: sans-serif; height:100%; background:#1c1c1c; color:#fff; }
+  a { color:#4eaaff; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* Container */
+  .chat-wrapper { display:flex; flex-direction:column; height:100vh; }
+
+  /* Header */
+  .chat-header { flex:none; padding:15px; background:#111; display:flex; justify-content:space-between; align-items:center; }
+  .chat-header .user-info { display:flex; flex-direction:column; }
+  .chat-header .user-info .username { font-weight:bold; font-size:1.1em; }
+  .chat-header .user-info .status { font-size:0.8em; color:#0f0; }
+  
+  /* Messages */
+  #chatContainer { flex:1; overflow-y:auto; padding:10px; display:flex; flex-direction:column; gap:6px; background:#1c1c1c; }
+  .message { max-width:75%; padding:8px 12px; border-radius:12px; word-wrap:break-word; position:relative; }
+  .sent { align-self:flex-end; background:#007bff; color:#fff; border-top-right-radius:0; }
+  .received { align-self:flex-start; background:#2c2c2c; color:#fff; border-top-left-radius:0; }
+  .msg-time { font-size:10px; color:#ccc; margin-top:4px; text-align:right; }
+  .file-preview-img { max-width:150px; max-height:150px; display:block; margin-top:5px; border-radius:6px; }
+
+  /* Typing indicator */
+  #typingIndicator { font-style:italic; color:#888; padding:5px 10px; }
+
+  /* Footer */
+  .chat-footer { flex:none; padding:10px; background:#111; display:flex; gap:8px; align-items:center; }
+  #chatInput { flex:1; padding:8px 12px; border-radius:20px; border:none; outline:none; }
+  #sendBtn { padding:8px 15px; background:#007bff; border:none; border-radius:20px; color:#fff; cursor:pointer; }
+  #fileInput { display:none; }
+  .file-preview { display:flex; gap:5px; padding:5px 0; overflow-x:auto; }
+  .file-preview-item { background:#333; padding:4px 8px; border-radius:6px; font-size:12px; white-space:nowrap; }
 </style>
 </head>
 <body>
-
-<header>
-  <div>
-    <h2 id="chatUser">Chat</h2>
-    <div id="onlineStatus" class="online">Offline</div>
+<div class="chat-wrapper">
+  <!-- Header -->
+  <div class="chat-header">
+    <div class="user-info">
+      <span class="username" id="chatUsername">Friend</span>
+      <span class="status" id="userStatus">Offline</span>
+    </div>
+    <input type="file" id="fileInput" multiple>
+    <button id="attachBtn">📎</button>
   </div>
-</header>
 
-<ul id="messageList"></ul>
+  <!-- Messages -->
+  <div id="chatContainer"></div>
+  <div id="typingIndicator"></div>
 
-<form id="messageForm">
-  <input type="text" id="messageInput" placeholder="Type a message...">
-  <label for="imageInput" style="cursor:pointer;">📷</label>
-  <input type="file" id="imageInput" accept="image/*" multiple>
-  <label for="fileInput" style="cursor:pointer;">📎</label>
-  <input type="file" id="fileInput" multiple>
-  <button type="submit">Send</button>
-</form>
+  <!-- File preview -->
+  <div class="file-preview" id="filePreview"></div>
+
+  <!-- Footer -->
+  <div class="chat-footer">
+    <input type="text" id="chatInput" placeholder="Type a message...">
+    <button id="sendBtn">Send</button>
+  </div>
+</div>
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
-document.addEventListener("DOMContentLoaded", () => {
-  const socket = io({ auth: { token: localStorage.getItem("token") } });
-  const urlParams = new URLSearchParams(window.location.search);
-  const receiverId = urlParams.get("user");
-  const messageList = document.getElementById("messageList");
-  const messageForm = document.getElementById("messageForm");
-  const messageInput = document.getElementById("messageInput");
-  const imageInput = document.getElementById("imageInput");
-  const fileInput = document.getElementById("fileInput");
-  const chatUser = document.getElementById("chatUser");
-  const onlineStatus = document.getElementById("onlineStatus");
+const socket = io();
+const chatContainer = document.getElementById("chatContainer");
+const chatInput = document.getElementById("chatInput");
+const sendBtn = document.getElementById("sendBtn");
+const fileInput = document.getElementById("fileInput");
+const attachBtn = document.getElementById("attachBtn");
+const filePreview = document.getElementById("filePreview");
+const typingDiv = document.getElementById("typingIndicator");
+const usernameEl = document.getElementById("chatUsername");
+const statusEl = document.getElementById("userStatus");
 
-  if (!receiverId) return window.location.href = "/home.html";
+const token = localStorage.getItem("token");
+const userId = localStorage.getItem("userId");
+const urlParams = new URLSearchParams(window.location.search);
+const receiverId = urlParams.get("user");
+let selectedFiles = [];
+let typingTimeout;
 
-  let myUserId = null;
-  let lastDate = "";
+// Open file selector
+attachBtn.addEventListener("click", () => fileInput.click());
 
-  // Get my user id from JWT
-  const token = localStorage.getItem("token");
+// ----- Display message -----
+function displayMessage(sender, content, timestamp, fileUrl="") {
+  const msgDiv = document.createElement("div");
+  msgDiv.classList.add("message");
+  msgDiv.classList.add(sender==="me" ? "sent" : "received");
+
+  let html = "";
+  if (fileUrl) {
+    const ext = fileUrl.split(".").pop();
+    if (["png","jpg","jpeg","gif"].includes(ext.toLowerCase())) {
+      html += `<img src="${fileUrl}" class="file-preview-img"/>`;
+    } else {
+      html += `<a href="${fileUrl}" target="_blank">📎 ${ext.toUpperCase()} File</a>`;
+    }
+  }
+  if (content) html += `<span class="msg-text">${content}</span>`;
+  html += `<div class="msg-time">${new Date(timestamp).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</div>`;
+  msgDiv.innerHTML = html;
+
+  chatContainer.appendChild(msgDiv);
+  chatContainer.scrollTop = chatContainer.scrollHeight;
+}
+
+// ----- File preview before sending -----
+fileInput.addEventListener("change", () => {
+  selectedFiles = Array.from(fileInput.files);
+  filePreview.innerHTML = "";
+  selectedFiles.forEach(f => {
+    const div = document.createElement("div");
+    div.className = "file-preview-item";
+    div.textContent = f.name;
+    filePreview.appendChild(div);
+  });
+});
+
+// ----- Load chat history -----
+async function loadChat() {
   try {
-    myUserId = JSON.parse(atob(token.split('.')[1])).id;
-  } catch { window.location.href="/home.html"; }
-
-  // Join private room
-  socket.emit("joinPrivateRoom", { sender: myUserId, receiverId });
-
-  // Update online status
-  socket.on("userOnline", () => onlineStatus.textContent = "Online");
-  socket.on("userOffline", () => onlineStatus.textContent = "Offline");
-
-  // Load chat history
-  async function loadMessages() {
     const res = await fetch(`/api/messages/history/${receiverId}`, {
-      headers: { Authorization: `Bearer ${token}` }
+      headers:{ "Authorization": `Bearer ${token}` }
     });
     const data = await res.json();
-    if (!data.success) return;
+    chatContainer.innerHTML = "";
+    if(data.success && data.messages.length){
+      data.messages.reverse().forEach(msg => {
+        const sender = msg.sender._id === userId ? "me" : "other";
+        displayMessage(sender, msg.content, msg.createdAt, msg.fileUrl || msg.image);
+      });
+    }
+  } catch(err){ console.error(err); }
+}
+loadChat();
 
-    messageList.innerHTML = "";
-    data.messages.forEach(msg => appendMessage(msg));
-    messageList.scrollTop = messageList.scrollHeight;
+// ----- Send message -----
+sendBtn.addEventListener("click", async ()=>{
+  const content = chatInput.value.trim();
+  if(!content && !selectedFiles.length) return;
+
+  let uploadedFiles = [];
+  if(selectedFiles.length){
+    const formData = new FormData();
+    selectedFiles.forEach(f=>formData.append("files", f));
+    const res = await fetch(`/api/messages/private/upload`, {
+      method:"POST", body:formData, headers:{ "Authorization": `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if(data.success) uploadedFiles = data.messages;
+    selectedFiles=[]; filePreview.innerHTML="";
   }
-  loadMessages();
 
   // Send text message
-  messageForm.addEventListener("submit", async e => {
-    e.preventDefault();
-    const content = messageInput.value.trim();
-    if (!content) return;
-    socket.emit("private message", { to: receiverId, message: content });
-    messageInput.value = "";
-  });
-
-  // Send files/images
-  async function sendFiles(files) {
-    if (!files.length) return;
-    const formData = new FormData();
-    for (const f of files) formData.append("files", f);
-    formData.append("recipient", receiverId);
-
-    const res = await fetch("/api/messages/file", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-      body: formData
-    });
-    const data = await res.json();
-    if (!data) return;
-    appendMessage(data);
+  if(content){
+    socket.emit("private message", { senderId:userId, receiverId, content });
+    displayMessage("me", content, new Date());
+    chatInput.value="";
   }
 
-  imageInput.addEventListener("change", e => sendFiles([...e.target.files]));
-  fileInput.addEventListener("change", e => sendFiles([...e.target.files]));
-
-  // Typing indicator
-  let typingTimeout;
-  messageInput.addEventListener("input", () => {
-    socket.emit("typing", { to: receiverId });
-    clearTimeout(typingTimeout);
-    typingTimeout = setTimeout(() => socket.emit("stop typing", { to: receiverId }), 1500);
+  // Send files
+  uploadedFiles.forEach(msg=>{
+    socket.emit("private message", { senderId:userId, receiverId, content:msg.content, fileUrl: msg.file || msg.image });
+    displayMessage("me", msg.content, new Date(), msg.file || msg.image);
   });
-  const typingIndicator = document.createElement("li");
-  typingIndicator.className = "typing";
-  typingIndicator.textContent = "Typing...";
-  socket.on("typing", () => { if (!messageList.contains(typingIndicator)) messageList.appendChild(typingIndicator); });
-  socket.on("stop typing", () => { if (messageList.contains(typingIndicator)) messageList.removeChild(typingIndicator); });
-
-  // Receive new messages
-  socket.on("private message", msg => appendMessage(msg));
-
-  // Append message to list
-  function appendMessage(msg) {
-    const isMine = msg.sender.id === myUserId;
-    const msgDate = new Date(msg.createdAt).toDateString();
-    if (msgDate !== lastDate) {
-      const sep = document.createElement("li");
-      sep.className = "date-separator";
-      sep.textContent = msgDate;
-      messageList.appendChild(sep);
-      lastDate = msgDate;
-    }
-
-    const li = document.createElement("li");
-    li.className = isMine ? "sent" : "received";
-
-    const bubble = document.createElement("div");
-    bubble.className = "bubble";
-    bubble.innerHTML = `
-      ${msg.content || ""}
-      ${msg.fileType === "image" && msg.fileUrl ? `<img src="${msg.fileUrl}"/>` : ""}
-      ${msg.fileType === "file" && msg.fileUrl ? `<a href="${msg.fileUrl}" target="_blank">File</a>` : ""}
-      <div class="time">${new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
-    `;
-    li.appendChild(bubble);
-    messageList.appendChild(li);
-    messageList.scrollTop = messageList.scrollHeight;
-  }
-
 });
+
+// ----- Socket listeners -----
+socket.on("private message", msg => {
+  if(msg.senderId===receiverId) displayMessage("other", msg.content, msg.timestamp || msg.createdAt, msg.fileUrl || msg.image);
+});
+
+// Typing indicator
+chatInput.addEventListener("input", ()=>{
+  socket.emit("typing", { senderId:userId, receiverId });
+  clearTimeout(typingTimeout);
+  typingTimeout=setTimeout(()=>typingDiv.innerText="", 1000);
+});
+socket.on("typing", ({senderId})=>{
+  if(senderId===receiverId) typingDiv.innerText="Friend is typing...";
+});
+
+// ----- Online status -----
+function fetchOnlineStatus(){
+  fetch(`/api/users/status/${receiverId}`, { headers:{ "Authorization":`Bearer ${token}` } })
+  .then(r=>r.json())
+  .then(data=>statusEl.innerText = data.online ? "Online" : "Offline")
+  .catch(err=>console.error(err));
+}
+fetchOnlineStatus();
+setInterval(fetchOnlineStatus, 5000);
 </script>
 </body>
 </html>
