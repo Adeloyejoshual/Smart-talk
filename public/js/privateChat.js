@@ -1,24 +1,23 @@
-// /public/js/privateChat.js
 document.addEventListener("DOMContentLoaded", () => {
   const messageForm = document.getElementById("messageForm");
   const messageInput = document.getElementById("messageInput");
   const messageList = document.getElementById("messageList");
   const chatUsername = document.getElementById("chat-username");
 
+  const token = localStorage.getItem("token"); // JWT from login
+  const currentUser = localStorage.getItem("currentUser") || "me";
   const urlParams = new URLSearchParams(window.location.search);
-  const chatPartner = urlParams.get("user"); // username
-  const currentUser = localStorage.getItem("currentUser") || "me"; // username
+  const chatPartner = urlParams.get("user");
 
   chatUsername.textContent = chatPartner;
 
-  // Helper: add message to chat
+  // Display message in chat
   function addMessage(msg) {
     const li = document.createElement("li");
     li.classList.add("flex", "items-end", "space-x-2", "my-1");
 
     const isSent = msg.sender.username === currentUser;
 
-    // Bubble
     const bubble = document.createElement("div");
     bubble.classList.add(
       "px-4",
@@ -31,7 +30,6 @@ document.addEventListener("DOMContentLoaded", () => {
         : "bg-gray-200 dark:bg-gray-700 text-black dark:text-white rounded-tr-lg"
     );
 
-    // Show sender username for received messages
     if (!isSent) {
       const nameDiv = document.createElement("div");
       nameDiv.className = "text-xs font-semibold";
@@ -55,10 +53,12 @@ document.addEventListener("DOMContentLoaded", () => {
     messageList.scrollTop = messageList.scrollHeight;
   }
 
-  // Load chat history
+  // Load old messages
   async function loadChatHistory() {
     try {
-      const res = await fetch(`/api/messages/${chatPartner}`);
+      const res = await fetch(`/api/messages/${chatPartner}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const messages = await res.json();
       messages.forEach(addMessage);
     } catch (err) {
@@ -74,20 +74,17 @@ document.addEventListener("DOMContentLoaded", () => {
     const content = messageInput.value.trim();
     if (!content) return;
 
-    const msg = {
-      sender: currentUser,
-      recipient: chatPartner,
-      content,
-      type: "text",
-    };
-
-    addMessage(msg); // show immediately
+    const msg = { recipient: chatPartner, content };
+    addMessage({ sender: { username: currentUser }, ...msg }); // show instantly
     messageInput.value = "";
 
     try {
       await fetch("/api/messages", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify(msg),
       });
     } catch (err) {
