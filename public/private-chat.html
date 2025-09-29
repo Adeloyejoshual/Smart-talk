@@ -134,31 +134,46 @@
 
   .message img {
     max-width: 150px;
-    max-height: 150px;
     margin-top: 5px;
     border-radius: 10px;
-    display: block;
-  }
-
-  .file-preview {
-    display: flex;
-    align-items: center;
-    padding: 5px 10px;
-    background: rgba(0,0,0,0.2);
-    border-radius: 10px;
-    margin-top: 5px;
     cursor: pointer;
-    word-break: break-word;
   }
 
-  .file-preview span {
-    margin-left: 5px;
-    font-size: 12px;
-    color: #fff;
+  .message a {
+    color: #0b93f6;
+    text-decoration: underline;
+    display: block;
+    margin-top: 5px;
   }
 
-  .received .file-preview span {
-    color: #000;
+  /* Modal for image preview */
+  #imageModal {
+    display: none;
+    position: fixed;
+    z-index: 50;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.9);
+    justify-content: center;
+    align-items: center;
+  }
+
+  #imageModal img {
+    max-width: 90%;
+    max-height: 90%;
+    border-radius: 10px;
+  }
+
+  #imageModal span {
+    position: absolute;
+    top: 20px;
+    right: 30px;
+    color: white;
+    font-size: 30px;
+    font-weight: bold;
+    cursor: pointer;
   }
 </style>
 </head>
@@ -182,6 +197,12 @@
   <button type="submit" id="sendBtn">Send</button>
 </form>
 
+<!-- Image Modal -->
+<div id="imageModal">
+  <span id="closeModal">&times;</span>
+  <img id="modalImg" src="">
+</div>
+
 <script src="/socket.io/socket.io.js"></script>
 <script>
 document.addEventListener("DOMContentLoaded", () => {
@@ -196,6 +217,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const fileInput = document.getElementById("fileInput");
   const usernameEl = document.getElementById("username");
   const onlineStatusEl = document.getElementById("onlineStatus");
+  const imageModal = document.getElementById("imageModal");
+  const modalImg = document.getElementById("modalImg");
+  const closeModal = document.getElementById("closeModal");
 
   if (!receiverId) window.location.href = "/home.html";
 
@@ -216,7 +240,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   socket.emit("joinPrivateRoom", { sender: myUserId, receiverId });
 
-  // Typing indicator
   let typingTimeout;
   messageInput.addEventListener("input", () => {
     socket.emit("typing", { to: receiverId });
@@ -243,7 +266,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const today = new Date();
     const yesterday = new Date();
     yesterday.setDate(today.getDate() - 1);
-
     if (date.toDateString() === today.toDateString()) return "Today";
     if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
     return date.toLocaleDateString();
@@ -265,4 +287,65 @@ document.addEventListener("DOMContentLoaded", () => {
     const isMine = msg.sender.id === myUserId;
     li.className = "message " + (isMine ? "sent" : "received");
 
-    let
+    let contentHtml = msg.content || "";
+    if (msg.fileType === "image" && msg.fileUrl) contentHtml += `<img src="${msg.fileUrl}" onclick="showModal(this.src)" />`;
+    if (msg.fileType === "file" && msg.fileUrl) contentHtml += `<a href="${msg.fileUrl}" target="_blank">File</a>`;
+    contentHtml += `<div class="timestamp">${msgDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>`;
+
+    li.innerHTML = contentHtml;
+    messageList.appendChild(li);
+    messageList.scrollTop = messageList.scrollHeight;
+  }
+
+  async function loadMessages() {
+    const res = await fetch(`/api/messages/history/${receiverId}?skip=0&limit=50`, { headers: { Authorization: `Bearer ${token}` } });
+    const data = await res.json();
+    if (data.success) data.messages.reverse().forEach(msg => appendMessage(msg));
+    messageList.scrollTop = messageList.scrollHeight;
+  }
+
+  loadMessages();
+
+  messageForm.addEventListener("submit", e => {
+    e.preventDefault();
+    const content = messageInput.value.trim();
+    if (!content) return;
+    socket.emit("private message", { to: receiverId, message: content });
+    messageInput.value = "";
+  });
+
+  socket.on("private message", msg => appendMessage(msg));
+
+  async function sendFiles(files) {
+    if (!files.length) return;
+    const formData = new FormData();
+    for (const f of files) formData.append("file", f);
+    formData.append("recipient", receiverId);
+
+    const res = await fetch("/api/messages/file", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData
+    });
+    const data = await res.json();
+    appendMessage(data);
+  }
+
+  imageInput.addEventListener("change", e => sendFiles([...e.target.files]));
+  fileInput.addEventListener("change", e => sendFiles([...e.target.files]));
+
+  socket.on("connect", () => onlineStatusEl.textContent = "Online");
+  socket.on("disconnect", () => onlineStatusEl.textContent = "Offline");
+
+  window.showModal = function(src) {
+    modalImg.src = src;
+    imageModal.style.display = "flex";
+  }
+
+  closeModal.addEventListener("click", () => imageModal.style.display = "none"));
+  imageModal.addEventListener("click", (e) => { if(e.target === imageModal) imageModal.style.display = "none"; });
+});
+</script>
+
+</body>
+</html>
