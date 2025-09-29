@@ -19,20 +19,16 @@ cloudinary.config({
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
-/* === 📨 SEND PRIVATE TEXT MESSAGE === */
+/* === SEND PRIVATE TEXT MESSAGE === */
 router.post("/private/send", auth, async (req, res) => {
   try {
-    const { recipientId, content, replyTo, isForwarded } = req.body;
-    if (!recipientId || (!content && !replyTo)) {
-      return res.status(400).json({ error: "Missing content or recipient" });
-    }
+    const { recipientId, content } = req.body;
+    if (!recipientId || !content) return res.status(400).json({ error: "Missing content or recipient" });
 
     const newMessage = new Message({
       sender: req.userId,
       recipient: recipientId,
       content,
-      replyTo: replyTo || null,
-      isForwarded: !!isForwarded,
       status: "sent",
     });
 
@@ -45,70 +41,31 @@ router.post("/private/send", auth, async (req, res) => {
       senderId: req.userId,
       senderName: newMessage.sender.username,
       content: newMessage.content,
-      image: newMessage.image || "",
-      file: newMessage.file || "",
-      fileType: newMessage.fileType || "",
       timestamp: newMessage.createdAt,
-      replyTo: newMessage.replyTo,
-      isForwarded: newMessage.isForwarded,
     });
 
-    res.status(201).json({ success: true, message: newMessage });
+    // Send back to sender (so it shows instantly)
+    res.status(201).json({
+      success: true,
+      message: {
+        _id: newMessage._id,
+        senderId: req.userId,
+        senderName: newMessage.sender.username,
+        content: newMessage.content,
+        timestamp: newMessage.createdAt,
+      },
+    });
   } catch (err) {
     console.error("❌ Send error:", err);
     res.status(500).json({ error: "Failed to send message" });
   }
 });
 
-/* === 🖼️📎 UPLOAD IMAGES / FILES === */
-router.post("/private/upload", auth, upload.array("files", 5), async (req, res) => {
-  try {
-    const { receiverId } = req.body;
-    if (!req.files?.length) return res.status(400).json({ message: "No files uploaded" });
-
-    const messages = await Promise.all(
-      req.files.map(async (file) => {
-        const url = await uploadToCloudinary(file.buffer);
-        const mime = file.mimetype;
-        const msg = new Message({
-          sender: req.userId,
-          recipient: receiverId,
-          type: mime.startsWith("image/") ? "image" : "file",
-          ...(mime.startsWith("image/")
-            ? { image: url }
-            : { file: url, fileType: mime.split("/")[1] }),
-        });
-        await msg.save();
-        await msg.populate("sender", "username");
-
-        // Emit to receiver
-        req.io?.to(receiverId.toString()).emit("privateMessage", {
-          _id: msg._id,
-          senderId: req.userId,
-          senderName: msg.sender.username,
-          content: msg.content || "",
-          image: msg.image || "",
-          file: msg.file || "",
-          fileType: msg.fileType || "",
-          timestamp: msg.createdAt,
-        });
-
-        return msg;
-      })
-    );
-
-    res.status(201).json({ success: true, messages });
-  } catch (err) {
-    console.error("❌ Upload error:", err);
-    res.status(500).json({ error: "Upload failed" });
-  }
-});
-
-/* === 📚 GET CHAT HISTORY (Paginated) === */
+/* === GET CHAT HISTORY === */
 router.get("/history/:receiverId", auth, async (req, res) => {
   try {
     const { receiverId } = req.params;
-    const { skip = 0, limit = 20 } = req.query;
+    const { skip = 0, limit = 50 } = req.query;
 
     const messages = await Message.find({
       $or: [
@@ -116,13 +73,20 @@ router.get("/history/:receiverId", auth, async (req, res) => {
         { sender: receiverId, recipient: req.userId },
       ],
     })
-      .sort({ createdAt: -1 })
+      .sort({ createdAt: 1 }) // oldest first
       .skip(parseInt(skip))
       .limit(parseInt(limit))
-      .populate("sender", "username")
-      .populate("replyTo");
+      .populate("sender", "username");
 
-    res.status(200).json({ success: true, messages });
+    const formatted = messages.map(msg => ({
+      _id: msg._id,
+      senderId: msg.sender._id,
+      senderName: msg.sender.username,
+      content: msg.content,
+      timestamp: msg.createdAt,
+    }));
+
+    res.status(200).json({ success: true, messages: formatted });
   } catch (err) {
     console.error("❌ History error:", err);
     res.status(500).json({ error: "Failed to fetch messages" });
