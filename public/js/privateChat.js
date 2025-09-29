@@ -4,17 +4,20 @@ document.addEventListener("DOMContentLoaded", () => {
   const urlParams = new URLSearchParams(window.location.search);
   const receiverId = urlParams.get("user");
 
-  if (!token || !receiverId) {
-    window.location.href = "/home.html";
-    return;
-  }
+  if (!token || !receiverId) window.location.href = "/home.html";
 
   let myUserId = null;
+  let typingTimeout;
   const messageList = document.getElementById("messageList");
   const messageForm = document.getElementById("messageForm");
   const messageInput = document.getElementById("messageInput");
+  const imageInput = document.getElementById("imageInput");
+  const fileInput = document.getElementById("fileInput");
 
-  // Get current user ID from JWT
+  const typingIndicator = document.createElement("li");
+  typingIndicator.className = "italic text-sm text-gray-500 px-2";
+  typingIndicator.textContent = "Typing...";
+
   async function getMyUserId(token) {
     try { return JSON.parse(atob(token.split(".")[1])).id; }
     catch { return null; }
@@ -26,7 +29,7 @@ document.addEventListener("DOMContentLoaded", () => {
     loadMessages(true);
   });
 
-  // Send message
+  // SEND TEXT MESSAGE
   messageForm.addEventListener("submit", async e => {
     e.preventDefault();
     const content = messageInput.value.trim();
@@ -35,14 +38,47 @@ document.addEventListener("DOMContentLoaded", () => {
     const res = await fetch(`/api/messages/private/send`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ recipientId: receiverId, content })
+      body: JSON.stringify({ recipientId, content })
     });
     const data = await res.json();
     if (data._id) appendMessage(data, true);
     messageInput.value = "";
   });
 
-  // Receive message
+  // SEND FILES
+  async function sendFiles(files) {
+    if (!files.length) return;
+    const formData = new FormData();
+    for (const f of files) formData.append("files", f);
+    formData.append("receiverId", receiverId);
+
+    const res = await fetch(`/api/messages/private/upload`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData
+    });
+    const data = await res.json();
+    if (data.success) data.messages.forEach(msg => appendMessage(msg, true));
+  }
+
+  imageInput.addEventListener("change", e => sendFiles([...e.target.files]));
+  fileInput.addEventListener("change", e => sendFiles([...e.target.files]));
+
+  // TYPING INDICATOR
+  messageInput.addEventListener("input", () => {
+    socket.emit("typing", { to: receiverId, from: myUserId });
+    clearTimeout(typingTimeout);
+    typingTimeout = setTimeout(() => socket.emit("stopTyping", { to: receiverId, from: myUserId }), 1500);
+  });
+
+  socket.on("typing", ({ from }) => {
+    if (from === receiverId && !messageList.contains(typingIndicator)) messageList.appendChild(typingIndicator);
+  });
+  socket.on("stopTyping", ({ from }) => {
+    if (from === receiverId && messageList.contains(typingIndicator)) messageList.removeChild(typingIndicator);
+  });
+
+  // RECEIVE MESSAGE
   socket.on("privateMessage", msg => {
     if (msg.senderId === receiverId || msg.sender === receiverId) appendMessage(msg, true);
   });
@@ -53,28 +89,27 @@ document.addEventListener("DOMContentLoaded", () => {
     li.className = `${isMine ? "sent self-start" : "received self-end"} mb-1 relative`;
 
     const bubble = document.createElement("div");
-    bubble.className = "bubble bg-white dark:bg-gray-800 rounded-xl p-2 max-w-[75%]";
+    bubble.className = "bubble rounded-xl p-2 max-w-[75%]";
+
+    if (isMine) bubble.classList.add("bg-blue-600", "text-white", "border-tl-0");
+    else bubble.classList.add("bg-gray-200", "text-black", "border-tr-0");
+
     bubble.innerHTML = `
       ${msg.content || ""}
-      <div class="text-xs mt-1 opacity-60 text-${isMine ? "left" : "right"}">
-        ${new Date(msg.createdAt || msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-      </div>
+      ${msg.image ? `<img src="${msg.image}" class="max-w-40 mt-1 rounded"/>` : ""}
+      ${msg.file ? `<a href="${msg.file}" target="_blank" class="block mt-1 text-blue-600 underline">${msg.fileType || "File"}</a>` : ""}
+      <div class="text-xs mt-1 opacity-60 text-right">${new Date(msg.createdAt || msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
     `;
     li.appendChild(bubble);
     messageList.appendChild(li);
     if (scroll) messageList.scrollTop = messageList.scrollHeight;
   }
 
-  // Load history
-  async function loadMessages(initial = false) {
-    const res = await fetch(`/api/messages/history/${receiverId}?skip=0&limit=50`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
+  // LOAD HISTORY
+  async function loadMessages() {
+    const res = await fetch(`/api/messages/history/${receiverId}?skip=0&limit=50`, { headers: { Authorization: `Bearer ${token}` } });
     const data = await res.json();
-    if (data.success && data.messages) {
-      messageList.innerHTML = "";
-      data.messages.reverse().forEach(msg => appendMessage(msg, false));
-      messageList.scrollTop = messageList.scrollHeight;
-    }
+    if (data.success) data.messages.reverse().forEach(msg => appendMessage(msg, false));
+    messageList.scrollTop = messageList.scrollHeight;
   }
 });
