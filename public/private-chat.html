@@ -43,8 +43,8 @@
     }
     #chatBox {
       flex: 1;
-      margin-top: 60px; /* space for header */
-      margin-bottom: 70px; /* space for input */
+      margin-top: 60px; /* header */
+      margin-bottom: 70px; /* input */
       padding: 15px;
       overflow-y: auto;
       display: flex;
@@ -69,6 +69,7 @@
       font-size: 12px;
       opacity: 0.7;
       margin-top: 5px;
+      text-align: right;
     }
     #inputArea {
       position: fixed;
@@ -87,9 +88,7 @@
       border: none;
       border-radius: 8px;
     }
-    #fileInput {
-      display: none;
-    }
+    #fileInput { display: none; }
     #fileLabel {
       background: #555;
       padding: 8px 12px;
@@ -105,9 +104,7 @@
       color: white;
       cursor: pointer;
     }
-    #sendBtn:hover {
-      background: #45a049;
-    }
+    #sendBtn:hover { background: #45a049; }
   </style>
 </head>
 <body>
@@ -126,7 +123,6 @@
     <button id="sendBtn">Send</button>
   </div>
 
-  <!-- Socket.IO -->
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
   <script>
     const token = localStorage.getItem("token");
@@ -139,8 +135,12 @@
     const onlineStatus = document.getElementById("onlineStatus");
     const fileInput = document.getElementById("fileInput");
 
-    // Socket connection
     const socket = io({ auth: { token } });
+
+    // Format time without seconds
+    function formatTime(date) {
+      return new Date(date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    }
 
     // Load chat history
     async function loadMessages() {
@@ -169,7 +169,7 @@
       div.className = `message ${type}`;
       div.innerHTML = `
         <div>${content}</div>
-        <div class="meta">${new Date(timestamp).toLocaleTimeString()}</div>
+        <div class="meta">${formatTime(timestamp)}</div>
       `;
       chatBox.appendChild(div);
     }
@@ -180,12 +180,11 @@
       div.className = `message ${type}`;
       div.innerHTML = `
         <div><a href="${url}" target="_blank">📎 ${name}</a></div>
-        <div class="meta">${new Date(timestamp).toLocaleTimeString()}</div>
+        <div class="meta">${formatTime(timestamp)}</div>
       `;
       chatBox.appendChild(div);
     }
 
-    // Scroll
     function scrollToBottom() {
       chatBox.scrollTop = chatBox.scrollHeight;
     }
@@ -240,7 +239,7 @@
       }
     });
 
-    // Online/offline
+    // Online status
     socket.emit("checkOnline", friendId);
     socket.on("userOnline", id => {
       if (id === friendId) onlineStatus.textContent = "Online";
