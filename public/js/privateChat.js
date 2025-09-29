@@ -7,24 +7,15 @@ document.addEventListener("DOMContentLoaded", () => {
   if (!token || !receiverId) window.location.href = "/home.html";
 
   let myUserId = null;
-  let typingTimeout;
   const messageList = document.getElementById("messageList");
   const messageForm = document.getElementById("messageForm");
   const messageInput = document.getElementById("messageInput");
   const imageInput = document.getElementById("imageInput");
   const fileInput = document.getElementById("fileInput");
 
-  const typingIndicator = document.createElement("li");
-  typingIndicator.className = "italic text-sm text-gray-500 px-2";
-  typingIndicator.textContent = "Typing...";
-
-  // GET my user ID from token
   async function getMyUserId(token) {
-    try {
-      return JSON.parse(atob(token.split(".")[1])).id;
-    } catch {
-      return null;
-    }
+    try { return JSON.parse(atob(token.split(".")[1])).id; } 
+    catch { return null; }
   }
 
   getMyUserId(token).then(id => {
@@ -44,8 +35,9 @@ document.addEventListener("DOMContentLoaded", () => {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ recipientId, content })
     });
+
     const data = await res.json();
-    if (data.success && data.message) appendMessage(data.message, true);
+    if (data.success) appendMessage(data.message);
     messageInput.value = "";
   });
 
@@ -56,69 +48,46 @@ document.addEventListener("DOMContentLoaded", () => {
     for (const f of files) formData.append("files", f);
     formData.append("receiverId", receiverId);
 
-    const res = await fetch(`/api/messages/private/upload`, {
+    const res = await fetch("/api/messages/private/upload", {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
       body: formData
     });
+
     const data = await res.json();
-    if (data.success) data.messages.forEach(msg => appendMessage(msg, true));
+    if (data.success) data.messages.forEach(msg => appendMessage(msg));
   }
 
   imageInput.addEventListener("change", e => sendFiles([...e.target.files]));
   fileInput.addEventListener("change", e => sendFiles([...e.target.files]));
 
-  // TYPING INDICATOR
-  messageInput.addEventListener("input", () => {
-    socket.emit("typing", { to: receiverId, from: myUserId });
-    clearTimeout(typingTimeout);
-    typingTimeout = setTimeout(() => socket.emit("stopTyping", { to: receiverId, from: myUserId }), 1500);
-  });
-
-  socket.on("typing", ({ from }) => {
-    if (from === receiverId && !messageList.contains(typingIndicator)) messageList.appendChild(typingIndicator);
-  });
-  socket.on("stopTyping", ({ from }) => {
-    if (from === receiverId && messageList.contains(typingIndicator)) messageList.removeChild(typingIndicator);
-  });
-
   // RECEIVE MESSAGE
-  socket.on("privateMessage", msg => {
-    if (msg.senderId === receiverId) appendMessage(msg, true);
-  });
+  socket.on("privateMessage", msg => appendMessage(msg));
 
-  // APPEND MESSAGE
-  function appendMessage(msg, scroll = true) {
-    const senderId = msg.senderId || msg.sender?._id;
-    const senderName = msg.senderName || msg.sender?.username || "Unknown";
-    const isMine = senderId === myUserId;
-
+  function appendMessage(msg) {
+    const isMine = msg.senderId === myUserId;
     const li = document.createElement("li");
-    li.className = `${isMine ? "sent self-start" : "received self-end"} mb-1 relative`;
+    li.className = `mb-2 flex ${isMine ? "justify-start" : "justify-end"}`;
 
-    const bubble = document.createElement("div");
-    bubble.className = "bubble rounded-xl p-2 max-w-[75%]";
-    bubble.classList.add(isMine ? "bg-blue-600 text-white" : "bg-gray-200 text-black");
-
-    bubble.innerHTML = `
-      ${!isMine ? `<strong>${senderName}</strong><br>` : ""}
-      ${msg.content || ""}
-      ${msg.image ? `<img src="${msg.image}" class="max-w-40 mt-1 rounded"/>` : ""}
-      ${msg.file ? `<a href="${msg.file}" target="_blank" class="block mt-1 text-blue-600 underline">${msg.fileType || "File"}</a>` : ""}
-      <div class="text-xs mt-1 opacity-60 text-right">
-        ${new Date(msg.createdAt || msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+    li.innerHTML = `
+      <div class="rounded-xl p-2 max-w-[70%] ${isMine ? "bg-blue-600 text-white" : "bg-gray-200 text-black"}">
+        ${!isMine ? `<strong>${msg.senderName || "Unknown"}</strong><br>` : ""}
+        ${msg.content || ""}
+        ${msg.image ? `<img src="${msg.image}" class="max-w-40 mt-1 rounded"/>` : ""}
+        ${msg.file ? `<a href="${msg.file}" target="_blank" class="block mt-1 text-blue-600 underline">${msg.fileType || "File"}</a>` : ""}
+        <div class="text-xs opacity-50 mt-1 text-right">${new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
       </div>
     `;
-    li.appendChild(bubble);
     messageList.appendChild(li);
-    if (scroll) messageList.scrollTop = messageList.scrollHeight;
+    messageList.scrollTop = messageList.scrollHeight;
   }
 
   // LOAD CHAT HISTORY
   async function loadMessages() {
-    const res = await fetch(`/api/messages/history/${receiverId}?skip=0&limit=50`, { headers: { Authorization: `Bearer ${token}` } });
+    const res = await fetch(`/api/messages/history/${receiverId}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
     const data = await res.json();
-    if (data.success) data.messages.reverse().forEach(msg => appendMessage(msg, false));
-    messageList.scrollTop = messageList.scrollHeight;
+    if (data.success) data.messages.forEach(msg => appendMessage(msg));
   }
 });
