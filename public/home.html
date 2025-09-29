@@ -51,6 +51,20 @@
       transition: background 0.2s;
     }
     .chat-item:hover { background: #2c2c2c; }
+    .chat-username {
+      font-weight: bold;
+      font-size: 1rem;
+      color: #fff;
+    }
+    .chat-last-message {
+      font-size: 0.85rem;
+      color: #bbb;
+      margin-top: 3px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 90%;
+    }
 
     /* Floating buttons */
     #addFriendBtn, #settingsBtn {
@@ -163,7 +177,7 @@
       }
     });
 
-    // Fetch Friends
+    // Fetch Friends with last message
     async function fetchFriends() {
       try {
         const res = await fetch("/api/users/chats", {
@@ -178,7 +192,18 @@
         friends.forEach(f => {
           const div = document.createElement("div");
           div.className = "chat-item";
-          div.textContent = f.username + " (" + f.email + ")";
+
+          const name = document.createElement("div");
+          name.className = "chat-username";
+          name.textContent = f.username;
+
+          const lastMsg = document.createElement("div");
+          lastMsg.className = "chat-last-message";
+          lastMsg.textContent = f.lastMessage ? f.lastMessage.content : "No messages yet";
+
+          div.appendChild(name);
+          div.appendChild(lastMsg);
+
           div.onclick = () => window.location.href = `/private-chat.html?user=${f._id}`;
           chatListEl.appendChild(div);
         });
