@@ -1,21 +1,25 @@
 // routes/messages.js
 const express = require("express");
 const router = express.Router();
-const Message = require("../models/Message"); // MongoDB model
-const authMiddleware = require("../middleware/authMiddleware"); // optional for JWT auth
+const Message = require("../models/Message");
+const authMiddleware = require("../middleware/authMiddleware");
 
-// GET messages with a specific partner
+// GET all messages between current user and a partner
 router.get("/:partnerId", authMiddleware, async (req, res) => {
   try {
-    const currentUser = req.user.id; // from JWT auth
+    const currentUser = req.user.id;
     const partnerId = req.params.partnerId;
 
     const messages = await Message.find({
       $or: [
-        { sender: currentUser, receiver: partnerId },
-        { sender: partnerId, receiver: currentUser },
+        { sender: currentUser, recipient: partnerId },
+        { sender: partnerId, recipient: currentUser },
       ],
-    }).sort({ date: 1 }); // oldest to newest
+      isDeleted: { $ne: true },
+    })
+      .sort({ createdAt: 1 })
+      .populate("sender", "username avatar")
+      .populate("recipient", "username avatar");
 
     res.json(messages);
   } catch (err) {
@@ -24,20 +28,25 @@ router.get("/:partnerId", authMiddleware, async (req, res) => {
   }
 });
 
-// POST a new message
+// POST a new private message
 router.post("/", authMiddleware, async (req, res) => {
   try {
-    const { receiver, content, date } = req.body;
+    const { recipient, content, type, image, file, fileType } = req.body;
     const sender = req.user.id;
 
     const newMessage = new Message({
       sender,
-      receiver,
+      recipient,
       content,
-      date: date ? new Date(date) : new Date(),
+      type: type || "text",
+      image: image || null,
+      file: file || null,
+      fileType: fileType || null,
     });
 
     await newMessage.save();
+    await newMessage.populate("sender", "username avatar");
+    await newMessage.populate("recipient", "username avatar");
 
     res.status(201).json(newMessage);
   } catch (err) {
