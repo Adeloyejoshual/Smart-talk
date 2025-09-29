@@ -1,5 +1,4 @@
-// socket.js
-const Message = require("./models/Message"); // Adjust the path as needed
+const Message = require("./models/Message"); // Adjust path if needed
 
 module.exports = (io) => {
   io.on("connection", (socket) => {
@@ -13,8 +12,8 @@ module.exports = (io) => {
 
     // Private message with DB save
     socket.on("privateMessage", async (msg) => {
-      const { senderId, receiverId, content, replyTo = null, isForwarded = false } = msg;
-      if (!receiverId || !content) return;
+      const { senderId, receiverId, content, replyTo = null, isForwarded = false, fileUrl = "" } = msg;
+      if (!receiverId || (!content && !fileUrl)) return;
 
       try {
         // Save message in DB
@@ -22,6 +21,7 @@ module.exports = (io) => {
           sender: senderId,
           recipient: receiverId,
           content,
+          fileUrl,
           replyTo,
           isForwarded,
           status: "sent",
@@ -34,16 +34,18 @@ module.exports = (io) => {
           _id: newMessage._id,
           senderId,
           content,
+          fileUrl,
           replyTo,
           timestamp: newMessage.createdAt,
           isForwarded,
         });
 
-        // Optionally emit back to sender to confirm delivery
+        // Confirm to sender
         socket.emit("privateMessageSent", {
           _id: newMessage._id,
           receiverId,
           content,
+          fileUrl,
           replyTo,
           timestamp: newMessage.createdAt,
           isForwarded,
@@ -55,56 +57,13 @@ module.exports = (io) => {
       }
     });
 
-    // Group chat join
-    socket.on("join-group", (groupId) => {
-      socket.join(groupId);
-      console.log(`🟢 User joined group: ${groupId}`);
-    });
-
-    // Group message broadcast with DB save
-    socket.on("group-message", async (msg) => {
-      const { group, senderId, text, replyTo = null, isForwarded = false } = msg;
-      if (!group || !text) return;
-
-      try {
-        // Save group message in DB
-        const newMessage = new Message({
-          sender: senderId,
-          group,
-          content: text,
-          replyTo,
-          isForwarded,
-          status: "sent",
-          type: "text",
-        });
-        await newMessage.save();
-
-        io.to(group).emit("group-message", {
-          _id: newMessage._id,
-          group,
-          senderId,
-          text,
-          replyTo,
-          timestamp: newMessage.createdAt,
-          isForwarded,
-        });
-
-        console.log(`📤 Group message saved and broadcast in group ${group}`);
-      } catch (error) {
-        console.error("❌ Error saving/broadcasting group message:", error);
-      }
-    });
-
-    // Typing indicators (optional)
+    // Typing indicators
     socket.on("typing", ({ receiverId, senderId }) => {
-      if (receiverId) {
-        io.to(receiverId).emit("typing", { senderId });
-      }
+      if (receiverId) io.to(receiverId).emit("typing", { senderId });
     });
 
-    // Delivery/read receipts (example)
+    // Delivery/read receipts
     socket.on("message-delivered", ({ messageId, userId }) => {
-      // Broadcast delivery receipt to sender or group members
       io.emit("message-delivered", { messageId, userId });
     });
 
