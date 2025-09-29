@@ -7,6 +7,7 @@ const path = require("path");
 const dotenv = require("dotenv");
 const jwt = require("jsonwebtoken");
 const socketIo = require("socket.io");
+const multer = require("multer");
 
 dotenv.config();
 
@@ -18,7 +19,6 @@ const Message = require("./models/Chat");
 const authRoutes = require("./routes/auth");
 const userRoutes = require("./routes/user");
 const messageRoutes = require("./routes/messages");
-const uploadRoutes = require("./routes/upload"); // For file uploads
 
 const app = express();
 const server = http.createServer(app);
@@ -33,33 +33,24 @@ const io = socketIo(server, {
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
-// Serve uploads folder to serve uploaded files
 app.use("/uploads", express.static(path.join(__dirname, "public/uploads")));
 
 // API Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/messages", messageRoutes);
-app.use("/api/upload", uploadRoutes); // Upload endpoint
 
-// Static HTML routes
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "login.html"));
-});
-app.get("/home", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "home.html"));
-});
-app.get("/chat", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "chat.html"));
-});
-app.get("/settings", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "settings.html"));
-});
+// HTML Routes
+app.get("/", (req, res) => res.sendFile(path.join(__dirname, "public/login.html")));
+app.get("/home", (req, res) => res.sendFile(path.join(__dirname, "public/home.html")));
+app.get("/chat", (req, res) => res.sendFile(path.join(__dirname, "public/chat.html")));
+app.get("/private-chat", (req, res) => res.sendFile(path.join(__dirname, "public/private-chat.html")));
+app.get("/private-chat-settings", (req, res) => res.sendFile(path.join(__dirname, "public/private-chat-settings.html")));
 
 // Online users map
 const onlineUsers = new Map();
 
-// Socket.IO JWT auth middleware
+// Socket.IO JWT middleware
 io.use((socket, next) => {
   const token = socket.handshake.auth.token;
   if (!token) return next(new Error("Token required"));
@@ -74,121 +65,132 @@ io.use((socket, next) => {
 // Socket.IO events
 io.on("connection", (socket) => {
   const userId = socket.user.id;
-  console.log(`🔌 User connected: ${userId}`);
   onlineUsers.set(userId, socket.id);
+  console.log(`🔌 User connected: ${userId}`);
 
-  // Mark user online and update lastSeen
+  // Mark user online
   User.findByIdAndUpdate(userId, { online: true, lastSeen: new Date() }).catch(console.error);
 
-  // Join private room (optional for group/private chat segregation)
+  // Join private room
   socket.on("joinPrivateRoom", ({ sender, receiverId }) => {
     const roomId = [sender, receiverId].sort().join("_");
     socket.join(roomId);
     socket.data.roomId = roomId;
   });
 
-  // Handle private message (text or file)
+  // Handle sending private message
   socket.on("private message", async ({ to, message, fileUrl, fileType }) => {
     const from = userId;
+    try {
+      const newMsg = new Message({
+        sender: from,
+        receiver: to,
+        content: message || "",
+        fileUrl: fileUrl || null,
+        fileType: fileType || "text",
+        status: "sent",
+        createdAt: new Date(),
+      });
+      await newMsg.save();
 
-    const newMsg = new Message({
-      sender: from,
-      receiver: to,
-      content: message || "",
-      fileUrl: fileUrl || null,
-      fileType: fileType || null,
-      status: "sent", // Initial status
-      createdAt: new Date(),
-    });
-
-    await newMsg.save();
-
-    const toSocketId = onlineUsers.get(to);
-    if (toSocketId) {
-      io.to(toSocketId).emit("private message", {
-        from,
-        message: newMsg.content,
+      const payload = {
+        _id: newMsg._id,
+        sender: { id: from, username: socket.user.username },
+        receiver: to,
+        content: newMsg.content,
         fileUrl: newMsg.fileUrl,
         fileType: newMsg.fileType,
         status: newMsg.status,
-        timestamp: newMsg.createdAt.toISOString(),
-        messageId: newMsg._id.toString(),
-      });
-    }
+        createdAt: newMsg.createdAt,
+      };
 
-    // Echo to sender as well
-    socket.emit("private message", {
-      from,
-      message: newMsg.content,
-      fileUrl: newMsg.fileUrl,
-      fileType: newMsg.fileType,
-      status: newMsg.status,
-      timestamp: newMsg.createdAt.toISOString(),
-      messageId: newMsg._id.toString(),
-    });
-  });
+      // Send to receiver if online
+      const toSocketId = onlineUsers.get(to);
+      if (toSocketId) io.to(toSocketId).emit("private message", payload);
 
-  // Handle message status update (e.g., read)
-  socket.on("message status update", async ({ messageId, status }) => {
-    if (!messageId || !status) return;
-
-    try {
-      const msg = await Message.findById(messageId);
-      if (!msg) return;
-
-      msg.status = status; // e.g., "read"
-      await msg.save();
-
-      // Notify sender if online
-      const senderSocketId = onlineUsers.get(msg.sender.toString());
-      if (senderSocketId) {
-        io.to(senderSocketId).emit("message status update", {
-          messageId,
-          status,
-        });
-      }
+      // Echo to sender
+      socket.emit("private message", payload);
     } catch (err) {
-      console.error("Error updating message status:", err.message);
+      console.error("Error sending message:", err.message);
     }
   });
 
-  // Typing indicators
+  // Typing indicator
   socket.on("typing", ({ to }) => {
     const toSocketId = onlineUsers.get(to);
-    if (toSocketId) {
-      io.to(toSocketId).emit("typing", { from: userId });
-    }
+    if (toSocketId) io.to(toSocketId).emit("typing", { from: userId });
   });
-
   socket.on("stop typing", ({ to }) => {
     const toSocketId = onlineUsers.get(to);
-    if (toSocketId) {
-      io.to(toSocketId).emit("stop typing", { from: userId });
-    }
+    if (toSocketId) io.to(toSocketId).emit("stop typing", { from: userId });
   });
 
   // Disconnect
   socket.on("disconnect", async () => {
     console.log(`❌ User disconnected: ${userId}`);
     onlineUsers.delete(userId);
-    await User.findByIdAndUpdate(userId, {
-      online: false,
-      lastSeen: new Date(),
-    }).catch(console.error);
+    await User.findByIdAndUpdate(userId, { online: false, lastSeen: new Date() }).catch(console.error);
   });
 });
 
-// Connect to MongoDB
+// ---------------------- File Upload ----------------------
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, path.join(__dirname, "public/uploads")),
+  filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname),
+});
+const upload = multer({ storage });
+
+app.post("/api/messages/file", upload.single("file"), async (req, res) => {
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) return res.status(401).json({ message: "No token provided" });
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const senderId = decoded.id;
+    const { recipient } = req.body;
+    const file = req.file;
+
+    if (!recipient || !file) return res.status(400).json({ message: "Recipient or file missing" });
+
+    const newMsg = new Message({
+      sender: senderId,
+      receiver: recipient,
+      fileUrl: `/uploads/${file.filename}`,
+      fileType: file.mimetype.startsWith("image/") ? "image" : "file",
+      content: "",
+      status: "sent",
+      createdAt: new Date(),
+    });
+    await newMsg.save();
+
+    const payload = {
+      _id: newMsg._id,
+      sender: { id: senderId, username: decoded.username },
+      receiver: recipient,
+      content: newMsg.content,
+      fileUrl: newMsg.fileUrl,
+      fileType: newMsg.fileType,
+      status: newMsg.status,
+      createdAt: newMsg.createdAt,
+    };
+
+    // Emit to receiver if online
+    const toSocketId = onlineUsers.get(recipient);
+    if (toSocketId) io.to(toSocketId).emit("private message", payload);
+
+    // Echo to sender
+    res.json(payload);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "File upload failed" });
+  }
+});
+
+// ---------------------- MongoDB ----------------------
 mongoose
-  .connect(process.env.MONGO_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  })
+  .connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
   .then(() => console.log("✅ MongoDB connected"))
-  .catch((err) => console.error("❌ MongoDB error:", err));
+  .catch(err => console.error("❌ MongoDB error:", err));
 
 // Start server
 const PORT = process.env.PORT || 10000;
-server.listen(PORT, () => {
-  console.log(`🚀 SmartTalk server running on port ${PORT}`);
-});
+server.listen(PORT, () => console.log(`🚀 SmartTalk server running on port ${PORT}`));
