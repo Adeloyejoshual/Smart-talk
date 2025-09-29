@@ -1,121 +1,222 @@
-const express = require("express");
-const router = express.Router();
-const multer = require("multer");
-const cloudinary = require("cloudinary").v2;
-const dotenv = require("dotenv");
-const Message = require("../models/Message");
-const auth = require("../middleware/verifyToken");
-const uploadToCloudinary = require("../utils/cloudinaryUpload");
+document.addEventListener("DOMContentLoaded", () => {
+  const socket = io();
+  const token = localStorage.getItem("token");
+  const urlParams = new URLSearchParams(window.location.search);
 
-dotenv.config();
+  // Determine chat type
+  const receiverId = urlParams.get("user");
+  const groupId = urlParams.get("group");
+  const isGroupChat = !!groupId;
+  const chatId = isGroupChat ? groupId : receiverId;
 
-// Cloudinary config
-cloudinary.config({
-  cloud_name: process.env.CLOUD_NAME,
-  api_key: process.env.CLOUD_API_KEY,
-  api_secret: process.env.CLOUD_API_SECRET,
-});
+  if (!token || !chatId) {
+    window.location.href = "/home.html";
+    return;
+  }
 
-const storage = multer.memoryStorage();
-const upload = multer({ storage });
+  let myUserId = null;
+  let skip = 0, limit = 20, loading = false, isAtBottom = true, typingTimeout;
 
-/* === 📨 SEND GROUP MESSAGE === */
-router.post("/group/send", auth, async (req, res) => {
-  try {
-    const { groupId, content, isForwarded } = req.body;
-    if (!groupId || !content) return res.status(400).json({ error: "Missing content or groupId" });
+  // DOM Elements
+  const usernameHeader = document.getElementById("chat-username");
+  const statusIndicator = document.getElementById("statusIndicator");
+  const messageList = document.getElementById("messageList");
+  const messageForm = document.getElementById("messageForm");
+  const messageInput = document.getElementById("messageInput");
+  const imageInput = document.getElementById("imageInput");
+  const fileInput = document.getElementById("fileInput");
+  const scrollDownBtn = document.getElementById("scrollDownBtn");
 
-    const newMessage = new Message({
-      sender: req.userId,
-      group: groupId,
-      content,
-      isForwarded: !!isForwarded,
-      status: "sent",
+  const typingIndicator = document.createElement("li");
+  typingIndicator.className = "italic text-sm text-gray-500 px-2";
+  typingIndicator.textContent = "Typing...";
+
+  // Get current user ID from token
+  async function getMyUserId(token) {
+    try {
+      const payload = JSON.parse(atob(token.split(".")[1]));
+      return payload.id || payload.userId;
+    } catch { return null; }
+  }
+
+  getMyUserId(token).then(id => {
+    myUserId = id;
+
+    if (isGroupChat) {
+      socket.emit("joinGroup", { groupId, userId: myUserId });
+      loadMessages(true);
+    } else {
+      socket.emit("join", myUserId);
+      loadMessages(true);
+      fetchUsername();
+      fetchUserStatus();
+    }
+  });
+
+  // Scroll handling
+  messageList.addEventListener("scroll", () => {
+    const threshold = 100;
+    isAtBottom = messageList.scrollHeight - messageList.scrollTop - messageList.clientHeight < threshold;
+    scrollDownBtn.classList.toggle("hidden", isAtBottom);
+
+    if (!isGroupChat && messageList.scrollTop === 0 && !loading) loadMessages(false);
+  });
+
+  scrollDownBtn.addEventListener("click", scrollToBottom);
+
+  // Send message
+  messageForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const content = messageInput.value.trim();
+    if (!content) return;
+
+    if (isGroupChat) {
+      socket.emit("groupMessage", { groupId, senderId: myUserId, content });
+      appendMessage({ sender: "You", content, timestamp: Date.now() }, true, true, true);
+    } else {
+      await sendPrivateMessage(content);
+    }
+    messageInput.value = "";
+  });
+
+  // Typing
+  if (!isGroupChat) {
+    messageInput.addEventListener("input", () => {
+      socket.emit("typing", { to: receiverId, from: myUserId });
+      clearTimeout(typingTimeout);
+      typingTimeout = setTimeout(() => socket.emit("stopTyping", { to: receiverId, from: myUserId }), 2000);
     });
+  }
 
-    await newMessage.save();
-    await newMessage.populate("sender", "username");
+  // File uploads
+  async function handleFileUpload(files, endpoint) {
+    if (!files.length) return;
+    const formData = new FormData();
+    files.forEach(f => formData.append("files", f));
+    if (!isGroupChat) formData.append("receiverId", receiverId);
 
-    // Emit to all group members
-    req.io?.to(groupId).emit("groupMessage", {
-      _id: newMessage._id,
-      groupId,
-      senderId: req.userId,
-      senderName: newMessage.sender.username,
-      content,
-      image: newMessage.image || "",
-      file: newMessage.file || "",
-      fileType: newMessage.fileType || "",
-      timestamp: newMessage.createdAt,
-      isForwarded: newMessage.isForwarded,
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData
     });
-
-    res.status(201).json({ success: true, message: newMessage });
-  } catch (err) {
-    console.error("❌ Group send error:", err);
-    res.status(500).json({ error: "Failed to send group message" });
+    const data = await res.json();
+    if (data.success && data.messages) {
+      data.messages.forEach(msg => appendMessage(msg, true, !isGroupChat, isGroupChat));
+      scrollToBottom();
+    }
   }
-});
 
-/* === 🖼️📎 UPLOAD GROUP IMAGES / FILES === */
-router.post("/group/upload/:groupId", auth, upload.array("files", 5), async (req, res) => {
-  try {
-    const { groupId } = req.params;
-    if (!req.files?.length) return res.status(400).json({ message: "No files uploaded" });
+  imageInput.addEventListener("change", e => handleFileUpload([...e.target.files], isGroupChat ? `/api/messages/group/upload/${groupId}` : `/api/messages/private/upload`));
+  fileInput.addEventListener("change", e => handleFileUpload([...e.target.files], isGroupChat ? `/api/messages/group/upload/${groupId}` : `/api/messages/private/upload`));
 
-    const messages = await Promise.all(
-      req.files.map(async (file) => {
-        const url = await uploadToCloudinary(file.buffer);
-        const mime = file.mimetype;
-        const msg = new Message({
-          sender: req.userId,
-          group: groupId,
-          type: mime.startsWith("image/") ? "image" : "file",
-          ...(mime.startsWith("image/")
-            ? { image: url }
-            : { file: url, fileType: mime.split("/")[1] }),
-        });
-        await msg.save();
-        await msg.populate("sender", "username");
+  // Socket listeners
+  socket.on("privateMessage", msg => {
+    if (!isGroupChat && (msg.senderId === receiverId || msg.sender === receiverId)) {
+      appendMessage(msg, isAtBottom, true, false);
+      if (isAtBottom) scrollToBottom();
+    }
+  });
 
-        // Emit to all group members
-        req.io?.to(groupId).emit("groupMessage", {
-          _id: msg._id,
-          groupId,
-          senderId: req.userId,
-          senderName: msg.sender.username,
-          content: msg.content || "",
-          image: msg.image || "",
-          file: msg.file || "",
-          fileType: msg.fileType || "",
-          timestamp: msg.createdAt,
-        });
+  socket.on("groupMessage", msg => {
+    if (isGroupChat && msg.groupId === groupId && msg.senderId !== myUserId) {
+      appendMessage(msg, isAtBottom, true, true);
+      if (isAtBottom) scrollToBottom();
+    }
+  });
 
-        return msg;
-      })
-    );
+  socket.on("typing", ({ from }) => {
+    if (!isGroupChat && from === receiverId && !messageList.contains(typingIndicator)) {
+      messageList.appendChild(typingIndicator);
+      scrollToBottom();
+    }
+  });
 
-    res.status(201).json({ success: true, messages });
-  } catch (err) {
-    console.error("❌ Group upload error:", err);
-    res.status(500).json({ error: "Upload failed" });
+  socket.on("stopTyping", ({ from }) => {
+    if (!isGroupChat && from === receiverId && messageList.contains(typingIndicator)) {
+      messageList.removeChild(typingIndicator);
+    }
+  });
+
+  // Functions
+  async function loadMessages(initial = false) {
+    if (loading) return;
+    loading = true;
+    try {
+      let res, data;
+      if (isGroupChat) {
+        res = await fetch(`/api/messages/group-history/${groupId}`, { headers: { Authorization: `Bearer ${token}` } });
+        data = await res.json();
+        if (data.success && data.messages) {
+          messageList.innerHTML = "";
+          data.messages.forEach(msg => appendMessage(msg, false, true, true));
+          scrollToBottom();
+        }
+      } else {
+        res = await fetch(`/api/messages/history/${receiverId}?skip=${skip}&limit=${limit}`, { headers: { Authorization: `Bearer ${token}` } });
+        data = await res.json();
+        if (data.success && data.messages.length) {
+          if (initial) messageList.innerHTML = "";
+          data.messages.reverse().forEach(msg => appendMessage(msg, false, true, false));
+          if (initial) scrollToBottom();
+          skip += data.messages.length;
+        }
+      }
+    } catch (err) { console.error(err); }
+    finally { loading = false; }
   }
-});
 
-/* === 📚 GET GROUP CHAT HISTORY === */
-router.get("/group-history/:groupId", auth, async (req, res) => {
-  try {
-    const { groupId } = req.params;
+  function appendMessage(msg, scroll = true, playSound = false, isGroup = false) {
+    const isMine = msg.senderId === myUserId || msg.sender === myUserId || msg.sender === "You";
+    const li = document.createElement("li");
+    li.className = `${isMine ? "sent self-end" : "received self-start"} relative group mb-1`;
 
-    const messages = await Message.find({ group: groupId })
-      .sort({ createdAt: 1 }) // oldest first
-      .populate("sender", "username");
+    const bubble = document.createElement("div");
+    bubble.className = "bubble bg-white dark:bg-gray-800 rounded-xl p-2 max-w-[75%]";
+    bubble.innerHTML = `
+      ${isGroup && !isMine ? `<strong>${msg.senderName || "User"}</strong><br>` : ""}
+      ${msg.content || ""}
+      ${msg.image ? `<img src="${msg.image}" class="max-w-40 rounded mt-1"/>` : ""}
+      ${msg.file ? `<a href="${msg.file}" target="_blank" class="block mt-1 text-blue-600 underline">${msg.fileType || "File"}</a>` : ""}
+      <div class="meta text-xs mt-1 opacity-60 text-right">
+        ${new Date(msg.timestamp || msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+      </div>
+    `;
+    li.appendChild(bubble);
+    messageList.appendChild(li);
 
-    res.status(200).json({ success: true, messages });
-  } catch (err) {
-    console.error("❌ Group history error:", err);
-    res.status(500).json({ error: "Failed to fetch group messages" });
+    if (scroll) scrollToBottom();
+    if (!isMine && playSound && localStorage.getItem("notificationEnabled") === "true") {
+      const src = `/sounds/${localStorage.getItem("notificationSound") || "sound01.mp3"}`;
+      if (src) new Audio(src).play().catch(() => console.log("Notification sound blocked"));
+    }
   }
-});
 
-module.exports = router;
+  async function sendPrivateMessage(content) {
+    const res = await fetch(`/api/messages/private/send`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ recipientId: receiverId, content })
+    });
+    const data = await res.json();
+    if (data.success && data.message) appendMessage(data.message, true, false, false);
+  }
+
+  async function fetchUsername() {
+    try {
+      const res = await fetch(`/api/users/${receiverId}`, { headers: { Authorization: `Bearer ${token}` } });
+      const user = await res.json();
+      usernameHeader.textContent = user.username || user.name || "Chat";
+    } catch { usernameHeader.textContent = "Chat"; }
+  }
+
+  async function fetchUserStatus() {
+    try {
+      const res = await fetch(`/api/users/status/${receiverId}`, { headers: { Authorization: `Bearer ${token}` } });
+      const data = await res.json();
+      statusIndicator.textContent = data.status || "Offline";
+    } catch { statusIndicator.textContent = "Unknown"; }
+  }
+
+  function scrollToBottom() { messageList.scrollTop = messageList.scrollHeight; }
+});
