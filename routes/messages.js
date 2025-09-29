@@ -1,103 +1,48 @@
+// routes/messages.js
 const express = require("express");
 const router = express.Router();
-const multer = require("multer");
-const Message = require("../models/Message");
-const auth = require("../middleware/verifyToken");
-const uploadToCloudinary = require("../utils/cloudinaryUpload");
+const Message = require("../models/Message"); // MongoDB model
+const authMiddleware = require("../middleware/authMiddleware"); // optional for JWT auth
 
-const storage = multer.memoryStorage();
-const upload = multer({ storage });
-
-/* === SEND TEXT MESSAGE === */
-router.post("/private/send", auth, async (req, res) => {
+// GET messages with a specific partner
+router.get("/:partnerId", authMiddleware, async (req, res) => {
   try {
-    const { recipientId, content } = req.body;
-    if (!recipientId || !content) return res.status(400).json({ error: "Missing content or recipient" });
-
-    const newMessage = new Message({
-      sender: req.userId,
-      recipient: recipientId,
-      content,
-      status: "sent",
-    });
-    await newMessage.save();
-    await newMessage.populate("sender", "username");
-
-    req.io?.to(recipientId.toString()).emit("privateMessage", {
-      _id: newMessage._id,
-      senderId: req.userId,
-      senderName: newMessage.sender.username,
-      content: newMessage.content,
-      timestamp: newMessage.createdAt,
-    });
-
-    res.status(201).json({ success: true, message: newMessage });
-  } catch (err) {
-    console.error("Send error:", err);
-    res.status(500).json({ error: "Failed to send message" });
-  }
-});
-
-/* === UPLOAD FILES / IMAGES === */
-router.post("/private/upload", auth, upload.array("files", 5), async (req, res) => {
-  try {
-    const { receiverId } = req.body;
-    if (!req.files?.length) return res.status(400).json({ message: "No files uploaded" });
-
-    const messages = await Promise.all(req.files.map(async file => {
-      const url = await uploadToCloudinary(file.buffer);
-      const mime = file.mimetype;
-      const msg = new Message({
-        sender: req.userId,
-        recipient: receiverId,
-        type: mime.startsWith("image/") ? "image" : "file",
-        ...(mime.startsWith("image/") ? { image: url } : { file: url, fileType: mime.split("/")[1] }),
-      });
-      await msg.save();
-      await msg.populate("sender", "username");
-
-      req.io?.to(receiverId.toString()).emit("privateMessage", {
-        _id: msg._id,
-        senderId: req.userId,
-        senderName: msg.sender.username,
-        content: msg.content || "",
-        image: msg.image || "",
-        file: msg.file || "",
-        fileType: msg.fileType || "",
-        timestamp: msg.createdAt,
-      });
-
-      return msg;
-    }));
-
-    res.status(201).json({ success: true, messages });
-  } catch (err) {
-    console.error("Upload error:", err);
-    res.status(500).json({ error: "Upload failed" });
-  }
-});
-
-/* === GET CHAT HISTORY === */
-router.get("/history/:receiverId", auth, async (req, res) => {
-  try {
-    const { receiverId } = req.params;
-    const { skip = 0, limit = 50 } = req.query;
+    const currentUser = req.user.id; // from JWT auth
+    const partnerId = req.params.partnerId;
 
     const messages = await Message.find({
       $or: [
-        { sender: req.userId, recipient: receiverId },
-        { sender: receiverId, recipient: req.userId },
+        { sender: currentUser, receiver: partnerId },
+        { sender: partnerId, receiver: currentUser },
       ],
-    })
-      .sort({ createdAt: 1 }) // oldest first
-      .skip(parseInt(skip))
-      .limit(parseInt(limit))
-      .populate("sender", "username");
+    }).sort({ date: 1 }); // oldest to newest
 
-    res.status(200).json({ success: true, messages });
+    res.json(messages);
   } catch (err) {
-    console.error("History error:", err);
-    res.status(500).json({ error: "Failed to fetch messages" });
+    console.error(err);
+    res.status(500).json({ message: "Failed to load messages" });
+  }
+});
+
+// POST a new message
+router.post("/", authMiddleware, async (req, res) => {
+  try {
+    const { receiver, content, date } = req.body;
+    const sender = req.user.id;
+
+    const newMessage = new Message({
+      sender,
+      receiver,
+      content,
+      date: date ? new Date(date) : new Date(),
+    });
+
+    await newMessage.save();
+
+    res.status(201).json(newMessage);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Failed to send message" });
   }
 });
 
