@@ -2,14 +2,12 @@ const mongoose = require("mongoose");
 
 const MessageSchema = new mongoose.Schema(
   {
-    sender: { 
-      type: mongoose.Schema.Types.ObjectId, 
-      ref: "User", 
+    senderEmail: { 
+      type: String, 
       required: true 
     },
-    receiver: { 
-      type: mongoose.Schema.Types.ObjectId, 
-      ref: "User", 
+    receiverEmail: { 
+      type: String, 
       required: true 
     },
     content: { 
@@ -52,8 +50,8 @@ const MessageSchema = new mongoose.Schema(
 );
 
 // ✅ Indexes for performance
-MessageSchema.index({ sender: 1, receiver: 1, createdAt: -1 }); // get chat history fast
-MessageSchema.index({ receiver: 1, status: 1 }); // get unread messages fast
+MessageSchema.index({ senderEmail: 1, receiverEmail: 1, createdAt: -1 }); // get chat history fast
+MessageSchema.index({ receiverEmail: 1, status: 1 }); // get unread messages fast
 MessageSchema.index({ createdAt: -1 }); // quick sorting by time
 
 module.exports = mongoose.model("Message", MessageSchema);
