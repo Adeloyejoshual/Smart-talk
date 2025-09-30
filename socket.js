@@ -4,42 +4,41 @@ module.exports = (io) => {
   io.on("connection", (socket) => {
     console.log("🔌 A user connected:", socket.id);
 
-    // --- Join private room using userId ---
+    // --- Join room with userId & load history ---
     socket.on("join", async (userId) => {
       socket.join(userId);
-      console.log(`👤 User ${userId} joined their private room`);
+      console.log(`👤 User ${userId} joined their room`);
 
-      // --- Load previous messages for this user ---
       try {
+        // Send full chat history for this user
         const messages = await Message.find({
           $or: [{ sender: userId }, { receiver: userId }],
         })
-          .sort({ createdAt: 1 })
+          .sort({ createdAt: 1 }) // oldest first
           .populate("sender", "username avatar")
           .populate("receiver", "username avatar");
 
-        // Send previous chat history to the user
         socket.emit("chatHistory", messages);
-      } catch (error) {
-        console.error("❌ Error loading chat history:", error);
+      } catch (err) {
+        console.error("❌ Error loading history:", err);
       }
     });
 
-    // --- Private message handler ---
+    // --- Private messaging ---
     socket.on("privateMessage", async (msg) => {
       const {
         senderId,
         receiverId,
         content,
+        fileUrl = "",
         replyTo = null,
         isForwarded = false,
-        fileUrl = "",
       } = msg;
 
       if (!receiverId || (!content && !fileUrl)) return;
 
       try {
-        // Save message to DB
+        // Save new message
         const newMessage = new Message({
           sender: senderId,
           receiver: receiverId,
@@ -47,60 +46,65 @@ module.exports = (io) => {
           fileUrl,
           replyTo,
           isForwarded,
-          status: "sent",
           type: fileUrl ? "file" : "text",
+          status: "sent",
         });
 
         await newMessage.save();
 
-        // Populate sender/receiver info
-        const populatedMessage = await newMessage
+        // Populate info
+        const populated = await newMessage
           .populate("sender", "username avatar")
           .populate("receiver", "username avatar");
 
-        // Emit message to receiver
-        io.to(receiverId).emit("privateMessage", populatedMessage);
+        // Emit to both users
+        io.to(receiverId).emit("newMessage", populated); // receiver sees instantly
+        socket.emit("newMessage", populated); // sender sees instantly
 
-        // Confirm message sent to sender
-        socket.emit("privateMessageSent", populatedMessage);
-
-        console.log(`📩 Message from ${senderId} to ${receiverId} saved and emitted`);
-      } catch (error) {
-        console.error("❌ Error saving/sending message:", error);
+        console.log(`📩 ${senderId} ➝ ${receiverId}: Message saved and sent`);
+      } catch (err) {
+        console.error("❌ Error saving message:", err);
       }
     });
 
     // --- Typing indicator ---
     socket.on("typing", ({ receiverId, senderId }) => {
-      if (receiverId) io.to(receiverId).emit("typing", { senderId });
+      if (receiverId) {
+        io.to(receiverId).emit("typing", { senderId });
+      }
     });
 
-    // --- Message delivery & read receipts ---
-    socket.on("message-delivered", async ({ messageId, userId }) => {
+    // --- Delivery receipt ---
+    socket.on("message-delivered", async ({ messageId }) => {
       try {
         const msg = await Message.findByIdAndUpdate(
           messageId,
           { status: "delivered" },
           { new: true }
         );
-        io.to(msg.receiver.toString()).emit("message-delivered", msg);
-        io.to(msg.sender.toString()).emit("message-delivered", msg);
+        if (msg) {
+          io.to(msg.receiver.toString()).emit("message-delivered", msg);
+          io.to(msg.sender.toString()).emit("message-delivered", msg);
+        }
       } catch (err) {
-        console.error("❌ Error updating delivery status:", err);
+        console.error("❌ Delivery update failed:", err);
       }
     });
 
-    socket.on("message-read", async ({ messageId, userId }) => {
+    // --- Read receipt ---
+    socket.on("message-read", async ({ messageId }) => {
       try {
         const msg = await Message.findByIdAndUpdate(
           messageId,
           { status: "read" },
           { new: true }
         );
-        io.to(msg.receiver.toString()).emit("message-read", msg);
-        io.to(msg.sender.toString()).emit("message-read", msg);
+        if (msg) {
+          io.to(msg.receiver.toString()).emit("message-read", msg);
+          io.to(msg.sender.toString()).emit("message-read", msg);
+        }
       } catch (err) {
-        console.error("❌ Error updating read status:", err);
+        console.error("❌ Read update failed:", err);
       }
     });
 
