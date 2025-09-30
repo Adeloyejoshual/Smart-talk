@@ -45,7 +45,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // Redirect
       message.style.color = "green";
-      message.textContent = "✅ Login successful. Redirecting...";
+      message.textContent = "✅ Login successful.";
       setTimeout(() => {
         window.location.href = "/home.html";
       }, 1000);
