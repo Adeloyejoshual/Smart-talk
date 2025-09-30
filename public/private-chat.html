@@ -72,10 +72,8 @@ document.addEventListener("DOMContentLoaded", () => {
   let myUserId = null;
   let lastDateStr = "";
 
-  // Decode JWT
   function parseToken(token) {
-    try { return JSON.parse(atob(token.split(".")[1])); } 
-    catch { return null; }
+    try { return JSON.parse(atob(token.split(".")[1])); } catch { return null; }
   }
 
   const token = localStorage.getItem("token");
@@ -84,10 +82,9 @@ document.addEventListener("DOMContentLoaded", () => {
   myUserId = decoded.id;
   usernameEl.textContent = receiverName;
 
-  // Join private room
   socket.emit("joinPrivateRoom", { sender: myUserId, receiverId });
 
-  // ---------- TYPING INDICATOR ----------
+  // ---------- TYPING ----------
   let typingTimeout;
   messageInput.addEventListener("input", () => {
     socket.emit("typing", { to: receiverId });
@@ -111,20 +108,18 @@ document.addEventListener("DOMContentLoaded", () => {
     if (li) li.remove();
   });
 
-  // ---------- HELPER ----------
-  function getDayString(date) {
-    const today = new Date(), yesterday = new Date();
-    yesterday.setDate(today.getDate() - 1);
-    if (date.toDateString() === today.toDateString()) return "Today";
-    if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
+  // ---------- HELPERS ----------
+  function getDayString(date){
+    const today = new Date(), yesterday = new Date(); yesterday.setDate(today.getDate()-1);
+    if(date.toDateString()===today.toDateString()) return "Today";
+    if(date.toDateString()===yesterday.toDateString()) return "Yesterday";
     return date.toLocaleDateString();
   }
 
-  function appendMessage(msg, scroll = true) {
+  function appendMessage(msg, scroll = true){
     const msgDate = new Date(msg.createdAt);
     const dayStr = getDayString(msgDate);
-
-    if (dayStr !== lastDateStr) {
+    if(dayStr !== lastDateStr){
       const separator = document.createElement("li");
       separator.className = "day-separator";
       separator.textContent = dayStr;
@@ -133,60 +128,56 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     const li = document.createElement("li");
-    li.className = "message " + (msg.sender._id === myUserId ? "sent" : "received");
+    li.className = "message " + (msg.sender._id===myUserId?"sent":"received");
 
     let contentHtml = msg.content || "";
-    if (msg.fileType === "image" && msg.fileUrl)
-      contentHtml += `<img src="${msg.fileUrl}" onclick="showModal(this.src)">`;
-    if (msg.fileType === "file" && msg.fileUrl)
-      contentHtml += `<a href="${msg.fileUrl}" target="_blank">File</a>`;
-
-    contentHtml += `<div class="timestamp">${msgDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>`;
-
+    if(msg.fileType==="image" && msg.fileUrl) contentHtml += `<img src="${msg.fileUrl}" onclick="showModal(this.src)">`;
+    if(msg.fileType==="file" && msg.fileUrl) contentHtml += `<a href="${msg.fileUrl}" target="_blank">File</a>`;
+    contentHtml += `<div class="timestamp">${msgDate.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</div>`;
     li.innerHTML = contentHtml;
     messageList.appendChild(li);
 
-    if (scroll) messageList.scrollTop = messageList.scrollHeight;
+    if(scroll) messageList.scrollTop = messageList.scrollHeight;
   }
 
   // ---------- LOAD OLD MESSAGES ----------
-  async function loadMessages() {
+  async function loadMessages(){
     try {
       const res = await fetch(`/api/messages/history/${receiverId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      if (data.success) {
-        data.messages.forEach((msg) => appendMessage(msg, false));
+      if(data.success){
+        data.messages.forEach(msg => appendMessage(msg, false));
         messageList.scrollTop = messageList.scrollHeight;
       }
-    } catch (err) {
+    } catch(err){
       console.error("Failed to load messages:", err);
     }
   }
   loadMessages();
 
-  // ---------- SEND TEXT MESSAGE ----------
-  messageForm.addEventListener("submit", (e) => {
+  // ---------- SEND TEXT ----------
+  messageForm.addEventListener("submit", e=>{
     e.preventDefault();
     const content = messageInput.value.trim();
-    if (!content) return;
+    if(!content) return;
     socket.emit("private message", { to: receiverId, message: content });
     messageInput.value = "";
   });
 
-  socket.on("private message", (msg) => appendMessage(msg));
+  socket.on("private message", msg => appendMessage(msg));
 
   // ---------- SEND FILES ----------
-  async function sendFiles(files) {
-    if (!files.length) return;
-    for (const f of files) {
+  async function sendFiles(files){
+    if(!files.length) return;
+    for(const f of files){
       const tempMsg = {
-        sender: { _id: myUserId },
-        content: "",
+        sender: {_id: myUserId},
+        content:"",
         fileUrl: URL.createObjectURL(f),
-        fileType: f.type.startsWith("image/") ? "image" : "file",
-        createdAt: new Date(),
+        fileType: f.type.startsWith("image/")?"image":"file",
+        createdAt: new Date()
       };
       appendMessage(tempMsg);
 
@@ -194,32 +185,28 @@ document.addEventListener("DOMContentLoaded", () => {
       formData.append("file", f);
       formData.append("recipient", receiverId);
 
-      try {
-        const res = await fetch("/api/messages/file", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-          body: formData,
-        });
+      try{
+        const res = await fetch("/api/messages/file", { method:"POST", headers:{Authorization:`Bearer ${token}`}, body:formData });
         const data = await res.json();
-        appendMessage(data.message);
-      } catch (err) { console.error("File upload failed:", err); }
+        appendMessage(data);
+      }catch(err){console.error("File upload failed:", err);}
     }
   }
 
-  imageInput.addEventListener("change", (e) => sendFiles([...e.target.files]));
-  fileInput.addEventListener("change", (e) => sendFiles([...e.target.files]));
+  imageInput.addEventListener("change", e=>sendFiles([...e.target.files]));
+  fileInput.addEventListener("change", e=>sendFiles([...e.target.files]));
 
   // ---------- ONLINE STATUS ----------
-  socket.on("connect", () => (onlineStatusEl.textContent = "Online"));
-  socket.on("disconnect", () => (onlineStatusEl.textContent = "Offline"));
+  socket.on("connect",()=>onlineStatusEl.textContent="Online");
+  socket.on("disconnect",()=>onlineStatusEl.textContent="Offline");
 
   // ---------- IMAGE MODAL ----------
-  window.showModal = function (src) {
-    modalImg.src = src;
-    imageModal.style.display = "flex";
+  window.showModal = src=>{
+    modalImg.src=src;
+    imageModal.style.display="flex";
   };
-  closeModal.addEventListener("click", () => (imageModal.style.display = "none"));
-  imageModal.addEventListener("click", (e) => { if (e.target === imageModal) imageModal.style.display = "none"; });
+  closeModal.addEventListener("click", ()=>imageModal.style.display="none");
+  imageModal.addEventListener("click", e=>{if(e.target===imageModal) imageModal.style.display="none"});
 });
 </script>
 </body>
