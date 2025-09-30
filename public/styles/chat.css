@@ -1,167 +1,47 @@
-/* Base Reset and Theme */
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
-
-:root {
-  --bg-dark: #121212;
-  --bg-light: #1e1e1e;
-  --text-light: #f1f1f1;
-  --text-muted: #aaa;
-  --primary: #4fc3f7;
-  --incoming: #2c3e50;
-  --outgoing: #4caf50;
-}
-
 body {
-  font-family: 'Segoe UI', sans-serif;
-  background-color: var(--bg-dark);
-  color: var(--text-light);
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
+  margin:0;
+  font-family:Arial,sans-serif;
+  background:#1c1c1c;
+  color:#fff;
+  display:flex;
+  flex-direction:column;
+  height:100vh;
 }
+header {
+  background:#111;
+  padding:10px;
+  text-align:center;
+  position:sticky;
+  top:0;
+  z-index:10;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+}
+header h2{margin:0;font-size:20px}
+#onlineStatus{font-size:12px;color:#0f0}
+#chatBox{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column}
+ul#messageList{list-style:none;padding:0;margin:0}
+.day-separator{text-align:center;margin:10px 0;font-size:12px;opacity:.6}
+.message{max-width:70%;margin:5px 0;padding:8px 12px;border-radius:15px;word-wrap:break-word;display:inline-block;position:relative}
+.sent{background:#0b93f6;color:#fff;align-self:flex-end;border-bottom-right-radius:0}
+.received{background:#e5e5ea;color:#000;align-self:flex-start;border-bottom-left-radius:0}
+.timestamp{font-size:10px;opacity:.6;margin-top:2px;text-align:right}
+#messageForm{display:flex;padding:10px;background:#111;position:sticky;bottom:0;z-index:10}
+#messageInput{flex:1;padding:8px;border-radius:10px;border:none;margin-right:5px}
+#sendBtn{padding:8px 12px;border:none;border-radius:10px;background:#0b93f6;color:#fff;cursor:pointer}
+input[type=file]{display:none}
+.file-btn,.image-btn{margin-right:5px;cursor:pointer;padding:6px 8px;border-radius:10px;background:#333;font-size:14px}
+.typing{font-size:12px;font-style:italic;opacity:.6;margin-left:5px}
+.message img{max-width:150px;margin-top:5px;border-radius:10px;cursor:pointer}
+.message a{color:#0b93f6;text-decoration:underline;display:block;margin-top:5px}
+#imageModal{display:none;position:fixed;z-index:50;left:0;top:0;width:100%;height:100%;background-color:rgba(0,0,0,.9);justify-content:center;align-items:center}
+#imageModal img{max-width:90%;max-height:90%;border-radius:10px}
+#imageModal span{position:absolute;top:20px;right:30px;color:#fff;font-size:30px;font-weight:bold;cursor:pointer}
 
-/* Header */
-.chat-header {
-  background-color: var(--bg-light);
-  padding: 10px 15px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 1px solid #333;
-}
-
-.chat-header button {
-  background: none;
-  border: none;
-  font-size: 24px;
-  color: var(--text-light);
-  cursor: pointer;
-}
-
-.chat-header h2 {
-  font-size: 18px;
-  margin-left: 10px;
-}
-
-/* Chat Main */
-#chatMain {
-  flex: 1;
-  overflow-y: auto;
-  padding: 15px;
-  display: flex;
-  flex-direction: column;
-  background-color: var(--bg-dark);
-}
-
-/* Message Bubbles */
-.messages {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.message {
-  max-width: 70%;
-  padding: 10px 15px;
-  border-radius: 15px;
-  line-height: 1.4;
-  word-wrap: break-word;
-  position: relative;
-}
-
-.message.outgoing {
-  align-self: flex-end;
-  background-color: var(--outgoing);
-  color: white;
-  border-bottom-right-radius: 0;
-}
-
-.message.incoming {
-  align-self: flex-start;
-  background-color: var(--incoming);
-  color: white;
-  border-bottom-left-radius: 0;
-}
-
-/* Message Meta */
-.message .meta {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-top: 4px;
-  display: block;
-  text-align: right;
-}
-
-/* Typing Indicator */
-.typing-status {
-  font-style: italic;
-  color: var(--text-muted);
-  margin-top: 5px;
-  font-size: 14px;
-}
-
-/* Message Form */
-.message-form {
-  display: flex;
-  padding: 10px;
-  background-color: var(--bg-light);
-  border-top: 1px solid #333;
-}
-
-.message-form input[type="text"] {
-  flex: 1;
-  padding: 10px;
-  border: none;
-  border-radius: 25px;
-  font-size: 16px;
-  background-color: #2a2a2a;
-  color: var(--text-light);
-  margin-right: 10px;
-}
-
-.message-form button {
-  padding: 10px 20px;
-  border: none;
-  border-radius: 25px;
-  background-color: var(--primary);
-  color: #000;
-  font-weight: bold;
-  cursor: pointer;
-}
-
-.message-form button:hover {
-  opacity: 0.9;
-}
-
-/* Scrollbar Styling */
-#chatMain::-webkit-scrollbar {
-  width: 6px;
-}
-
-#chatMain::-webkit-scrollbar-thumb {
-  background-color: #555;
-  border-radius: 3px;
-}
-
-.seen {
-  color: #4fc3f7;
-  font-size: 0.8em;
-  margin-left: 5px;
-}
-
-.export-button {
-  position: absolute;
-  bottom: 20px;
-  right: 20px;
-  background: #1e90ff;
-  color: white;
-  padding: 8px 14px;
-  border: none;
-  border-radius: 10px;
-  cursor: pointer;
-  font-size: 0.9rem;
-}
+/* Call Styles */
+#callContainer{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:#000;z-index:100;justify-content:center;align-items:center;flex-direction:column}
+#remoteVideo{width:70%;max-height:60%;border-radius:10px;margin-bottom:10px}
+#localVideo{width:30%;max-height:30%;border-radius:10px;position:absolute;bottom:20px;right:20px}
+#endCallBtn{padding:8px 12px;border:none;border-radius:10px;background:#f00;color:#fff;cursor:pointer;margin-top:10px}
+#startVideoCallBtn,#startVoiceCallBtn{padding:6px 10px;border:none;border-radius:8px;background:#0b93f6;color:#fff;cursor:pointer;margin-left:5px}
