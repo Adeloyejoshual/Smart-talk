@@ -1,16 +1,25 @@
+// socket.js
 const Message = require("./models/Message");
+const User = require("./models/User");
 
 module.exports = (io) => {
+  const onlineUsers = new Map();
+
   io.on("connection", (socket) => {
     console.log("🔌 A user connected:", socket.id);
 
-    // --- Join room with userId & load history ---
+    // ---------------- JOIN ----------------
     socket.on("join", async (userId) => {
-      socket.join(userId);
-      console.log(`👤 User ${userId} joined their room`);
+      socket.userId = userId;
+      onlineUsers.set(userId, socket.id);
 
+      // Mark user online in DB
+      await User.findByIdAndUpdate(userId, { online: true }).catch(console.error);
+
+      console.log(`👤 User ${userId} joined (socket ${socket.id})`);
+
+      // Send chat history (all messages for this user)
       try {
-        // Send full chat history for this user
         const messages = await Message.find({
           $or: [{ sender: userId }, { receiver: userId }],
         })
@@ -24,93 +33,110 @@ module.exports = (io) => {
       }
     });
 
-    // --- Private messaging ---
-    socket.on("privateMessage", async (msg) => {
-      const {
-        senderId,
-        receiverId,
-        content,
-        fileUrl = "",
-        replyTo = null,
-        isForwarded = false,
-      } = msg;
-
-      if (!receiverId || (!content && !fileUrl)) return;
-
+    // ---------------- PRIVATE MESSAGE ----------------
+    socket.on("private message", async ({ senderId, receiverId, content, type, fileUrl, replyTo = null, isForwarded = false }) => {
       try {
-        // Save new message
-        const newMessage = new Message({
+        const message = new Message({
           sender: senderId,
           receiver: receiverId,
-          content,
-          fileUrl,
+          content: content || "",
+          type: type || "text",
+          fileUrl: fileUrl || "",
           replyTo,
           isForwarded,
-          type: fileUrl ? "file" : "text",
+          fileType: type === "text" ? "text" : type,
           status: "sent",
         });
 
-        await newMessage.save();
+        await message.save();
 
-        // Populate info
-        const populated = await newMessage
+        const populated = await message
           .populate("sender", "username avatar")
           .populate("receiver", "username avatar");
 
-        // Emit to both users
-        io.to(receiverId).emit("newMessage", populated); // receiver sees instantly
-        socket.emit("newMessage", populated); // sender sees instantly
+        // Send to receiver if online
+        const receiverSocket = onlineUsers.get(receiverId);
+        if (receiverSocket) {
+          io.to(receiverSocket).emit("newMessage", populated);
+        }
 
-        console.log(`📩 ${senderId} ➝ ${receiverId}: Message saved and sent`);
+        // Always send back to sender
+        socket.emit("newMessage", populated);
+
+        console.log(`💬 Message saved & delivered from ${senderId} → ${receiverId}`);
       } catch (err) {
-        console.error("❌ Error saving message:", err);
+        console.error("❌ Error saving/sending message:", err);
       }
     });
 
-    // --- Typing indicator ---
-    socket.on("typing", ({ receiverId, senderId }) => {
-      if (receiverId) {
-        io.to(receiverId).emit("typing", { senderId });
-      }
-    });
-
-    // --- Delivery receipt ---
+    // ---------------- DELIVERY RECEIPT ----------------
     socket.on("message-delivered", async ({ messageId }) => {
       try {
         const msg = await Message.findByIdAndUpdate(
           messageId,
           { status: "delivered" },
           { new: true }
-        );
+        )
+          .populate("sender", "username avatar")
+          .populate("receiver", "username avatar");
+
         if (msg) {
-          io.to(msg.receiver.toString()).emit("message-delivered", msg);
-          io.to(msg.sender.toString()).emit("message-delivered", msg);
+          const senderSocket = onlineUsers.get(msg.sender._id.toString());
+          const receiverSocket = onlineUsers.get(msg.receiver._id.toString());
+
+          if (senderSocket) io.to(senderSocket).emit("message-delivered", msg);
+          if (receiverSocket) io.to(receiverSocket).emit("message-delivered", msg);
         }
       } catch (err) {
         console.error("❌ Delivery update failed:", err);
       }
     });
 
-    // --- Read receipt ---
+    // ---------------- READ RECEIPT ----------------
     socket.on("message-read", async ({ messageId }) => {
       try {
         const msg = await Message.findByIdAndUpdate(
           messageId,
           { status: "read" },
           { new: true }
-        );
+        )
+          .populate("sender", "username avatar")
+          .populate("receiver", "username avatar");
+
         if (msg) {
-          io.to(msg.receiver.toString()).emit("message-read", msg);
-          io.to(msg.sender.toString()).emit("message-read", msg);
+          const senderSocket = onlineUsers.get(msg.sender._id.toString());
+          const receiverSocket = onlineUsers.get(msg.receiver._id.toString());
+
+          if (senderSocket) io.to(senderSocket).emit("message-read", msg);
+          if (receiverSocket) io.to(receiverSocket).emit("message-read", msg);
         }
       } catch (err) {
         console.error("❌ Read update failed:", err);
       }
     });
 
-    // --- Disconnect ---
-    socket.on("disconnect", () => {
-      console.log("❌ A user disconnected:", socket.id);
+    // ---------------- TYPING INDICATORS ----------------
+    socket.on("typing", ({ to }) => {
+      const receiverSocket = onlineUsers.get(to);
+      if (receiverSocket) {
+        io.to(receiverSocket).emit("typing", { from: socket.userId });
+      }
+    });
+
+    socket.on("stop typing", ({ to }) => {
+      const receiverSocket = onlineUsers.get(to);
+      if (receiverSocket) {
+        io.to(receiverSocket).emit("stop typing", { from: socket.userId });
+      }
+    });
+
+    // ---------------- DISCONNECT ----------------
+    socket.on("disconnect", async () => {
+      if (socket.userId) {
+        onlineUsers.delete(socket.userId);
+        await User.findByIdAndUpdate(socket.userId, { online: false }).catch(console.error);
+        console.log(`❌ User ${socket.userId} disconnected`);
+      }
     });
   });
 };
