@@ -29,6 +29,8 @@ const MessageSchema = new mongoose.Schema(
       type: String, 
       default: "text" 
     },
+
+    // 🔹 Extra features
     replyTo: { 
       type: mongoose.Schema.Types.ObjectId, 
       ref: "Message", 
@@ -38,6 +40,8 @@ const MessageSchema = new mongoose.Schema(
       type: Boolean, 
       default: false 
     }, // supports forwards
+
+    // 🔹 Delivery / read tracking
     status: { 
       type: String, 
       enum: ["sent", "delivered", "read"], 
@@ -47,9 +51,9 @@ const MessageSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// ✅ Indexes for faster queries
-MessageSchema.index({ sender: 1, receiver: 1, createdAt: -1 }); // common chat query
-MessageSchema.index({ receiver: 1, status: 1 }); // for unread message lookups
+// ✅ Indexes for performance
+MessageSchema.index({ sender: 1, receiver: 1, createdAt: -1 }); // get chat history fast
+MessageSchema.index({ receiver: 1, status: 1 }); // get unread messages fast
 MessageSchema.index({ createdAt: -1 }); // quick sorting by time
 
 module.exports = mongoose.model("Message", MessageSchema);
