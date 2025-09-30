@@ -74,11 +74,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Decode JWT
   function parseToken(token) {
-    try {
-      return JSON.parse(atob(token.split(".")[1]));
-    } catch {
-      return null;
-    }
+    try { return JSON.parse(atob(token.split(".")[1])); } 
+    catch { return null; }
   }
 
   const token = localStorage.getItem("token");
@@ -116,8 +113,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // ---------- HELPER ----------
   function getDayString(date) {
-    const today = new Date(),
-      yesterday = new Date();
+    const today = new Date(), yesterday = new Date();
     yesterday.setDate(today.getDate() - 1);
     if (date.toDateString() === today.toDateString()) return "Today";
     if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
@@ -137,7 +133,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     const li = document.createElement("li");
-    li.className = "message " + (msg.sender.id === myUserId ? "sent" : "received");
+    li.className = "message " + (msg.sender._id === myUserId ? "sent" : "received");
 
     let contentHtml = msg.content || "";
     if (msg.fileType === "image" && msg.fileUrl)
@@ -153,15 +149,17 @@ document.addEventListener("DOMContentLoaded", () => {
     if (scroll) messageList.scrollTop = messageList.scrollHeight;
   }
 
-  // ---------- LOAD CHAT HISTORY ----------
+  // ---------- LOAD OLD MESSAGES ----------
   async function loadMessages() {
     try {
       const res = await fetch(`/api/messages/history/${receiverId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      data.forEach((msg) => appendMessage(msg, false));
-      messageList.scrollTop = messageList.scrollHeight;
+      if (data.success) {
+        data.messages.forEach((msg) => appendMessage(msg, false));
+        messageList.scrollTop = messageList.scrollHeight;
+      }
     } catch (err) {
       console.error("Failed to load messages:", err);
     }
@@ -183,9 +181,8 @@ document.addEventListener("DOMContentLoaded", () => {
   async function sendFiles(files) {
     if (!files.length) return;
     for (const f of files) {
-      // Optional: show sending placeholder
       const tempMsg = {
-        sender: { id: myUserId },
+        sender: { _id: myUserId },
         content: "",
         fileUrl: URL.createObjectURL(f),
         fileType: f.type.startsWith("image/") ? "image" : "file",
@@ -204,10 +201,8 @@ document.addEventListener("DOMContentLoaded", () => {
           body: formData,
         });
         const data = await res.json();
-        appendMessage(data);
-      } catch (err) {
-        console.error("File upload failed:", err);
-      }
+        appendMessage(data.message);
+      } catch (err) { console.error("File upload failed:", err); }
     }
   }
 
@@ -224,9 +219,7 @@ document.addEventListener("DOMContentLoaded", () => {
     imageModal.style.display = "flex";
   };
   closeModal.addEventListener("click", () => (imageModal.style.display = "none"));
-  imageModal.addEventListener("click", (e) => {
-    if (e.target === imageModal) imageModal.style.display = "none";
-  });
+  imageModal.addEventListener("click", (e) => { if (e.target === imageModal) imageModal.style.display = "none"; });
 });
 </script>
 </body>
