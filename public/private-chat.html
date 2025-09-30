@@ -50,123 +50,183 @@ input[type=file]{display:none}
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
-document.addEventListener("DOMContentLoaded",()=>{
-const socket=io({auth:{token:localStorage.getItem("token")}});
-const urlParams=new URLSearchParams(window.location.search);
-const receiverId=urlParams.get("user");
-const receiverName=urlParams.get("name")||"Chat";
-const messageList=document.getElementById("messageList");
-const messageForm=document.getElementById("messageForm");
-const messageInput=document.getElementById("messageInput");
-const imageInput=document.getElementById("imageInput");
-const fileInput=document.getElementById("fileInput");
-const usernameEl=document.getElementById("username");
-const onlineStatusEl=document.getElementById("onlineStatus");
-const imageModal=document.getElementById("imageModal");
-const modalImg=document.getElementById("modalImg");
-const closeModal=document.getElementById("closeModal");
+document.addEventListener("DOMContentLoaded", () => {
+  const socket = io({ auth: { token: localStorage.getItem("token") } });
+  const urlParams = new URLSearchParams(window.location.search);
+  const receiverId = urlParams.get("user");
+  const receiverName = urlParams.get("name") || "Chat";
 
-if(!receiverId) window.location.href="/home";
+  const messageList = document.getElementById("messageList");
+  const messageForm = document.getElementById("messageForm");
+  const messageInput = document.getElementById("messageInput");
+  const imageInput = document.getElementById("imageInput");
+  const fileInput = document.getElementById("fileInput");
+  const usernameEl = document.getElementById("username");
+  const onlineStatusEl = document.getElementById("onlineStatus");
+  const imageModal = document.getElementById("imageModal");
+  const modalImg = document.getElementById("modalImg");
+  const closeModal = document.getElementById("closeModal");
 
-let myUserId=null,lastDateStr="";
+  if (!receiverId) window.location.href = "/home";
 
-function parseToken(token){try{return JSON.parse(atob(token.split(".")[1]))}catch{return null}}
-const token=localStorage.getItem("token");
-const decoded=parseToken(token);
-if(!decoded) window.location.href="/login";
-myUserId=decoded.id;
-usernameEl.textContent=receiverName;
+  let myUserId = null;
+  let lastDateStr = "";
 
-socket.emit("joinPrivateRoom",{sender:myUserId,receiverId});
+  // Decode JWT
+  function parseToken(token) {
+    try {
+      return JSON.parse(atob(token.split(".")[1]));
+    } catch {
+      return null;
+    }
+  }
 
-// Typing
-let typingTimeout;
-messageInput.addEventListener("input",()=>{
-  socket.emit("typing",{to:receiverId});
-  clearTimeout(typingTimeout);
-  typingTimeout=setTimeout(()=>socket.emit("stop typing",{to:receiverId}),1500);
-});
-socket.on("typing",()=>{
-  if(!document.getElementById("typing")){
-    const li=document.createElement("li");
-    li.id="typing"; li.className="typing"; li.textContent="Typing...";
+  const token = localStorage.getItem("token");
+  const decoded = parseToken(token);
+  if (!decoded) window.location.href = "/login";
+  myUserId = decoded.id;
+  usernameEl.textContent = receiverName;
+
+  // Join private room
+  socket.emit("joinPrivateRoom", { sender: myUserId, receiverId });
+
+  // ---------- TYPING INDICATOR ----------
+  let typingTimeout;
+  messageInput.addEventListener("input", () => {
+    socket.emit("typing", { to: receiverId });
+    clearTimeout(typingTimeout);
+    typingTimeout = setTimeout(() => socket.emit("stop typing", { to: receiverId }), 1500);
+  });
+
+  socket.on("typing", () => {
+    if (!document.getElementById("typing")) {
+      const li = document.createElement("li");
+      li.id = "typing";
+      li.className = "typing";
+      li.textContent = "Typing...";
+      messageList.appendChild(li);
+      messageList.scrollTop = messageList.scrollHeight;
+    }
+  });
+
+  socket.on("stop typing", () => {
+    const li = document.getElementById("typing");
+    if (li) li.remove();
+  });
+
+  // ---------- HELPER ----------
+  function getDayString(date) {
+    const today = new Date(),
+      yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+    if (date.toDateString() === today.toDateString()) return "Today";
+    if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
+    return date.toLocaleDateString();
+  }
+
+  function appendMessage(msg, scroll = true) {
+    const msgDate = new Date(msg.createdAt);
+    const dayStr = getDayString(msgDate);
+
+    if (dayStr !== lastDateStr) {
+      const separator = document.createElement("li");
+      separator.className = "day-separator";
+      separator.textContent = dayStr;
+      messageList.appendChild(separator);
+      lastDateStr = dayStr;
+    }
+
+    const li = document.createElement("li");
+    li.className = "message " + (msg.sender.id === myUserId ? "sent" : "received");
+
+    let contentHtml = msg.content || "";
+    if (msg.fileType === "image" && msg.fileUrl)
+      contentHtml += `<img src="${msg.fileUrl}" onclick="showModal(this.src)">`;
+    if (msg.fileType === "file" && msg.fileUrl)
+      contentHtml += `<a href="${msg.fileUrl}" target="_blank">File</a>`;
+
+    contentHtml += `<div class="timestamp">${msgDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>`;
+
+    li.innerHTML = contentHtml;
     messageList.appendChild(li);
-    messageList.scrollTop=messageList.scrollHeight;
+
+    if (scroll) messageList.scrollTop = messageList.scrollHeight;
   }
-});
-socket.on("stop typing",()=>{
-  const li=document.getElementById("typing"); if(li) li.remove();
-});
 
-// Helper
-function getDayString(date){
-  const today=new Date(),yesterday=new Date();
-  yesterday.setDate(today.getDate()-1);
-  if(date.toDateString()===today.toDateString()) return"Today";
-  if(date.toDateString()===yesterday.toDateString()) return"Yesterday";
-  return date.toLocaleDateString();
-}
-
-function appendMessage(msg){
-  const msgDate=new Date(msg.createdAt);
-  const dayStr=getDayString(msgDate);
-  if(dayStr!==lastDateStr){
-    const separator=document.createElement("li");
-    separator.className="day-separator"; separator.textContent=dayStr;
-    messageList.appendChild(separator);
-    lastDateStr=dayStr;
+  // ---------- LOAD CHAT HISTORY ----------
+  async function loadMessages() {
+    try {
+      const res = await fetch(`/api/messages/history/${receiverId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      data.forEach((msg) => appendMessage(msg, false));
+      messageList.scrollTop = messageList.scrollHeight;
+    } catch (err) {
+      console.error("Failed to load messages:", err);
+    }
   }
-  const li=document.createElement("li");
-  li.className="message "+(msg.sender.id===myUserId?"sent":"received");
-  let contentHtml=msg.content||"";
-  if(msg.fileType==="image"&&msg.fileUrl) contentHtml+=`<img src="${msg.fileUrl}" onclick="showModal(this.src)">`;
-  if(msg.fileType==="file"&&msg.fileUrl) contentHtml+=`<a href="${msg.fileUrl}" target="_blank">File</a>`;
-  contentHtml+=`<div class="timestamp">${msgDate.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</div>`;
-  li.innerHTML=contentHtml;
-  messageList.appendChild(li);
-  messageList.scrollTop=messageList.scrollHeight;
-}
+  loadMessages();
 
-// Load history
-async function loadMessages(){
-  const res=await fetch(`/api/messages/history/${receiverId}`,{headers:{Authorization:`Bearer ${token}`}});
-  const data=await res.json();
-  data.forEach(msg=>appendMessage(msg));
-}
-loadMessages();
+  // ---------- SEND TEXT MESSAGE ----------
+  messageForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const content = messageInput.value.trim();
+    if (!content) return;
+    socket.emit("private message", { to: receiverId, message: content });
+    messageInput.value = "";
+  });
 
-// Send message
-messageForm.addEventListener("submit",e=>{
-  e.preventDefault();
-  const content=messageInput.value.trim();
-  if(!content) return;
-  socket.emit("private message",{to:receiverId,message:content});
-  messageInput.value="";
-});
+  socket.on("private message", (msg) => appendMessage(msg));
 
-socket.on("private message",msg=>appendMessage(msg));
+  // ---------- SEND FILES ----------
+  async function sendFiles(files) {
+    if (!files.length) return;
+    for (const f of files) {
+      // Optional: show sending placeholder
+      const tempMsg = {
+        sender: { id: myUserId },
+        content: "",
+        fileUrl: URL.createObjectURL(f),
+        fileType: f.type.startsWith("image/") ? "image" : "file",
+        createdAt: new Date(),
+      };
+      appendMessage(tempMsg);
 
-// Files
-async function sendFiles(files){
-  if(!files.length) return;
-  const formData=new FormData();
-  for(const f of files) formData.append("file",f);
-  formData.append("recipient",receiverId);
-  const res=await fetch("/api/messages/file",{method:"POST",headers:{Authorization:`Bearer ${token}`},body:formData});
-  const data=await res.json();
-  appendMessage(data);
-}
-imageInput.addEventListener("change",e=>sendFiles([...e.target.files]));
-fileInput.addEventListener("change",e=>sendFiles([...e.target.files]));
+      const formData = new FormData();
+      formData.append("file", f);
+      formData.append("recipient", receiverId);
 
-// Online status
-socket.on("connect",()=>onlineStatusEl.textContent="Online");
-socket.on("disconnect",()=>onlineStatusEl.textContent="Offline");
+      try {
+        const res = await fetch("/api/messages/file", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData,
+        });
+        const data = await res.json();
+        appendMessage(data);
+      } catch (err) {
+        console.error("File upload failed:", err);
+      }
+    }
+  }
 
-// Modal
-window.showModal=function(src){modalImg.src=src;imageModal.style.display="flex"};
-closeModal.addEventListener("click",()=>imageModal.style.display="none");
-imageModal.addEventListener("click",e=>{if(e.target===imageModal) imageModal.style.display="none"});
+  imageInput.addEventListener("change", (e) => sendFiles([...e.target.files]));
+  fileInput.addEventListener("change", (e) => sendFiles([...e.target.files]));
+
+  // ---------- ONLINE STATUS ----------
+  socket.on("connect", () => (onlineStatusEl.textContent = "Online"));
+  socket.on("disconnect", () => (onlineStatusEl.textContent = "Offline"));
+
+  // ---------- IMAGE MODAL ----------
+  window.showModal = function (src) {
+    modalImg.src = src;
+    imageModal.style.display = "flex";
+  };
+  closeModal.addEventListener("click", () => (imageModal.style.display = "none"));
+  imageModal.addEventListener("click", (e) => {
+    if (e.target === imageModal) imageModal.style.display = "none";
+  });
 });
 </script>
 </body>
