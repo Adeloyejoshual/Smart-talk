@@ -5,188 +5,37 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SmartTalk - Private Chat</title>
 <style>
-  body {
-    margin: 0;
-    font-family: Arial, sans-serif;
-    background: #1c1c1c;
-    color: #fff;
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-  }
-
-  header {
-    background: #111;
-    padding: 10px;
-    text-align: center;
-    position: sticky;
-    top: 0;
-    z-index: 10;
-  }
-
-  header h2 {
-    margin: 0;
-    font-size: 20px;
-  }
-
-  #onlineStatus {
-    font-size: 12px;
-    color: #0f0;
-  }
-
-  #chatBox {
-    flex: 1;
-    overflow-y: auto;
-    padding: 10px;
-    display: flex;
-    flex-direction: column;
-  }
-
-  ul#messageList {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-  }
-
-  .day-separator {
-    text-align: center;
-    margin: 10px 0;
-    font-size: 12px;
-    opacity: 0.6;
-  }
-
-  .message {
-    max-width: 70%;
-    margin: 5px 0;
-    padding: 8px 12px;
-    border-radius: 15px;
-    word-wrap: break-word;
-    display: inline-block;
-    position: relative;
-  }
-
-  .sent {
-    background: #0b93f6;
-    color: white;
-    align-self: flex-end;
-    border-bottom-right-radius: 0;
-  }
-
-  .received {
-    background: #e5e5ea;
-    color: black;
-    align-self: flex-start;
-    border-bottom-left-radius: 0;
-  }
-
-  .timestamp {
-    font-size: 10px;
-    opacity: 0.6;
-    margin-top: 2px;
-    text-align: right;
-  }
-
-  #messageForm {
-    display: flex;
-    padding: 10px;
-    background: #111;
-    position: sticky;
-    bottom: 0;
-    z-index: 10;
-  }
-
-  #messageInput {
-    flex: 1;
-    padding: 8px;
-    border-radius: 10px;
-    border: none;
-    margin-right: 5px;
-  }
-
-  #sendBtn {
-    padding: 8px 12px;
-    border: none;
-    border-radius: 10px;
-    background: #0b93f6;
-    color: white;
-    cursor: pointer;
-  }
-
-  input[type="file"] {
-    display: none;
-  }
-
-  .file-btn, .image-btn {
-    margin-right: 5px;
-    cursor: pointer;
-    padding: 6px 8px;
-    border-radius: 10px;
-    background: #333;
-    font-size: 14px;
-  }
-
-  .typing {
-    font-size: 12px;
-    font-style: italic;
-    opacity: 0.6;
-    margin-left: 5px;
-  }
-
-  .message img {
-    max-width: 150px;
-    margin-top: 5px;
-    border-radius: 10px;
-    cursor: pointer;
-  }
-
-  .message a {
-    color: #0b93f6;
-    text-decoration: underline;
-    display: block;
-    margin-top: 5px;
-  }
-
-  /* Modal for image preview */
-  #imageModal {
-    display: none;
-    position: fixed;
-    z-index: 50;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0,0,0,0.9);
-    justify-content: center;
-    align-items: center;
-  }
-
-  #imageModal img {
-    max-width: 90%;
-    max-height: 90%;
-    border-radius: 10px;
-  }
-
-  #imageModal span {
-    position: absolute;
-    top: 20px;
-    right: 30px;
-    color: white;
-    font-size: 30px;
-    font-weight: bold;
-    cursor: pointer;
-  }
+body{margin:0;font-family:Arial,sans-serif;background:#1c1c1c;color:#fff;display:flex;flex-direction:column;height:100vh}
+header{background:#111;padding:10px;text-align:center;position:sticky;top:0;z-index:10}
+header h2{margin:0;font-size:20px}
+#onlineStatus{font-size:12px;color:#0f0}
+#chatBox{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column}
+ul#messageList{list-style:none;padding:0;margin:0}
+.day-separator{text-align:center;margin:10px 0;font-size:12px;opacity:.6}
+.message{max-width:70%;margin:5px 0;padding:8px 12px;border-radius:15px;word-wrap:break-word;display:inline-block;position:relative}
+.sent{background:#0b93f6;color:#fff;align-self:flex-end;border-bottom-right-radius:0}
+.received{background:#e5e5ea;color:#000;align-self:flex-start;border-bottom-left-radius:0}
+.timestamp{font-size:10px;opacity:.6;margin-top:2px;text-align:right}
+#messageForm{display:flex;padding:10px;background:#111;position:sticky;bottom:0;z-index:10}
+#messageInput{flex:1;padding:8px;border-radius:10px;border:none;margin-right:5px}
+#sendBtn{padding:8px 12px;border:none;border-radius:10px;background:#0b93f6;color:#fff;cursor:pointer}
+input[type=file]{display:none}
+.file-btn,.image-btn{margin-right:5px;cursor:pointer;padding:6px 8px;border-radius:10px;background:#333;font-size:14px}
+.typing{font-size:12px;font-style:italic;opacity:.6;margin-left:5px}
+.message img{max-width:150px;margin-top:5px;border-radius:10px;cursor:pointer}
+.message a{color:#0b93f6;text-decoration:underline;display:block;margin-top:5px}
+#imageModal{display:none;position:fixed;z-index:50;left:0;top:0;width:100%;height:100%;background-color:rgba(0,0,0,.9);justify-content:center;align-items:center}
+#imageModal img{max-width:90%;max-height:90%;border-radius:10px}
+#imageModal span{position:absolute;top:20px;right:30px;color:#fff;font-size:30px;font-weight:bold;cursor:pointer}
 </style>
 </head>
 <body>
-
 <header>
   <h2 id="username">Chat</h2>
   <div id="onlineStatus">Offline</div>
 </header>
 
-<div id="chatBox">
-  <ul id="messageList"></ul>
-</div>
+<div id="chatBox"><ul id="messageList"></ul></div>
 
 <form id="messageForm">
   <label class="image-btn" for="imageInput">📷</label>
@@ -197,157 +46,128 @@
   <button type="submit" id="sendBtn">Send</button>
 </form>
 
-<!-- Image Modal -->
-<div id="imageModal">
-  <span id="closeModal">&times;</span>
-  <img id="modalImg" src="">
-</div>
+<div id="imageModal"><span id="closeModal">&times;</span><img id="modalImg"></div>
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
-document.addEventListener("DOMContentLoaded", () => {
-  const socket = io({ auth: { token: localStorage.getItem("token") } });
-  const urlParams = new URLSearchParams(window.location.search);
-  const receiverId = urlParams.get("user");
-  const receiverName = urlParams.get("name") || "Chat";
+document.addEventListener("DOMContentLoaded",()=>{
+const socket=io({auth:{token:localStorage.getItem("token")}});
+const urlParams=new URLSearchParams(window.location.search);
+const receiverId=urlParams.get("user");
+const receiverName=urlParams.get("name")||"Chat";
+const messageList=document.getElementById("messageList");
+const messageForm=document.getElementById("messageForm");
+const messageInput=document.getElementById("messageInput");
+const imageInput=document.getElementById("imageInput");
+const fileInput=document.getElementById("fileInput");
+const usernameEl=document.getElementById("username");
+const onlineStatusEl=document.getElementById("onlineStatus");
+const imageModal=document.getElementById("imageModal");
+const modalImg=document.getElementById("modalImg");
+const closeModal=document.getElementById("closeModal");
 
-  const messageList = document.getElementById("messageList");
-  const messageForm = document.getElementById("messageForm");
-  const messageInput = document.getElementById("messageInput");
-  const imageInput = document.getElementById("imageInput");
-  const fileInput = document.getElementById("fileInput");
-  const usernameEl = document.getElementById("username");
-  const onlineStatusEl = document.getElementById("onlineStatus");
-  const imageModal = document.getElementById("imageModal");
-  const modalImg = document.getElementById("modalImg");
-  const closeModal = document.getElementById("closeModal");
+if(!receiverId) window.location.href="/home";
 
-  if (!receiverId) window.location.href = "/home.html";
+let myUserId=null,lastDateStr="";
 
-  let myUserId = null;
-  let lastDateStr = "";
+function parseToken(token){try{return JSON.parse(atob(token.split(".")[1]))}catch{return null}}
+const token=localStorage.getItem("token");
+const decoded=parseToken(token);
+if(!decoded) window.location.href="/login";
+myUserId=decoded.id;
+usernameEl.textContent=receiverName;
 
-  const token = localStorage.getItem("token");
-  if (!token) window.location.href = "/login.html";
-  myUserId = JSON.parse(atob(token.split(".")[1])).id;
+socket.emit("joinPrivateRoom",{sender:myUserId,receiverId});
 
-  usernameEl.textContent = receiverName;
-  socket.emit("joinPrivateRoom", { sender: myUserId, receiverId });
-
-  let typingTimeout;
-
-  // TYPING INDICATOR
-  messageInput.addEventListener("input", () => {
-    socket.emit("typing", { to: receiverId });
-    clearTimeout(typingTimeout);
-    typingTimeout = setTimeout(() => socket.emit("stop typing", { to: receiverId }), 1500);
-  });
-
-  socket.on("typing", () => {
-    if (!document.getElementById("typing")) {
-      const li = document.createElement("li");
-      li.id = "typing";
-      li.className = "typing";
-      li.textContent = "Typing...";
-      messageList.appendChild(li);
-      messageList.scrollTop = messageList.scrollHeight;
-    }
-  });
-
-  socket.on("stop typing", () => {
-    const li = document.getElementById("typing");
-    if (li) li.remove();
-  });
-
-  function getDayString(date) {
-    const today = new Date();
-    const yesterday = new Date();
-    yesterday.setDate(today.getDate() - 1);
-    if (date.toDateString() === today.toDateString()) return "Today";
-    if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
-    return date.toLocaleDateString();
-  }
-
-  function appendMessage(msg) {
-    const msgDate = new Date(msg.createdAt || msg.timestamp);
-    const dayStr = getDayString(msgDate);
-
-    if (dayStr !== lastDateStr) {
-      const separator = document.createElement("li");
-      separator.className = "day-separator";
-      separator.textContent = dayStr;
-      messageList.appendChild(separator);
-      lastDateStr = dayStr;
-    }
-
-    const li = document.createElement("li");
-    const isMine = msg.sender.id === myUserId;
-    li.className = "message " + (isMine ? "sent" : "received");
-
-    let contentHtml = msg.content || "";
-    if (msg.fileType === "image" && msg.fileUrl) contentHtml += `<img src="${msg.fileUrl}" onclick="showModal(this.src)" />`;
-    if (msg.fileType === "file" && msg.fileUrl) contentHtml += `<a href="${msg.fileUrl}" target="_blank">File</a>`;
-    contentHtml += `<div class="timestamp">${msgDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>`;
-
-    li.innerHTML = contentHtml;
+// Typing
+let typingTimeout;
+messageInput.addEventListener("input",()=>{
+  socket.emit("typing",{to:receiverId});
+  clearTimeout(typingTimeout);
+  typingTimeout=setTimeout(()=>socket.emit("stop typing",{to:receiverId}),1500);
+});
+socket.on("typing",()=>{
+  if(!document.getElementById("typing")){
+    const li=document.createElement("li");
+    li.id="typing"; li.className="typing"; li.textContent="Typing...";
     messageList.appendChild(li);
-    messageList.scrollTop = messageList.scrollHeight;
+    messageList.scrollTop=messageList.scrollHeight;
   }
+});
+socket.on("stop typing",()=>{
+  const li=document.getElementById("typing"); if(li) li.remove();
+});
 
-  // LOAD HISTORY
-  async function loadMessages() {
-    const res = await fetch(`/api/messages/history/${receiverId}`, { headers: { Authorization: `Bearer ${token}` } });
-    const data = await res.json();
-    const messages = data.success ? data.messages : data; // backend may send array directly
-    messages.forEach(msg => appendMessage(msg));
+// Helper
+function getDayString(date){
+  const today=new Date(),yesterday=new Date();
+  yesterday.setDate(today.getDate()-1);
+  if(date.toDateString()===today.toDateString()) return"Today";
+  if(date.toDateString()===yesterday.toDateString()) return"Yesterday";
+  return date.toLocaleDateString();
+}
+
+function appendMessage(msg){
+  const msgDate=new Date(msg.createdAt);
+  const dayStr=getDayString(msgDate);
+  if(dayStr!==lastDateStr){
+    const separator=document.createElement("li");
+    separator.className="day-separator"; separator.textContent=dayStr;
+    messageList.appendChild(separator);
+    lastDateStr=dayStr;
   }
+  const li=document.createElement("li");
+  li.className="message "+(msg.sender.id===myUserId?"sent":"received");
+  let contentHtml=msg.content||"";
+  if(msg.fileType==="image"&&msg.fileUrl) contentHtml+=`<img src="${msg.fileUrl}" onclick="showModal(this.src)">`;
+  if(msg.fileType==="file"&&msg.fileUrl) contentHtml+=`<a href="${msg.fileUrl}" target="_blank">File</a>`;
+  contentHtml+=`<div class="timestamp">${msgDate.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</div>`;
+  li.innerHTML=contentHtml;
+  messageList.appendChild(li);
+  messageList.scrollTop=messageList.scrollHeight;
+}
 
-  loadMessages();
+// Load history
+async function loadMessages(){
+  const res=await fetch(`/api/messages/history/${receiverId}`,{headers:{Authorization:`Bearer ${token}`}});
+  const data=await res.json();
+  data.forEach(msg=>appendMessage(msg));
+}
+loadMessages();
 
-  // SEND TEXT MESSAGE
-  messageForm.addEventListener("submit", e => {
-    e.preventDefault();
-    const content = messageInput.value.trim();
-    if (!content) return;
-    socket.emit("private message", { to: receiverId, message: content });
-    messageInput.value = "";
-  });
+// Send message
+messageForm.addEventListener("submit",e=>{
+  e.preventDefault();
+  const content=messageInput.value.trim();
+  if(!content) return;
+  socket.emit("private message",{to:receiverId,message:content});
+  messageInput.value="";
+});
 
-  // RECEIVE MESSAGE
-  socket.on("private message", msg => appendMessage(msg));
+socket.on("private message",msg=>appendMessage(msg));
 
-  // SEND FILES
-  async function sendFiles(files) {
-    if (!files.length) return;
-    const formData = new FormData();
-    for (const f of files) formData.append("file", f);
-    formData.append("recipient", receiverId);
+// Files
+async function sendFiles(files){
+  if(!files.length) return;
+  const formData=new FormData();
+  for(const f of files) formData.append("file",f);
+  formData.append("recipient",receiverId);
+  const res=await fetch("/api/messages/file",{method:"POST",headers:{Authorization:`Bearer ${token}`},body:formData});
+  const data=await res.json();
+  appendMessage(data);
+}
+imageInput.addEventListener("change",e=>sendFiles([...e.target.files]));
+fileInput.addEventListener("change",e=>sendFiles([...e.target.files]));
 
-    const res = await fetch("/api/messages/file", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-      body: formData
-    });
-    const data = await res.json();
-    appendMessage(data);
-  }
+// Online status
+socket.on("connect",()=>onlineStatusEl.textContent="Online");
+socket.on("disconnect",()=>onlineStatusEl.textContent="Offline");
 
-  imageInput.addEventListener("change", e => sendFiles([...e.target.files]));
-  fileInput.addEventListener("change", e => sendFiles([...e.target.files]));
-
-  // ONLINE STATUS
-  socket.on("connect", () => onlineStatusEl.textContent = "Online");
-  socket.on("disconnect", () => onlineStatusEl.textContent = "Offline");
-
-  // IMAGE MODAL
-  window.showModal = function(src) {
-    modalImg.src = src;
-    imageModal.style.display = "flex";
-  }
-  closeModal.addEventListener("click", () => imageModal.style.display = "none");
-  imageModal.addEventListener("click", e => { if(e.target === imageModal) imageModal.style.display = "none"; });
+// Modal
+window.showModal=function(src){modalImg.src=src;imageModal.style.display="flex"};
+closeModal.addEventListener("click",()=>imageModal.style.display="none");
+imageModal.addEventListener("click",e=>{if(e.target===imageModal) imageModal.style.display="none"});
 });
 </script>
-
 </body>
 </html>
