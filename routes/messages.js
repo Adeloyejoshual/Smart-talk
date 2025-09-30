@@ -14,14 +14,16 @@ router.post("/send", authMiddleware, async (req, res) => {
       receiver: receiverId,
       content: content || "",
       type: type || "text",
-      file: fileUrl || "",
+      fileUrl: fileUrl || "",
       fileType: type === "text" ? "text" : type,
       status: "sent",
     });
 
     await newMessage.save();
 
-    const populated = await newMessage.populate("sender", "username").populate("receiver", "username");
+    const populated = await newMessage
+      .populate("sender", "username")
+      .populate("receiver", "username");
 
     res.json({ success: true, message: populated });
   } catch (err) {
