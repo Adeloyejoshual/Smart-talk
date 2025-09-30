@@ -3,22 +3,26 @@ const Message = require("./models/Message");
 const User = require("./models/User");
 
 module.exports = (io) => {
+  // Track online users: userId -> socketId
   const onlineUsers = new Map();
 
   io.on("connection", (socket) => {
-    console.log("🔌 A user connected:", socket.id);
+    console.log("🔌 User connected:", socket.id);
 
     // ---------------- JOIN ----------------
     socket.on("join", async (userId) => {
       socket.userId = userId;
       onlineUsers.set(userId, socket.id);
 
-      // Mark user online in DB
-      await User.findByIdAndUpdate(userId, { online: true }).catch(console.error);
+      try {
+        await User.findByIdAndUpdate(userId, { online: true });
+      } catch (err) {
+        console.error("❌ Error updating user online:", err);
+      }
 
       console.log(`👤 User ${userId} joined (socket ${socket.id})`);
 
-      // Send chat history (all messages for this user)
+      // Send chat history (all messages where user is sender or receiver)
       try {
         const messages = await Message.find({
           $or: [{ sender: userId }, { receiver: userId }],
@@ -34,40 +38,51 @@ module.exports = (io) => {
     });
 
     // ---------------- PRIVATE MESSAGE ----------------
-    socket.on("private message", async ({ senderId, receiverId, content, type, fileUrl, replyTo = null, isForwarded = false }) => {
-      try {
-        const message = new Message({
-          sender: senderId,
-          receiver: receiverId,
-          content: content || "",
-          type: type || "text",
-          fileUrl: fileUrl || "",
-          replyTo,
-          isForwarded,
-          fileType: type === "text" ? "text" : type,
-          status: "sent",
-        });
+    socket.on(
+      "private message",
+      async ({
+        senderId,
+        receiverId,
+        content,
+        type,
+        fileUrl,
+        replyTo = null,
+        isForwarded = false,
+      }) => {
+        try {
+          const message = new Message({
+            sender: senderId,
+            receiver: receiverId,
+            content: content || "",
+            type: type || "text",
+            fileUrl: fileUrl || "",
+            replyTo,
+            isForwarded,
+            fileType: type === "text" ? "text" : type,
+            status: "sent",
+          });
 
-        await message.save();
+          await message.save();
 
-        const populated = await message
-          .populate("sender", "username avatar")
-          .populate("receiver", "username avatar");
+          const populated = await message
+            .populate("sender", "username avatar")
+            .populate("receiver", "username avatar");
 
-        // Send to receiver if online
-        const receiverSocket = onlineUsers.get(receiverId);
-        if (receiverSocket) {
-          io.to(receiverSocket).emit("newMessage", populated);
+          // Send to receiver if online
+          const receiverSocket = onlineUsers.get(receiverId);
+          if (receiverSocket) {
+            io.to(receiverSocket).emit("newMessage", populated);
+          }
+
+          // Always send back to sender
+          socket.emit("newMessage", populated);
+
+          console.log(`💬 Message saved & delivered from ${senderId} → ${receiverId}`);
+        } catch (err) {
+          console.error("❌ Error saving/sending message:", err);
         }
-
-        // Always send back to sender
-        socket.emit("newMessage", populated);
-
-        console.log(`💬 Message saved & delivered from ${senderId} → ${receiverId}`);
-      } catch (err) {
-        console.error("❌ Error saving/sending message:", err);
       }
-    });
+    );
 
     // ---------------- DELIVERY RECEIPT ----------------
     socket.on("message-delivered", async ({ messageId }) => {
@@ -134,7 +149,11 @@ module.exports = (io) => {
     socket.on("disconnect", async () => {
       if (socket.userId) {
         onlineUsers.delete(socket.userId);
-        await User.findByIdAndUpdate(socket.userId, { online: false }).catch(console.error);
+        try {
+          await User.findByIdAndUpdate(socket.userId, { online: false });
+        } catch (err) {
+          console.error("❌ Error updating user offline:", err);
+        }
         console.log(`❌ User ${socket.userId} disconnected`);
       }
     });
