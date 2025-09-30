@@ -74,12 +74,14 @@ io.on("connection", async (socket) => {
     try {
       if (!toEmail) return console.error("❌ Receiver email required");
 
+      // Save message in DB
       const newMsg = new Message({
         senderEmail: userEmail,
         receiverEmail: toEmail,
         content: content || "",
         fileUrl: fileUrl || "",
         fileType,
+        status: "sent"
       });
       await newMsg.save();
 
