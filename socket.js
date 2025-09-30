@@ -9,10 +9,10 @@ module.exports = (io) => {
   io.on("connection", async (socket) => {
     console.log("🔌 Socket connected:", socket.id);
 
-    // --- Authenticate user ---
+    // ---------- AUTHENTICATE USER ----------
     const token = socket.handshake.auth?.token;
     if (!token) {
-      console.log("❌ No token, disconnecting:", socket.id);
+      console.log("❌ No token, disconnecting socket:", socket.id);
       return socket.disconnect();
     }
 
@@ -22,64 +22,57 @@ module.exports = (io) => {
       userId = decoded.id;
       connectedUsers.set(userId, socket.id);
 
-      // Mark user online in DB
+      // Mark user online
       await User.findByIdAndUpdate(userId, { online: true });
-      console.log(`👤 User authenticated & online: ${userId}`);
 
-      // Broadcast online status
+      // Notify others
       io.emit("userOnline", { userId, online: true });
+      console.log(`👤 User authenticated & online: ${userId}`);
     } catch (err) {
       console.error("❌ Invalid token:", err.message);
       return socket.disconnect();
     }
 
-    // --- Join private room ---
+    // ---------- JOIN PRIVATE ROOM ----------
     socket.on("joinPrivateRoom", ({ sender, receiverId }) => {
-      const roomName = [sender, receiverId].sort().join("_");
-      socket.join(roomName);
-      socket.data.roomId = roomName;
-      console.log(`📥 User ${sender} joined room ${roomName}`);
+      const roomId = [sender, receiverId].sort().join("_");
+      socket.join(roomId);
+      socket.data.roomId = roomId;
+      console.log(`📥 User ${sender} joined room ${roomId}`);
     });
 
-    // --- Private messaging ---
+    // ---------- PRIVATE MESSAGE ----------
     socket.on("private message", async (msg) => {
       try {
-        // Save message if not saved yet
+        // If message not yet saved, save it
         if (!msg._id) {
           const newMessage = new Message({
             sender: msg.sender?._id || userId,
             receiver: msg.receiver?._id || msg.receiver || msg.to,
             content: msg.content || "",
             fileUrl: msg.fileUrl || "",
-            type: msg.fileType || (msg.fileUrl ? "file" : "text"),
+            fileType: msg.fileType || (msg.fileUrl ? "file" : "text"),
             status: "sent",
           });
+
           await newMessage.save();
 
-          // Populate sender/receiver info
-          msg = await newMessage
-            .populate("sender", "username avatar")
-            .populate("receiver", "username avatar");
+          // Populate sender info
+          msg = await newMessage.populate("sender", "username avatar");
         }
 
-        // Send to sender (confirmation)
-        io.to(socket.id).emit("private message", msg);
-
-        // Send to receiver if online
         const receiverId = msg.receiver?._id?.toString() || msg.receiver?.toString();
-        if (receiverId && connectedUsers.has(receiverId)) {
-          const receiverSocketId = connectedUsers.get(receiverId);
-          io.to(receiverSocketId).emit("private message", msg);
-          console.log(`📤 Delivered message to ${receiverId}`);
-        } else {
-          console.log("📪 Receiver offline, message stored in DB");
-        }
+        const roomId = [userId, receiverId].sort().join("_");
+
+        // Emit to sender and receiver via room
+        io.to(roomId).emit("private message", msg);
+        console.log(`📤 Message sent in room ${roomId}`);
       } catch (err) {
-        console.error("❌ Error handling private message:", err);
+        console.error("❌ Error sending private message:", err);
       }
     });
 
-    // --- Typing indicators ---
+    // ---------- TYPING INDICATORS ----------
     socket.on("typing", ({ to }) => {
       if (connectedUsers.has(to)) {
         io.to(connectedUsers.get(to)).emit("typing", { from: userId });
@@ -92,7 +85,7 @@ module.exports = (io) => {
       }
     });
 
-    // --- Disconnect ---
+    // ---------- DISCONNECT ----------
     socket.on("disconnect", async () => {
       connectedUsers.delete(userId);
       await User.findByIdAndUpdate(userId, { online: false, lastSeen: new Date() }).catch(console.error);
