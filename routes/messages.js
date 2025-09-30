@@ -3,11 +3,10 @@ const router = express.Router();
 const Message = require("../models/Message");
 const authMiddleware = require("../middleware/authMiddleware");
 
-// Send a new message (text or file URL)
+// Send a new message
 router.post("/send", authMiddleware, async (req, res) => {
   try {
     const { receiverId, content, type, fileUrl } = req.body;
-
     if (!receiverId) return res.status(400).json({ error: "Receiver ID is required" });
 
     const newMessage = new Message({
@@ -22,22 +21,20 @@ router.post("/send", authMiddleware, async (req, res) => {
 
     await newMessage.save();
 
-    const populated = await newMessage
-      .populate("sender", "username")
-      .populate("receiver", "username")
-      .execPopulate();
+    const populated = await newMessage.populate("sender", "username").populate("receiver", "username");
 
-    res.json(populated);
+    res.json({ success: true, message: populated });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to send message" });
   }
 });
 
-// Get chat history between authenticated user and another user
+// Get chat history
 router.get("/history/:userId", authMiddleware, async (req, res) => {
   try {
     const otherUserId = req.params.userId;
+
     const messages = await Message.find({
       $or: [
         { sender: req.user.id, receiver: otherUserId },
@@ -48,7 +45,7 @@ router.get("/history/:userId", authMiddleware, async (req, res) => {
       .populate("receiver", "username")
       .sort({ createdAt: 1 }); // oldest first
 
-    res.json(messages);
+    res.json({ success: true, messages });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch chat history" });
