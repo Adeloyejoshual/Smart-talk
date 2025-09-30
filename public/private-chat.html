@@ -210,6 +210,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const urlParams = new URLSearchParams(window.location.search);
   const receiverId = urlParams.get("user");
   const receiverName = urlParams.get("name") || "Chat";
+
   const messageList = document.getElementById("messageList");
   const messageForm = document.getElementById("messageForm");
   const messageInput = document.getElementById("messageInput");
@@ -226,21 +227,16 @@ document.addEventListener("DOMContentLoaded", () => {
   let myUserId = null;
   let lastDateStr = "";
 
-  function parseToken(token) {
-    try { return JSON.parse(atob(token.split(".")[1])); } 
-    catch { return null; }
-  }
-
   const token = localStorage.getItem("token");
-  const decoded = parseToken(token);
-  if (!decoded) window.location.href = "/login.html";
-  myUserId = decoded.id;
+  if (!token) window.location.href = "/login.html";
+  myUserId = JSON.parse(atob(token.split(".")[1])).id;
 
   usernameEl.textContent = receiverName;
-
   socket.emit("joinPrivateRoom", { sender: myUserId, receiverId });
 
   let typingTimeout;
+
+  // TYPING INDICATOR
   messageInput.addEventListener("input", () => {
     socket.emit("typing", { to: receiverId });
     clearTimeout(typingTimeout);
@@ -257,6 +253,7 @@ document.addEventListener("DOMContentLoaded", () => {
       messageList.scrollTop = messageList.scrollHeight;
     }
   });
+
   socket.on("stop typing", () => {
     const li = document.getElementById("typing");
     if (li) li.remove();
@@ -297,15 +294,17 @@ document.addEventListener("DOMContentLoaded", () => {
     messageList.scrollTop = messageList.scrollHeight;
   }
 
+  // LOAD HISTORY
   async function loadMessages() {
-    const res = await fetch(`/api/messages/history/${receiverId}?skip=0&limit=50`, { headers: { Authorization: `Bearer ${token}` } });
+    const res = await fetch(`/api/messages/history/${receiverId}`, { headers: { Authorization: `Bearer ${token}` } });
     const data = await res.json();
-    if (data.success) data.messages.reverse().forEach(msg => appendMessage(msg));
-    messageList.scrollTop = messageList.scrollHeight;
+    const messages = data.success ? data.messages : data; // backend may send array directly
+    messages.forEach(msg => appendMessage(msg));
   }
 
   loadMessages();
 
+  // SEND TEXT MESSAGE
   messageForm.addEventListener("submit", e => {
     e.preventDefault();
     const content = messageInput.value.trim();
@@ -314,8 +313,10 @@ document.addEventListener("DOMContentLoaded", () => {
     messageInput.value = "";
   });
 
+  // RECEIVE MESSAGE
   socket.on("private message", msg => appendMessage(msg));
 
+  // SEND FILES
   async function sendFiles(files) {
     if (!files.length) return;
     const formData = new FormData();
@@ -334,16 +335,17 @@ document.addEventListener("DOMContentLoaded", () => {
   imageInput.addEventListener("change", e => sendFiles([...e.target.files]));
   fileInput.addEventListener("change", e => sendFiles([...e.target.files]));
 
+  // ONLINE STATUS
   socket.on("connect", () => onlineStatusEl.textContent = "Online");
   socket.on("disconnect", () => onlineStatusEl.textContent = "Offline");
 
+  // IMAGE MODAL
   window.showModal = function(src) {
     modalImg.src = src;
     imageModal.style.display = "flex";
   }
-
-  closeModal.addEventListener("click", () => imageModal.style.display = "none"));
-  imageModal.addEventListener("click", (e) => { if(e.target === imageModal) imageModal.style.display = "none"; });
+  closeModal.addEventListener("click", () => imageModal.style.display = "none");
+  imageModal.addEventListener("click", e => { if(e.target === imageModal) imageModal.style.display = "none"; });
 });
 </script>
 
