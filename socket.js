@@ -1,80 +1,91 @@
-const Message = require("./models/Message"); // Adjust path if needed
+const Message = require("./models/Message");
 
 module.exports = (io) => {
-io.on("connection", (socket) => {
-console.log("🔌 A user connected:", socket.id);
+  io.on("connection", (socket) => {
+    console.log("🔌 A user connected:", socket.id);
 
-// Join private room using userId  
-socket.on("join", (userId) => {  
-  socket.join(userId);  
-  console.log(`👤 User ${userId} joined their private room`);  
-});  
+    // --- Join private room using userId ---
+    socket.on("join", async (userId) => {
+      socket.join(userId);
+      console.log(`👤 User ${userId} joined their private room`);
 
-// Private message with DB save  
-socket.on("privateMessage", async (msg) => {  
-  const { senderId, receiverId, content, replyTo = null, isForwarded = false, fileUrl = "" } = msg;  
-  if (!receiverId || (!content && !fileUrl)) return;  
+      // --- Load previous messages for this user ---
+      try {
+        const messages = await Message.find({
+          $or: [{ sender: userId }, { receiver: userId }],
+        })
+          .sort({ createdAt: 1 })
+          .populate("sender", "username avatar")
+          .populate("receiver", "username avatar");
 
-  try {  
-    // Save message in DB  
-    const newMessage = new Message({  
-      sender: senderId,  
-      recipient: receiverId,  
-      content,  
-      fileUrl,  
-      replyTo,  
-      isForwarded,  
-      status: "sent",  
-      type: "text",  
-    });  
-    await newMessage.save();  
+        socket.emit("chatHistory", messages);
+      } catch (error) {
+        console.error("❌ Error loading chat history:", error);
+      }
+    });
 
-    // Emit to receiver's room  
-    io.to(receiverId).emit("privateMessage", {  
-      _id: newMessage._id,  
-      senderId,  
-      content,  
-      fileUrl,  
-      replyTo,  
-      timestamp: newMessage.createdAt,  
-      isForwarded,  
-    });  
+    // --- Private message handler ---
+    socket.on("privateMessage", async (msg) => {
+      const {
+        senderId,
+        receiverId,
+        content,
+        replyTo = null,
+        isForwarded = false,
+        fileUrl = "",
+      } = msg;
 
-    // Confirm to sender  
-    socket.emit("privateMessageSent", {  
-      _id: newMessage._id,  
-      receiverId,  
-      content,  
-      fileUrl,  
-      replyTo,  
-      timestamp: newMessage.createdAt,  
-      isForwarded,  
-    });  
+      if (!receiverId || (!content && !fileUrl)) return;
 
-    console.log(`📩 Private message saved and sent from ${senderId} to ${receiverId}`);  
-  } catch (error) {  
-    console.error("❌ Error saving/sending private message:", error);  
-  }  
-});  
+      try {
+        // Save message to DB
+        const newMessage = new Message({
+          sender: senderId,
+          receiver: receiverId,
+          content,
+          fileUrl,
+          replyTo,
+          isForwarded,
+          status: "sent",
+          type: fileUrl ? "file" : "text",
+        });
 
-// Typing indicators  
-socket.on("typing", ({ receiverId, senderId }) => {  
-  if (receiverId) io.to(receiverId).emit("typing", { senderId });  
-});  
+        await newMessage.save();
 
-// Delivery/read receipts  
-socket.on("message-delivered", ({ messageId, userId }) => {  
-  io.emit("message-delivered", { messageId, userId });  
-});  
+        // Populate sender/receiver info
+        const populatedMessage = await newMessage
+          .populate("sender", "username avatar")
+          .populate("receiver", "username avatar");
 
-socket.on("message-read", ({ messageId, userId }) => {  
-  io.emit("message-read", { messageId, userId });  
-});  
+        // Emit message to receiver
+        io.to(receiverId).emit("privateMessage", populatedMessage);
 
-socket.on("disconnect", () => {  
-  console.log("❌ A user disconnected:", socket.id);  
-});
+        // Confirm message sent to sender
+        socket.emit("privateMessageSent", populatedMessage);
 
-});
+        console.log(`📩 Message from ${senderId} to ${receiverId} saved and emitted`);
+      } catch (error) {
+        console.error("❌ Error saving/sending message:", error);
+      }
+    });
+
+    // --- Typing indicator ---
+    socket.on("typing", ({ receiverId, senderId }) => {
+      if (receiverId) io.to(receiverId).emit("typing", { senderId });
+    });
+
+    // --- Delivery & read receipts ---
+    socket.on("message-delivered", ({ messageId, userId }) => {
+      io.emit("message-delivered", { messageId, userId });
+    });
+
+    socket.on("message-read", ({ messageId, userId }) => {
+      io.emit("message-read", { messageId, userId });
+    });
+
+    // --- Disconnect ---
+    socket.on("disconnect", () => {
+      console.log("❌ A user disconnected:", socket.id);
+    });
+  });
 };
-
