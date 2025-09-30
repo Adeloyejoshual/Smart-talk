@@ -157,7 +157,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   loadMessages();
 
-  // ---------- SEND TEXT (fixed: store + realtime) ----------
+  // ---------- SEND TEXT ----------
   messageForm.addEventListener("submit", async e=>{
     e.preventDefault();
     const content = messageInput.value.trim();
@@ -174,8 +174,8 @@ document.addEventListener("DOMContentLoaded", () => {
       });
       const data = await res.json();
       if (data.success) {
-        appendMessage(data.message);
-        socket.emit("private message", data.message);
+        appendMessage(data.message);                // show instantly
+        socket.emit("private message", data.message); // push to receiver
       }
     } catch (err) {
       console.error("Send message failed:", err);
@@ -184,7 +184,11 @@ document.addEventListener("DOMContentLoaded", () => {
     messageInput.value = "";
   });
 
-  socket.on("private message", msg => appendMessage(msg));
+  // ---------- RECEIVE REALTIME ----------
+  socket.on("private message", (msg) => {
+    console.log("📩 Incoming:", msg);
+    appendMessage(msg);
+  });
 
   // ---------- SEND FILES ----------
   async function sendFiles(files){
