@@ -38,15 +38,9 @@ app.use("/api/users", userRoutes);
 app.use("/api/messages", messageRoutes);
 
 // ---------- HTML Routes ----------
-app.get("/", (req, res) =>
-  res.sendFile(path.join(__dirname, "public/login.html"))
-);
-app.get("/home", (req, res) =>
-  res.sendFile(path.join(__dirname, "public/home.html"))
-);
-app.get("/private-chat", (req, res) =>
-  res.sendFile(path.join(__dirname, "public/private-chat.html"))
-);
+app.get("/", (req, res) => res.sendFile(path.join(__dirname, "public/login.html")));
+app.get("/home", (req, res) => res.sendFile(path.join(__dirname, "public/home.html")));
+app.get("/private-chat", (req, res) => res.sendFile(path.join(__dirname, "public/private-chat.html")));
 
 // ---------- Socket.IO Setup ----------
 const onlineUsers = new Map();
@@ -70,14 +64,13 @@ io.on("connection", (socket) => {
 
   console.log(`🔌 User connected: ${userId} (${socket.id})`);
 
-  // Join private room
+  // ------------------- PRIVATE CHAT -------------------
   socket.on("joinPrivateRoom", ({ sender, receiverId }) => {
     const roomId = [sender, receiverId].sort().join("_");
     socket.join(roomId);
     socket.data.roomId = roomId;
   });
 
-  // Private message
   socket.on(
     "private message",
     async ({ to, message, fileUrl, fileType = "text" }) => {
@@ -91,13 +84,12 @@ io.on("connection", (socket) => {
         });
         await newMsg.save();
 
-        // ✅ Fetch sender info from DB
         const senderUser = await User.findById(userId).select("username avatar");
 
         const payload = {
           _id: newMsg._id,
           sender: {
-            id: userId,
+            _id: userId,
             username: senderUser.username,
             avatar: senderUser.avatar,
           },
@@ -108,11 +100,8 @@ io.on("connection", (socket) => {
           createdAt: newMsg.createdAt,
         };
 
-        // send to receiver if online
         const toSocketId = onlineUsers.get(to);
         if (toSocketId) io.to(toSocketId).emit("private message", payload);
-
-        // echo back to sender
         socket.emit("private message", payload);
       } catch (err) {
         console.error("❌ Error sending private message:", err);
@@ -120,7 +109,6 @@ io.on("connection", (socket) => {
     }
   );
 
-  // Typing indicators
   socket.on("typing", ({ to }) => {
     const toSocketId = onlineUsers.get(to);
     if (toSocketId) io.to(toSocketId).emit("typing", { from: userId });
@@ -131,7 +119,28 @@ io.on("connection", (socket) => {
     if (toSocketId) io.to(toSocketId).emit("stop typing", { from: userId });
   });
 
-  // Disconnect
+  // ------------------- VIDEO / VOICE CALL -------------------
+  socket.on("call-user", ({ to, offer }) => {
+    const toSocketId = onlineUsers.get(to);
+    if (toSocketId) io.to(toSocketId).emit("incoming-call", { from: userId, offer });
+  });
+
+  socket.on("answer-call", ({ to, answer }) => {
+    const toSocketId = onlineUsers.get(to);
+    if (toSocketId) io.to(toSocketId).emit("call-answered", { from: userId, answer });
+  });
+
+  socket.on("ice-candidate", ({ to, candidate }) => {
+    const toSocketId = onlineUsers.get(to);
+    if (toSocketId) io.to(toSocketId).emit("ice-candidate", { from: userId, candidate });
+  });
+
+  socket.on("end-call", ({ to }) => {
+    const toSocketId = onlineUsers.get(to);
+    if (toSocketId) io.to(toSocketId).emit("end-call", { from: userId });
+  });
+
+  // ------------------- DISCONNECT -------------------
   socket.on("disconnect", async () => {
     onlineUsers.delete(userId);
     await User.findByIdAndUpdate(userId, { online: false }).catch(console.error);
@@ -139,12 +148,11 @@ io.on("connection", (socket) => {
   });
 });
 
-// ---------- File Upload ----------
+// ---------- FILE UPLOAD ----------
 const storage = multer.diskStorage({
   destination: (req, file, cb) =>
     cb(null, path.join(__dirname, "public/uploads")),
-  filename: (req, file, cb) =>
-    cb(null, Date.now() + "-" + file.originalname),
+  filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname),
 });
 const upload = multer({ storage });
 
@@ -165,16 +173,14 @@ app.post("/api/messages/file", upload.single("file"), async (req, res) => {
       fileUrl: `/uploads/${req.file.filename}`,
       fileType: req.file.mimetype.startsWith("image/") ? "image" : "file",
     });
-
     await newMsg.save();
 
-    // ✅ Fetch sender info from DB
     const senderUser = await User.findById(senderId).select("username avatar");
 
     const payload = {
       _id: newMsg._id,
       sender: {
-        id: senderId,
+        _id: senderId,
         username: senderUser.username,
         avatar: senderUser.avatar,
       },
@@ -185,11 +191,9 @@ app.post("/api/messages/file", upload.single("file"), async (req, res) => {
       createdAt: newMsg.createdAt,
     };
 
-    // emit to receiver
     const toSocketId = onlineUsers.get(recipient);
     if (toSocketId) io.to(toSocketId).emit("private message", payload);
 
-    // echo to sender
     const fromSocketId = onlineUsers.get(senderId);
     if (fromSocketId) io.to(fromSocketId).emit("private message", payload);
 
@@ -200,7 +204,7 @@ app.post("/api/messages/file", upload.single("file"), async (req, res) => {
   }
 });
 
-// ---------- MongoDB Connection ----------
+// ---------- MongoDB ----------
 mongoose
   .connect(process.env.MONGO_URI, {
     useNewUrlParser: true,
@@ -210,6 +214,4 @@ mongoose
   .catch((err) => console.error("❌ MongoDB error:", err));
 
 // ---------- Start Server ----------
-server.listen(process.env.PORT || 10000, () =>
-  console.log("🚀 Server running")
-);
+server.listen(process.env.PORT || 10000, () => console.log("🚀 Server running"));
