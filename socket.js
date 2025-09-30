@@ -1,161 +1,95 @@
 // socket.js
+const jwt = require("jsonwebtoken");
 const Message = require("./models/Message");
-const User = require("./models/User");
+
+const connectedUsers = new Map(); // userId -> socketId
 
 module.exports = (io) => {
-  // Track online users: userId -> socketId
-  const onlineUsers = new Map();
-
   io.on("connection", (socket) => {
     console.log("🔌 User connected:", socket.id);
 
-    // ---------------- JOIN ----------------
-    socket.on("join", async (userId) => {
-      socket.userId = userId;
-      onlineUsers.set(userId, socket.id);
+    // 🔑 Authenticate using token from socket handshake
+    const token = socket.handshake.auth?.token;
+    if (!token) {
+      console.log("❌ No token, disconnecting:", socket.id);
+      socket.disconnect();
+      return;
+    }
 
-      try {
-        await User.findByIdAndUpdate(userId, { online: true });
-      } catch (err) {
-        console.error("❌ Error updating user online:", err);
-      }
+    let userId;
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      userId = decoded.id;
+      connectedUsers.set(userId, socket.id);
+      console.log(`👤 User authenticated: ${userId}`);
+    } catch (err) {
+      console.error("❌ Invalid token:", err.message);
+      socket.disconnect();
+      return;
+    }
 
-      console.log(`👤 User ${userId} joined (socket ${socket.id})`);
-
-      // Send chat history (all messages where user is sender or receiver)
-      try {
-        const messages = await Message.find({
-          $or: [{ sender: userId }, { receiver: userId }],
-        })
-          .sort({ createdAt: 1 }) // oldest first
-          .populate("sender", "username avatar")
-          .populate("receiver", "username avatar");
-
-        socket.emit("chatHistory", messages);
-      } catch (err) {
-        console.error("❌ Error loading history:", err);
-      }
+    // 🟢 Join private room with receiver
+    socket.on("joinPrivateRoom", ({ sender, receiverId }) => {
+      const roomName = [sender, receiverId].sort().join("-");
+      socket.join(roomName);
+      console.log(`📥 ${sender} joined room ${roomName}`);
     });
 
-    // ---------------- PRIVATE MESSAGE ----------------
-    socket.on(
-      "private message",
-      async ({
-        senderId,
-        receiverId,
-        content,
-        type,
-        fileUrl,
-        replyTo = null,
-        isForwarded = false,
-      }) => {
-        try {
-          const message = new Message({
-            sender: senderId,
-            receiver: receiverId,
-            content: content || "",
-            type: type || "text",
-            fileUrl: fileUrl || "",
-            replyTo,
-            isForwarded,
-            fileType: type === "text" ? "text" : type,
+    // ✉️ Handle private message
+    socket.on("private message", async (msg) => {
+      try {
+        // Save if not already saved
+        if (!msg._id) {
+          const newMessage = new Message({
+            sender: msg.sender._id || userId,
+            receiver: msg.receiver?._id || msg.receiver || msg.to,
+            content: msg.content || "",
+            fileUrl: msg.fileUrl || "",
+            type: msg.fileType || (msg.fileUrl ? "file" : "text"),
             status: "sent",
           });
+          await newMessage.save();
 
-          await message.save();
-
-          const populated = await message
+          msg = await newMessage
             .populate("sender", "username avatar")
             .populate("receiver", "username avatar");
-
-          // Send to receiver if online
-          const receiverSocket = onlineUsers.get(receiverId);
-          if (receiverSocket) {
-            io.to(receiverSocket).emit("newMessage", populated);
-          }
-
-          // Always send back to sender
-          socket.emit("newMessage", populated);
-
-          console.log(`💬 Message saved & delivered from ${senderId} → ${receiverId}`);
-        } catch (err) {
-          console.error("❌ Error saving/sending message:", err);
         }
-      }
-    );
 
-    // ---------------- DELIVERY RECEIPT ----------------
-    socket.on("message-delivered", async ({ messageId }) => {
-      try {
-        const msg = await Message.findByIdAndUpdate(
-          messageId,
-          { status: "delivered" },
-          { new: true }
-        )
-          .populate("sender", "username avatar")
-          .populate("receiver", "username avatar");
+        // Send to sender (for confirmation)
+        io.to(socket.id).emit("private message", msg);
 
-        if (msg) {
-          const senderSocket = onlineUsers.get(msg.sender._id.toString());
-          const receiverSocket = onlineUsers.get(msg.receiver._id.toString());
-
-          if (senderSocket) io.to(senderSocket).emit("message-delivered", msg);
-          if (receiverSocket) io.to(receiverSocket).emit("message-delivered", msg);
+        // Send to receiver if online
+        const receiverId =
+          msg.receiver?._id?.toString() || msg.receiver?.toString();
+        if (receiverId && connectedUsers.has(receiverId)) {
+          const receiverSocketId = connectedUsers.get(receiverId);
+          io.to(receiverSocketId).emit("private message", msg);
+          console.log(`📤 Delivered message to ${receiverId}`);
+        } else {
+          console.log("📪 Receiver offline, message stored only in DB");
         }
       } catch (err) {
-        console.error("❌ Delivery update failed:", err);
+        console.error("❌ Error handling private message:", err);
       }
     });
 
-    // ---------------- READ RECEIPT ----------------
-    socket.on("message-read", async ({ messageId }) => {
-      try {
-        const msg = await Message.findByIdAndUpdate(
-          messageId,
-          { status: "read" },
-          { new: true }
-        )
-          .populate("sender", "username avatar")
-          .populate("receiver", "username avatar");
-
-        if (msg) {
-          const senderSocket = onlineUsers.get(msg.sender._id.toString());
-          const receiverSocket = onlineUsers.get(msg.receiver._id.toString());
-
-          if (senderSocket) io.to(senderSocket).emit("message-read", msg);
-          if (receiverSocket) io.to(receiverSocket).emit("message-read", msg);
-        }
-      } catch (err) {
-        console.error("❌ Read update failed:", err);
-      }
-    });
-
-    // ---------------- TYPING INDICATORS ----------------
+    // 🟡 Typing events
     socket.on("typing", ({ to }) => {
-      const receiverSocket = onlineUsers.get(to);
-      if (receiverSocket) {
-        io.to(receiverSocket).emit("typing", { from: socket.userId });
+      if (connectedUsers.has(to)) {
+        io.to(connectedUsers.get(to)).emit("typing");
       }
     });
 
     socket.on("stop typing", ({ to }) => {
-      const receiverSocket = onlineUsers.get(to);
-      if (receiverSocket) {
-        io.to(receiverSocket).emit("stop typing", { from: socket.userId });
+      if (connectedUsers.has(to)) {
+        io.to(connectedUsers.get(to)).emit("stop typing");
       }
     });
 
-    // ---------------- DISCONNECT ----------------
-    socket.on("disconnect", async () => {
-      if (socket.userId) {
-        onlineUsers.delete(socket.userId);
-        try {
-          await User.findByIdAndUpdate(socket.userId, { online: false });
-        } catch (err) {
-          console.error("❌ Error updating user offline:", err);
-        }
-        console.log(`❌ User ${socket.userId} disconnected`);
-      }
+    // 🔴 Disconnect
+    socket.on("disconnect", () => {
+      connectedUsers.delete(userId);
+      console.log(`❌ User disconnected: ${userId}`);
     });
   });
 };
