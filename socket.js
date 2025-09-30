@@ -1,67 +1,80 @@
-const Message = require("./models/Message"); // Ensure path is correct
+const Message = require("./models/Message"); // Adjust path if needed
 
 module.exports = (io) => {
-  io.on("connection", (socket) => {
-    console.log("🔌 A user connected:", socket.id);
+io.on("connection", (socket) => {
+console.log("🔌 A user connected:", socket.id);
 
-    // Each user joins their private room (using userId)
-    socket.on("join", (userId) => {
-      socket.join(userId);
-      console.log(`👤 User ${userId} joined their private room`);
-    });
+// Join private room using userId  
+socket.on("join", (userId) => {  
+  socket.join(userId);  
+  console.log(`👤 User ${userId} joined their private room`);  
+});  
 
-    // ---------------- PRIVATE MESSAGE ----------------
-    socket.on("privateMessage", async (msg) => {
-      const { senderId, receiverId, content = "", fileUrl = "", type = "text" } = msg;
-      if (!receiverId || (!content && !fileUrl)) return;
+// Private message with DB save  
+socket.on("privateMessage", async (msg) => {  
+  const { senderId, receiverId, content, replyTo = null, isForwarded = false, fileUrl = "" } = msg;  
+  if (!receiverId || (!content && !fileUrl)) return;  
 
-      try {
-        // Save message in DB
-        const newMessage = new Message({
-          sender: senderId,
-          receiver: receiverId,  // Make sure your Message model uses `receiver`
-          content,
-          fileUrl,
-          type,
-          status: "sent",
-        });
-        await newMessage.save();
+  try {  
+    // Save message in DB  
+    const newMessage = new Message({  
+      sender: senderId,  
+      recipient: receiverId,  
+      content,  
+      fileUrl,  
+      replyTo,  
+      isForwarded,  
+      status: "sent",  
+      type: "text",  
+    });  
+    await newMessage.save();  
 
-        // Populate sender/receiver for frontend
-        const populatedMessage = await newMessage
-          .populate("sender", "username avatar")
-          .populate("receiver", "username avatar")
-          .execPopulate();
+    // Emit to receiver's room  
+    io.to(receiverId).emit("privateMessage", {  
+      _id: newMessage._id,  
+      senderId,  
+      content,  
+      fileUrl,  
+      replyTo,  
+      timestamp: newMessage.createdAt,  
+      isForwarded,  
+    });  
 
-        // Emit to receiver's room
-        io.to(receiverId).emit("privateMessage", populatedMessage);
+    // Confirm to sender  
+    socket.emit("privateMessageSent", {  
+      _id: newMessage._id,  
+      receiverId,  
+      content,  
+      fileUrl,  
+      replyTo,  
+      timestamp: newMessage.createdAt,  
+      isForwarded,  
+    });  
 
-        // Emit back to sender (to confirm/send locally)
-        socket.emit("privateMessageSent", populatedMessage);
+    console.log(`📩 Private message saved and sent from ${senderId} to ${receiverId}`);  
+  } catch (error) {  
+    console.error("❌ Error saving/sending private message:", error);  
+  }  
+});  
 
-        console.log(`📩 Private message saved and sent from ${senderId} to ${receiverId}`);
-      } catch (err) {
-        console.error("❌ Error saving/sending private message:", err);
-      }
-    });
+// Typing indicators  
+socket.on("typing", ({ receiverId, senderId }) => {  
+  if (receiverId) io.to(receiverId).emit("typing", { senderId });  
+});  
 
-    // ---------------- TYPING INDICATOR ----------------
-    socket.on("typing", ({ senderId, receiverId }) => {
-      if (receiverId) io.to(receiverId).emit("typing", { senderId });
-    });
+// Delivery/read receipts  
+socket.on("message-delivered", ({ messageId, userId }) => {  
+  io.emit("message-delivered", { messageId, userId });  
+});  
 
-    // ---------------- DELIVERY / READ RECEIPTS ----------------
-    socket.on("message-delivered", ({ messageId, userId }) => {
-      io.emit("message-delivered", { messageId, userId });
-    });
+socket.on("message-read", ({ messageId, userId }) => {  
+  io.emit("message-read", { messageId, userId });  
+});  
 
-    socket.on("message-read", ({ messageId, userId }) => {
-      io.emit("message-read", { messageId, userId });
-    });
+socket.on("disconnect", () => {  
+  console.log("❌ A user disconnected:", socket.id);  
+});
 
-    // ---------------- DISCONNECT ----------------
-    socket.on("disconnect", () => {
-      console.log("❌ A user disconnected:", socket.id);
-    });
-  });
+});
 };
+
