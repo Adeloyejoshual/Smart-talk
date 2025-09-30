@@ -157,12 +157,32 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   loadMessages();
 
-  // ---------- SEND TEXT ----------
+  // ---------- SEND TEXT (FIXED) ----------
+  async function sendTextMessage(content) {
+    try {
+      const res = await fetch("/api/messages/send", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ receiverId, content }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        appendMessage(data.message); // Show immediately
+        socket.emit("private message", data.message); // Broadcast real-time
+      }
+    } catch (err) {
+      console.error("Send message failed:", err);
+    }
+  }
+
   messageForm.addEventListener("submit", e=>{
     e.preventDefault();
     const content = messageInput.value.trim();
     if(!content) return;
-    socket.emit("private message", { to: receiverId, message: content });
+    sendTextMessage(content);
     messageInput.value = "";
   });
 
@@ -189,6 +209,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const res = await fetch("/api/messages/file", { method:"POST", headers:{Authorization:`Bearer ${token}`}, body:formData });
         const data = await res.json();
         appendMessage(data);
+        socket.emit("private message", data); // also broadcast file
       }catch(err){console.error("File upload failed:", err);}
     }
   }
