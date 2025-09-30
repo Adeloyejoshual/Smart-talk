@@ -18,6 +18,7 @@ module.exports = (io) => {
           .populate("sender", "username avatar")
           .populate("receiver", "username avatar");
 
+        // Send previous chat history to the user
         socket.emit("chatHistory", messages);
       } catch (error) {
         console.error("❌ Error loading chat history:", error);
@@ -74,13 +75,33 @@ module.exports = (io) => {
       if (receiverId) io.to(receiverId).emit("typing", { senderId });
     });
 
-    // --- Delivery & read receipts ---
-    socket.on("message-delivered", ({ messageId, userId }) => {
-      io.emit("message-delivered", { messageId, userId });
+    // --- Message delivery & read receipts ---
+    socket.on("message-delivered", async ({ messageId, userId }) => {
+      try {
+        const msg = await Message.findByIdAndUpdate(
+          messageId,
+          { status: "delivered" },
+          { new: true }
+        );
+        io.to(msg.receiver.toString()).emit("message-delivered", msg);
+        io.to(msg.sender.toString()).emit("message-delivered", msg);
+      } catch (err) {
+        console.error("❌ Error updating delivery status:", err);
+      }
     });
 
-    socket.on("message-read", ({ messageId, userId }) => {
-      io.emit("message-read", { messageId, userId });
+    socket.on("message-read", async ({ messageId, userId }) => {
+      try {
+        const msg = await Message.findByIdAndUpdate(
+          messageId,
+          { status: "read" },
+          { new: true }
+        );
+        io.to(msg.receiver.toString()).emit("message-read", msg);
+        io.to(msg.sender.toString()).emit("message-read", msg);
+      } catch (err) {
+        console.error("❌ Error updating read status:", err);
+      }
     });
 
     // --- Disconnect ---
