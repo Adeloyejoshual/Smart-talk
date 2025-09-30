@@ -1,16 +1,13 @@
 document.addEventListener("DOMContentLoaded", () => {
-  const socket = io({ auth: { token: localStorage.getItem("token") } });
   const token = localStorage.getItem("token");
+  if (!token) return window.location.href = "/home.html";
+
+  const socket = io({ auth: { token } });
   const urlParams = new URLSearchParams(window.location.search);
+  const receiverEmail = urlParams.get("userEmail"); // Use email now
+  if (!receiverEmail) return window.location.href = "/home.html";
 
-  const receiverId = urlParams.get("user");
-  const groupId = urlParams.get("group");
-  const isGroupChat = !!groupId;
-  const chatId = isGroupChat ? groupId : receiverId;
-
-  if (!token || !chatId) return window.location.href = "/home.html";
-
-  let myUserId = null;
+  let myEmail = null;
   let skip = 0, limit = 20, loading = false, isAtBottom = true, typingTimeout;
 
   const messageList = document.getElementById("messageList");
@@ -23,16 +20,14 @@ document.addEventListener("DOMContentLoaded", () => {
   typingIndicator.className = "italic text-sm text-gray-500 px-2";
   typingIndicator.textContent = "Typing...";
 
-  // Get current user ID from JWT
-  async function getMyUserId(token) {
-    try { return JSON.parse(atob(token.split(".")[1])).id; } catch { return null; }
+  // Extract email from JWT
+  async function getMyEmail(token) {
+    try { return JSON.parse(atob(token.split(".")[1])).email; } catch { return null; }
   }
 
-  getMyUserId(token).then(id => {
-    myUserId = id;
-    if (isGroupChat) socket.emit("joinGroup", { groupId, userId: myUserId });
-    else socket.emit("joinPrivateRoom", { sender: myUserId, receiverId });
-
+  getMyEmail(token).then(email => {
+    myEmail = email;
+    socket.emit("joinPrivateRoom", { receiverEmail }); // Join private room by email
     loadMessages(true);
   });
 
@@ -40,78 +35,73 @@ document.addEventListener("DOMContentLoaded", () => {
   messageList.addEventListener("scroll", () => {
     const threshold = 100;
     isAtBottom = messageList.scrollHeight - messageList.scrollTop - messageList.clientHeight < threshold;
-    if (!isGroupChat && messageList.scrollTop === 0 && !loading) loadMessages(false);
+    if (messageList.scrollTop === 0 && !loading) loadMessages(false);
   });
 
-  // Sending messages
+  // Send message
   messageForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     const content = messageInput.value.trim();
     if (!content) return;
 
-    const msgData = { senderId: myUserId, receiverId, content, timestamp: Date.now() };
+    const msgData = { toEmail: receiverEmail, content };
 
-    if (isGroupChat) socket.emit("groupMessage", { groupId, senderId: myUserId, content });
-    else socket.emit("private message", msgData);
-
-    appendMessage({ ...msgData, senderName: "You" }, true);
+    socket.emit("private message", msgData); // Send email-based message
+    appendMessage({ ...msgData, senderName: "You", timestamp: Date.now() }, true);
     messageInput.value = "";
   });
 
   // Typing indicators
-  if (!isGroupChat) {
-    messageInput.addEventListener("input", () => {
-      socket.emit("typing", { to: receiverId, from: myUserId });
-      clearTimeout(typingTimeout);
-      typingTimeout = setTimeout(() => socket.emit("stopTyping", { to: receiverId, from: myUserId }), 2000);
-    });
-  }
+  messageInput.addEventListener("input", () => {
+    socket.emit("typing", { toEmail: receiverEmail });
+    clearTimeout(typingTimeout);
+    typingTimeout = setTimeout(() => socket.emit("stop typing", { toEmail: receiverEmail }), 2000);
+  });
 
   // File/Image uploads
-  async function handleFileUpload(files, endpoint) {
+  async function handleFileUpload(files) {
     if (!files.length) return;
     const formData = new FormData();
-    files.forEach(f => formData.append("files", f));
-    const res = await fetch(endpoint, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: formData });
+    formData.append("recipientEmail", receiverEmail);
+    formData.append("file", files[0]);
+    const res = await fetch("/api/messages/file", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: formData });
     const data = await res.json();
-    if (data.success && data.messages) data.messages.forEach(msg => appendMessage(msg, true));
+    if (data) appendMessage(data, true);
   }
-  imageInput.addEventListener("change", e => handleFileUpload([...e.target.files], isGroupChat ? `/api/messages/group/upload/${groupId}` : `/api/messages/private/upload`));
-  fileInput.addEventListener("change", e => handleFileUpload([...e.target.files], isGroupChat ? `/api/messages/group/upload/${groupId}` : `/api/messages/private/upload`));
+  imageInput.addEventListener("change", e => handleFileUpload([...e.target.files]));
+  fileInput.addEventListener("change", e => handleFileUpload([...e.target.files]));
 
   // Socket listeners
   socket.on("private message", msg => {
-    if (!isGroupChat && (msg.senderId === receiverId || msg.receiverId === receiverId)) {
+    if (msg.senderEmail === receiverEmail || msg.receiverEmail === receiverEmail) {
       appendMessage(msg, isAtBottom);
     }
   });
 
-  socket.on("groupMessage", msg => {
-    if (isGroupChat && msg.groupId === groupId && msg.senderId !== myUserId) appendMessage(msg, isAtBottom);
-  });
-
-  socket.on("typing", ({ from }) => {
-    if (!isGroupChat && from === receiverId && !messageList.contains(typingIndicator)) {
+  socket.on("typing", ({ fromEmail }) => {
+    if (fromEmail === receiverEmail && !messageList.contains(typingIndicator)) {
       messageList.appendChild(typingIndicator);
       scrollToBottom();
     }
   });
-  socket.on("stopTyping", ({ from }) => {
-    if (!isGroupChat && from === receiverId && messageList.contains(typingIndicator)) messageList.removeChild(typingIndicator);
+  socket.on("stop typing", ({ fromEmail }) => {
+    if (fromEmail === receiverEmail && messageList.contains(typingIndicator)) {
+      messageList.removeChild(typingIndicator);
+    }
   });
 
   // Append messages
   function appendMessage(msg, scroll = true) {
-    const isMine = msg.senderId === myUserId || msg.senderName === "You";
+    const isMine = msg.senderEmail === myEmail || msg.senderName === "You";
     const li = document.createElement("li");
     li.className = `${isMine ? "sent" : "received"} mb-1`;
 
     const bubble = document.createElement("div");
     bubble.className = "bubble p-2 rounded-xl bg-gray-200 dark:bg-gray-800";
     bubble.innerHTML = `
-      ${!isMine && msg.senderName ? `<strong>${msg.senderName}</strong><br>` : ""}
+      ${!isMine && msg.senderName ? `<strong>${msg.senderName || msg.senderEmail}</strong><br>` : ""}
       ${msg.content || ""}
-      ${msg.file ? `<a href="${msg.file}" target="_blank">${msg.fileType || "File"}</a>` : ""}
+      ${msg.fileUrl ? `<a href="${msg.fileUrl}" target="_blank">${msg.fileType || "File"}</a>` : ""}
       <div class="meta text-xs opacity-60 text-right">${new Date(msg.timestamp || msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
     `;
     li.appendChild(bubble);
@@ -119,13 +109,12 @@ document.addEventListener("DOMContentLoaded", () => {
     if (scroll) scrollToBottom();
   }
 
-  // Load messages
+  // Load previous messages
   async function loadMessages(initial = false) {
     if (loading) return;
     loading = true;
     try {
-      const endpoint = isGroupChat ? `/api/messages/group-history/${groupId}` : `/api/messages/history/${receiverId}?skip=${skip}&limit=${limit}`;
-      const res = await fetch(endpoint, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`/api/messages/history/${receiverEmail}?skip=${skip}&limit=${limit}`, { headers: { Authorization: `Bearer ${token}` } });
       const data = await res.json();
       if (data.messages?.length) {
         if (initial) messageList.innerHTML = "";
