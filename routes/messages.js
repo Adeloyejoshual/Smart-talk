@@ -1,53 +1,57 @@
 const express = require("express");
 const router = express.Router();
 const Message = require("../models/Message");
-const authMiddleware = require("../middleware/authMiddleware");
+const User = require("../models/User");
+const verifyToken = require("../middleware/verifyToken");
 
-// 📩 Send new message
-router.post("/send", authMiddleware, async (req, res) => {
+// 📩 Send new message (username or email allowed)
+router.post("/send", verifyToken, async (req, res) => {
   try {
-    const { receiverEmail, content, fileUrl = "", type = "text" } = req.body;
-
-    if (!receiverEmail || (!content && !fileUrl)) {
+    const { receiverIdentifier, content, fileUrl = "", type = "text" } = req.body;
+    if (!receiverIdentifier || (!content && !fileUrl))
       return res.status(400).json({ success: false, error: "Missing data" });
-    }
 
-    console.log("🟢 Message request:", {
-      sender: req.user.email,
-      receiver: receiverEmail,
-      content,
+    // ✅ Find receiver by username OR email
+    const receiver = await User.findOne({
+      $or: [{ username: receiverIdentifier }, { email: receiverIdentifier }]
     });
+    if (!receiver) return res.status(404).json({ success: false, error: "Receiver not found" });
 
     const message = new Message({
-      senderEmail: req.user.email,
-      receiverEmail,
+      sender: req.userId,
+      receiver: receiver._id,
       content,
-      fileUrl,
       type: fileUrl ? "file" : type,
-      status: "sent",
+      fileUrl,
+      status: "sent"
     });
 
     await message.save();
 
-    res.json({ success: true, message });
+    const populated = await message.populate("sender", "username email avatar")
+                                   .populate("receiver", "username email avatar");
+
+    res.json({ success: true, message: populated });
   } catch (err) {
     console.error("❌ Error sending message:", err);
     res.status(500).json({ success: false, error: "Server error" });
   }
 });
 
-// 📜 Get chat history with a user
-router.get("/history/:email", authMiddleware, async (req, res) => {
+// 📜 Get chat history (works by _id)
+router.get("/history/:userId", verifyToken, async (req, res) => {
   try {
-    const otherEmail = req.params.email;
+    const otherUserId = req.params.userId;
 
     const messages = await Message.find({
       $or: [
-        { senderEmail: req.user.email, receiverEmail: otherEmail },
-        { senderEmail: otherEmail, receiverEmail: req.user.email },
+        { sender: req.userId, receiver: otherUserId },
+        { sender: otherUserId, receiver: req.userId },
       ],
     })
-      .sort({ createdAt: 1 });
+      .sort({ createdAt: 1 })
+      .populate("sender", "username email avatar")
+      .populate("receiver", "username email avatar");
 
     res.json({ success: true, messages });
   } catch (err) {
