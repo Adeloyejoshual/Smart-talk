@@ -43,108 +43,72 @@ app.get("/home", (req, res) => res.sendFile(path.join(__dirname, "public/home.ht
 app.get("/private-chat", (req, res) => res.sendFile(path.join(__dirname, "public/private-chat.html")));
 
 // ---------- Socket.IO Setup ----------
-const onlineUsers = new Map();
+const onlineUsers = new Map(); // email -> socketId
 
-// JWT auth for sockets
 io.use((socket, next) => {
-  const token = socket.handshake.auth.token;
+  const token = socket.handshake.auth?.token;
   if (!token) return next(new Error("Token required"));
   jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
     if (err) return next(new Error("Invalid token"));
-    socket.user = user;
+    socket.user = user; // { email, id, ... }
     next();
   });
 });
 
-io.on("connection", (socket) => {
-  const userId = socket.user.id;
-  onlineUsers.set(userId, socket.id);
+io.on("connection", async (socket) => {
+  const userEmail = socket.user.email;
+  onlineUsers.set(userEmail, socket.id);
 
-  User.findByIdAndUpdate(userId, { online: true }).catch(console.error);
+  await User.findOneAndUpdate({ email: userEmail }, { online: true }).catch(console.error);
+  console.log(`🔌 User connected: ${userEmail} (${socket.id})`);
 
-  console.log(`🔌 User connected: ${userId} (${socket.id})`);
-
-  // ------------------- PRIVATE CHAT -------------------
-  socket.on("joinPrivateRoom", ({ sender, receiverId }) => {
-    const roomId = [sender, receiverId].sort().join("_");
+  // Join private room
+  socket.on("joinPrivateRoom", ({ receiverEmail }) => {
+    const roomId = [userEmail, receiverEmail].sort().join("_");
     socket.join(roomId);
     socket.data.roomId = roomId;
   });
 
-  socket.on(
-    "private message",
-    async ({ to, message, fileUrl, fileType = "text" }) => {
-      try {
-        const newMsg = new Message({
-          sender: userId,
-          receiver: to,
-          content: message || "",
-          fileUrl: fileUrl || "",
-          fileType,
-        });
-        await newMsg.save();
+  // Send private message
+  socket.on("private message", async ({ toEmail, content, fileUrl, fileType = "text" }) => {
+    try {
+      if (!toEmail) return console.error("❌ Receiver email required");
 
-        const senderUser = await User.findById(userId).select("username avatar");
+      const newMsg = new Message({
+        senderEmail: userEmail,
+        receiverEmail: toEmail,
+        content: content || "",
+        fileUrl: fileUrl || "",
+        fileType,
+      });
+      await newMsg.save();
 
-        const payload = {
-          _id: newMsg._id,
-          sender: {
-            _id: userId,
-            username: senderUser.username,
-            avatar: senderUser.avatar,
-          },
-          receiver: to,
-          content: newMsg.content,
-          fileUrl: newMsg.fileUrl,
-          fileType: newMsg.fileType,
-          createdAt: newMsg.createdAt,
-        };
+      // Emit to sender
+      socket.emit("private message", newMsg);
 
-        const toSocketId = onlineUsers.get(to);
-        if (toSocketId) io.to(toSocketId).emit("private message", payload);
-        socket.emit("private message", payload);
-      } catch (err) {
-        console.error("❌ Error sending private message:", err);
-      }
+      // Emit to receiver if online
+      const toSocketId = onlineUsers.get(toEmail);
+      if (toSocketId) io.to(toSocketId).emit("private message", newMsg);
+    } catch (err) {
+      console.error("❌ Error sending private message:", err);
     }
-  );
-
-  socket.on("typing", ({ to }) => {
-    const toSocketId = onlineUsers.get(to);
-    if (toSocketId) io.to(toSocketId).emit("typing", { from: userId });
   });
 
-  socket.on("stop typing", ({ to }) => {
-    const toSocketId = onlineUsers.get(to);
-    if (toSocketId) io.to(toSocketId).emit("stop typing", { from: userId });
+  // Typing indicators
+  socket.on("typing", ({ toEmail }) => {
+    const toSocketId = onlineUsers.get(toEmail);
+    if (toSocketId) io.to(toSocketId).emit("typing", { fromEmail: userEmail });
   });
-
-  // ------------------- VIDEO / VOICE CALL -------------------
-  socket.on("call-user", ({ to, offer }) => {
-    const toSocketId = onlineUsers.get(to);
-    if (toSocketId) io.to(toSocketId).emit("incoming-call", { from: userId, offer });
-  });
-
-  socket.on("answer-call", ({ to, answer }) => {
-    const toSocketId = onlineUsers.get(to);
-    if (toSocketId) io.to(toSocketId).emit("call-answered", { from: userId, answer });
-  });
-
-  socket.on("ice-candidate", ({ to, candidate }) => {
-    const toSocketId = onlineUsers.get(to);
-    if (toSocketId) io.to(toSocketId).emit("ice-candidate", { from: userId, candidate });
-  });
-
-  socket.on("end-call", ({ to }) => {
-    const toSocketId = onlineUsers.get(to);
-    if (toSocketId) io.to(toSocketId).emit("end-call", { from: userId });
+  socket.on("stop typing", ({ toEmail }) => {
+    const toSocketId = onlineUsers.get(toEmail);
+    if (toSocketId) io.to(toSocketId).emit("stop typing", { fromEmail: userEmail });
   });
 
   // ------------------- DISCONNECT -------------------
   socket.on("disconnect", async () => {
-    onlineUsers.delete(userId);
-    await User.findByIdAndUpdate(userId, { online: false }).catch(console.error);
-    console.log(`❌ User disconnected: ${userId}`);
+    onlineUsers.delete(userEmail);
+    await User.findOneAndUpdate({ email: userEmail }, { online: false, lastSeen: new Date() }).catch(console.error);
+    console.log(`❌ User disconnected: ${userEmail}`);
   });
 });
 
@@ -160,44 +124,25 @@ app.post("/api/messages/file", upload.single("file"), async (req, res) => {
   try {
     const token = req.headers.authorization?.split(" ")[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const senderId = decoded.id;
-    const { recipient } = req.body;
+    const senderEmail = decoded.email;
+    const { recipientEmail } = req.body;
 
-    if (!recipient || !req.file) {
-      return res.status(400).json({ message: "Missing recipient or file" });
-    }
+    if (!recipientEmail || !req.file) return res.status(400).json({ message: "Missing recipient or file" });
 
     const newMsg = new Message({
-      sender: senderId,
-      receiver: recipient,
+      senderEmail,
+      receiverEmail: recipientEmail,
       fileUrl: `/uploads/${req.file.filename}`,
       fileType: req.file.mimetype.startsWith("image/") ? "image" : "file",
     });
     await newMsg.save();
 
-    const senderUser = await User.findById(senderId).select("username avatar");
+    socket.emit("private message", newMsg);
 
-    const payload = {
-      _id: newMsg._id,
-      sender: {
-        _id: senderId,
-        username: senderUser.username,
-        avatar: senderUser.avatar,
-      },
-      receiver: recipient,
-      content: newMsg.content,
-      fileUrl: newMsg.fileUrl,
-      fileType: newMsg.fileType,
-      createdAt: newMsg.createdAt,
-    };
+    const toSocketId = onlineUsers.get(recipientEmail);
+    if (toSocketId) io.to(toSocketId).emit("private message", newMsg);
 
-    const toSocketId = onlineUsers.get(recipient);
-    if (toSocketId) io.to(toSocketId).emit("private message", payload);
-
-    const fromSocketId = onlineUsers.get(senderId);
-    if (fromSocketId) io.to(fromSocketId).emit("private message", payload);
-
-    res.json(payload);
+    res.json(newMsg);
   } catch (err) {
     console.error("❌ Upload failed:", err);
     res.status(500).json({ message: "Upload failed" });
@@ -206,10 +151,7 @@ app.post("/api/messages/file", upload.single("file"), async (req, res) => {
 
 // ---------- MongoDB ----------
 mongoose
-  .connect(process.env.MONGO_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  })
+  .connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
   .then(() => console.log("✅ MongoDB connected"))
   .catch((err) => console.error("❌ MongoDB error:", err));
 
