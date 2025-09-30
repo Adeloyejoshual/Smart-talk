@@ -15,6 +15,7 @@ const authMiddleware = (req, res, next) => {
     req.userId = decoded.id || decoded.userId;
     next();
   } catch (err) {
+    console.error("JWT Error:", err);
     return res.status(403).json({ message: "Invalid token" });
   }
 };
@@ -28,6 +29,7 @@ router.get("/me", authMiddleware, async (req, res) => {
     if (!user) return res.status(404).json({ message: "User not found" });
     res.json(user);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ message: "Error fetching profile" });
   }
 });
@@ -40,16 +42,17 @@ router.post("/edit-profile", authMiddleware, async (req, res) => {
       req.userId,
       { username, email, bio, avatar, status },
       { new: true }
-    );
+    ).select("-password");
     res.json(updatedUser);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ message: "Failed to update profile" });
   }
 });
 
 // ------------------ FRIENDS ------------------
 
-// Add friend by ID
+// Add friend by ID (mutual friendship)
 router.post("/add-friend/:id", authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.userId);
@@ -59,27 +62,42 @@ router.post("/add-friend/:id", authMiddleware, async (req, res) => {
       return res.status(400).json({ message: "Invalid friend" });
     }
 
+    const friend = await User.findById(friendId);
+    if (!friend) return res.status(404).json({ message: "Friend not found" });
+
     if (user.friends.includes(friendId)) {
       return res.status(400).json({ message: "Already friends" });
     }
 
     user.friends.push(friendId);
+    friend.friends.push(user._id);
+
     await user.save();
+    await friend.save();
 
     res.json({ message: "Friend added", friends: user.friends });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ message: "Could not add friend." });
   }
 });
 
-// Remove friend
+// Remove friend (from both sides)
 router.post("/remove-friend/:id", authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.userId);
-    user.friends = user.friends.filter(id => id.toString() !== req.params.id);
+    const friendId = req.params.id;
+
+    user.friends = user.friends.filter((id) => id.toString() !== friendId);
     await user.save();
+
+    await User.findByIdAndUpdate(friendId, {
+      $pull: { friends: req.userId },
+    });
+
     res.json({ message: "Friend removed", friends: user.friends });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ message: "Error removing friend" });
   }
 });
@@ -87,9 +105,13 @@ router.post("/remove-friend/:id", authMiddleware, async (req, res) => {
 // Get friend list
 router.get("/friends", authMiddleware, async (req, res) => {
   try {
-    const user = await User.findById(req.userId).populate("friends", "username email avatar status");
+    const user = await User.findById(req.userId).populate(
+      "friends",
+      "username email avatar status online"
+    );
     res.json(user.friends);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ message: "Failed to load friends" });
   }
 });
@@ -106,9 +128,10 @@ router.get("/search", authMiddleware, async (req, res) => {
         { username: { $regex: query, $options: "i" } },
         { email: { $regex: query, $options: "i" } },
       ],
-    }).select("username email avatar");
+    }).select("username email avatar status online");
     res.json(users);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ message: "Search failed" });
   }
 });
@@ -116,9 +139,12 @@ router.get("/search", authMiddleware, async (req, res) => {
 // Get all users except self
 router.get("/list", authMiddleware, async (req, res) => {
   try {
-    const users = await User.find({ _id: { $ne: req.userId } }).select("username email avatar");
+    const users = await User.find({ _id: { $ne: req.userId } }).select(
+      "username email avatar status online"
+    );
     res.json(users);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ message: "Error fetching users" });
   }
 });
@@ -130,7 +156,7 @@ router.post("/customer-service", authMiddleware, async (req, res) => {
   const { message } = req.body;
   if (!message) return res.status(400).json({ message: "Message is required" });
 
-  console.log(`Customer Service from ${req.userId}: ${message}`);
+  console.log(`📩 Customer Service from ${req.userId}: ${message}`);
   res.json({ message: "Message received" });
 });
 
@@ -141,7 +167,7 @@ router.post("/contact", authMiddleware, async (req, res) => {
     return res.status(400).json({ message: "Subject and message required" });
   }
 
-  console.log(`Contact from ${req.userId} - ${subject}: ${message}`);
+  console.log(`📩 Contact from ${req.userId} - ${subject}: ${message}`);
   res.json({ message: "Contact received" });
 });
 
