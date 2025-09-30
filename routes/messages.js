@@ -2,93 +2,48 @@ const express = require("express");
 const router = express.Router();
 const Message = require("../models/Message");
 const authMiddleware = require("../middleware/authMiddleware");
-const multer = require("multer");
-const path = require("path");
-const fs = require("fs");
 
-// ---------------- FILE UPLOAD SETUP ----------------
-const uploadPath = path.join(__dirname, "../public/uploads");
-if (!fs.existsSync(uploadPath)) fs.mkdirSync(uploadPath, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadPath),
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `${req.userId}-${Date.now()}${ext}`);
-  },
-});
-
-const upload = multer({ storage });
-
-// ---------------- SEND MESSAGE ----------------
+// 📩 Send new message
 router.post("/send", authMiddleware, async (req, res) => {
   try {
-    const { receiverId, content, type, fileUrl } = req.body;
-    if (!receiverId) {
-      return res.status(400).json({ error: "Receiver ID required" });
+    const { receiverId, content, fileUrl = "", type = "text" } = req.body;
+
+    if (!receiverId || (!content && !fileUrl)) {
+      return res.status(400).json({ success: false, error: "Missing data" });
     }
 
-    const newMessage = new Message({
+    console.log("🟢 Message request:", {
       sender: req.userId,
       receiver: receiverId,
-      content: content || "",
-      type: type || "text",
-      fileUrl: fileUrl || "",
-      fileType: type === "text" ? "text" : type,
+      content,
+    });
+
+    const message = new Message({
+      sender: req.userId, // ✅ FIXED: use req.userId from middleware
+      receiver: receiverId,
+      content,
+      fileUrl,
+      type: fileUrl ? "file" : type,
       status: "sent",
     });
 
-    await newMessage.save();
-    const populated = await newMessage
+    await message.save();
+
+    const populated = await message
       .populate("sender", "username avatar")
       .populate("receiver", "username avatar");
 
     res.json({ success: true, message: populated });
   } catch (err) {
     console.error("❌ Error sending message:", err);
-    res.status(500).json({ error: "Failed to send message" });
+    res.status(500).json({ success: false, error: "Server error" });
   }
 });
 
-// ---------------- SEND FILE MESSAGE ----------------
-router.post("/file", authMiddleware, upload.single("file"), async (req, res) => {
-  try {
-    const { recipient } = req.body;
-    if (!recipient) {
-      return res.status(400).json({ error: "Recipient ID required" });
-    }
-
-    const fileType = req.file.mimetype.startsWith("image/") ? "image" : "file";
-    const newMessage = new Message({
-      sender: req.userId,
-      receiver: recipient,
-      type: fileType,
-      fileType: fileType,
-      fileUrl: `/uploads/${req.file.filename}`,
-      status: "sent",
-    });
-
-    await newMessage.save();
-    const populated = await newMessage
-      .populate("sender", "username avatar")
-      .populate("receiver", "username avatar");
-
-    res.json({ success: true, message: populated });
-  } catch (err) {
-    console.error("❌ File upload failed:", err);
-    res.status(500).json({ error: "File upload failed" });
-  }
-});
-
-// ---------------- GET CHAT HISTORY (with pagination) ----------------
+// 📜 Get chat history with a user
 router.get("/history/:userId", authMiddleware, async (req, res) => {
   try {
     const otherUserId = req.params.userId;
-
-    // Pagination params (defaults: page=1, limit=20)
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
-    const skip = (page - 1) * limit;
 
     const messages = await Message.find({
       $or: [
@@ -96,36 +51,14 @@ router.get("/history/:userId", authMiddleware, async (req, res) => {
         { sender: otherUserId, receiver: req.userId },
       ],
     })
+      .sort({ createdAt: 1 })
       .populate("sender", "username avatar")
-      .populate("receiver", "username avatar")
-      .sort({ createdAt: -1 }) // newest first
-      .skip(skip)
-      .limit(limit);
+      .populate("receiver", "username avatar");
 
-    // Reverse so UI shows oldest first
-    const ordered = messages.reverse();
-
-    const totalMessages = await Message.countDocuments({
-      $or: [
-        { sender: req.userId, receiver: otherUserId },
-        { sender: otherUserId, receiver: req.userId },
-      ],
-    });
-
-    res.json({
-      success: true,
-      messages: ordered,
-      pagination: {
-        page,
-        limit,
-        totalMessages,
-        totalPages: Math.ceil(totalMessages / limit),
-        hasMore: page * limit < totalMessages,
-      },
-    });
+    res.json({ success: true, messages });
   } catch (err) {
-    console.error("❌ Error fetching chat history:", err);
-    res.status(500).json({ error: "Failed to fetch chat history" });
+    console.error("❌ Error fetching history:", err);
+    res.status(500).json({ success: false, error: "Server error" });
   }
 });
 
