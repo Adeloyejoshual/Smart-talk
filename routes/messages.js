@@ -38,16 +38,22 @@ router.post("/send", verifyToken, async (req, res) => {
   }
 });
 
-// 📜 Get chat history (works by _id)
-router.get("/history/:userId", verifyToken, async (req, res) => {
+// 📜 Get chat history (username or email allowed)
+router.get("/history/:identifier", verifyToken, async (req, res) => {
   try {
-    const otherUserId = req.params.userId;
+    const identifier = req.params.identifier;
+
+    // Find the other user by username or email
+    const otherUser = await User.findOne({
+      $or: [{ username: identifier }, { email: identifier }]
+    });
+    if (!otherUser) return res.status(404).json({ success: false, error: "User not found" });
 
     const messages = await Message.find({
       $or: [
-        { sender: req.userId, receiver: otherUserId },
-        { sender: otherUserId, receiver: req.userId },
-      ],
+        { sender: req.userId, receiver: otherUser._id },
+        { sender: otherUser._id, receiver: req.userId },
+      ]
     })
       .sort({ createdAt: 1 })
       .populate("sender", "username email avatar")
