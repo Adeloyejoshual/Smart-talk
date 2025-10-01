@@ -3,14 +3,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   const token = localStorage.getItem("token");
   if (!token) return window.location.href = "/home";
 
-  // Decode JWT to get my email
   let myEmail = null;
   try {
     myEmail = JSON.parse(atob(token.split(".")[1])).email;
-  } catch (err) { return window.location.href = "/home"; }
+  } catch (err) {
+    return window.location.href = "/home";
+  }
 
   const urlParams = new URLSearchParams(window.location.search);
-  const receiverEmail = urlParams.get("user"); // must pass ?user=email
+  const receiverEmail = urlParams.get("user");
   if (!receiverEmail) return window.location.href = "/home";
 
   const messageList = document.getElementById("messageList");
@@ -26,16 +27,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   let typingTimeout;
   let isAtBottom = true;
 
-  // Join private room
   socket.emit("joinPrivateRoom", { receiverEmail });
 
-  // Scroll detection
   messageList.addEventListener("scroll", () => {
     const threshold = 100;
     isAtBottom = messageList.scrollHeight - messageList.scrollTop - messageList.clientHeight < threshold;
   });
 
-  // ----------------- Load Old Messages -----------------
   async function loadMessages() {
     try {
       const res = await fetch(`/api/messages/history/${receiverEmail}`, {
@@ -47,23 +45,23 @@ document.addEventListener("DOMContentLoaded", async () => {
         data.messages.forEach(msg => appendMessage(msg));
         scrollToBottom();
       }
-    } catch (err) { console.error("Failed to load messages:", err); }
+    } catch (err) {
+      console.error("Failed to load messages:", err);
+    }
   }
+
   await loadMessages();
 
-  // ----------------- Send Message -----------------
   messageForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     const content = messageInput.value.trim();
     if (!content) return;
-
     const msgData = { toEmail: receiverEmail, content };
     socket.emit("private message", msgData);
     appendMessage({ ...msgData, senderEmail: myEmail, createdAt: new Date() });
     messageInput.value = "";
   });
 
-  // ----------------- Typing Indicator -----------------
   messageInput.addEventListener("input", () => {
     socket.emit("typing", { toEmail: receiverEmail });
     clearTimeout(typingTimeout);
@@ -76,20 +74,19 @@ document.addEventListener("DOMContentLoaded", async () => {
       scrollToBottom();
     }
   });
+
   socket.on("stop typing", ({ fromEmail }) => {
     if (fromEmail === receiverEmail && messageList.contains(typingIndicator)) {
       messageList.removeChild(typingIndicator);
     }
   });
 
-  // ----------------- Incoming Messages -----------------
   socket.on("private message", msg => {
     if (msg.senderEmail === receiverEmail || msg.receiverEmail === receiverEmail) {
       appendMessage(msg);
     }
   });
 
-  // ----------------- File/Image Upload -----------------
   async function handleFileUpload(files) {
     if (!files.length) return;
     const formData = new FormData();
@@ -103,17 +100,18 @@ document.addEventListener("DOMContentLoaded", async () => {
       });
       const data = await res.json();
       if (data) appendMessage(data);
-    } catch (err) { console.error("Upload failed:", err); }
+    } catch (err) {
+      console.error("Upload failed:", err);
+    }
   }
+
   imageInput.addEventListener("change", e => handleFileUpload(e.target.files));
   fileInput.addEventListener("change", e => handleFileUpload(e.target.files));
 
-  // ----------------- Append Message -----------------
   function appendMessage(msg) {
     const isMine = msg.senderEmail === myEmail;
     const li = document.createElement("li");
     li.className = `${isMine ? "sent" : "received"} mb-1`;
-
     const bubble = document.createElement("div");
     bubble.className = "bubble p-2 rounded-xl bg-gray-200 dark:bg-gray-800";
     bubble.innerHTML = `
