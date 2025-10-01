@@ -38,32 +38,31 @@ module.exports = (io) => {
 
     // --- Private messaging ---
     socket.on("private message", async (msg) => {
-      try {
-        const receiverEmail = msg.receiverEmail;
-        if (!receiverEmail) return console.error("❌ receiverEmail is required");
-
-        // Save message to DB
-        const newMessage = new Message({
-          senderEmail: userEmail,
-          receiverEmail,
-          content: msg.content || "",
-          type: msg.type || (msg.fileUrl ? "file" : "text"),
-          fileUrl: msg.fileUrl || "",
-          status: "sent"
-        });
-        await newMessage.save();
-
-        // Emit to sender
-        io.to(socket.id).emit("private message", newMessage);
-
-        // Emit to receiver if online
-        if (connectedUsers.has(receiverEmail)) {
-          io.to(connectedUsers.get(receiverEmail)).emit("private message", newMessage);
-        }
-      } catch (err) {
-        console.error("❌ Error sending private message:", err);
-      }
+  try {
+    const receiverEmail = msg.receiverEmail;
+    if (!receiverEmail) return console.error("❌ receiverEmail is required");
+    // Save message to DB
+    const newMessage = new Message({
+      senderEmail: userEmail,
+      receiverEmail,
+      content: msg.content || "",
+      type: msg.type || (msg.fileUrl ? "file" : "text"),
+      fileUrl: msg.fileUrl || "",
+      status: "sent",
+      username: msg.username // Add username to message object
     });
+    await newMessage.save();
+    // Emit to sender
+    io.to(socket.id).emit("private message", newMessage);
+    // Emit to receiver if online
+    if (connectedUsers.has(receiverEmail)) {
+      io.to(connectedUsers.get(receiverEmail)).emit("private message", newMessage);
+    }
+  } catch (err) {
+    console.error("❌ Error sending private message:", err);
+  }
+});
+
 
     // --- Typing indicators ---
     socket.on("typing", ({ to }) => {
