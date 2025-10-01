@@ -23,7 +23,10 @@ const messageRoutes = require("./routes/messages");
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
-  cors: { origin: "*", methods: ["GET", "POST"] },
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  },
 });
 
 // ---------- Middleware ----------
@@ -58,7 +61,6 @@ io.use((socket, next) => {
 io.on("connection", async (socket) => {
   const userEmail = socket.user.email;
   onlineUsers.set(userEmail, socket.id);
-
   await User.findOneAndUpdate({ email: userEmail }, { online: true }).catch(console.error);
   console.log(`🔌 User connected: ${userEmail} (${socket.id})`);
 
@@ -73,7 +75,6 @@ io.on("connection", async (socket) => {
   socket.on("private message", async ({ toEmail, content, fileUrl, fileType = "text" }) => {
     try {
       if (!toEmail) return console.error("❌ Receiver email required");
-
       // Save message in DB
       const newMsg = new Message({
         senderEmail: userEmail,
@@ -84,10 +85,8 @@ io.on("connection", async (socket) => {
         status: "sent"
       });
       await newMsg.save();
-
       // Emit to sender
       socket.emit("private message", newMsg);
-
       // Emit to receiver if online
       const toSocketId = onlineUsers.get(toEmail);
       if (toSocketId) io.to(toSocketId).emit("private message", newMsg);
@@ -101,6 +100,7 @@ io.on("connection", async (socket) => {
     const toSocketId = onlineUsers.get(toEmail);
     if (toSocketId) io.to(toSocketId).emit("typing", { fromEmail: userEmail });
   });
+
   socket.on("stop typing", ({ toEmail }) => {
     const toSocketId = onlineUsers.get(toEmail);
     if (toSocketId) io.to(toSocketId).emit("stop typing", { fromEmail: userEmail });
@@ -116,8 +116,7 @@ io.on("connection", async (socket) => {
 
 // ---------- FILE UPLOAD ----------
 const storage = multer.diskStorage({
-  destination: (req, file, cb) =>
-    cb(null, path.join(__dirname, "public/uploads")),
+  destination: (req, file, cb) => cb(null, path.join(__dirname, "public/uploads")),
   filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname),
 });
 const upload = multer({ storage });
@@ -128,9 +127,7 @@ app.post("/api/messages/file", upload.single("file"), async (req, res) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const senderEmail = decoded.email;
     const { recipientEmail } = req.body;
-
     if (!recipientEmail || !req.file) return res.status(400).json({ message: "Missing recipient or file" });
-
     const newMsg = new Message({
       senderEmail,
       receiverEmail: recipientEmail,
@@ -138,12 +135,8 @@ app.post("/api/messages/file", upload.single("file"), async (req, res) => {
       fileType: req.file.mimetype.startsWith("image/") ? "image" : "file",
     });
     await newMsg.save();
-
-    socket.emit("private message", newMsg);
-
     const toSocketId = onlineUsers.get(recipientEmail);
     if (toSocketId) io.to(toSocketId).emit("private message", newMsg);
-
     res.json(newMsg);
   } catch (err) {
     console.error("❌ Upload failed:", err);
