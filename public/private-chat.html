@@ -3,43 +3,135 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SmartTalk - Private Chat</title>
+  <title>Private Chat - SmartTalk</title>
   <link rel="stylesheet" href="/styles/chat.css">
   <style>
-    body { margin:0; font-family: Arial, sans-serif; background: #1c1c1c; color: #fff; display: flex; flex-direction: column; height: 100vh; }
-    header { background:#111; padding:10px; text-align:center; font-size:1.2rem; font-weight:bold; }
-    #messageList { flex:1; overflow-y:auto; padding:10px; list-style:none; margin:0; }
-    li.sent { text-align:right; }
-    li.received { text-align:left; }
-    .bubble { display:inline-block; max-width:70%; word-wrap:break-word; margin-bottom:5px; }
-    .meta { font-size:0.7rem; opacity:0.6; margin-top:2px; }
-    #messageForm { display:flex; padding:10px; background:#111; }
-    #messageInput { flex:1; padding:8px; border-radius:5px; border:none; }
-    #sendBtn, #imageInputBtn, #fileInputBtn { margin-left:5px; padding:8px 12px; border:none; border-radius:5px; cursor:pointer; background:#333; color:#fff; }
-    #imageInput, #fileInput { display:none; }
+    /* Global Styles */
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background-color: #1c1c1c;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    /* Header Styles */
+    header {
+      background-color: #111;
+      padding: 10px;
+      text-align: center;
+      font-size: 1.2rem;
+      font-weight: bold;
+    }
+
+    /* Message List Styles */
+    #messageList {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px;
+      list-style: none;
+      margin: 0;
+    }
+
+    /* Message Item Styles */
+    li.sent {
+      text-align: right;
+    }
+
+    li.received {
+      text-align: left;
+    }
+
+    .bubble {
+      display: inline-block;
+      max-width: 70%;
+      word-wrap: break-word;
+      margin-bottom: 5px;
+    }
+
+    .meta {
+      font-size: 0.7rem;
+      opacity: 0.6;
+      margin-top: 2px;
+    }
+
+    /* Form Styles */
+    #messageForm {
+      display: flex;
+      padding: 10px;
+      background-color: #111;
+    }
+
+    #messageInput {
+      flex: 1;
+      padding: 8px;
+      border-radius: 5px;
+      border: none;
+    }
+
+    #sendBtn, #imageInputBtn, #fileInputBtn, #videoCallBtn, #voiceCallBtn {
+      margin-left: 5px;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      background-color: #333;
+      color: #fff;
+    }
+
+    #imageInput, #fileInput {
+      display: none;
+    }
   </style>
 </head>
 <body>
+  <!-- Header -->
+  <header>
+    Private Chat
+  </header>
 
-  <header>Private Chat</header>
-
+  <!-- Message List -->
   <ul id="messageList"></ul>
 
+  <!-- Message Form -->
   <form id="messageForm">
-    <input type="text" id="messageInput" placeholder="Type a message..." autocomplete="off" />
+    <input type="text" id="messageInput" placeholder="Type a message..." autocomplete="off">
     <button type="button" id="imageInputBtn">📷</button>
     <input type="file" id="imageInput" accept="image/*">
     <button type="button" id="fileInputBtn">📎</button>
     <input type="file" id="fileInput">
+    <button type="button" id="videoCallBtn">📹</button>
+    <button type="button" id="voiceCallBtn">📞</button>
     <button type="submit" id="sendBtn">Send</button>
   </form>
 
+  <!-- Socket.IO Script -->
   <script src="/socket.io/socket.io.js"></script>
+
+  <!-- Chat Script -->
   <script src="/scripts/chat.js"></script>
+
+  <!-- Script to hook file/image buttons to hidden inputs -->
   <script>
-    // Hook file/image buttons to hidden inputs
-    document.getElementById("imageInputBtn").addEventListener("click", () => document.getElementById("imageInput").click());
-    document.getElementById("fileInputBtn").addEventListener("click", () => document.getElementById("fileInput").click());
+    document.getElementById("imageInputBtn").addEventListener("click", () => {
+      document.getElementById("imageInput").click();
+    });
+
+    document.getElementById("fileInputBtn").addEventListener("click", () => {
+      document.getElementById("fileInput").click();
+    });
+
+    document.getElementById("videoCallBtn").addEventListener("click", () => {
+      // Start video call
+      console.log("Starting video call...");
+    });
+
+    document.getElementById("voiceCallBtn").addEventListener("click", () => {
+      // Start voice call
+      console.log("Starting voice call...");
+    });
   </script>
 </body>
 </html>
