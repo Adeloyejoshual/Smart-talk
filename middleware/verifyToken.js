@@ -1,4 +1,3 @@
-// middleware/verifyToken.js
 const jwt = require("jsonwebtoken");
 
 function verifyToken(req, res, next) {
@@ -8,13 +7,16 @@ function verifyToken(req, res, next) {
   }
 
   const token = rawToken.replace(/^Bearer\s+/i, "");
-
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.userId = decoded.id || decoded.userId;
     next();
   } catch (err) {
-    return res.status(403).json({ message: "Invalid or expired token." });
+    if (err.name === "TokenExpiredError") {
+      return res.status(403).json({ message: "Token has expired. Please re-authenticate." });
+    } else {
+      return res.status(403).json({ message: "Invalid token. Please try again." });
+    }
   }
 }
 
