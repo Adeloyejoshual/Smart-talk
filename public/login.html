@@ -1,97 +1,28 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <title>SmartTalk - Login</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="/styles/auth.css" />
-  <style>
-    body {
-      background: linear-gradient(to right, #004466, #001f33);
-      font-family: 'Segoe UI', sans-serif;
-      color: #fff;
-      margin: 0;
-      padding: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-    }
-
-    .auth-container {
-      background: #111;
-      padding: 2rem;
-      border-radius: 10px;
-      box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
-      width: 100%;
-      max-width: 400px;
-    }
-
-    .auth-container h2 {
-      text-align: center;
-      margin-bottom: 1rem;
-    }
-
-    input[type="text"],
-    input[type="password"] {
-      width: 100%;
-      padding: 0.75rem;
-      margin: 0.5rem 0;
-      border-radius: 8px;
-      border: none;
-      background: #222;
-      color: #fff;
-    }
-
-    button {
-      width: 100%;
-      padding: 0.75rem;
-      background-color: #0066cc;
-      color: #fff;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      font-weight: bold;
-      margin-top: 0.5rem;
-    }
-
-    label {
-      font-size: 0.9rem;
-      display: block;
-      margin-top: 0.25rem;
-    }
-
-    #message {
-      text-align: center;
-      margin: 1rem 0;
-      font-size: 0.95rem;
-      color: red;
-    }
-  </style>
+  <title>Login</title>
 </head>
 <body>
-  <div class="auth-container">
-    <h2>Login</h2>
-    <form id="loginForm">
-      <input type="text" placeholder="Email or Username" name="email" required />
-      <input type="password" placeholder="Password" name="password" id="loginPassword" required />
-      <label>
-        <input type="checkbox" onclick="togglePassword('loginPassword')"> Show Password
-      </label>
-      <button type="submit">Login</button>
-    </form>
+  <h2>Login</h2>
+  <form id="loginForm">
+    <input type="text" id="input" placeholder="Username or Email" required><br>
+    <input type="password" id="password" placeholder="Password" required><br>
+    <button type="submit">Login</button>
+  </form>
 
-    <div id="message"></div>
-  </div>
+  <p><a href="reset.html">Forgot Password?</a></p>
 
-  <!-- JS scripts -->
   <script>
-    function togglePassword(id) {
-      const field = document.getElementById(id);
-      field.type = field.type === 'password' ? 'text' : 'password';
-    }
-  </script>
-  <script src="/scripts/login.js"></script>
-  <script src="/scripts/theme.js"></script>
-</body>
-</html>
+    document.getElementById("loginForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          input: document.getElementById("input").value,
+          password: document.getElementById("password").value
+        })
+      });
+      const data = await res.json();
+      if
