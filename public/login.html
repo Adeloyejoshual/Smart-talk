@@ -25,4 +25,13 @@
         })
       });
       const data = await res.json();
-      if
+      if (data.success) {
+        alert("✅ Logged in!");
+        window.location.href = "chat.html"; // redirect to chat after login
+      } else {
+        alert("❌ " + data.message);
+      }
+    });
+  </script>
+</body>
+</html>
