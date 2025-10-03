@@ -1,92 +1,65 @@
-const express = require("express");
-const jwt = require("jsonwebtoken");
-const User = require("../models/User");
+import express from "express";
+import { auth, db } from "../firebase.js";
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail
+} from "firebase/auth";
+import { doc, setDoc, getDocs, collection, query, where } from "firebase/firestore";
 
 const router = express.Router();
 
-// ✅ Register
+// REGISTER
 router.post("/register", async (req, res) => {
+  const { username, name, email, password } = req.body;
   try {
-    const { username, email, password } = req.body;
-    console.log("📥 Register Request:", { username, email });
+    const userCred = await createUserWithEmailAndPassword(auth, email, password);
+    const uid = userCred.user.uid;
 
-    if (!username || !email || !password) {
-      console.warn("⚠️ Missing fields during registration");
-      return res.status(400).json({ error: "Username, email, and password are required" });
-    }
-
-    const existingUser = await User.findOne({
-      $or: [{ username }, { email }],
+    await setDoc(doc(db, "users", uid), {
+      uid,
+      username,
+      name,
+      email,
+      photoUrl: "",
+      walletBalance: 0,
+      freeTrialEnd: new Date(Date.now() + 90*24*60*60*1000).toISOString()
     });
 
-    if (existingUser) {
-      console.warn("⚠️ Duplicate user:", existingUser.username, existingUser.email);
-      return res.status(400).json({ error: "Username or email already in use" });
-    }
-
-    const user = new User({ username, email, password });
-    await user.save();
-
-    console.log("✅ User registered:", user.username);
-
-    res.status(201).json({
-      message: "User created",
-      user: {
-        id: user._id,
-        username: user.username,
-        email: user.email,
-      },
-    });
+    res.json({ success: true, uid });
   } catch (err) {
-    console.error("❌ Registration Error:", err.message, err.stack);
-    res.status(500).json({ error: "Server error during registration" });
+    res.status(400).json({ success: false, message: err.message });
   }
 });
 
-// ✅ Login with email or username
+// LOGIN (username OR email)
 router.post("/login", async (req, res) => {
+  const { input, password } = req.body;
   try {
-    const { email, username, password } = req.body;
-    console.log("📥 Login Request:", { email, username });
-
-    if (!password || (!email && !username)) {
-      console.warn("⚠️ Missing login fields");
-      return res.status(400).json({ error: "Username/email and password are required" });
+    let email = input;
+    if (!input.includes("@")) {
+      const q = query(collection(db, "users"), where("username", "==", input));
+      const snap = await getDocs(q);
+      if (snap.empty) throw new Error("Username not found");
+      email = snap.docs[0].data().email;
     }
 
-    const user = await User.findOne({
-      $or: [{ email }, { username }],
-    });
-
-    if (!user) {
-      console.warn("⚠️ User not found for:", email || username);
-      return res.status(401).json({ error: "Invalid credentials" });
-    }
-
-    const isMatch = await user.comparePassword(password);
-    if (!isMatch) {
-      console.warn("⚠️ Wrong password for:", user.username);
-      return res.status(401).json({ error: "Invalid credentials" });
-    }
-
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-      expiresIn: "7d",
-    });
-
-    console.log("✅ Login success:", user.username);
-
-    res.json({
-      token,
-      user: {
-        id: user._id,
-        username: user.username,
-        email: user.email,
-      },
-    });
+    const userCred = await signInWithEmailAndPassword(auth, email, password);
+    res.json({ success: true, uid: userCred.user.uid });
   } catch (err) {
-    console.error("❌ Login Error:", err.message, err.stack);
-    res.status(500).json({ error: "Server error during login" });
+    res.status(400).json({ success: false, message: err.message });
   }
 });
 
-module.exports = router;
+// FORGOT PASSWORD
+router.post("/reset", async (req, res) => {
+  const { email } = req.body;
+  try {
+    await sendPasswordResetEmail(auth, email);
+    res.json({ success: true, message: "Password reset email sent" });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+export default router;
