@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Auth - SmartTalk</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 40px; }
+    .container { max-width: 400px; margin: auto; }
+    h2 { text-align: center; }
+    input, button { width: 100%; padding: 10px; margin: 6px 0; }
+    .link { color: blue; cursor: pointer; text-align: center; display: block; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2 id="formTitle">Register</h2>
+
+    <!-- Register -->
+    <div id="registerForm">
+      <input type="text" id="regUsername" placeholder="Username" required />
+      <input type="text" id="regFullname" placeholder="Full Name" required />
+      <input type="email" id="regEmail" placeholder="Email" required />
+      <input type="password" id="regPassword" placeholder="Password" required />
+      <button onclick="register()">Register</button>
+      <span class="link" onclick="showLogin()">Already have an account? Login</span>
+    </div>
+
+    <!-- Login -->
+    <div id="loginForm" style="display:none;">
+      <input type="text" id="loginEmail" placeholder="Email or Username" required />
+      <input type="password" id="loginPassword" placeholder="Password" required />
+      <button onclick="login()">Login</button>
+      <span class="link" onclick="showRegister()">Need an account? Register</span>
+      <span class="link" onclick="showForgot()">Forgot Password?</span>
+    </div>
+
+    <!-- Forgot -->
+    <div id="forgotForm" style="display:none;">
+      <input type="email" id="forgotEmail" placeholder="Enter your email" required />
+      <button onclick="forgotPassword()">Reset Password</button>
+      <span class="link" onclick="showLogin()">Back to Login</span>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail } 
+      from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+    import { getFirestore, doc, setDoc, getDocs, collection, query, where } 
+      from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { firebaseConfig } from "./firebaseConfig.js";
+
+    // Init Firebase
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    // 🔹 Toggle Forms
+    window.showLogin = () => {
+      document.getElementById("formTitle").innerText = "Login";
+      document.getElementById("registerForm").style.display = "none";
+      document.getElementById("forgotForm").style.display = "none";
+      document.getElementById("loginForm").style.display = "block";
+    };
+    window.showRegister = () => {
+      document.getElementById("formTitle").innerText = "Register";
+      document.getElementById("registerForm").style.display = "block";
+      document.getElementById("loginForm").style.display = "none";
+      document.getElementById("forgotForm").style.display = "none";
+    };
+    window.showForgot = () => {
+      document.getElementById("formTitle").innerText = "Forgot Password";
+      document.getElementById("registerForm").style.display = "none";
+      document.getElementById("loginForm").style.display = "none";
+      document.getElementById("forgotForm").style.display = "block";
+    };
+
+    // 🔹 Register User
+    window.register = async () => {
+      const username = document.getElementById("regUsername").value.trim();
+      const fullName = document.getElementById("regFullname").value.trim();
+      const email = document.getElementById("regEmail").value.trim();
+      const password = document.getElementById("regPassword").value.trim();
+
+      if (!username || !fullName || !email || !password) {
+        alert("Please fill all fields");
+        return;
+      }
+
+      try {
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        const user = userCredential.user;
+
+        // Save extra details in Firestore
+        await setDoc(doc(db, "users", user.uid), {
+          username,
+          fullName,
+          email,
+          createdAt: new Date()
+        });
+
+        alert("Registered successfully!");
+        window.location.href = "/public/chat.html"; // redirect
+      } catch (err) {
+        alert("Error: " + err.message);
+      }
+    };
+
+    // 🔹 Login User
+    window.login = async () => {
+      const input = document.getElementById("loginEmail").value.trim();
+      const password = document.getElementById("loginPassword").value.trim();
+
+      if (!input || !password) {
+        alert("Please fill all fields");
+        return;
+      }
+
+      let emailToUse = input;
+
+      // If input looks like a username, find matching email
+      if (!input.includes("@")) {
+        const q = query(collection(db, "users"), where("username", "==", input));
+        const querySnapshot = await getDocs(q);
+        if (!querySnapshot.empty) {
+          emailToUse = querySnapshot.docs[0].data().email;
+        } else {
+          alert("Username not found");
+          return;
+        }
+      }
+
+      try {
+        await signInWithEmailAndPassword(auth, emailToUse, password);
+        window.location.href = "/public/chat.html";
+      } catch (err) {
+        alert("Error: " + err.message);
+      }
+    };
+
+    // 🔹 Forgot Password
+    window.forgotPassword = async () => {
+      const email = document.getElementById("forgotEmail").value.trim();
+      if (!email) {
+        alert("Please enter your email");
+        return;
+      }
+
+      try {
+        await sendPasswordResetEmail(auth, email);
+        alert("Password reset email sent!");
+        showLogin();
+      } catch (err) {
+        alert("Error: " + err.message);
+      }
+    };
+  </script>
+</body>
+</html>
