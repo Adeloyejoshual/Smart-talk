@@ -1,72 +1,140 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8">
   <title>Messages</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; }
-    #messages { flex: 1; overflow-y: auto; padding: 10px; }
-    .msg { margin: 5px 0; padding: 8px; border-radius: 6px; max-width: 70%; }
-    .me { background: #DCF8C6; margin-left: auto; }
-    .other { background: #eee; margin-right: auto; }
-    #inputBar { display: flex; padding: 10px; border-top: 1px solid #ccc; }
-    #msgInput { flex: 1; padding: 8px; }
-  </style>
 </head>
 <body>
+  <!-- 🔹 Header -->
+  <div id="topBar">
+    <button id="backBtn">←</button>
+    <img id="chatPhoto" src="https://via.placeholder.com/40">
+    <span id="chatName">Loading...</span>
+    <button id="menuBtn">⋮</button>
+  </div>
+
+  <!-- 🔹 Messages -->
   <div id="messages"></div>
+
+  <!-- 🔹 Input -->
   <div id="inputBar">
-    <input id="msgInput" type="text" placeholder="Type a message" />
+    <input id="msgInput" type="text" placeholder="Type a message">
     <button onclick="sendMessage()">Send</button>
   </div>
+
+  <style>
+    body { margin:0; font-family:sans-serif; }
+    #topBar {
+      position: sticky; top: 0; z-index: 10;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px; background: #f8f8f8; border-bottom: 1px solid #ddd;
+    }
+    #topBar img { width: 40px; height: 40px; border-radius: 50%; margin: 0 8px; }
+    #topBar span { flex: 1; font-weight: bold; }
+    #topBar button { background: none; border: none; font-size: 20px; cursor: pointer; }
+
+    #messages { padding: 10px; height: 70vh; overflow-y: auto; background: #fafafa; }
+    .msg { max-width: 60%; padding: 8px 12px; margin: 6px 0; border-radius: 15px; word-wrap: break-word; }
+    .me { background: #d1ffd1; margin-left: auto; text-align: right; }
+    .other { background: #f1f1f1; margin-right: auto; text-align: left; }
+
+    #inputBar { display: flex; padding: 10px; border-top: 1px solid #ddd; background: #fff; }
+    #msgInput { flex: 1; padding: 8px; }
+  </style>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, doc, getDoc }
       from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { getAuth, onAuthStateChanged } 
+      from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
     import { firebaseConfig } from "./firebaseConfig.js";
 
-    // Init
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
-
-    // Get chatId
-    const urlParams = new URLSearchParams(window.location.search);
-    const chatId = urlParams.get("chatId") || "demo";
+    const auth = getAuth(app);
 
     const messagesDiv = document.getElementById("messages");
     const msgInput = document.getElementById("msgInput");
+    const chatNameEl = document.getElementById("chatName");
+    const chatPhotoEl = document.getElementById("chatPhoto");
 
-    // Simulated logged-in user (later from Firebase Auth)
-    const currentUserId = "user123";
+    const urlParams = new URLSearchParams(window.location.search);
+    const chatId = urlParams.get("chatId");
 
-    // Listen to messages in realtime
-    const q = query(collection(db, "chats", chatId, "messages"), orderBy("timestamp"));
-    onSnapshot(q, async (snapshot) => {
-      messagesDiv.innerHTML = "";
-      for (const docSnap of snapshot.docs) {
-        const msg = docSnap.data();
+    let currentUserId = null;
+    let blockedUsers = [];
 
-        // Fetch sender full name
-        let senderName = "Unknown";
-        if (msg.senderId) {
-          const userRef = doc(db, "users", msg.senderId);
-          const userSnap = await getDoc(userRef);
-          if (userSnap.exists()) {
-            senderName = userSnap.data().fullName;
-          }
-        }
+    // Back → chat list
+    document.getElementById("backBtn").onclick = () => {
+      window.location.href = "/public/chat.html";
+    };
 
-        const div = document.createElement("div");
-        div.className = "msg " + (msg.senderId === currentUserId ? "me" : "other");
-        div.innerText = `${senderName}: ${msg.text}`;
-        messagesDiv.appendChild(div);
+    // Settings → message settings
+    document.getElementById("menuBtn").onclick = () => {
+      window.location.href = `/public/messageSettings.html?chatId=${chatId}`;
+    };
+
+    // Auth + load user
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        window.location.href = "/public/auth.html";
+        return;
       }
-      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+      currentUserId = user.uid;
+
+      // Load blocked users
+      const userSnap = await getDoc(doc(db, "users", currentUserId));
+      if (userSnap.exists()) {
+        blockedUsers = userSnap.data().blockedUsers || [];
+      }
+
+      // Load chat
+      const chatRef = doc(db, "chats", chatId);
+      const chatSnap = await getDoc(chatRef);
+
+      if (chatSnap.exists()) {
+        const chatData = chatSnap.data();
+
+        if (chatData.type === "private") {
+          const otherId = chatData.members.find(id => id !== currentUserId);
+          if (otherId) {
+            const userRef = doc(db, "users", otherId);
+            const otherSnap = await getDoc(userRef);
+            if (otherSnap.exists()) {
+              const otherData = otherSnap.data();
+              chatNameEl.innerText = otherData.fullName;
+              if (otherData.photoURL) chatPhotoEl.src = otherData.photoURL;
+            }
+          }
+        } else {
+          chatNameEl.innerText = chatData.name || "Group Chat";
+          if (chatData.photoURL) chatPhotoEl.src = chatData.photoURL;
+        }
+      }
+
+      // Listen messages
+      const q = query(collection(db, "chats", chatId, "messages"), orderBy("timestamp"));
+      onSnapshot(q, (snapshot) => {
+        messagesDiv.innerHTML = "";
+        snapshot.forEach((docSnap) => {
+          const msg = docSnap.data();
+
+          // Skip if sender is blocked
+          if (blockedUsers.includes(msg.senderId)) return;
+
+          const div = document.createElement("div");
+          div.className = "msg " + (msg.senderId === currentUserId ? "me" : "other");
+          div.innerText = msg.text;
+          messagesDiv.appendChild(div);
+        });
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+      });
     });
 
     // Send message
     window.sendMessage = async () => {
+      if (!currentUserId) return;
       const text = msgInput.value.trim();
       if (!text) return;
 
