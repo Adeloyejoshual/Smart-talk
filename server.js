@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import authRoutes from "./routes/auth.js";
+import chatRoutes from "./routes/chat.js";
 
 dotenv.config();
 
@@ -12,6 +13,7 @@ app.use(express.static("public")); // serve frontend files
 
 // Routes
 app.use("/api/auth", authRoutes);
+app.use("/api/chat", chatRoutes);
 
 app.get("/", (req, res) => {
   res.send("🚀 Chat App Backend Running");
