@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Chat Home</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
+    header { background: #2196F3; color: white; padding: 10px; text-align: center; }
+    #chatList { list-style: none; padding: 0; margin: 0; }
+    #chatList li {
+      border-bottom: 1px solid #ddd;
+      padding: 15px;
+      display: flex;
+      justify-content: space-between;
+      cursor: pointer;
+    }
+    #scrollDown {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: #2196F3;
+      color: white;
+      border: none;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      font-size: 20px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h2>Chats</h2>
+  </header>
+
+  <ul id="chatList">
+    <!-- Chat items will load here -->
+  </ul>
+
+  <button id="scrollDown">↓</button>
+
+  <script>
+    const chatList = document.getElementById("chatList");
+    const scrollBtn = document.getElementById("scrollDown");
+
+    // Demo chats (later load from backend)
+    const chats = [
+      { id: "1", name: "Family Group", last: "Mom: Don’t forget milk", time: "09:30" },
+      { id: "2", name: "John Doe", last: "Hey, are you free?", time: "12:45" },
+      { id: "3", name: "Project Team", last: "Meeting at 5", time: "14:00" }
+    ];
+
+    chats.forEach(chat => {
+      const li = document.createElement("li");
+      li.innerHTML = `<div>
+          <strong>${chat.name}</strong><br>
+          <small>${chat.last}</small>
+        </div>
+        <small>${chat.time}</small>`;
+      li.onclick = () => {
+        window.location.href = `messages.html?chatId=${chat.id}`;
+      };
+      chatList.appendChild(li);
+    });
+
+    // Scroll button logic
+    window.addEventListener("scroll", () => {
+      if (window.scrollY > 200) {
+        scrollBtn.style.display = "block";
+      } else {
+        scrollBtn.style.display = "none";
+      }
+    });
+
+    scrollBtn.onclick = () => {
+      window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+    };
+  </script>
+</body>
+</html>
