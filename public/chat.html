@@ -1,80 +1,69 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Chat Home</title>
+  <meta charset="UTF-8" />
+  <title>Chats</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
-    header { background: #2196F3; color: white; padding: 10px; text-align: center; }
-    #chatList { list-style: none; padding: 0; margin: 0; }
-    #chatList li {
-      border-bottom: 1px solid #ddd;
-      padding: 15px;
-      display: flex;
-      justify-content: space-between;
+    .chat-list { list-style: none; padding: 0; margin: 0; }
+    .chat-item {
+      padding: 12px; border-bottom: 1px solid #ddd;
+      display: flex; justify-content: space-between; align-items: center;
       cursor: pointer;
     }
-    #scrollDown {
-      position: fixed;
-      bottom: 20px;
-      right: 20px;
-      background: #2196F3;
-      color: white;
-      border: none;
-      border-radius: 50%;
-      width: 40px;
-      height: 40px;
-      font-size: 20px;
-      display: none;
-    }
+    .chat-item:hover { background: #f9f9f9; }
+    .name { font-weight: bold; }
+    .last-msg { font-size: 14px; color: gray; }
   </style>
 </head>
 <body>
-  <header>
-    <h2>Chats</h2>
-  </header>
+  <h2>Chats</h2>
+  <ul class="chat-list" id="chatList"></ul>
 
-  <ul id="chatList">
-    <!-- Chat items will load here -->
-  </ul>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getFirestore, collection, query, orderBy, onSnapshot, doc, getDoc }
+      from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { firebaseConfig } from "./firebaseConfig.js";
 
-  <button id="scrollDown">↓</button>
+    // Init
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
 
-  <script>
     const chatList = document.getElementById("chatList");
-    const scrollBtn = document.getElementById("scrollDown");
 
-    // Demo chats (later load from backend)
-    const chats = [
-      { id: "1", name: "Family Group", last: "Mom: Don’t forget milk", time: "09:30" },
-      { id: "2", name: "John Doe", last: "Hey, are you free?", time: "12:45" },
-      { id: "3", name: "Project Team", last: "Meeting at 5", time: "14:00" }
-    ];
+    // Listen to all chats
+    const q = query(collection(db, "chats"), orderBy("lastUpdated", "desc"));
+    onSnapshot(q, async (snapshot) => {
+      chatList.innerHTML = "";
+      for (const docSnap of snapshot.docs) {
+        const chat = docSnap.data();
 
-    chats.forEach(chat => {
-      const li = document.createElement("li");
-      li.innerHTML = `<div>
-          <strong>${chat.name}</strong><br>
-          <small>${chat.last}</small>
-        </div>
-        <small>${chat.time}</small>`;
-      li.onclick = () => {
-        window.location.href = `messages.html?chatId=${chat.id}`;
-      };
-      chatList.appendChild(li);
-    });
+        // Lookup last message sender name
+        let senderName = "Unknown";
+        if (chat.lastSenderId) {
+          const userRef = doc(db, "users", chat.lastSenderId);
+          const userSnap = await getDoc(userRef);
+          if (userSnap.exists()) {
+            senderName = userSnap.data().fullName;
+          }
+        }
 
-    // Scroll button logic
-    window.addEventListener("scroll", () => {
-      if (window.scrollY > 200) {
-        scrollBtn.style.display = "block";
-      } else {
-        scrollBtn.style.display = "none";
+        const li = document.createElement("li");
+        li.className = "chat-item";
+        li.onclick = () => {
+          window.location.href = `/public/messages.html?chatId=${docSnap.id}`;
+        };
+        li.innerHTML = `
+          <div>
+            <div class="name">${chat.name || "Unnamed Chat"}</div>
+            <div class="last-msg">${senderName}: ${chat.lastMessage || ""}</div>
+          </div>
+          <div class="time">${chat.lastTime || ""}</div>
+        `;
+        chatList.appendChild(li);
       }
     });
-
-    scrollBtn.onclick = () => {
-      window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
-    };
   </script>
 </body>
 </html>
