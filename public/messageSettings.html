@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Message Settings</title>
+</head>
+<body>
+  <h2>Chat Settings</h2>
+  <ul id="settingsList">
+    <li><button onclick="clearChat()">🧹 Clear Chat</button></li>
+    <li><button onclick="muteChat()">🔕 Mute Notifications</button></li>
+    <li><button onclick="blockUser()">⛔ Block User</button></li>
+    <li><button onclick="deleteChat()">🗑️ Delete Chat</button></li>
+    <li><button onclick="goBack()">⬅ Back</button></li>
+  </ul>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getFirestore, collection, getDocs, deleteDoc, doc, updateDoc, arrayUnion }
+      from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+    import { firebaseConfig } from "./firebaseConfig.js";
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const chatId = urlParams.get("chatId");
+
+    window.goBack = () => {
+      window.location.href = `/public/messages.html?chatId=${chatId}`;
+    };
+
+    // Clear Chat
+    window.clearChat = async () => {
+      const msgs = await getDocs(collection(db, "chats", chatId, "messages"));
+      for (const m of msgs.docs) {
+        await deleteDoc(m.ref);
+      }
+      alert("Chat cleared!");
+    };
+
+    // Mute Chat
+    window.muteChat = () => {
+      alert("Chat muted (future feature).");
+    };
+
+    // Block User (save in Firestore)
+    window.blockUser = async () => {
+      const user = auth.currentUser;
+      if (!user) return;
+
+      // Get chat to find other user
+      const chatDoc = await getDocs(collection(db, "chats"));
+      let otherId = null;
+      chatDoc.forEach((docSnap) => {
+        if (docSnap.id === chatId) {
+          const chat = docSnap.data();
+          if (chat.type === "private") {
+            otherId = chat.members.find(id => id !== user.uid);
+          }
+        }
+      });
+
+      if (otherId) {
+        await updateDoc(doc(db, "users", user.uid), {
+          blockedUsers: arrayUnion(otherId)
+        });
+        alert("User blocked!");
+      } else {
+        alert("Only private chats can block users.");
+      }
+    };
+
+    // Delete Chat
+    window.deleteChat = async () => {
+      await deleteDoc(doc(db, "chats", chatId));
+      alert("Chat deleted!");
+      window.location.href = "/public/chat.html";
+    };
+  </script>
+</body>
+</html>
