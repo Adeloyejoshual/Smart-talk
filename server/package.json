@@ -1,19 +1,21 @@
 {
-  "name": "smarttalk-backend",
+  "name": "smarttalk-server",
   "version": "1.0.0",
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js"
+    "dev": "nodemon server.js",
+    "build-client": "cd ../client && npm install && npm run build"
   },
   "dependencies": {
+    "axios": "^1.4.0",
+    "body-parser": "^1.20.2",
     "cors": "^2.8.5",
-    "dotenv": "^16.0.0",
+    "dotenv": "^16.3.1",
     "express": "^4.18.2",
-    "firebase-admin": "^12.0.0",
-    "mongoose": "^8.2.0",
-    "stripe": "^12.0.0",
-    "body-parser": "^1.20.2"
+    "firebase-admin": "^12.2.0",
+    "mongoose": "^8.8.0",
+    "stripe": "^12.16.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
