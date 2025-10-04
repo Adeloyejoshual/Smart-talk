@@ -6,3 +6,5 @@ const walletSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
   expiresAt: { type: Date }
 });
+
+export default mongoose.model("Wallet", walletSchema);
