@@ -1,5 +1,7 @@
+// ✅ Updated File: src/pages/CallDemo.jsx
 import React, { useState } from "react";
 import { startCall, endCall } from "../utils/api/call";
+import { ensureSufficientBalance } from "../utils/api/wallet";
 
 const CallDemo = () => {
   const [sessionId, setSessionId] = useState(null);
@@ -7,6 +9,9 @@ const CallDemo = () => {
 
   const handleStart = async () => {
     try {
+      setStatus("Checking wallet balance...");
+      await ensureSufficientBalance(0.5);
+
       setStatus("Starting call...");
       const sid = await startCall(["friend123"], "host123");
       setSessionId(sid);
