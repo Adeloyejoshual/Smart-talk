@@ -1,5 +1,4 @@
-// /src/hooks/useChat.js
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   collection,
   addDoc,
@@ -11,7 +10,6 @@ import {
   updateDoc,
   deleteDoc,
   getDoc,
-  setDoc,
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage, auth } from "../firebaseClient";
@@ -26,9 +24,7 @@ export default function useChat(chatId, otherUserId) {
   const [uploading, setUploading] = useState(false);
   const rtdb = getDatabase();
 
-  // --------------------------
-  // 🔥 Listen to messages
-  // --------------------------
+  // Listen to messages in Firestore ordered by timestamp (asc)
   useEffect(() => {
     if (!chatId) return;
     const q = query(collection(db, "chats", chatId, "messages"), orderBy("timestamp", "asc"));
@@ -39,9 +35,7 @@ export default function useChat(chatId, otherUserId) {
     return () => unsub();
   }, [chatId]);
 
-  // --------------------------
-  // 👀 Presence (Realtime DB)
-  // --------------------------
+  // Presence tracking (Realtime Database)
   useEffect(() => {
     if (!uid || !otherUserId) return;
 
@@ -62,7 +56,7 @@ export default function useChat(chatId, otherUserId) {
 
     const unsubPresence = onValue(connectedRef, handlePresence);
 
-    // Track other user
+    // Track other user's status
     const otherStatusRef = rtdbRef(rtdb, `status/${otherUserId}`);
     const unsubOther = onValue(otherStatusRef, (snap) => {
       if (snap.exists()) setOtherUserStatus(snap.val().state);
@@ -74,9 +68,7 @@ export default function useChat(chatId, otherUserId) {
     };
   }, [uid, otherUserId]);
 
-  // --------------------------
-  // ⌨️ Typing Indicator
-  // --------------------------
+  // Typing indicator: reset on disconnect
   useEffect(() => {
     if (!uid || !chatId) return;
     const typingRef = rtdbRef(rtdb, `typing/${chatId}/${uid}`);
@@ -84,11 +76,14 @@ export default function useChat(chatId, otherUserId) {
     return () => set(typingRef, false);
   }, [chatId, uid]);
 
+  // Set current user's typing state
   const setTyping = async (state) => {
+    if (!uid || !chatId) return;
     const typingRef = rtdbRef(rtdb, `typing/${chatId}/${uid}`);
     await set(typingRef, state);
   };
 
+  // Listen to other user's typing state
   useEffect(() => {
     if (!chatId || !otherUserId) return;
     const typingRef = rtdbRef(rtdb, `typing/${chatId}/${otherUserId}`);
@@ -96,9 +91,7 @@ export default function useChat(chatId, otherUserId) {
     return () => unsub();
   }, [chatId, otherUserId]);
 
-  // --------------------------
-  // ✉️ Send Text Message
-  // --------------------------
+  // Send text or generic message
   const sendMessage = async (text, type = "text") => {
     if (!chatId || !uid || !text.trim()) return;
 
@@ -111,11 +104,12 @@ export default function useChat(chatId, otherUserId) {
       seenBy: [uid],
       deletedFor: [],
       pinned: { isPinned: false, expiresAt: null },
+      status: "sent", // maintaining compatibility with first version metadata
     };
 
     const msgRef = await addDoc(collection(db, "chats", chatId, "messages"), msg);
 
-    // Update chat metadata
+    // Update chat document metadata
     await updateDoc(doc(db, "chats", chatId), {
       lastMessage: msg,
       lastMessageTime: serverTimestamp(),
@@ -125,15 +119,14 @@ export default function useChat(chatId, otherUserId) {
     return msgRef.id;
   };
 
-  // --------------------------
-  // 📎 Upload Image/File/Voice
-  // --------------------------
+  // Upload media (image, file, audio) and send message with URL
   const sendMedia = async (file, type = "image") => {
     if (!file || !chatId || !uid) return;
     setUploading(true);
 
     const filePath = `chats/${chatId}/${Date.now()}_${file.name}`;
     const storageRef = ref(storage, filePath);
+
     await uploadBytes(storageRef, file);
     const downloadURL = await getDownloadURL(storageRef);
 
@@ -142,53 +135,59 @@ export default function useChat(chatId, otherUserId) {
     setUploading(false);
   };
 
-  // --------------------------
-  // 🗑️ Delete Message
-  // --------------------------
+  // Send voice message as a .webm audio file via sendMedia
+  const sendVoiceMessage = async (audioBlob) => {
+    if (!audioBlob) return;
+    const file = new File([audioBlob], `voice_${Date.now()}.webm`, { type: "audio/webm" });
+    await sendMedia(file, "audio");
+  };
+
+  // Soft or hard delete message
   const deleteMessage = async (msgId, forEveryone = false) => {
+    if (!chatId || !uid) return;
     const msgRef = doc(db, "chats", chatId, "messages", msgId);
     const msgSnap = await getDoc(msgRef);
     if (!msgSnap.exists()) return;
     const msg = msgSnap.data();
 
     if (forEveryone) {
+      // Permanently delete message document
       await deleteDoc(msgRef);
     } else {
+      // Soft delete for current user only
       const updatedDeletedFor = [...(msg.deletedFor || []), uid];
       await updateDoc(msgRef, { deletedFor: updatedDeletedFor });
     }
   };
 
-  // --------------------------
-  // 📌 Pin Message
-  // --------------------------
+  // Pin message for a specific duration (default 24h)
   const pinMessage = async (msgId, duration = "24h") => {
+    if (!chatId) return;
     const msgRef = doc(db, "chats", chatId, "messages", msgId);
 
-    let hours = 24;
+    let hours = 24; // default
     if (duration === "3h") hours = 3;
-    if (duration === "7d") hours = 7 * 24;
-    if (duration === "30d") hours = 30 * 24;
+    else if (duration === "7d") hours = 7 * 24;
+    else if (duration === "30d") hours = 30 * 24;
 
     const expiresAt = new Date(Date.now() + hours * 60 * 60 * 1000);
     await updateDoc(msgRef, { pinned: { isPinned: true, expiresAt } });
   };
 
+  // Unpin message
   const unpinMessage = async (msgId) => {
+    if (!chatId) return;
     const msgRef = doc(db, "chats", chatId, "messages", msgId);
     await updateDoc(msgRef, { pinned: { isPinned: false, expiresAt: null } });
   };
 
-  // --------------------------
-  // 👁️ Mark as Seen
-  // --------------------------
+  // Mark all messages as seen by current user
   const markAsSeen = useCallback(async () => {
-    const chatRef = doc(db, "chats", chatId);
-    const snap = await getDoc(chatRef);
-    if (!snap.exists()) return;
+    if (!chatId || !uid) return;
 
     const msgsRef = collection(db, "chats", chatId, "messages");
     const q = query(msgsRef, orderBy("timestamp", "asc"));
+
     const unsub = onSnapshot(q, async (snap) => {
       for (const d of snap.docs) {
         const msg = d.data();
@@ -197,21 +196,10 @@ export default function useChat(chatId, otherUserId) {
         }
       }
     });
+
     return () => unsub();
   }, [chatId, uid]);
 
-  // --------------------------
-  // 🎤 Voice Message
-  // --------------------------
-  const sendVoiceMessage = async (audioBlob) => {
-    if (!audioBlob) return;
-    const file = new File([audioBlob], `voice_${Date.now()}.webm`, { type: "audio/webm" });
-    await sendMedia(file, "audio");
-  };
-
-  // --------------------------
-  // Return API
-  // --------------------------
   return {
     messages,
     sendMessage,
