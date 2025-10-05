@@ -1,382 +1,394 @@
 // /src/pages/ChatPage.jsx
 import React, { useEffect, useRef, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import {
   collection,
   query,
-  where,
   orderBy,
   onSnapshot,
+  addDoc,
   updateDoc,
   doc,
   serverTimestamp,
   getDoc,
 } from "firebase/firestore";
-import { auth, db } from "../firebaseClient"; // <-- make sure this exports auth and db
-// Example exports in firebaseClient:
-// import { initializeApp } from "firebase/app";
-// import { getAuth } from "firebase/auth";
-// import { getFirestore } from "firebase/firestore";
-// export const app = initializeApp(firebaseConfig);
-// export const auth = getAuth(app);
-// export const db = getFirestore(app);
+import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+import { auth, db, storage } from "../firebaseClient"; // must export auth, db, storage
+import { motion, AnimatePresence } from "framer-motion";
 
-export default function ChatPage({ onOpenChat }) {
-  const user = auth.currentUser;
-  const uid = user?.uid;
-  const [chats, setChats] = useState([]);
-  const [showArchivedBar, setShowArchivedBar] = useState(false);
-  const [showArchivedPage, setShowArchivedPage] = useState(false);
-  const [archivedCount, setArchivedCount] = useState(0);
-  const [selected, setSelected] = useState([]);
-  const [isSelecting, setIsSelecting] = useState(false);
-  const [menuForChat, setMenuForChat] = useState(null); // chat object for inline menu
-  const [confirmAction, setConfirmAction] = useState(null); // { type: "block"|"report", chatIds: [] }
-  const listRef = useRef(null);
-  const longPressTimer = useRef(null);
+/*
+  ChatPage.jsx (1-on-1 chat)
+  - text, image, file, voice messages
+  - delete for me / delete for everyone (10-minute rule)
+  - typing indicator
+  - resumable uploads and upload progress
+  - reply support (basic)
+*/
 
-  // --- Helpers ---
-  const friendlyTime = (ts) => {
-    if (!ts) return "";
-    const date = ts?.toDate ? ts.toDate() : new Date(ts);
-    const now = new Date();
-    const diffSec = Math.floor((now - date) / 1000);
-    if (diffSec < 60) return "Just now";
-    if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
-    if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
-    const yesterday = new Date();
-    yesterday.setDate(now.getDate() - 1);
-    if (
-      date.getFullYear() === yesterday.getFullYear() &&
-      date.getMonth() === yesterday.getMonth() &&
-      date.getDate() === yesterday.getDate()
-    )
-      return "Yesterday";
-    return date.toLocaleDateString();
-  };
+export default function ChatPage({ otherUser, onBack }) {
+  // otherUser: { uid, name, photoURL } - the person you're chatting with
+  const me = auth.currentUser;
+  const myUid = me?.uid;
+  if (!myUid) {
+    // not logged in - render simple fallback
+    return <div>Please login</div>;
+  }
 
-  const mediaPreviewText = (last) => {
-    if (!last) return "";
-    const t = last.type || "text";
-    if (t === "text") return last.text || "";
-    if (t === "image") return "📷 Photo";
-    if (t === "audio") return "🎤 Voice message";
-    if (t === "file") return `📎 ${last.fileName || "File"}`;
-    return last.text || "";
-  };
+  // deterministic chatId for 1-on-1 (both users use same id)
+  const chatId = [myUid, otherUser.uid].sort().join("_");
 
-  const isMutedForUser = (chat) => {
-    try {
-      const m = chat.mutedUntil || {};
-      if (!m || !uid) return false;
-      const ts = m[uid];
-      if (!ts) return false;
-      const date = ts?.toDate ? ts.toDate() : new Date(ts);
-      return date > new Date();
-    } catch {
-      return false;
-    }
-  };
+  const [messages, setMessages] = useState([]);
+  const [text, setText] = useState("");
+  const [typingOther, setTypingOther] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
+  const [attachPreview, setAttachPreview] = useState(null); // { file, type, name, url }
+  const [uploadProgress, setUploadProgress] = useState(null);
+  const [actionMessage, setActionMessage] = useState(null); // message under action sheet
+  const [replyTo, setReplyTo] = useState(null);
 
-  // --- Firestore listeners ---
+  const scrollRef = useRef(null);
+  const typingTimer = useRef(null);
+
+  // voice recording
+  const mediaRecorderRef = useRef(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [audioChunks, setAudioChunks] = useState([]);
+
+  // ---------- listen messages ----------
   useEffect(() => {
-    if (!uid) return;
-    // Query chats where user is a member and not archived for this user
-    const q = query(
-      collection(db, "chats"),
-      where("members", "array-contains", uid),
-      orderBy("lastMessageTime", "desc")
-    );
+    if (!chatId) return;
+    const q = query(collection(db, "chats", chatId, "messages"), orderBy("timestamp", "asc"));
     const unsub = onSnapshot(q, (snap) => {
       const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      // Filter out chats archived by this user (archivedBy map)
-      const visible = docs.filter((c) => !(c.archivedBy && c.archivedBy[uid]));
-      setChats(visible);
+      // filter deletedFor me
+      const visible = docs.filter((m) => !(m.deletedFor || []).includes(myUid));
+      setMessages(visible);
+      // scroll to bottom
+      setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" }), 120);
     });
-    // archived count
-    const q2 = query(collection(db, "chats"), where(`archivedBy.${uid}`, "==", true));
-    const unsub2 = onSnapshot(q2, (snap) => setArchivedCount(snap.size));
-    return () => {
-      unsub();
-      unsub2();
-    };
-  }, [uid]);
-
-  // --- Scroll detection to show archived bar ---
-  useEffect(() => {
-    const el = listRef.current;
-    if (!el) return;
-    const onScroll = () => {
-      // show archived bar only when at top
-      setShowArchivedBar(el.scrollTop === 0 && archivedCount > 0);
-    };
-    el.addEventListener("scroll", onScroll);
-    return () => el.removeEventListener("scroll", onScroll);
-  }, [archivedCount]);
-
-  // --- long press to start multi-select ---
-  const startLongPress = (chatId) => {
-    longPressTimer.current = setTimeout(() => {
-      setIsSelecting(true);
-      setSelected([chatId]);
-      navigator.vibrate?.(20);
-    }, 400);
-  };
-  const endLongPress = () => clearTimeout(longPressTimer.current);
-
-  const toggleSelect = (chatId) => {
-    if (!isSelecting) return;
-    setSelected((prev) => (prev.includes(chatId) ? prev.filter((p) => p !== chatId) : [...prev, chatId]));
-  };
-
-  const selectAll = () => {
-    if (selected.length === chats.length) setSelected([]);
-    else setSelected(chats.map((c) => c.id));
-    setMenuForChat(null);
-  };
-
-  // --- chat actions (archiving, mute, unmute, report, block, clear) ---
-  const archiveChatForUser = async (chatId, archived = true) => {
-    if (!uid) return;
-    const ref = doc(db, "chats", chatId);
-    await updateDoc(ref, { [`archivedBy.${uid}`]: archived ? true : null, updatedAt: serverTimestamp() });
-    setMenuForChat(null);
-  };
-
-  const toggleMute = async (chat) => {
-    if (!uid) return;
-    const ref = doc(db, "chats", chat.id);
-    if (isMutedForUser(chat)) {
-      // unmute
-      await updateDoc(ref, { [`mutedUntil.${uid}`]: null });
-    } else {
-      // mute for 8 hours (example) — you can expose choices
-      const until = new Date(Date.now() + 8 * 60 * 60 * 1000);
-      await updateDoc(ref, { [`mutedUntil.${uid}`]: until });
-    }
-    setMenuForChat(null);
-  };
-
-  const handleClearSelected = async () => {
-    if (!uid || selected.length === 0) return;
-    // clear only user's local view by writing a cleared flag or deleting messages subcollection for that user
-    // Here we write `clearedBy.{uid}: serverTimestamp()`
-    await Promise.all(selected.map((id) => updateDoc(doc(db, "chats", id), { [`clearedBy.${uid}`]: serverTimestamp() })));
-    setSelected([]);
-    setIsSelecting(false);
-  };
-
-  const submitReport = async (chatIds) => {
-    // basic report document: admin will handle details
-    await Promise.all(
-      chatIds.map((id) => updateDoc(doc(db, "reports", id), { reportedBy: uid, reportedAt: serverTimestamp() }).catch(async () => {
-        // If doc doesn't exist create it
-        await updateDoc(doc(db, "reports", id), {}).catch(()=>{}); // noop
-      }))
-    );
-    alert("Report submitted — thank you.");
-    setSelected([]);
-    setIsSelecting(false);
-    setConfirmAction(null);
-  };
-
-  const submitBlock = async (chatIds) => {
-    // set blocked record under users collection for current user
-    await Promise.all(
-      chatIds.map(async (chatId) => {
-        const c = chats.find((x) => x.id === chatId);
-        if (!c) return;
-        if (c.isGroup) return; // don't block groups
-        const otherId = c.members.find((m) => m !== uid);
-        if (!otherId) return;
-        await updateDoc(doc(db, "users", uid, "blocked", otherId), { blocked: true }).catch(() => {});
-      })
-    );
-    alert("Blocked selected user(s).");
-    setSelected([]);
-    setIsSelecting(false);
-    setConfirmAction(null);
-  };
-
-  // --- UI helpers ---
-  const openMenuFor = (chat) => {
-    setMenuForChat(chat);
-  };
-
-  const closeMenu = () => setMenuForChat(null);
-
-  // --- Archived page data & UI (lazy loaded) ---
-  const [archivedChats, setArchivedChats] = useState([]);
-  useEffect(() => {
-    if (!uid || !showArchivedPage) return;
-    const q = query(collection(db, "chats"), where(`archivedBy.${uid}`, "==", true), orderBy("lastMessageTime", "desc"));
-    const unsub = onSnapshot(q, (snap) => setArchivedChats(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
     return () => unsub();
-  }, [uid, showArchivedPage]);
+  }, [chatId, myUid]);
 
-  // --- render ---
+  // ---------- listen chat doc for typing ----------
+  useEffect(() => {
+    if (!chatId) return;
+    const chatRef = doc(db, "chats", chatId);
+    const unsub = onSnapshot(chatRef, (snap) => {
+      const data = snap.data() || {};
+      setTypingOther(Boolean(data.typing && data.typing[otherUser.uid]));
+    });
+    return () => unsub();
+  }, [chatId, otherUser.uid]);
+
+  // ---------- typing handler ----------
+  const handleTyping = async (val) => {
+    setText(val);
+    if (!chatId) return;
+    if (!isTyping) {
+      setIsTyping(true);
+      try {
+        await updateDoc(doc(db, "chats", chatId), { [`typing.${myUid}`]: true });
+      } catch (e) {
+        // chat may not exist yet: create or set
+        await addDoc(collection(db, "chats"), {
+          // fallback minimal chat creation - ideally create chat doc earlier
+          members: [myUid, otherUser.uid],
+        }).catch(() => {});
+      }
+    }
+    clearTimeout(typingTimer.current);
+    typingTimer.current = setTimeout(async () => {
+      setIsTyping(false);
+      await updateDoc(doc(db, "chats", chatId), { [`typing.${myUid}`]: false }).catch(() => {});
+    }, 1200);
+  };
+
+  // ---------- send text / attachment ----------
+  async function sendMessage({ text = "", file = null, fileType = "text", fileName = null }) {
+    if (!chatId) return;
+    const messagesRef = collection(db, "chats", chatId, "messages");
+
+    try {
+      if (file) {
+        // placeholder to reserve id
+        const placeholder = await addDoc(messagesRef, {
+          from: myUid,
+          type: "uploading",
+          text: "",
+          fileName: fileName || file.name,
+          timestamp: serverTimestamp(),
+        });
+        const msgId = placeholder.id;
+        // upload to storage
+        const path = `chatMedia/${chatId}/${msgId}/${file.name}`;
+        const sRef = storageRef(storage, path);
+        const uploadTask = uploadBytesResumable(sRef, file);
+
+        uploadTask.on(
+          "state_changed",
+          (snapshot) => {
+            const prog = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+            setUploadProgress(prog);
+          },
+          (err) => {
+            console.error("upload err", err);
+            setUploadProgress(null);
+          },
+          async () => {
+            const url = await getDownloadURL(uploadTask.snapshot.ref);
+            await updateDoc(doc(db, "chats", chatId, "messages", msgId), {
+              type: fileType, // "image", "file", "audio"
+              content: url,
+              fileName: fileName || file.name,
+              timestamp: serverTimestamp(),
+            });
+            await updateDoc(doc(db, "chats", chatId), {
+              lastMessage: { text: fileType === "image" ? "📷 Photo" : (fileName || file.name), type: fileType },
+              lastMessageTime: serverTimestamp(),
+            });
+            setUploadProgress(null);
+          }
+        );
+        setAttachPreview(null);
+        setReplyTo(null);
+        setText("");
+        return;
+      }
+
+      // text message
+      if (!text.trim()) return;
+      await addDoc(messagesRef, {
+        from: myUid,
+        type: "text",
+        text: text.trim(),
+        timestamp: serverTimestamp(),
+        replyTo: replyTo ? { id: replyTo.id, text: replyTo.text, from: replyTo.from } : null,
+      });
+      await updateDoc(doc(db, "chats", chatId), {
+        lastMessage: { text: text.trim(), type: "text" },
+        lastMessageTime: serverTimestamp(),
+      });
+      setText("");
+      setReplyTo(null);
+    } catch (e) {
+      console.error("sendMessage err", e);
+      setUploadProgress(null);
+    }
+  }
+
+  // ---------- file picker ----------
+  const handleFilePick = (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const isImage = f.type.startsWith("image/");
+    setAttachPreview({ file: f, type: isImage ? "image" : "file", name: f.name, url: URL.createObjectURL(f) });
+  };
+
+  // ---------- voice recording ----------
+  const startRecording = async () => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert("Recording not supported in this browser.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      setAudioChunks([]);
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          setAudioChunks((prev) => [...prev, e.data]);
+        }
+      };
+      mediaRecorder.onstop = async () => {
+        const blob = new Blob(audioChunks, { type: "audio/webm" });
+        // create file-like object
+        const file = new File([blob], `voice_${Date.now()}.webm`, { type: "audio/webm" });
+        // send as audio file
+        await sendMessage({ file, fileType: "audio", fileName: file.name });
+        // stop all tracks
+        stream.getTracks().forEach((t) => t.stop());
+        setIsRecording(false);
+      };
+      mediaRecorder.start();
+      setIsRecording(true);
+    } catch (err) {
+      console.error("record err", err);
+      alert("Could not start recording - check microphone permissions.");
+    }
+  };
+
+  const stopRecording = () => {
+    try {
+      mediaRecorderRef.current?.stop();
+    } catch (e) {
+      console.warn("stop record", e);
+    }
+  };
+
+  // ---------- message actions ----------
+  const markDeletedForMe = async (messageId) => {
+    if (!chatId) return;
+    const ref = doc(db, "chats", chatId, "messages", messageId);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return;
+    const data = snap.data();
+    const arr = data.deletedFor || [];
+    if (arr.includes(myUid)) return;
+    await updateDoc(ref, { deletedFor: [...arr, myUid] }).catch(() => {});
+  };
+
+  const deleteForEveryone = async (messageId) => {
+    if (!chatId) return;
+    const ref = doc(db, "chats", chatId, "messages", messageId);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return;
+    const data = snap.data();
+    const ts = data.timestamp?.toDate ? data.timestamp.toDate() : (data.timestamp ? new Date(data.timestamp) : null);
+    if (ts && Date.now() - ts.getTime() > 10 * 60 * 1000) {
+      alert("Cannot delete for everyone after 10 minutes.");
+      return;
+    }
+    await updateDoc(ref, { deletedForEveryone: true, text: "This message was deleted", type: "deleted", content: null }).catch(() => {});
+  };
+
+  // ---------- open actions ----------
+  const openActions = (message) => {
+    setActionMessage(message);
+  };
+
+  const closeActions = () => setActionMessage(null);
+
+  // reply
+  const startReply = (message) => {
+    setReplyTo({ id: message.id, text: message.text || message.fileName || "Media", from: message.from });
+    closeActions();
+  };
+
+  // ---------- render helpers ----------
+  const formatTime = (ts) => {
+    if (!ts) return "";
+    const d = ts.toDate ? ts.toDate() : new Date(ts);
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  };
+
+  const renderMessageContent = (m) => {
+    if (m.deletedForEveryone || m.type === "deleted") return <em>This message was deleted</em>;
+    if (m.type === "text") return <span>{m.text}</span>;
+    if (m.type === "image") return m.content ? <img src={m.content} alt={m.fileName} style={{ maxWidth: 260, borderRadius: 8 }} /> : <span>Sending image…</span>;
+    if (m.type === "file") return m.content ? <a href={m.content} target="_blank" rel="noreferrer">📎 {m.fileName || "Download"}</a> : <span>Sending file…</span>;
+    if (m.type === "audio") return m.content ? <audio controls src={m.content} /> : <span>Sending audio…</span>;
+    if (m.type === "uploading") return <em>Uploading…</em>;
+    return <span>{m.text}</span>;
+  };
+
+  // ---------- UI ----------
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "#fff" }}>
       {/* header */}
-      <header style={{ padding: 12, borderBottom: "1px solid #eee", position: "sticky", top: 0, background: "#f9f9f9", zIndex: 40 }}>
-        {!isSelecting ? (
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <h3 style={{ margin: 0 }}>Chats</h3>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <button onClick={() => selectAll()} style={btnStyle}>Select All</button>
-            </div>
+      <div style={{ padding: 12, borderBottom: "1px solid #eee", display: "flex", alignItems: "center", gap: 10 }}>
+        <button onClick={onBack} style={{ background: "transparent", border: "none", fontSize: 18 }}>←</button>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 42, height: 42, borderRadius: 999, background: "#ddd", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            {otherUser.name?.[0] || "U"}
           </div>
-        ) : (
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div style={{ fontWeight: 600 }}>{selected.length} selected</div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={selectAll} style={btnStyle}>✅</button>
-              <button onClick={() => setConfirmAction({ type: "block", chatIds: selected })} style={btnStyle}>🚫</button>
-              <button onClick={() => setConfirmAction({ type: "report", chatIds: selected })} style={btnStyle}>⚠️</button>
-              <button onClick={handleClearSelected} style={btnStyle}>🧹</button>
-              <button onClick={() => { setSelected([]); setIsSelecting(false); }} style={btnStyle}>❌</button>
-            </div>
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <div style={{ fontWeight: 700 }}>{otherUser.name}</div>
+            <div style={{ fontSize: 13, color: "#666" }}>{typingOther ? "Typing..." : "Online"}</div>
           </div>
-        )}
-      </header>
-
-      {/* archived bar (hidden until scrolled to top) */}
-      <div ref={listRef} onScroll={() => {
-        const el = listRef.current;
-        if (!el) return;
-        setShowArchivedBar(el.scrollTop === 0 && archivedCount > 0);
-      }} style={{ overflowY: "auto", flex: 1 }}>
-        {showArchivedBar && !showArchivedPage && archivedCount > 0 && (
-          <motion.div initial={{ y: -10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} style={{ padding: 10, textAlign: "center", background: "#f4f6f8", cursor: "pointer", borderBottom: "1px solid #e6e6e6" }} onClick={() => setShowArchivedPage(true)}>
-            📁 Archived ({archivedCount})
-          </motion.div>
-        )}
-
-        {/* archived page */}
-        {showArchivedPage ? (
-          <div style={{ padding: 8 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0" }}>
-              <button onClick={() => setShowArchivedPage(false)} style={btnStyle}>← Back</button>
-              <div style={{ fontWeight: 600 }}>Archived Chats</div>
-              <div />
-            </div>
-
-            {archivedChats.length === 0 ? (
-              <div style={{ textAlign: "center", padding: 30, color: "#777" }}>No archived chats</div>
-            ) : (
-              archivedChats.map((chat) => (
-                <motion.div key={chat.id} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                  onTouchStart={() => startLongPress(chat.id)} onTouchEnd={endLongPress} onMouseDown={() => startLongPress(chat.id)} onMouseUp={endLongPress}
-                  onClick={() => {
-                    if (isSelecting) toggleSelect(chat.id);
-                    else onOpenChat?.(chat);
-                  }}
-                  style={{ padding: 12, borderBottom: "1px solid #eee", background: selected.includes(chat.id) ? "#eef6ff" : "#fff", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}>
-                  <div>
-                    <div style={{ fontWeight: 600 }}>{chat.isGroup ? (chat.groupName || chat.name || "Group") : chat.name || "Unknown"}</div>
-                    <div style={{ color: "#666", fontSize: 13 }}>{mediaPreviewText(chat.lastMessage)}</div>
-                  </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: 12, color: "#999" }}>{friendlyTime(chat.lastMessageTime)}</div>
-                    {isMutedForUser(chat) && <div style={{ fontSize: 12, color: "#666" }}>🔕 muted</div>}
-                  </div>
-                </motion.div>
-              ))
-            )}
-          </div>
-        ) : (
-          // main chat list
-          <div>
-            {chats.map((chat) => (
-              <motion.div key={chat.id} layout initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }}
-                onTouchStart={() => startLongPress(chat.id)} onTouchEnd={endLongPress} onMouseDown={() => startLongPress(chat.id)} onMouseUp={endLongPress}
-                onClick={() => {
-                  if (isSelecting) toggleSelect(chat.id);
-                  else onOpenChat?.(chat);
-                }}
-                style={{
-                  padding: 12,
-                  borderBottom: "1px solid #eee",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  background: selected.includes(chat.id) ? "#eef6ff" : "#fff",
-                  cursor: "pointer",
-                  position: "relative",
-                }}>
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    {/* avatar placeholder */}
-                    <div style={{ width: 40, height: 40, borderRadius: 999, background: "#ddd", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>
-                      {chat.isGroup ? "👥" : (chat.name?.[0] || "U")}
-                    </div>
-                    <div>
-                      <div style={{ fontWeight: 600 }}>
-                        {chat.isGroup ? (chat.groupName || chat.name || "Group") : chat.name || "Unknown"}
-                      </div>
-                      <div style={{ color: selected.includes(chat.id) ? "#007bff" : (chat.typing ? "#007bff" : "#666"), fontSize: 13 }}>
-                        {chat.typing ? "Typing..." : mediaPreviewText(chat.lastMessage)}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{ textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
-                  <div style={{ fontSize: 12, color: "#999" }}>{friendlyTime(chat.lastMessageTime)}</div>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    {isMutedForUser(chat) && <div style={{ fontSize: 12, color: "#666" }}>🔕</div>}
-                    <button onClick={(e) => { e.stopPropagation(); openMenuFor(chat); }} style={{ background: "transparent", border: "none", fontSize: 18, cursor: "pointer" }}>⋮</button>
-                  </div>
-
-                  {/* inline menu for this chat */}
-                  {menuForChat?.id === chat.id && (
-                    <div style={{ position: "absolute", right: 8, top: 46, background: "#fff", border: "1px solid #ddd", borderRadius: 8, boxShadow: "0 6px 14px rgba(0,0,0,0.12)", zIndex: 60 }}>
-                      <button onClick={() => { archiveChatForUser(chat.id, true); }} style={menuItem}>Archive</button>
-                      <button onClick={() => toggleMute(chat)} style={menuItem}>{isMutedForUser(chat) ? "Unmute" : "Mute (8h)"}</button>
-                      <button onClick={() => { setConfirmAction({ type: "report", chatIds: [chat.id] }); closeMenu(); }} style={menuItem}>Report</button>
-                      {!chat.isGroup && <button onClick={() => { setConfirmAction({ type: "block", chatIds: [chat.id] }); closeMenu(); }} style={menuItem}>Block</button>}
-                      <button onClick={() => { handleClearSelected([chat.id]); closeMenu(); }} style={menuItem}>Clear Chat</button>
-                    </div>
-                  )}
-                </div>
-              </motion.div>
-            ))}
-            {chats.length === 0 && <div style={{ padding: 20, color: "#777" }}>No chats yet</div>}
-          </div>
-        )}
+        </div>
       </div>
 
-      {/* confirmation bottom sheet */}
-      <AnimatePresence>
-        {confirmAction && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "flex-end", zIndex: 90 }}>
-            <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", stiffness: 80, damping: 16 }} style={{ width: "100%", maxWidth: 420, margin: "0 auto", background: "#fff", borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: 20 }}>
-              <h4 style={{ margin: 0 }}>{confirmAction.type === "block" ? "Block selected user(s)?" : "Report selected chat(s)?"}</h4>
-              <p style={{ color: "#555", marginTop: 8 }}>{confirmAction.type === "block" ? "They won't be able to message you again." : "We will review the reported chat(s)."}</p>
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 }}>
-                <button onClick={() => setConfirmAction(null)} style={{ padding: "8px 14px", borderRadius: 8, background: "#eee", border: "none", cursor: "pointer" }}>Cancel</button>
-                <button onClick={() => {
-                  if (confirmAction.type === "block") submitBlock(confirmAction.chatIds);
-                  else submitReport(confirmAction.chatIds);
-                }} style={{ padding: "8px 14px", borderRadius: 8, background: "#ff4d4d", border: "none", color: "#fff", cursor: "pointer" }}>{confirmAction.type === "block" ? "Block" : "Report"}</button>
+      {/* messages */}
+      <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: 12 }}>
+        {messages.map((m) => (
+          <div key={m.id} style={{ display: "flex", justifyContent: m.from === myUid ? "flex-end" : "flex-start", marginBottom: 12 }}>
+            <div style={{ maxWidth: "78%", textAlign: m.from === myUid ? "right" : "left" }}>
+              <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} style={{ display: "inline-block", background: m.from === myUid ? "#007bff" : "#f1f3f5", color: m.from === myUid ? "#fff" : "#000", padding: 10, borderRadius: 12 }}>
+                {m.replyTo && <div style={{ fontSize: 12, opacity: 0.9, marginBottom: 6, background: "#fff", color: "#222", padding: "6px 8px", borderRadius: 6 }}>{m.replyTo.text}</div>}
+                {renderMessageContent(m)}
+                <div style={{ fontSize: 11, opacity: 0.8, marginTop: 6 }}>{formatTime(m.timestamp)}</div>
+              </motion.div>
+              <div style={{ marginTop: 6 }}>
+                <button onClick={() => openActions(m)} style={{ background: "transparent", border: "none", color: "#666", cursor: "pointer" }}>⋮</button>
               </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* composer */}
+      <div style={{ padding: 10, borderTop: "1px solid #eee", display: "flex", gap: 8, alignItems: "center" }}>
+        <label style={{ cursor: "pointer" }}>
+          📎
+          <input type="file" accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.zip,audio/*" onChange={handleFilePick} style={{ display: "none" }} />
+        </label>
+
+        <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+          {replyTo && (
+            <div style={{ background: "#f4f8ff", padding: "6px 8px", borderRadius: 8, marginBottom: 6 }}>
+              Replying to: <strong>{replyTo.text}</strong> <button onClick={() => setReplyTo(null)} style={{ marginLeft: 8 }}>✖</button>
+            </div>
+          )}
+          <input value={text} onChange={(e) => handleTyping(e.target.value)} placeholder="Type a message" style={{ padding: "10px 12px", borderRadius: 20, border: "1px solid #ddd" }} />
+        </div>
+
+        {/* record button: hold to record, release to stop */}
+        <button
+          onMouseDown={startRecording}
+          onMouseUp={stopRecording}
+          onTouchStart={startRecording}
+          onTouchEnd={stopRecording}
+          title={isRecording ? "Recording..." : "Hold to record"}
+          style={{
+            background: isRecording ? "#ff4d4d" : "#eee",
+            border: "none",
+            padding: "10px 12px",
+            borderRadius: 999,
+            cursor: "pointer",
+            marginRight: 6,
+          }}
+        >
+          {isRecording ? "⏺" : "🎤"}
+        </button>
+
+        <button onClick={() => sendMessage({ text: text.trim(), file: attachPreview?.file, fileType: attachPreview?.type, fileName: attachPreview?.name })} disabled={!text.trim() && !attachPreview} style={{ background: "#007bff", color: "#fff", border: "none", padding: "8px 12px", borderRadius: 999 }}>
+          ➤
+        </button>
+      </div>
+
+      {/* attach preview */}
+      <AnimatePresence>
+        {attachPreview && (
+          <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }} style={{ position: "fixed", bottom: 86, left: 12, right: 12, background: "#fff", border: "1px solid #eee", borderRadius: 10, padding: 10, zIndex: 80 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              {attachPreview.type === "image" ? <img src={attachPreview.url} alt="preview" style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 8 }} /> : <div style={{ width: 64, height: 64, display: "flex", alignItems: "center", justifyContent: "center", background: "#f4f4f4", borderRadius: 8 }}>📎</div>}
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600 }}>{attachPreview.name}</div>
+                <div style={{ color: "#666", fontSize: 13 }}>{attachPreview.type === "image" ? "Image" : "File"}</div>
+              </div>
+              <div>
+                <button onClick={() => setAttachPreview(null)} style={{ background: "transparent", border: "none", fontSize: 18 }}>✖</button>
+              </div>
+            </div>
+            {uploadProgress !== null && <div style={{ marginTop: 8 }}>Uploading: {uploadProgress}%</div>}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* action sheet for message */}
+      <AnimatePresence>
+        {actionMessage && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ position: "fixed", inset: 0, display: "flex", alignItems: "flex-end", justifyContent: "center", background: "rgba(0,0,0,0.35)", zIndex: 90 }}>
+            <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", stiffness: 80 }} style={{ width: "100%", maxWidth: 420, background: "#fff", borderTopLeftRadius: 14, borderTopRightRadius: 14, padding: 12 }}>
+              <div style={{ fontWeight: 700, marginBottom: 8 }}>Message actions</div>
+              <button onClick={() => { startReply(actionMessage); }} style={{ display: "block", width: "100%", textAlign: "left", padding: 12, border: "none", background: "transparent" }}>💬 Reply</button>
+              <button onClick={() => { markDeletedForMe(actionMessage.id); setActionMessage(null); }} style={{ display: "block", width: "100%", textAlign: "left", padding: 12, border: "none", background: "transparent" }}>🗑 Delete for me</button>
+              <button onClick={() => { deleteForEveryone(actionMessage.id); setActionMessage(null); }} style={{ display: "block", width: "100%", textAlign: "left", padding: 12, border: "none", background: "transparent" }}>🗑 Delete for everyone (10m)</button>
+              <button onClick={() => setActionMessage(null)} style={{ display: "block", width: "100%", textAlign: "left", padding: 12, color: "#ff4d4d", border: "none", background: "transparent" }}>Cancel</button>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
     </div>
   );
-}
-
-// small styles
-const btnStyle = { background: "transparent", border: "none", padding: "6px 8px", cursor: "pointer" };
-const menuItem = { display: "block", padding: "8px 14px", border: "none", background: "transparent", textAlign: "left", width: "100%", cursor: "pointer" };
-
-// Helper used above but declared here to avoid lint error in inlined call
-async function handleClearSelected(ids) {
-  // placeholder — this function is referenced in inline menu above for single clear
-  // realistically you may want to implement a per-chat messages deletion batch or a clearedBy flag
-  // for now just set clearedBy flag
-  // (this is left intentionally thin — main handleClearSelected writes for multi-select)
-  return;
 }
