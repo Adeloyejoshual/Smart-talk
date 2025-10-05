@@ -1,141 +1,132 @@
-import React, { useState, useEffect } from "react";
+// 📁 /src/pages/WalletPage.jsx
+import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { auth } from "../firebaseClient";
 
 export default function WalletPage() {
   const [wallet, setWallet] = useState({ balance: 0 });
+  const [cards, setCards] = useState([]);
   const [amount, setAmount] = useState(5);
-  const [method, setMethod] = useState("stripe");
   const API = import.meta.env.VITE_API_URL || "/api";
 
-  // 🪙 Load user wallet balance
+  // 🪙 Load wallet balance + saved cards
   useEffect(() => {
-    async function loadWallet() {
+    async function load() {
       if (!auth.currentUser) return;
-      try {
-        const uid = auth.currentUser.uid;
-        const res = await axios.get(`${API}/wallet/${uid}`);
-        setWallet(res.data.wallet || { balance: 0 });
-      } catch (err) {
-        console.error("Error loading wallet:", err);
-      }
-    }
-    loadWallet();
-  }, []);
-
-  // 💳 Handle add credit
-  const addCredit = async () => {
-    try {
-      if (!auth.currentUser) return alert("Please log in first");
       const uid = auth.currentUser.uid;
-      const res = await axios.post(`${API}/payment/session`, {
-        amount,
-        uid,
-        method,
-      });
-      window.location.href = res.data.url; // redirect to payment page
-    } catch (err) {
-      alert(err.response?.data?.message || err.message);
+
+      const [walletRes, cardRes] = await Promise.all([
+        axios.get(`${API}/wallet/${uid}`),
+        axios.get(`${API}/cards/${uid}`),
+      ]);
+
+      setWallet(walletRes.data.wallet || { balance: 0 });
+      setCards(cardRes.data.cards || []);
     }
+    load();
+  }, [auth.currentUser]);
+
+  // ➕ Add Credit (Stripe Checkout)
+  const addCredit = async () => {
+    const uid = auth.currentUser.uid;
+    const res = await axios.post(`${API}/payment/stripe-session`, { amount, uid });
+    window.location.href = res.data.url;
   };
 
-  // 🏦 Withdraw (coming soon)
-  const withdraw = () => {
-    alert("Withdraw coming soon 🚀");
+  // 💳 Set Default Card
+  const setDefault = async (cardId) => {
+    const uid = auth.currentUser.uid;
+    await axios.post(`${API}/cards/set-default`, { uid, cardId });
+    const updated = cards.map((c) => ({ ...c, default: c._id === cardId }));
+    setCards(updated);
+    alert("✅ Default card updated!");
+  };
+
+  // 🗑️ Delete Card
+  const deleteCard = async (cardId) => {
+    if (!window.confirm("Delete this saved card?")) return;
+    await axios.delete(`${API}/cards/${cardId}`);
+    setCards(cards.filter((c) => c._id !== cardId));
   };
 
   return (
     <div style={{ maxWidth: 900, margin: "20px auto", padding: 16 }}>
-      <h2 style={{ textAlign: "center", marginBottom: 16 }}>Wallet</h2>
+      <h2 style={{ textAlign: "center" }}>💼 Wallet</h2>
 
+      {/* 💰 Balance */}
       <div
         style={{
-          padding: 16,
           border: "1px solid #ddd",
+          padding: 16,
           borderRadius: 12,
-          background: "#fafafa",
-          display: "flex",
-          flexDirection: "column",
-          gap: 16,
+          marginBottom: 20,
         }}
       >
-        <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 32, fontWeight: "bold" }}>
-            ${(wallet.balance || 0).toFixed(2)}
-          </div>
-          <div style={{ fontSize: 13, color: "#666" }}>
-            Bonus credits expire in 3 months
-          </div>
+        <div style={{ fontSize: 26, fontWeight: "bold" }}>
+          ${wallet.balance?.toFixed(2) || "0.00"}
         </div>
+        <div style={{ color: "#777", fontSize: 13 }}>Expires in 3 months (bonus)</div>
 
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            gap: 10,
-            flexWrap: "wrap",
-          }}
-        >
-          <input
-            type="number"
-            value={amount}
-            min="1"
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder="Amount"
-            style={{
-              padding: "8px 12px",
-              border: "1px solid #ccc",
-              borderRadius: 8,
-              width: 100,
-            }}
-          />
-
-          <select
-            value={method}
-            onChange={(e) => setMethod(e.target.value)}
-            style={{
-              padding: "8px 12px",
-              border: "1px solid #ccc",
-              borderRadius: 8,
-            }}
-          >
-            <option value="stripe">Stripe (USD)</option>
-            <option value="paystack">Paystack (Local)</option>
-            <option value="flutterwave">Flutterwave (Local)</option>
-          </select>
-
-          <button
-            onClick={addCredit}
-            style={{
-              padding: "8px 16px",
-              background: "#007bff",
-              color: "#fff",
-              border: "none",
-              borderRadius: 8,
-              cursor: "pointer",
-            }}
-          >
-            Add Credit
-          </button>
+        <div style={{ marginTop: 12, display: "flex", gap: 10 }}>
+          <button onClick={addCredit}>Add Credit</button>
+          <button onClick={() => alert("Withdraw coming soon 🚀")}>Withdraw</button>
         </div>
+      </div>
 
-        <hr />
+      {/* 💳 Saved Cards Section */}
+      <div
+        style={{
+          border: "1px solid #ddd",
+          borderRadius: 12,
+          padding: 16,
+          background: "#fafafa",
+        }}
+      >
+        <h3 style={{ marginBottom: 10 }}>💳 Saved Cards</h3>
+        {cards.length === 0 ? (
+          <p style={{ color: "#777" }}>No saved cards yet</p>
+        ) : (
+          cards.map((card) => (
+            <div
+              key={card._id}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "10px 0",
+                borderBottom: "1px solid #eee",
+              }}
+            >
+              <div>
+                <div style={{ fontWeight: 600 }}>
+                  {card.details?.brand?.toUpperCase() || card.brand} •••• {card.details?.last4 || card.last4}
+                </div>
+                <div style={{ color: "#666", fontSize: 13 }}>
+                  Exp: {card.details?.exp_month || card.exp_month}/{card.details?.exp_year || card.exp_year} • {card.gateway}
+                </div>
+              </div>
 
-        <div style={{ display: "flex", justifyContent: "center" }}>
-          <button
-            onClick={withdraw}
-            style={{
-              padding: "8px 16px",
-              borderRadius: 8,
-              border: "1px solid #ddd",
-              background: "#fff",
-              cursor: "pointer",
-            }}
-          >
-            Withdraw
-          </button>
-        </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                {card.default ? (
+                  <span
+                    style={{
+                      background: "#2ecc71",
+                      color: "#fff",
+                      padding: "4px 8px",
+                      borderRadius: 6,
+                      fontSize: 12,
+                    }}
+                  >
+                    Default
+                  </span>
+                ) : (
+                  <button onClick={() => setDefault(card._id)}>Set Default</button>
+                )}
+                <button onClick={() => deleteCard(card._id)}>Delete</button>
+              </div>
+            </div>
+          ))
+        )}
       </div>
     </div>
   );
