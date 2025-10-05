@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { db } from "../firebaseClient";
 import {
   collection,
@@ -15,6 +15,8 @@ export default function ArchivedChatsPage({ onBack }) {
   const [archived, setArchived] = useState([]);
   const [selected, setSelected] = useState([]);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [isSelecting, setIsSelecting] = useState(false);
+  const longPressTimer = useRef(null);
 
   useEffect(() => {
     const q = query(
@@ -28,10 +30,25 @@ export default function ArchivedChatsPage({ onBack }) {
     return unsub;
   }, []);
 
+  // 🧠 Handle select/unselect chat
   const handleSelect = (id) => {
+    if (!isSelecting) return;
     setSelected((prev) =>
       prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
     );
+  };
+
+  // 🕒 Long press starts selection mode
+  const handleLongPressStart = (id) => {
+    longPressTimer.current = setTimeout(() => {
+      setIsSelecting(true);
+      setSelected([id]);
+      navigator.vibrate?.(30); // subtle vibration feedback (optional)
+    }, 400);
+  };
+
+  const handleLongPressEnd = () => {
+    clearTimeout(longPressTimer.current);
   };
 
   const handleSelectAll = () => {
@@ -46,11 +63,13 @@ export default function ArchivedChatsPage({ onBack }) {
       await updateDoc(doc(db, "chats", id), { archived: false });
     }
     setSelected([]);
+    setIsSelecting(false);
     setMenuOpen(false);
   };
 
   const handleCancelSelection = () => {
     setSelected([]);
+    setIsSelecting(false);
   };
 
   return (
@@ -63,8 +82,8 @@ export default function ArchivedChatsPage({ onBack }) {
         flexDirection: "column",
       }}
     >
-      {/* Header */}
-      {selected.length === 0 ? (
+      {/* Header or Selection Bar */}
+      {!isSelecting ? (
         <header
           style={{
             display: "flex",
@@ -119,24 +138,14 @@ export default function ArchivedChatsPage({ onBack }) {
                 }}
               >
                 <button onClick={handleSelectAll} style={menuItemStyle}>
-                  {selected.length === archived.length
-                    ? "Unselect All"
-                    : "Select All"}
+                  Select All
                 </button>
-                {selected.length > 0 && (
-                  <button
-                    onClick={handleUnarchiveSelected}
-                    style={{ ...menuItemStyle, color: "green" }}
-                  >
-                    Unarchive Selected
-                  </button>
-                )}
               </div>
             )}
           </div>
         </header>
       ) : (
-        /* Selection Action Bar */
+        /* Selection Toolbar */
         <div
           style={{
             display: "flex",
@@ -154,25 +163,13 @@ export default function ArchivedChatsPage({ onBack }) {
             {selected.length} selected
           </div>
           <div style={{ display: "flex", gap: 10 }}>
-            <button
-              onClick={handleSelectAll}
-              style={actionButtonStyle}
-              title="Select All"
-            >
+            <button onClick={handleSelectAll} style={actionButtonStyle}>
               ✅
             </button>
-            <button
-              onClick={handleUnarchiveSelected}
-              style={actionButtonStyle}
-              title="Unarchive"
-            >
+            <button onClick={handleUnarchiveSelected} style={actionButtonStyle}>
               🗂️
             </button>
-            <button
-              onClick={handleCancelSelection}
-              style={actionButtonStyle}
-              title="Cancel"
-            >
+            <button onClick={handleCancelSelection} style={actionButtonStyle}>
               ❌
             </button>
           </div>
@@ -202,6 +199,10 @@ export default function ArchivedChatsPage({ onBack }) {
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 30 }}
                 whileTap={{ scale: 0.98 }}
+                onTouchStart={() => handleLongPressStart(chat.id)}
+                onTouchEnd={handleLongPressEnd}
+                onMouseDown={() => handleLongPressStart(chat.id)}
+                onMouseUp={handleLongPressEnd}
                 onClick={() => handleSelect(chat.id)}
                 style={{
                   padding: "12px 16px",
