@@ -1,81 +1,77 @@
-import { createStripeCheckout } from "../services/stripeService.js";
-import { initializePaystackTransaction, verifyPaystack } from "../services/paystackService.js";
-import { initializeFlutterwave, verifyFlutterwave } from "../services/flutterwaveService.js";
-import Wallet from "../models/Wallet.js";
-import Transaction from "../models/Transaction.js";
+import axios from "axios";
+import { detectCurrency, convertToUSD } from "../utils/currency.js";
+import Wallet from "../models/Wallet.js"; // your wallet model
 
-/**
- * NOTE: For production, verify webhooks from Stripe / Paystack / Flutterwave and update wallet only after webhook confirmation.
- */
-
-export async function stripeSession(req, res) {
+export const createPaymentSession = async (req, res) => {
   try {
-    const { amount, uid } = req.body;
-    if (!amount || !uid) return res.status(400).json({ message: "amount and uid required" });
-    const session = await createStripeCheckout(amount, uid, req.headers.origin || req.body.origin || "http://localhost:5173");
-    res.json({ url: session.url });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-}
+    const { amount, uid, method } = req.body;
+    const ip = req.headers["x-forwarded-for"]?.split(",")[0] || req.socket.remoteAddress;
 
-export async function paystackInit(req, res) {
-  try {
-    const { amountNGN, email, uid } = req.body;
-    const callbackUrl = `${req.headers.origin}/wallet`;
-    const r = await initializePaystackTransaction(amountNGN, email, callbackUrl);
-    res.json(r);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-}
+    // 1️⃣ Detect currency by IP
+    const localCurrency = await detectCurrency(ip);
 
-export async function paystackVerify(req, res) {
-  try {
-    const { reference, uid, amountUSD } = req.body;
-    const data = await verifyPaystack(reference);
-    if (data.status && data.data.status === "success") {
-      // convert NGN->USD externally (for demo assume amountUSD provided)
-      const wallet = await Wallet.findOneAndUpdate({ uid }, {
-        $inc: { balance: amountUSD },
-        $setOnInsert: { createdAt: new Date(), expiresAt: new Date(Date.now() + (process.env.BONUS_EXPIRY_DAYS||90)*24*60*60*1000) }
-      }, { upsert: true, new: true });
-      await Transaction.create({ uid, type: 'add', amount: amountUSD, currency: 'USD', meta: { gateway: 'paystack', reference }});
-      return res.json({ success: true, wallet });
+    // 2️⃣ Convert amount to USD
+    const amountUSD = await convertToUSD(amount, localCurrency);
+
+    // 3️⃣ Choose processor
+    let paymentUrl;
+    if (method === "paystack") {
+      const payRes = await axios.post(
+        "https://api.paystack.co/transaction/initialize",
+        {
+          email: "user@example.com",
+          amount: amount * 100, // Paystack expects kobo
+          currency: localCurrency,
+        },
+        {
+          headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET}` },
+        }
+      );
+      paymentUrl = payRes.data.data.authorization_url;
+    } else if (method === "flutterwave") {
+      const fwRes = await axios.post(
+        "https://api.flutterwave.com/v3/payments",
+        {
+          tx_ref: `tx-${Date.now()}`,
+          amount,
+          currency: localCurrency,
+          redirect_url: `${process.env.FRONTEND_URL}/wallet`,
+          customer: { email: "user@example.com" },
+        },
+        {
+          headers: { Authorization: `Bearer ${process.env.FLW_SECRET}` },
+        }
+      );
+      paymentUrl = fwRes.data.data.link;
     } else {
-      return res.status(400).json({ success: false, message: "payment not successful" });
+      // Stripe or fallback
+      const stripe = new Stripe(process.env.STRIPE_SECRET);
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ["card"],
+        line_items: [
+          {
+            price_data: {
+              currency: "usd",
+              product_data: { name: "Wallet Credit" },
+              unit_amount: amountUSD * 100,
+            },
+            quantity: 1,
+          },
+        ],
+        mode: "payment",
+        success_url: `${process.env.FRONTEND_URL}/wallet`,
+        cancel_url: `${process.env.FRONTEND_URL}/wallet`,
+      });
+      paymentUrl = session.url;
     }
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-}
 
-export async function flutterwaveInit(req, res) {
-  try {
-    const { amount, currency, customer } = req.body;
-    const redirectUrl = `${req.headers.origin}/wallet`;
-    const r = await initializeFlutterwave(amount, currency, redirectUrl, customer);
-    res.json(r);
+    res.json({
+      url: paymentUrl,
+      localCurrency,
+      convertedUSD: amountUSD,
+    });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("Payment error:", err.message);
+    res.status(500).json({ message: "Payment failed" });
   }
-}
-
-export async function flutterwaveVerify(req, res) {
-  try {
-    const { id, uid, amountUSD } = req.body;
-    const r = await verifyFlutterwave(id);
-    if (r.status === "success") {
-      const wallet = await Wallet.findOneAndUpdate({ uid }, {
-        $inc: { balance: amountUSD },
-        $setOnInsert: { createdAt: new Date(), expiresAt: new Date(Date.now() + (process.env.BONUS_EXPIRY_DAYS||90)*24*60*60*1000) }
-      }, { upsert: true, new: true });
-      await Transaction.create({ uid, type: 'add', amount: amountUSD, currency: 'USD', meta: { gateway: 'flutterwave', id }});
-      return res.json({ success: true, wallet });
-    } else {
-      return res.status(400).json({ message: "not successful" });
-    }
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-}
+};
