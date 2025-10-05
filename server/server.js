@@ -7,6 +7,7 @@ import { fileURLToPath } from "url";
 
 import { connectDB } from "./config/db.js";
 import { initFirebaseAdmin } from "./utils/firebaseAdmin.js";
+import { walletRoutes } from "./src/routes/walletRoutes.js";
 
 dotenv.config();
 await connectDB();
