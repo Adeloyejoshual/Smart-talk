@@ -2,10 +2,9 @@
 import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
-import mongoose from "mongoose";
-import bodyParser from "body-parser";
 import path from "path";
 import { fileURLToPath } from "url";
+import bodyParser from "body-parser";
 
 import { connectDB } from "./config/db.js";
 import { initFirebaseAdmin } from "./utils/firebaseAdmin.js";
@@ -26,25 +25,23 @@ const admin = initFirebaseAdmin();
 
 const app = express();
 
-// For Stripe webhook we need raw body; use body-parser raw for that route
-// Use JSON parser and CORS generally
+// Enable CORS and JSON parsing middleware globally
 app.use(cors());
 app.use(express.json());
 
-// Stripe webhook route with raw body parser (Stripe requires the raw request body)
+// Stripe webhook route: uses raw body parser as required by Stripe
 app.post(
   "/webhook/stripe",
   bodyParser.raw({ type: "application/json" }),
   (req, res, next) => {
-    req.rawBody = req.body; // body-parser.raw sets req.body as Buffer; preserve it
-    // Dynamically import webhook controller to avoid hoisting issues
+    req.rawBody = req.body; // preserve raw body buffer for Stripe signature verification
     import("./controllers/webhookController.js")
       .then((mod) => mod.stripeWebhook(req, res))
       .catch(next);
   }
 );
 
-// Other webhook routes, parsed as JSON
+// Other webhook routes use JSON parser
 app.use("/webhook", bodyParser.json(), webhookRoutes);
 
 // Mount API routes
@@ -53,21 +50,20 @@ app.use("/api/wallet", walletRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/call", callRoutes);
 
-// Serve static client build if present
+// Serve static files from client build directory
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
 const clientBuildPath = path.join(__dirname, "../client/dist");
 app.use(express.static(clientBuildPath));
 
-// Catch-all route to serve the client index.html for SPA
+// Serve index.html for any other route (SPA fallback)
 app.get("*", (req, res) => {
   res.sendFile(path.join(clientBuildPath, "index.html"));
 });
 
-// Optional root quick check route
+// Optional quick root check route
 app.get("/", (req, res) => res.send("SmartTalk server running"));
 
-// Start server
+// Start the server on specified port
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
