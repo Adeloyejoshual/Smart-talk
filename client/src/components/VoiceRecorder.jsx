@@ -1,25 +1,6 @@
-// /src/components/VoiceRecorder.jsx
 import React, { useEffect, useRef, useState } from "react";
 
-/**
- * VoiceRecorder
- *
- * Props:
- *  - onSend: async (Blob) => { }   // called when user taps "Send"
- *  - maxDurationSec: number (optional) // optional max recording length
- *
- * Features:
- *  - Record via MediaRecorder
- *  - Draw waveform preview on canvas (uses AudioContext.decodeAudioData)
- *  - Playback recorded audio (Audio element)
- *  - Send recorded audio via onSend(blob)
- *  - Cancel / Clear recording
- *
- * Usage:
- *  <VoiceRecorder onSend={async (blob) => { await sendVoiceMessage(blob); }} />
- */
-
-export default function VoiceRecorder({ onSend, maxDurationSec = 300 }) {
+export default function VoiceRecorder({ onSend, onCancel, maxDurationSec = 300 }) {
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [audioURL, setAudioURL] = useState(null);
@@ -31,15 +12,17 @@ export default function VoiceRecorder({ onSend, maxDurationSec = 300 }) {
   const audioRef = useRef(null);
   const canvasRef = useRef(null);
   const animationRef = useRef(null);
+  const timerRef = useRef(null);
 
   useEffect(() => {
     return () => {
-      // cleanup on unmount
+      // Cleanup on unmount
       stopTracks();
       if (audioURL) URL.revokeObjectURL(audioURL);
       cancelAnimationFrame(animationRef.current);
+      clearInterval(timerRef.current);
     };
-  }, []);
+  }, [audioURL]);
 
   const stopTracks = () => {
     if (mediaStreamRef.current) {
@@ -48,7 +31,6 @@ export default function VoiceRecorder({ onSend, maxDurationSec = 300 }) {
     }
   };
 
-  // start recording
   const start = async () => {
     setPermissionError(null);
     try {
@@ -57,6 +39,7 @@ export default function VoiceRecorder({ onSend, maxDurationSec = 300 }) {
       const mr = new MediaRecorder(stream);
       mediaRecorderRef.current = mr;
       chunksRef.current = [];
+      setDuration(0);
 
       mr.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
@@ -69,22 +52,29 @@ export default function VoiceRecorder({ onSend, maxDurationSec = 300 }) {
         const url = URL.createObjectURL(blob);
         setAudioURL(url);
 
-        // get duration and waveform
         try {
           await decodeAndDrawWaveform(blob);
         } catch (err) {
-          // fallback: no waveform
           console.warn("Waveform decode failed", err);
+          // Clear canvas if failed
+          const canvas = canvasRef.current;
+          if (canvas) {
+            const ctx = canvas.getContext("2d");
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+          }
         }
-
-        // determine duration from audio element after loadmetadata
         setIsProcessing(false);
       };
 
       mr.start();
       setIsRecording(true);
 
-      // auto-stop if exceeds maxDurationSec
+      // Keep track of recording time
+      timerRef.current = setInterval(() => {
+        setDuration((d) => d + 1);
+      }, 1000);
+
+      // Auto-stop on maxDurationSec
       if (maxDurationSec && maxDurationSec > 0) {
         setTimeout(() => {
           if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
@@ -99,19 +89,18 @@ export default function VoiceRecorder({ onSend, maxDurationSec = 300 }) {
     }
   };
 
-  // stop recording
   const stop = () => {
     try {
       if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
         mediaRecorderRef.current.stop();
       }
     } catch (err) {
-      console.warn("stop error", err);
+      console.warn("Stop recording error:", err);
     }
     setIsRecording(false);
+    clearInterval(timerRef.current);
   };
 
-  // clear recorded audio
   const clear = () => {
     if (audioURL) {
       URL.revokeObjectURL(audioURL);
@@ -119,7 +108,7 @@ export default function VoiceRecorder({ onSend, maxDurationSec = 300 }) {
     }
     setDuration(0);
     setPermissionError(null);
-    // clear canvas
+    clearInterval(timerRef.current);
     const c = canvasRef.current;
     if (c) {
       const ctx = c.getContext("2d");
@@ -127,15 +116,13 @@ export default function VoiceRecorder({ onSend, maxDurationSec = 300 }) {
     }
   };
 
-  // send recorded blob via onSend
   const handleSend = async () => {
     if (!audioURL || !onSend) return;
     setIsProcessing(true);
     try {
-      // convert audioURL back to blob
       const resp = await fetch(audioURL);
       const blob = await resp.blob();
-      await onSend(blob); // user's handler (uploads + database)
+      await onSend(blob);
       clear();
     } catch (err) {
       console.error("Send failed", err);
@@ -145,18 +132,25 @@ export default function VoiceRecorder({ onSend, maxDurationSec = 300 }) {
     }
   };
 
-  // decode audio and draw waveform
+  const handleCancel = () => {
+    stop();
+    clear();
+    if (onCancel) onCancel();
+  };
+
+  // decode audio blob and draw waveform on canvas
   const decodeAndDrawWaveform = async (blob) => {
-    // use AudioContext to decode as arrayBuffer
     const arrayBuffer = await blob.arrayBuffer();
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-    const raw = audioBuffer.getChannelData(0); // mono (first channel)
+    const raw = audioBuffer.getChannelData(0); // mono channel
     setDuration(Math.round(audioBuffer.duration));
 
-    // downsample for canvas width
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas) {
+      audioCtx.close();
+      return;
+    }
     const dpr = window.devicePixelRatio || 1;
     const width = Math.floor(canvas.clientWidth * dpr);
     const height = Math.floor(canvas.clientHeight * dpr);
@@ -164,20 +158,15 @@ export default function VoiceRecorder({ onSend, maxDurationSec = 300 }) {
     canvas.height = height;
     const ctx = canvas.getContext("2d");
 
-    // clear
     ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = "#efefef";
+    ctx.fillRect(0, 0, width, height);
 
     const samples = raw.length;
     const step = Math.ceil(samples / width);
     const amp = height / 2;
 
-    ctx.fillStyle = "#efefef";
-    ctx.fillRect(0, 0, width, height);
-
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = "#4b5563"; // gray-600
-    ctx.beginPath();
-
+    ctx.fillStyle = "#374151"; // dark gray for waveform bars
     for (let i = 0; i < width; i++) {
       const start = i * step;
       let sum = 0;
@@ -188,80 +177,131 @@ export default function VoiceRecorder({ onSend, maxDurationSec = 300 }) {
       }
       const avg = count === 0 ? 0 : sum / count;
       const y = avg * amp;
-      // draw vertical bar
-      ctx.fillStyle = "#374151"; // darker
       const barHeight = Math.max(1, Math.round(y * 0.9));
       ctx.fillRect(i, (height / 2) - barHeight / 2, 1, barHeight);
     }
-    ctx.closePath();
 
-    // close audio context
     audioCtx.close();
   };
 
-  // when audio element loads, set duration
+  // When audio element metadata loads, sync duration if less than current state (fallback)
   const handleAudioLoaded = () => {
     if (audioRef.current) {
-      setDuration(Math.round(audioRef.current.duration || 0));
+      const audioDuration = Math.round(audioRef.current.duration || 0);
+      if (audioDuration > 0 && audioDuration !== duration) setDuration(audioDuration);
     }
   };
 
   return (
-    <div className="w-full max-w-xl mx-auto">
-      <div className="space-y-2">
-        {/* recorder controls */}
-        <div className="flex items-center gap-3">
-          <button
-            onClick={isRecording ? stop : start}
-            className={`px-3 py-2 rounded-md text-white ${isRecording ? "bg-red-600 hover:bg-red-700" : "bg-green-600 hover:bg-green-700"}`}
-            aria-pressed={isRecording}
-          >
-            {isRecording ? "Stop" : "Record"}
-          </button>
+    <div
+      style={{
+        background: "#111",
+        color: "#fff",
+        padding: 16,
+        borderRadius: 12,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 12,
+        width: "100%",
+        maxWidth: 320,
+        margin: "auto",
+      }}
+    >
+      <div style={{ display: "flex", gap: 12, width: "100%", alignItems: "center" }}>
+        <button
+          onClick={isRecording ? stop : start}
+          aria-pressed={isRecording}
+          style={{
+            background: isRecording ? "red" : "#007bff",
+            border: "none",
+            borderRadius: "50%",
+            width: 60,
+            height: 60,
+            fontSize: 24,
+            color: "#fff",
+            cursor: "pointer",
+          }}
+          disabled={isProcessing}
+          title={isRecording ? "Stop recording" : "Start recording"}
+        >
+          {isRecording ? "⏹️" : "🎤"}
+        </button>
 
-          <button
-            onClick={clear}
-            className="px-3 py-2 rounded-md bg-gray-100 hover:bg-gray-200 text-gray-800"
-            disabled={isRecording || !audioURL}
-          >
-            Clear
-          </button>
+        <button
+          onClick={clear}
+          disabled={isRecording || !audioURL || isProcessing}
+          style={{
+            background: "#555",
+            border: "none",
+            borderRadius: 8,
+            padding: "8px 14px",
+            color: "#fff",
+            cursor: isRecording || !audioURL || isProcessing ? "default" : "pointer",
+            opacity: isRecording || !audioURL || isProcessing ? 0.5 : 1,
+          }}
+          title="Clear recording"
+        >
+          Clear
+        </button>
 
-          <button
-            onClick={handleSend}
-            className="px-3 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white"
-            disabled={!audioURL || isProcessing}
-          >
-            {isProcessing ? "Sending..." : "Send"}
-          </button>
+        <button
+          onClick={handleSend}
+          disabled={!audioURL || isProcessing}
+          style={{
+            background: "#007bff",
+            border: "none",
+            borderRadius: 8,
+            padding: "8px 14px",
+            color: "#fff",
+            cursor: !audioURL || isProcessing ? "default" : "pointer",
+            opacity: !audioURL || isProcessing ? 0.5 : 1,
+          }}
+          title="Send recording"
+        >
+          {isProcessing ? "Sending..." : "Send"}
+        </button>
 
-          <div className="ml-auto text-sm text-gray-600">
-            {isRecording ? "Recording…" : audioURL ? `${duration}s` : "Ready"}
-          </div>
-        </div>
-
-        {/* waveform canvas */}
-        <div className="w-full h-24 bg-white rounded-md shadow-inner overflow-hidden">
-          <canvas ref={canvasRef} className="w-full h-full" />
-        </div>
-
-        {/* playback */}
-        {audioURL && (
-          <div className="flex items-center gap-3 mt-2">
-            <audio
-              ref={audioRef}
-              src={audioURL}
-              controls
-              onLoadedMetadata={handleAudioLoaded}
-              className="w-full"
-            />
-          </div>
-        )}
-
-        {permissionError && (
-          <div className="text-sm text-red-600 mt-2">{permissionError}</div>
-        )}
+        <button
+          onClick={handleCancel}
+          disabled={isProcessing}
+          style={{
+            background: "#777",
+            border: "none",
+            borderRadius: 8,
+            padding: "8px 14px",
+            color: "#fff",
+            cursor: isProcessing ? "default" : "pointer",
+          }}
+          title="Cancel recording"
+        >
+          Cancel
+        </button>
       </div>
+
+      <div style={{ width: "100%", height: 96, marginTop: 16, background: "#222", borderRadius: 8, overflow: "hidden" }}>
+        <canvas ref={canvasRef} style={{ width: "100%", height: "100%" }} />
+      </div>
+
+      {audioURL && (
+        <audio
+          ref={audioRef}
+          src={audioURL}
+          controls
+          onLoadedMetadata={handleAudioLoaded}
+          style={{ width: "100%", marginTop: 8, borderRadius: 8, outline: "none" }}
+        />
+      )}
+
+      <div style={{ marginTop: 8, fontSize: 14, color: "#aaa" }}>
+        {isRecording ? `Recording... ${duration}s` : audioURL ? `${duration}s recorded` : "Ready"}
+      </div>
+
+      {permissionError && (
+        <div style={{ marginTop: 12, color: "red", fontSize: 12, textAlign: "center" }}>
+          {permissionError}
+        </div>
+      )}
     </div>
   );
 }
