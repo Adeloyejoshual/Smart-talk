@@ -152,5 +152,4 @@ export default function BottomNav({ current, onChange }) {
     </div>
   );
 }
-```
 
