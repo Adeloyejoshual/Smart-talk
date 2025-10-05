@@ -8,18 +8,26 @@ import WalletPage from "./pages/WalletPage";
 import AdminPanel from "./pages/AdminPanel";
 import { auth } from "./firebaseClient";
 import { onAuthStateChanged } from "firebase/auth";
+import { ThemeProvider } from "./context/ThemeContext";
 
-export default function App(){
+export default function App() {
   const [user, setUser] = React.useState(null);
-  React.useEffect(() => onAuthStateChanged(auth, u => setUser(u)), []);
+
+  React.useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (u) => setUser(u));
+    return unsubscribe;
+  }, []);
+
   return (
-    <Routes>
-      <Route path="/login" element={<Login/>} />
-      <Route path="/register" element={<Register/>} />
-      <Route path="/" element={user ? <Home/> : <Navigate to="/login"/>} />
-      <Route path="/chat/:id" element={user ? <ChatPage/> : <Navigate to="/login"/>} />
-      <Route path="/wallet" element={user ? <WalletPage/> : <Navigate to="/login"/>} />
-      <Route path="/admin" element={user ? <AdminPanel/> : <Navigate to="/login"/>} />
-    </Routes>
+    <ThemeProvider>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/" element={user ? <Home /> : <Navigate to="/login" />} />
+        <Route path="/chat/:id" element={user ? <ChatPage /> : <Navigate to="/login" />} />
+        <Route path="/wallet" element={user ? <WalletPage /> : <Navigate to="/login" />} />
+        <Route path="/admin" element={user ? <AdminPanel /> : <Navigate to="/login" />} />
+      </Routes>
+    </ThemeProvider>
   );
 }
