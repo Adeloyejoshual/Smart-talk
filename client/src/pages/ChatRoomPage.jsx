@@ -1,203 +1,384 @@
-import React, { useEffect, useState, useRef } from "react";
+// /src/pages/ChatRoomPage.jsx
+import React, { useEffect, useRef, useState } from "react";
+import { useAuth } from "../context/AuthContext";
+import useChat from "../hooks/useChat";
+import { formatDistanceToNowStrict } from "date-fns";
 import {
-  collection,
-  addDoc,
-  query,
-  orderBy,
-  onSnapshot,
-  serverTimestamp,
-  doc,
-  updateDoc,
-  deleteDoc,
-} from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { db, auth, storage } from "../firebaseClient";
-import { v4 as uuidv4 } from "uuid";
+  Mic,
+  Send,
+  Paperclip,
+  Image as ImageIcon,
+  MoreVertical,
+  CornerUpLeft,
+} from "lucide-react";
 
-export default function ChatRoomPage({ chatId }) {
-  const user = auth.currentUser;
-  const [messages, setMessages] = useState([]);
+export default function ChatRoomPage({ chatId, otherUser, onBack }) {
+  const { user } = useAuth();
+  const uid = user?.uid;
+
+  const {
+    messages,
+    sendMessage,
+    sendMedia,
+    sendVoiceMessage,
+    deleteMessage,
+    pinMessage,
+    unpinMessage,
+    setTyping,
+    isTyping,
+    otherUserStatus,
+  } = useChat(chatId, otherUser?.uid);
+
   const [text, setText] = useState("");
-  const [uploading, setUploading] = useState(false);
-  const [recording, setRecording] = useState(false);
-  const [mediaFile, setMediaFile] = useState(null);
+  const [filePreview, setFilePreview] = useState(null);
+  const [showActionsFor, setShowActionsFor] = useState(null);
+  const [isRecording, setIsRecording] = useState(false);
   const recorderRef = useRef(null);
+  const chunksRef = useRef([]);
+  const fileInputRef = useRef(null);
+  const scrollRef = useRef(null);
 
-  // 🔹 Load messages
   useEffect(() => {
-    if (!chatId) return;
-    const q = query(collection(db, "chats", chatId, "messages"), orderBy("createdAt", "asc"));
-    const unsub = onSnapshot(q, (snap) =>
-      setMessages(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
-    );
-    return () => unsub();
-  }, [chatId]);
+    if (scrollRef.current)
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [messages]);
 
-  // 🔹 Send text / file / voice message
-  const sendMessage = async (extraData = {}) => {
-    if (!text.trim() && !extraData.url) return;
+  useEffect(() => {
+    let t;
+    if (text.length > 0) {
+      setTyping(true);
+      t = setTimeout(() => setTyping(false), 1500);
+    } else setTyping(false);
+    return () => clearTimeout(t);
+  }, [text, setTyping]);
 
-    const payload = {
-      senderId: user.uid,
-      text: text.trim() || "",
-      type: extraData.type || "text",
-      url: extraData.url || null,
-      fileName: extraData.fileName || null,
-      pinned: extraData.pinned || null,
-      createdAt: serverTimestamp(),
-      deletedBy: {},
-    };
-
-    await addDoc(collection(db, "chats", chatId, "messages"), payload);
-
-    // Update chat last message
-    await updateDoc(doc(db, "chats", chatId), {
-      lastMessage: { text: payload.text, type: payload.type },
-      lastMessageTime: serverTimestamp(),
+  const handleFilePick = (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const isImage = f.type.startsWith("image/");
+    setFilePreview({
+      file: f,
+      url: URL.createObjectURL(f),
+      type: isImage ? "image" : "file",
+      name: f.name,
     });
+  };
 
+  const sendComposer = async () => {
+    if (!text.trim() && !filePreview) return;
+    if (filePreview) {
+      await sendMedia(
+        filePreview.file,
+        filePreview.type === "image" ? "image" : "file"
+      );
+      setFilePreview(null);
+      setText("");
+      return;
+    }
+    await sendMessage(text.trim());
     setText("");
-    setMediaFile(null);
   };
 
-  // 🔹 Handle File Upload
-  const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    setUploading(true);
-
-    const path = `chat_uploads/${chatId}/${uuidv4()}_${file.name}`;
-    const fileRef = ref(storage, path);
-    await uploadBytes(fileRef, file);
-    const url = await getDownloadURL(fileRef);
-
-    await sendMessage({
-      type: file.type.startsWith("image") ? "image" : "file",
-      url,
-      fileName: file.name,
-    });
-    setUploading(false);
-  };
-
-  // 🔹 Handle Voice Recording
   const startRecording = async () => {
-    if (!navigator.mediaDevices) return alert("Voice recording not supported.");
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const mediaRecorder = new MediaRecorder(stream);
-    recorderRef.current = mediaRecorder;
-    const chunks = [];
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mr = new MediaRecorder(stream);
+      recorderRef.current = mr;
+      chunksRef.current = [];
 
-    mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
-    mediaRecorder.onstop = async () => {
-      const blob = new Blob(chunks, { type: "audio/m4a" });
-      const fileName = `voice_${Date.now()}.m4a`;
-      const fileRef = ref(storage, `voice_notes/${chatId}/${fileName}`);
-      await uploadBytes(fileRef, blob);
-      const url = await getDownloadURL(fileRef);
-      await sendMessage({ type: "audio", url });
-      setRecording(false);
-    };
-
-    mediaRecorder.start();
-    setRecording(true);
-  };
-
-  const stopRecording = () => {
-    recorderRef.current?.stop();
-  };
-
-  // 🔹 Delete message (for me or everyone)
-  const deleteMessage = async (msg, forEveryone = false) => {
-    const msgRef = doc(db, "chats", chatId, "messages", msg.id);
-    if (forEveryone) {
-      await updateDoc(msgRef, { deletedForAll: true, text: "Message deleted" });
-    } else {
-      await updateDoc(msgRef, { [`deletedBy.${user.uid}`]: true });
+      mr.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+      mr.onstop = async () => {
+        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        await sendVoiceMessage(blob);
+        stream.getTracks().forEach((t) => t.stop());
+        setIsRecording(false);
+      };
+      mr.start();
+      setIsRecording(true);
+    } catch (err) {
+      console.error(err);
+      alert("Microphone permission denied");
     }
   };
+  const stopRecording = () => recorderRef.current?.stop();
 
-  // 🔹 Pin message with expiry
-  const pinMessage = async (msg, duration = "30d") => {
-    const expiresAt = new Date();
-    if (duration === "24h") expiresAt.setDate(expiresAt.getDate() + 1);
-    else if (duration === "7d") expiresAt.setDate(expiresAt.getDate() + 7);
-    else if (duration === "30d") expiresAt.setDate(expiresAt.getDate() + 30);
-    else if (duration === "12h") expiresAt.setHours(expiresAt.getHours() + 12);
+  const renderMessageBody = (m) => {
+    if (m.deletedForAll || m.type === "deleted")
+      return (
+        <em className="text-sm text-gray-500 italic">This message was deleted</em>
+      );
+    if (m.type === "text") return <div>{m.text}</div>;
+    if (m.type === "image")
+      return (
+        <img
+          src={m.url}
+          alt="img"
+          className="max-w-xs rounded-md object-cover"
+        />
+      );
+    if (m.type === "file")
+      return (
+        <a
+          href={m.url}
+          target="_blank"
+          rel="noreferrer"
+          className="underline text-sm flex items-center gap-2"
+        >
+          <Paperclip className="w-4 h-4" /> {m.fileName || "File"}
+        </a>
+      );
+    if (m.type === "audio")
+      return <audio controls src={m.url} className="w-48" />;
+    return <div>{m.text}</div>;
+  };
 
-    await updateDoc(doc(db, "chats", chatId, "messages", msg.id), {
-      pinned: { by: user.uid, until: expiresAt },
-    });
+  const handleDeleteForMe = async (m) => {
+    await deleteMessage(m.id, false);
+    setShowActionsFor(null);
+  };
+  const handleDeleteForEveryone = async (m) => {
+    await deleteMessage(m.id, true);
+    setShowActionsFor(null);
+  };
+
+  const handlePin = async (m, duration) => {
+    await pinMessage(m.id, duration);
+    setShowActionsFor(null);
+  };
+  const handleUnpin = async (m) => {
+    await unpinMessage(m.id);
+    setShowActionsFor(null);
   };
 
   return (
-    <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: "#fff" }}>
+    <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-900">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onBack}
+            className="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700"
+          >
+            <CornerUpLeft className="w-5 h-5" />
+          </button>
+          <img
+            src={otherUser?.photoURL || "/assets/default-avatar.png"}
+            alt="avatar"
+            className="w-9 h-9 rounded-full"
+          />
+          <div>
+            <div className="font-medium text-sm">{otherUser?.name}</div>
+            <div className="text-xs text-gray-500">
+              {isTyping
+                ? "Typing..."
+                : otherUserStatus === "online"
+                ? "Online"
+                : `Last active ${
+                    otherUser?.lastSeen
+                      ? formatDistanceToNowStrict(
+                          new Date(otherUser.lastSeen)
+                        ) + " ago"
+                      : ""
+                  }`}
+            </div>
+          </div>
+        </div>
+
+        <div className="relative">
+          <button
+            onClick={() =>
+              alert("Report and Block available in Settings section")
+            }
+            className="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700"
+          >
+            <MoreVertical className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+
       {/* Messages */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "12px" }}>
-        {messages.map((m) =>
-          m.deletedForAll || m.deletedBy?.[user.uid] ? null : (
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3">
+        {messages
+          .filter((m) => m.pinned?.isPinned)
+          .length > 0 && (
+          <div className="sticky top-0 bg-gray-100 dark:bg-gray-800 p-2 rounded-md mb-2">
+            <div className="text-xs font-semibold text-gray-700 mb-1">
+              📌 Pinned
+            </div>
+            <div className="flex gap-3 overflow-x-auto">
+              {messages
+                .filter((m) => m.pinned?.isPinned)
+                .map((pm) => (
+                  <div
+                    key={pm.id}
+                    className="bg-white dark:bg-gray-900 px-3 py-2 rounded-md border text-xs"
+                  >
+                    {pm.text || pm.fileName}
+                  </div>
+                ))}
+            </div>
+          </div>
+        )}
+
+        {messages.map((m) => {
+          const isMe = m.senderId === uid;
+          return (
             <div
               key={m.id}
-              style={{
-                margin: "8px 0",
-                alignSelf: m.senderId === user.uid ? "flex-end" : "flex-start",
-                background: m.senderId === user.uid ? "#dcf8c6" : "#f1f1f1",
-                padding: "8px 12px",
-                borderRadius: "12px",
-                maxWidth: "70%",
-              }}
+              className={`flex ${isMe ? "justify-end" : "justify-start"}`}
             >
-              {m.type === "image" && <img src={m.url} alt="" style={{ width: "100%", borderRadius: 8 }} />}
-              {m.type === "audio" && <audio controls src={m.url} style={{ width: "100%" }} />}
-              {m.type === "file" && (
-                <a href={m.url} target="_blank" rel="noopener noreferrer">
-                  📎 {m.fileName}
-                </a>
-              )}
-              {m.type === "text" && <div>{m.text}</div>}
-
-              <div style={{ fontSize: 12, color: "#777", textAlign: "right", marginTop: 4 }}>
-                {m.pinned && <span>📌 </span>}
-                {m.createdAt?.toDate ? m.createdAt.toDate().toLocaleTimeString() : ""}
-              </div>
-
-              {/* Menu for actions */}
-              <div style={{ textAlign: "right", marginTop: 2 }}>
-                <button onClick={() => pinMessage(m, "30d")}>📌 Pin</button>
-                <button onClick={() => deleteMessage(m, false)}>🗑️ Delete (Me)</button>
-                <button onClick={() => deleteMessage(m, true)}>🚫 Delete (All)</button>
+              <div
+                className={`max-w-[80%] p-3 rounded-xl ${
+                  isMe
+                    ? "bg-blue-600 text-white"
+                    : "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                }`}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setShowActionsFor(m);
+                }}
+              >
+                {renderMessageBody(m)}
+                <div className="text-[10px] mt-1 opacity-70">
+                  {m.timestamp?.toDate
+                    ? new Date(m.timestamp.toDate()).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })
+                    : ""}
+                </div>
               </div>
             </div>
-          )
-        )}
+          );
+        })}
       </div>
 
-      {/* Input */}
-      <div
-        style={{
-          borderTop: "1px solid #ddd",
-          padding: "10px",
-          display: "flex",
-          alignItems: "center",
-          gap: "8px",
-        }}
-      >
-        <input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Type a message..."
-          style={{ flex: 1, padding: "8px 12px", borderRadius: "20px", border: "1px solid #ccc" }}
-        />
-        <input type="file" onChange={handleFileUpload} style={{ display: "none" }} id="fileInput" />
-        <label htmlFor="fileInput" style={{ cursor: "pointer" }}>📎</label>
-        {recording ? (
-          <button onClick={stopRecording}>⏹️ Stop</button>
-        ) : (
-          <button onClick={startRecording}>🎤</button>
+      {/* Composer */}
+      <div className="border-t bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 p-3">
+        {filePreview && (
+          <div className="mb-2 flex items-center gap-3 bg-gray-100 dark:bg-gray-700 p-2 rounded-md">
+            {filePreview.type === "image" ? (
+              <img
+                src={filePreview.url}
+                alt="preview"
+                className="w-16 h-16 object-cover rounded-md"
+              />
+            ) : (
+              <div className="w-16 h-16 flex items-center justify-center bg-gray-300 rounded-md">
+                📎
+              </div>
+            )}
+            <div className="flex-1 text-sm">{filePreview.name}</div>
+            <button onClick={() => setFilePreview(null)}>✖</button>
+          </div>
         )}
-        <button disabled={!text.trim() && !mediaFile && uploading} onClick={() => sendMessage()}>
-          ➤
-        </button>
+
+        <div className="flex items-center gap-2">
+          <label className="p-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md">
+            <ImageIcon className="w-5 h-5" />
+            <input
+              ref={fileInputRef}
+              type="file"
+              onChange={handleFilePick}
+              className="hidden"
+              accept="image/*,audio/*,application/pdf,.zip"
+            />
+          </label>
+
+          <input
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="Type a message..."
+            className="flex-1 bg-gray-100 dark:bg-gray-700 text-sm rounded-full px-4 py-2 focus:outline-none"
+          />
+
+          <button
+            onMouseDown={startRecording}
+            onMouseUp={stopRecording}
+            onTouchStart={startRecording}
+            onTouchEnd={stopRecording}
+            className={`p-2 rounded-full ${
+              isRecording ? "bg-red-500 text-white" : "bg-gray-100 dark:bg-gray-700"
+            }`}
+          >
+            <Mic className="w-5 h-5" />
+          </button>
+
+          <button
+            onClick={sendComposer}
+            className="p-2 bg-blue-600 text-white rounded-full hover:bg-blue-700"
+          >
+            <Send className="w-5 h-5" />
+          </button>
+        </div>
       </div>
+
+      {/* Action Menu */}
+      {showActionsFor && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black/40">
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-4 w-72 space-y-2">
+            <h3 className="font-semibold text-sm">Message actions</h3>
+
+            <button
+              onClick={() => handleDeleteForMe(showActionsFor)}
+              className="w-full text-left text-sm py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md"
+            >
+              Delete for me
+            </button>
+            <button
+              onClick={() => handleDeleteForEveryone(showActionsFor)}
+              className="w-full text-left text-sm py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md"
+            >
+              Delete for everyone
+            </button>
+
+            {!showActionsFor?.pinned?.isPinned ? (
+              <>
+                <button
+                  onClick={() => handlePin(showActionsFor, "12h")}
+                  className="w-full text-left py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md text-sm"
+                >
+                  Pin 12 hours
+                </button>
+                <button
+                  onClick={() => handlePin(showActionsFor, "24h")}
+                  className="w-full text-left py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md text-sm"
+                >
+                  Pin 24 hours
+                </button>
+                <button
+                  onClick={() => handlePin(showActionsFor, "7d")}
+                  className="w-full text-left py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md text-sm"
+                >
+                  Pin 7 days
+                </button>
+                <button
+                  onClick={() => handlePin(showActionsFor, "30d")}
+                  className="w-full text-left py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md text-sm"
+                >
+                  Pin 30 days
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => handleUnpin(showActionsFor)}
+                className="w-full text-left py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md text-sm"
+              >
+                Unpin
+              </button>
+            )}
+
+            <button
+              onClick={() => setShowActionsFor(null)}
+              className="w-full text-left py-2 bg-gray-100 dark:bg-gray-700 rounded-md text-sm"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
