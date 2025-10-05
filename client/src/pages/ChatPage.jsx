@@ -10,106 +10,123 @@ import {
   doc,
   serverTimestamp,
   getDoc,
+  setDoc,
 } from "firebase/firestore";
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
-import { auth, db, storage } from "../firebaseClient"; // must export auth, db, storage
+import { auth, db, storage } from "../firebaseClient";
 import { motion, AnimatePresence } from "framer-motion";
 
-/*
-  ChatPage.jsx (1-on-1 chat)
-  - text, image, file, voice messages
-  - delete for me / delete for everyone (10-minute rule)
-  - typing indicator
-  - resumable uploads and upload progress
-  - reply support (basic)
-*/
+/**
+ * ChatPage.jsx
+ * Props:
+ *  - otherUser: { uid, name, photoURL }  // the contact you're chatting with
+ *  - onBack: () => void                   // called when user taps back
+ *
+ * Usage:
+ *  <ChatPage otherUser={contact} onBack={() => navigateBack()} />
+ */
 
 export default function ChatPage({ otherUser, onBack }) {
-  // otherUser: { uid, name, photoURL } - the person you're chatting with
   const me = auth.currentUser;
-  const myUid = me?.uid;
-  if (!myUid) {
-    // not logged in - render simple fallback
-    return <div>Please login</div>;
-  }
+  if (!me) return <div>Please log in</div>;
+  const myUid = me.uid;
 
-  // deterministic chatId for 1-on-1 (both users use same id)
+  // Deterministic chatId for 1-on-1 conversations:
   const chatId = [myUid, otherUser.uid].sort().join("_");
 
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [typingOther, setTypingOther] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
-  const [attachPreview, setAttachPreview] = useState(null); // { file, type, name, url }
+  const [attachPreview, setAttachPreview] = useState(null); // { file, url, type, name }
   const [uploadProgress, setUploadProgress] = useState(null);
-  const [actionMessage, setActionMessage] = useState(null); // message under action sheet
+  const [actionMessage, setActionMessage] = useState(null); // message under actions
   const [replyTo, setReplyTo] = useState(null);
+  const [isRecording, setIsRecording] = useState(false);
 
   const scrollRef = useRef(null);
-  const typingTimer = useRef(null);
-
-  // voice recording
   const mediaRecorderRef = useRef(null);
-  const [isRecording, setIsRecording] = useState(false);
-  const [audioChunks, setAudioChunks] = useState([]);
+  const audioChunksRef = useRef([]);
+  const typingTimerRef = useRef(null);
 
-  // ---------- listen messages ----------
+  // Ensure chat doc exists (simple create if missing)
+  useEffect(() => {
+    if (!chatId) return;
+    const ensure = async () => {
+      const chatRef = doc(db, "chats", chatId);
+      const snap = await getDoc(chatRef);
+      if (!snap.exists()) {
+        await setDoc(chatRef, {
+          members: [myUid, otherUser.uid],
+          lastMessage: { text: "", type: "" },
+          lastMessageTime: serverTimestamp(),
+          typing: {},
+        }).catch((e) => console.warn("create chat doc:", e));
+      }
+    };
+    ensure();
+  }, [chatId, myUid, otherUser.uid]);
+
+  // Listen to messages in real time
   useEffect(() => {
     if (!chatId) return;
     const q = query(collection(db, "chats", chatId, "messages"), orderBy("timestamp", "asc"));
     const unsub = onSnapshot(q, (snap) => {
       const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      // filter deletedFor me
-      const visible = docs.filter((m) => !(m.deletedFor || []).includes(myUid));
+      // filter out messages deleted for me
+      const visible = docs.filter((m) => !(m.deletedFor && m.deletedFor.includes(myUid)));
       setMessages(visible);
-      // scroll to bottom
-      setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" }), 120);
+      // auto scroll to bottom
+      setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" }), 100);
     });
     return () => unsub();
   }, [chatId, myUid]);
 
-  // ---------- listen chat doc for typing ----------
+  // Listen to chat doc for typing state
   useEffect(() => {
     if (!chatId) return;
-    const chatRef = doc(db, "chats", chatId);
-    const unsub = onSnapshot(chatRef, (snap) => {
+    const unsub = onSnapshot(doc(db, "chats", chatId), (snap) => {
       const data = snap.data() || {};
-      setTypingOther(Boolean(data.typing && data.typing[otherUser.uid]));
+      if (!data.typing) {
+        setTypingOther(false);
+        return;
+      }
+      const otherTyping = Boolean(data.typing && data.typing[otherUser.uid]);
+      setTypingOther(otherTyping);
     });
     return () => unsub();
   }, [chatId, otherUser.uid]);
 
-  // ---------- typing handler ----------
-  const handleTyping = async (val) => {
-    setText(val);
+  // Typing indicator: write typing status to chat doc
+  const handleTyping = async (value) => {
+    setText(value);
     if (!chatId) return;
     if (!isTyping) {
       setIsTyping(true);
       try {
         await updateDoc(doc(db, "chats", chatId), { [`typing.${myUid}`]: true });
       } catch (e) {
-        // chat may not exist yet: create or set
-        await addDoc(collection(db, "chats"), {
-          // fallback minimal chat creation - ideally create chat doc earlier
-          members: [myUid, otherUser.uid],
-        }).catch(() => {});
+        // chat might not exist yet; create minimal doc and retry
+        try {
+          await setDoc(doc(db, "chats", chatId), { members: [myUid, otherUser.uid], typing: { [myUid]: true }, lastMessage: { text: "", type: "" }, lastMessageTime: serverTimestamp() }, { merge: true });
+        } catch {}
       }
     }
-    clearTimeout(typingTimer.current);
-    typingTimer.current = setTimeout(async () => {
+    clearTimeout(typingTimerRef.current);
+    typingTimerRef.current = setTimeout(async () => {
       setIsTyping(false);
-      await updateDoc(doc(db, "chats", chatId), { [`typing.${myUid}`]: false }).catch(() => {});
+      updateDoc(doc(db, "chats", chatId), { [`typing.${myUid}`]: false }).catch(() => {});
     }, 1200);
   };
 
-  // ---------- send text / attachment ----------
-  async function sendMessage({ text = "", file = null, fileType = "text", fileName = null }) {
+  // Create a message doc (text or attach)
+  const sendMessage = async ({ text = "", file = null, fileType = "text", fileName = null } = {}) => {
     if (!chatId) return;
     const messagesRef = collection(db, "chats", chatId, "messages");
 
     try {
       if (file) {
-        // placeholder to reserve id
+        // create placeholder doc to reserve messageId for storage path
         const placeholder = await addDoc(messagesRef, {
           from: myUid,
           type: "uploading",
@@ -117,26 +134,25 @@ export default function ChatPage({ otherUser, onBack }) {
           fileName: fileName || file.name,
           timestamp: serverTimestamp(),
         });
-        const msgId = placeholder.id;
-        // upload to storage
-        const path = `chatMedia/${chatId}/${msgId}/${file.name}`;
+        const messageId = placeholder.id;
+        const path = `chat_uploads/${chatId}/${messageId}/${file.name}`;
         const sRef = storageRef(storage, path);
         const uploadTask = uploadBytesResumable(sRef, file);
 
         uploadTask.on(
           "state_changed",
-          (snapshot) => {
-            const prog = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
-            setUploadProgress(prog);
+          (snap) => {
+            const progress = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
+            setUploadProgress(progress);
           },
           (err) => {
-            console.error("upload err", err);
+            console.error("upload error", err);
             setUploadProgress(null);
           },
           async () => {
             const url = await getDownloadURL(uploadTask.snapshot.ref);
-            await updateDoc(doc(db, "chats", chatId, "messages", msgId), {
-              type: fileType, // "image", "file", "audio"
+            await updateDoc(doc(db, "chats", chatId, "messages", messageId), {
+              type: fileType, // 'image'|'file'|'audio'
               content: url,
               fileName: fileName || file.name,
               timestamp: serverTimestamp(),
@@ -144,13 +160,14 @@ export default function ChatPage({ otherUser, onBack }) {
             await updateDoc(doc(db, "chats", chatId), {
               lastMessage: { text: fileType === "image" ? "📷 Photo" : (fileName || file.name), type: fileType },
               lastMessageTime: serverTimestamp(),
+              [`typing.${myUid}`]: false,
             });
             setUploadProgress(null);
           }
         );
         setAttachPreview(null);
-        setReplyTo(null);
         setText("");
+        setReplyTo(null);
         return;
       }
 
@@ -166,54 +183,53 @@ export default function ChatPage({ otherUser, onBack }) {
       await updateDoc(doc(db, "chats", chatId), {
         lastMessage: { text: text.trim(), type: "text" },
         lastMessageTime: serverTimestamp(),
+        [`typing.${myUid}`]: false,
       });
       setText("");
       setReplyTo(null);
-    } catch (e) {
-      console.error("sendMessage err", e);
+    } catch (err) {
+      console.error("sendMessage error:", err);
       setUploadProgress(null);
     }
-  }
-
-  // ---------- file picker ----------
-  const handleFilePick = (e) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    const isImage = f.type.startsWith("image/");
-    setAttachPreview({ file: f, type: isImage ? "image" : "file", name: f.name, url: URL.createObjectURL(f) });
   };
 
-  // ---------- voice recording ----------
+  // Handle file selection
+  const handleFilePick = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const isImage = file.type.startsWith("image/");
+    setAttachPreview({ file, url: URL.createObjectURL(file), type: isImage ? "image" : "file", name: file.name });
+  };
+
+  // Voice recording using MediaRecorder
   const startRecording = async () => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      alert("Recording not supported in this browser.");
+      alert("Voice recording is not supported in this browser.");
       return;
     }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
-      setAudioChunks([]);
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) {
-          setAudioChunks((prev) => [...prev, e.data]);
-        }
+      const mr = new MediaRecorder(stream);
+      audioChunksRef.current = [];
+      mr.ondataavailable = (ev) => {
+        if (ev.data && ev.data.size > 0) audioChunksRef.current.push(ev.data);
       };
-      mediaRecorder.onstop = async () => {
-        const blob = new Blob(audioChunks, { type: "audio/webm" });
-        // create file-like object
+      mr.onstop = async () => {
+        const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+        // name and file
         const file = new File([blob], `voice_${Date.now()}.webm`, { type: "audio/webm" });
-        // send as audio file
         await sendMessage({ file, fileType: "audio", fileName: file.name });
-        // stop all tracks
+        // stop tracks
         stream.getTracks().forEach((t) => t.stop());
         setIsRecording(false);
       };
-      mediaRecorder.start();
+      mediaRecorderRef.current = mr;
+      mr.start();
       setIsRecording(true);
     } catch (err) {
-      console.error("record err", err);
-      alert("Could not start recording - check microphone permissions.");
+      console.error("startRecording err", err);
+      alert("Could not start recording. Check microphone permission.");
+      setIsRecording(false);
     }
   };
 
@@ -221,26 +237,28 @@ export default function ChatPage({ otherUser, onBack }) {
     try {
       mediaRecorderRef.current?.stop();
     } catch (e) {
-      console.warn("stop record", e);
+      console.warn("stopRecording", e);
     }
   };
 
-  // ---------- message actions ----------
-  const markDeletedForMe = async (messageId) => {
+  // Delete for me: add my uid to deletedFor array on message
+  const deleteForMe = async (messageId) => {
     if (!chatId) return;
-    const ref = doc(db, "chats", chatId, "messages", messageId);
-    const snap = await getDoc(ref);
+    const mRef = doc(db, "chats", chatId, "messages", messageId);
+    const snap = await getDoc(mRef);
     if (!snap.exists()) return;
     const data = snap.data();
     const arr = data.deletedFor || [];
-    if (arr.includes(myUid)) return;
-    await updateDoc(ref, { deletedFor: [...arr, myUid] }).catch(() => {});
+    if (!arr.includes(myUid)) {
+      await updateDoc(mRef, { deletedFor: [...arr, myUid] }).catch(() => {});
+    }
   };
 
+  // Delete for everyone: only within 10 minutes
   const deleteForEveryone = async (messageId) => {
     if (!chatId) return;
-    const ref = doc(db, "chats", chatId, "messages", messageId);
-    const snap = await getDoc(ref);
+    const mRef = doc(db, "chats", chatId, "messages", messageId);
+    const snap = await getDoc(mRef);
     if (!snap.exists()) return;
     const data = snap.data();
     const ts = data.timestamp?.toDate ? data.timestamp.toDate() : (data.timestamp ? new Date(data.timestamp) : null);
@@ -248,32 +266,28 @@ export default function ChatPage({ otherUser, onBack }) {
       alert("Cannot delete for everyone after 10 minutes.");
       return;
     }
-    await updateDoc(ref, { deletedForEveryone: true, text: "This message was deleted", type: "deleted", content: null }).catch(() => {});
+    await updateDoc(mRef, { deletedForEveryone: true, text: "This message was deleted", type: "deleted", content: null }).catch(() => {});
   };
 
-  // ---------- open actions ----------
-  const openActions = (message) => {
-    setActionMessage(message);
-  };
-
+  // Action sheet helpers
+  const openActions = (message) => setActionMessage(message);
   const closeActions = () => setActionMessage(null);
-
-  // reply
   const startReply = (message) => {
     setReplyTo({ id: message.id, text: message.text || message.fileName || "Media", from: message.from });
     closeActions();
   };
 
-  // ---------- render helpers ----------
-  const formatTime = (ts) => {
+  // Format timestamp display
+  const fmtTime = (ts) => {
     if (!ts) return "";
     const d = ts.toDate ? ts.toDate() : new Date(ts);
     return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
 
-  const renderMessageContent = (m) => {
-    if (m.deletedForEveryone || m.type === "deleted") return <em>This message was deleted</em>;
-    if (m.type === "text") return <span>{m.text}</span>;
+  // Render message body
+  const renderMessageBody = (m) => {
+    if (m.deletedForEveryone || m.type === "deleted") return <em style={{ opacity: 0.85 }}>This message was deleted</em>;
+    if (!m.type || m.type === "text") return <span>{m.text}</span>;
     if (m.type === "image") return m.content ? <img src={m.content} alt={m.fileName} style={{ maxWidth: 260, borderRadius: 8 }} /> : <span>Sending image…</span>;
     if (m.type === "file") return m.content ? <a href={m.content} target="_blank" rel="noreferrer">📎 {m.fileName || "Download"}</a> : <span>Sending file…</span>;
     if (m.type === "audio") return m.content ? <audio controls src={m.content} /> : <span>Sending audio…</span>;
@@ -281,12 +295,12 @@ export default function ChatPage({ otherUser, onBack }) {
     return <span>{m.text}</span>;
   };
 
-  // ---------- UI ----------
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "#fff" }}>
-      {/* header */}
-      <div style={{ padding: 12, borderBottom: "1px solid #eee", display: "flex", alignItems: "center", gap: 10 }}>
-        <button onClick={onBack} style={{ background: "transparent", border: "none", fontSize: 18 }}>←</button>
+
+      {/* Header */}
+      <div style={{ padding: 12, borderBottom: "1px solid #eee", display: "flex", alignItems: "center", gap: 12 }}>
+        <button onClick={onBack} style={iconBtn}>←</button>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ width: 42, height: 42, borderRadius: 999, background: "#ddd", display: "flex", alignItems: "center", justifyContent: "center" }}>
             {otherUser.name?.[0] || "U"}
@@ -298,16 +312,17 @@ export default function ChatPage({ otherUser, onBack }) {
         </div>
       </div>
 
-      {/* messages */}
+      {/* Messages */}
       <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: 12 }}>
         {messages.map((m) => (
           <div key={m.id} style={{ display: "flex", justifyContent: m.from === myUid ? "flex-end" : "flex-start", marginBottom: 12 }}>
             <div style={{ maxWidth: "78%", textAlign: m.from === myUid ? "right" : "left" }}>
               <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} style={{ display: "inline-block", background: m.from === myUid ? "#007bff" : "#f1f3f5", color: m.from === myUid ? "#fff" : "#000", padding: 10, borderRadius: 12 }}>
                 {m.replyTo && <div style={{ fontSize: 12, opacity: 0.9, marginBottom: 6, background: "#fff", color: "#222", padding: "6px 8px", borderRadius: 6 }}>{m.replyTo.text}</div>}
-                {renderMessageContent(m)}
-                <div style={{ fontSize: 11, opacity: 0.8, marginTop: 6 }}>{formatTime(m.timestamp)}</div>
+                {renderMessageBody(m)}
+                <div style={{ fontSize: 11, opacity: 0.8, marginTop: 6 }}>{fmtTime(m.timestamp)}</div>
               </motion.div>
+
               <div style={{ marginTop: 6 }}>
                 <button onClick={() => openActions(m)} style={{ background: "transparent", border: "none", color: "#666", cursor: "pointer" }}>⋮</button>
               </div>
@@ -316,11 +331,11 @@ export default function ChatPage({ otherUser, onBack }) {
         ))}
       </div>
 
-      {/* composer */}
-      <div style={{ padding: 10, borderTop: "1px solid #eee", display: "flex", gap: 8, alignItems: "center" }}>
+      {/* Composer */}
+      <div style={{ padding: 10, borderTop: "1px solid #eee", display: "flex", gap: 8, alignItems: "center", background: "#fff" }}>
         <label style={{ cursor: "pointer" }}>
           📎
-          <input type="file" accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.zip,audio/*" onChange={handleFilePick} style={{ display: "none" }} />
+          <input type="file" accept="image/*,audio/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.zip" onChange={handleFilePick} style={{ display: "none" }} />
         </label>
 
         <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
@@ -332,31 +347,24 @@ export default function ChatPage({ otherUser, onBack }) {
           <input value={text} onChange={(e) => handleTyping(e.target.value)} placeholder="Type a message" style={{ padding: "10px 12px", borderRadius: 20, border: "1px solid #ddd" }} />
         </div>
 
-        {/* record button: hold to record, release to stop */}
+        {/* Voice record: hold to record (mouse/touch) */}
         <button
           onMouseDown={startRecording}
           onMouseUp={stopRecording}
           onTouchStart={startRecording}
           onTouchEnd={stopRecording}
           title={isRecording ? "Recording..." : "Hold to record"}
-          style={{
-            background: isRecording ? "#ff4d4d" : "#eee",
-            border: "none",
-            padding: "10px 12px",
-            borderRadius: 999,
-            cursor: "pointer",
-            marginRight: 6,
-          }}
+          style={{ background: isRecording ? "#ff4d4d" : "#eee", border: "none", padding: "8px 10px", borderRadius: 999, cursor: "pointer" }}
         >
           {isRecording ? "⏺" : "🎤"}
         </button>
 
-        <button onClick={() => sendMessage({ text: text.trim(), file: attachPreview?.file, fileType: attachPreview?.type, fileName: attachPreview?.name })} disabled={!text.trim() && !attachPreview} style={{ background: "#007bff", color: "#fff", border: "none", padding: "8px 12px", borderRadius: 999 }}>
+        <button onClick={() => sendMessage({ text, file: attachPreview?.file, fileType: attachPreview?.type, fileName: attachPreview?.name })} disabled={!text.trim() && !attachPreview} style={{ background: "#007bff", color: "#fff", border: "none", padding: "8px 12px", borderRadius: 999 }}>
           ➤
         </button>
       </div>
 
-      {/* attach preview */}
+      {/* Attach preview */}
       <AnimatePresence>
         {attachPreview && (
           <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }} style={{ position: "fixed", bottom: 86, left: 12, right: 12, background: "#fff", border: "1px solid #eee", borderRadius: 10, padding: 10, zIndex: 80 }}>
@@ -364,7 +372,7 @@ export default function ChatPage({ otherUser, onBack }) {
               {attachPreview.type === "image" ? <img src={attachPreview.url} alt="preview" style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 8 }} /> : <div style={{ width: 64, height: 64, display: "flex", alignItems: "center", justifyContent: "center", background: "#f4f4f4", borderRadius: 8 }}>📎</div>}
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 600 }}>{attachPreview.name}</div>
-                <div style={{ color: "#666", fontSize: 13 }}>{attachPreview.type === "image" ? "Image" : "File"}</div>
+                <div style={{ color: "#666", fontSize: 13 }}>{attachPreview.type === "image" ? "Image" : "File/Audio"}</div>
               </div>
               <div>
                 <button onClick={() => setAttachPreview(null)} style={{ background: "transparent", border: "none", fontSize: 18 }}>✖</button>
@@ -375,20 +383,25 @@ export default function ChatPage({ otherUser, onBack }) {
         )}
       </AnimatePresence>
 
-      {/* action sheet for message */}
+      {/* Action sheet for message */}
       <AnimatePresence>
         {actionMessage && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ position: "fixed", inset: 0, display: "flex", alignItems: "flex-end", justifyContent: "center", background: "rgba(0,0,0,0.35)", zIndex: 90 }}>
             <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", stiffness: 80 }} style={{ width: "100%", maxWidth: 420, background: "#fff", borderTopLeftRadius: 14, borderTopRightRadius: 14, padding: 12 }}>
               <div style={{ fontWeight: 700, marginBottom: 8 }}>Message actions</div>
-              <button onClick={() => { startReply(actionMessage); }} style={{ display: "block", width: "100%", textAlign: "left", padding: 12, border: "none", background: "transparent" }}>💬 Reply</button>
-              <button onClick={() => { markDeletedForMe(actionMessage.id); setActionMessage(null); }} style={{ display: "block", width: "100%", textAlign: "left", padding: 12, border: "none", background: "transparent" }}>🗑 Delete for me</button>
-              <button onClick={() => { deleteForEveryone(actionMessage.id); setActionMessage(null); }} style={{ display: "block", width: "100%", textAlign: "left", padding: 12, border: "none", background: "transparent" }}>🗑 Delete for everyone (10m)</button>
-              <button onClick={() => setActionMessage(null)} style={{ display: "block", width: "100%", textAlign: "left", padding: 12, color: "#ff4d4d", border: "none", background: "transparent" }}>Cancel</button>
+              <button onClick={() => { startReply(actionMessage); }} style={actionBtn}>💬 Reply</button>
+              <button onClick={() => { deleteForMe(actionMessage.id); setActionMessage(null); }} style={actionBtn}>🗑 Delete for me</button>
+              <button onClick={() => { deleteForEveryone(actionMessage.id); setActionMessage(null); }} style={actionBtn}>🗑 Delete for everyone (10m)</button>
+              <button onClick={() => setActionMessage(null)} style={{ ...actionBtn, color: "#ff4d4d" }}>Cancel</button>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
+
     </div>
   );
 }
+
+// small styles
+const iconBtn = { background: "transparent", border: "none", fontSize: 18, cursor: "pointer" };
+const actionBtn = { display: "block", width: "100%", textAlign: "left", padding: "12px 10px", background: "transparent", border: "none", fontSize: 16, cursor: "pointer" };
