@@ -1,150 +1,145 @@
+// /src/pages/CallPage.jsx
 import React, { useEffect, useState } from "react";
+import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
+import { db, auth } from "../firebaseClient";
 import { useTheme } from "../context/ThemeContext";
-import BottomNav from "../components/BottomNav";
-import CallModal from "../components/CallModal";
-import { motion } from "framer-motion";
-import {
-  collection,
-  addDoc,
-  query,
-  orderBy,
-  onSnapshot,
-  serverTimestamp,
-} from "firebase/firestore";
-import { db } from "../firebase";
+import { Phone, Video, PhoneOff, Clock, RefreshCw } from "lucide-react";
 
-export default function CallPage({ currentTab, onTabChange, currentUser }) {
+export default function CallPage({ onStartCall }) {
+  const [calls, setCalls] = useState([]);
   const { theme } = useTheme();
-  const [activeCall, setActiveCall] = useState(null);
-  const [recentCalls, setRecentCalls] = useState([]);
+  const me = auth.currentUser;
 
-  // 🧠 Listen to call history from Firestore (real-time)
   useEffect(() => {
+    if (!me) return;
     const q = query(collection(db, "calls"), orderBy("timestamp", "desc"));
-    const unsub = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-      setRecentCalls(data);
+    const unsub = onSnapshot(q, (snap) => {
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setCalls(list.filter((c) => c.callerId === me.uid || c.calleeId === me.uid));
     });
     return () => unsub();
-  }, []);
+  }, [me]);
 
-  // 🕹️ Start a new call
-  const startCall = async (user, type) => {
-    setActiveCall({ user, type });
-
-    // Log call start
-    await addDoc(collection(db, "calls"), {
-      caller: currentUser?.name || "You",
-      callee: user.name,
-      type,
-      status: "started",
-      duration: 0,
-      timestamp: serverTimestamp(),
-    });
+  const fmtTime = (t) => {
+    if (!t) return "";
+    const d = t.toDate ? t.toDate() : new Date(t);
+    return d.toLocaleString([], { dateStyle: "short", timeStyle: "short" });
   };
 
-  // 🧾 End call
-  const handleEndCall = async () => {
-    if (activeCall) {
-      await addDoc(collection(db, "calls"), {
-        caller: currentUser?.name || "You",
-        callee: activeCall.user.name,
-        type: activeCall.type,
-        status: "ended",
-        duration: Math.floor(Math.random() * 300), // Example: 0–5 min random duration
-        timestamp: serverTimestamp(),
-      });
+  const getStatusIcon = (status) => {
+    switch (status) {
+      case "ended":
+        return <Phone size={18} color={theme === "dark" ? "#00ff99" : "#007a3d"} />;
+      case "declined":
+        return <PhoneOff size={18} color="#ff4444" />;
+      case "missed":
+        return <Clock size={18} color="#ff9900" />;
+      default:
+        return <Phone size={18} color="#888" />;
     }
-    setActiveCall(null);
   };
 
   return (
     <div
       style={{
-        height: "100vh",
+        flex: 1,
         display: "flex",
         flexDirection: "column",
-        background: theme === "dark" ? "#000" : "#fafafa",
+        background: theme === "dark" ? "#000" : "#f8f8f8",
         color: theme === "dark" ? "#fff" : "#000",
+        height: "100%",
+        overflowY: "auto",
       }}
     >
-      {/* 🔹 Header */}
       <div
         style={{
-          padding: "16px",
+          padding: "14px 18px",
           borderBottom: theme === "dark" ? "1px solid #222" : "1px solid #ddd",
-          fontSize: "18px",
           fontWeight: 600,
+          fontSize: 18,
         }}
       >
-        Calls
+        Recent Calls
       </div>
 
-      {/* 🔹 Recent Calls List */}
-      <div style={{ flex: 1, overflowY: "auto", padding: 12 }}>
-        {recentCalls.length === 0 ? (
-          <div style={{ textAlign: "center", marginTop: 40, opacity: 0.6 }}>No recent calls</div>
-        ) : (
-          recentCalls.map((call) => (
-            <motion.div
-              key={call.id}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.2 }}
+      {calls.length === 0 && (
+        <div style={{ textAlign: "center", marginTop: 40, opacity: 0.6 }}>
+          No recent calls yet.
+        </div>
+      )}
+
+      <div>
+        {calls.map((c) => {
+          const isMeCaller = c.callerId === me?.uid;
+          const otherName = isMeCaller ? c.calleeName : c.callerName;
+          const duration = c.duration || 0;
+          const minutes = Math.floor(duration / 60);
+          const seconds = (duration % 60).toString().padStart(2, "0");
+
+          return (
+            <div
+              key={c.id}
               style={{
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
-                padding: "12px 10px",
-                background: theme === "dark" ? "#1c1c1e" : "#fff",
-                borderRadius: 10,
-                marginBottom: 10,
-                boxShadow:
-                  theme === "dark"
-                    ? "0 1px 3px rgba(255,255,255,0.05)"
-                    : "0 1px 3px rgba(0,0,0,0.05)",
+                padding: "12px 18px",
+                borderBottom: theme === "dark" ? "1px solid #222" : "1px solid #eee",
               }}
             >
-              <div>
-                <div style={{ fontWeight: 600 }}>
-                  {call.caller === currentUser?.name ? call.callee : call.caller}
-                </div>
-                <div style={{ fontSize: 13, color: theme === "dark" ? "#aaa" : "#666" }}>
-                  {call.type === "voice" ? "🎙️ Voice" : "📹 Video"} •{" "}
-                  {new Date(call.timestamp?.seconds * 1000).toLocaleString()}
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                {c.type === "video" ? (
+                  <Video size={22} color={theme === "dark" ? "#0af" : "#007aff"} />
+                ) : (
+                  <Phone size={22} color={theme === "dark" ? "#0af" : "#007aff"} />
+                )}
+                <div>
+                  <div style={{ fontWeight: 600 }}>{otherName}</div>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color:
+                        c.status === "missed"
+                          ? "#ff6600"
+                          : c.status === "declined"
+                          ? "#ff3333"
+                          : theme === "dark"
+                          ? "#aaa"
+                          : "#555",
+                    }}
+                  >
+                    {isMeCaller ? "You →" : "← You"} {c.status}{" "}
+                    {c.status === "ended" && `(${minutes}:${seconds})`}
+                  </div>
+                  <div style={{ fontSize: 12, opacity: 0.7 }}>{fmtTime(c.timestamp)}</div>
                 </div>
               </div>
-              <button
-                onClick={() => startCall({ name: call.callee }, call.type)}
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  color: theme === "dark" ? "#0a84ff" : "#007aff",
-                  cursor: "pointer",
-                  fontSize: 14,
-                  fontWeight: 500,
-                }}
-              >
-                Call
-              </button>
-            </motion.div>
-          ))
-        )}
+
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {getStatusIcon(c.status)}
+                <button
+                  onClick={() => onStartCall(c.type, { id: c.calleeId, name: c.calleeName })}
+                  style={{
+                    border: "none",
+                    background: theme === "dark" ? "#111" : "#f1f1f1",
+                    color: theme === "dark" ? "#0af" : "#007aff",
+                    borderRadius: 20,
+                    padding: "6px 10px",
+                    fontSize: 13,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  <RefreshCw size={14} />
+                  Call
+                </button>
+              </div>
+            </div>
+          );
+        })}
       </div>
-
-      {/* 🔹 Bottom Navigation */}
-      {!activeCall && (
-        <BottomNav current={currentTab} onChange={onTabChange} />
-      )}
-
-      {/* 🔹 Active Call Modal */}
-      {activeCall && (
-        <CallModal
-          type={activeCall.type}
-          user={activeCall.user}
-          onClose={handleEndCall}
-        />
-      )}
     </div>
   );
 }
