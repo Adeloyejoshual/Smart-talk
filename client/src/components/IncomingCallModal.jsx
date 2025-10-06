@@ -1,48 +1,71 @@
-import React, { useEffect, useRef } from "react";
+// /src/components/IncomingCallModal.jsx
+import React, { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
-export default function IncomingCallModal({ call, onAccept, onReject }) {
+export default function IncomingCallModal({
+  call,
+  onAccept,
+  onReject,
+  timeout = 30, // seconds
+}) {
   const audioRef = useRef(null);
+  const [timeLeft, setTimeLeft] = useState(timeout);
 
   useEffect(() => {
     if (!call) return;
 
-    // 🔊 Play ringtone
+    // 🔊 Start ringtone
     audioRef.current = new Audio("/ringtone.mp3");
     audioRef.current.loop = true;
     audioRef.current.play().catch(() => {
-      console.warn("Autoplay prevented. User interaction may be required.");
+      console.warn("Autoplay blocked: user interaction may be required.");
     });
 
-    // 📳 Vibrate phone every 2 seconds (if supported)
+    // 📳 Start vibration loop
     const vibrateInterval = setInterval(() => {
       if ("vibrate" in navigator) navigator.vibrate([300, 200, 300]);
     }, 2000);
 
-    // 🧹 Cleanup when modal unmounts
+    // ⏱️ Countdown + auto-reject after timeout
+    const countdown = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
+          handleReject(true); // auto reject
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
     return () => {
-      audioRef.current?.pause();
-      audioRef.current = null;
-      clearInterval(vibrateInterval);
-      if ("vibrate" in navigator) navigator.vibrate(0); // stop vibration
+      stopMedia(vibrateInterval, countdown);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [call]);
+
+  const stopMedia = (vibrateInterval, countdown) => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    clearInterval(vibrateInterval);
+    clearInterval(countdown);
+    if ("vibrate" in navigator) navigator.vibrate(0);
+  };
+
+  const handleAccept = () => {
+    stopMedia();
+    onAccept?.();
+  };
+
+  const handleReject = (auto = false) => {
+    stopMedia();
+    onReject?.({ auto });
+  };
 
   if (!call) return null;
 
   const { fromUser, type } = call;
-
-  const handleAccept = () => {
-    audioRef.current?.pause();
-    if ("vibrate" in navigator) navigator.vibrate(0);
-    onAccept?.();
-  };
-
-  const handleReject = () => {
-    audioRef.current?.pause();
-    if ("vibrate" in navigator) navigator.vibrate(0);
-    onReject?.();
-  };
 
   return (
     <AnimatePresence>
@@ -65,7 +88,12 @@ export default function IncomingCallModal({ call, onAccept, onReject }) {
         }}
       >
         <h2>{fromUser.name}</h2>
-        <p>{type === "video" ? "📹 Incoming Video Call" : "📞 Incoming Voice Call"}</p>
+        <p>
+          {type === "video" ? "📹 Video Call Incoming" : "📞 Voice Call Incoming"}
+        </p>
+        <p style={{ marginTop: 10, opacity: 0.8 }}>
+          Auto-declining in {timeLeft}s...
+        </p>
 
         <div style={{ display: "flex", gap: 30, marginTop: 30 }}>
           <button
@@ -82,7 +110,7 @@ export default function IncomingCallModal({ call, onAccept, onReject }) {
             ✅ Accept
           </button>
           <button
-            onClick={handleReject}
+            onClick={() => handleReject(false)}
             style={{
               background: "red",
               color: "#fff",
