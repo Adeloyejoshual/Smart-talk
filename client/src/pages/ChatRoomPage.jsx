@@ -1,4 +1,3 @@
-// /src/pages/ChatRoomPage.jsx
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import useChat from "../hooks/useChat";
@@ -11,6 +10,7 @@ import {
   MoreVertical,
   CornerUpLeft,
 } from "lucide-react";
+import IncomingCallModal from "../components/IncomingCallModal"; // Make sure this path is correct and component exists
 
 export default function ChatRoomPage({ chatId, otherUser, onBack }) {
   const { user } = useAuth();
@@ -33,16 +33,20 @@ export default function ChatRoomPage({ chatId, otherUser, onBack }) {
   const [filePreview, setFilePreview] = useState(null);
   const [showActionsFor, setShowActionsFor] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
+  const [incomingCall, setIncomingCall] = useState(null);
+
   const recorderRef = useRef(null);
   const chunksRef = useRef([]);
   const fileInputRef = useRef(null);
   const scrollRef = useRef(null);
 
+  // Scroll to bottom on messages update
   useEffect(() => {
     if (scrollRef.current)
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages]);
 
+  // Typing indicator timeout handler
   useEffect(() => {
     let t;
     if (text.length > 0) {
@@ -52,6 +56,29 @@ export default function ChatRoomPage({ chatId, otherUser, onBack }) {
     return () => clearTimeout(t);
   }, [text, setTyping]);
 
+  // Simulated example: listen for incoming calls via some event (replace with your socket or state logic)
+  useEffect(() => {
+    // Example placeholder for subscribing to incoming calls
+    // Replace with your actual logic to receive incoming calls
+    const handleIncomingCall = (call) => {
+      setIncomingCall(call);
+    };
+
+    // Example: subscribe to incoming call events here
+
+    return () => {
+      // cleanup subscriptions
+    };
+  }, []);
+
+  // Handle accepting incoming call
+  const startCall = (call) => {
+    console.log("Call accepted:", call);
+    setIncomingCall(null);
+    // Your logic to start the call session, e.g., navigate or open call modal
+  };
+
+  // Handle file input change
   const handleFilePick = (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
@@ -64,6 +91,7 @@ export default function ChatRoomPage({ chatId, otherUser, onBack }) {
     });
   };
 
+  // Send message or media
   const sendComposer = async () => {
     if (!text.trim() && !filePreview) return;
     if (filePreview) {
@@ -79,6 +107,7 @@ export default function ChatRoomPage({ chatId, otherUser, onBack }) {
     setText("");
   };
 
+  // Audio recording handlers
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -104,10 +133,13 @@ export default function ChatRoomPage({ chatId, otherUser, onBack }) {
   };
   const stopRecording = () => recorderRef.current?.stop();
 
+  // Render message body based on type
   const renderMessageBody = (m) => {
     if (m.deletedForAll || m.type === "deleted")
       return (
-        <em className="text-sm text-gray-500 italic">This message was deleted</em>
+        <em className="text-sm text-gray-500 italic">
+          This message was deleted
+        </em>
       );
     if (m.type === "text") return <div>{m.text}</div>;
     if (m.type === "image")
@@ -134,6 +166,7 @@ export default function ChatRoomPage({ chatId, otherUser, onBack }) {
     return <div>{m.text}</div>;
   };
 
+  // Message action handlers
   const handleDeleteForMe = async (m) => {
     await deleteMessage(m.id, false);
     setShowActionsFor(null);
@@ -177,9 +210,8 @@ export default function ChatRoomPage({ chatId, otherUser, onBack }) {
                 ? "Online"
                 : `Last active ${
                     otherUser?.lastSeen
-                      ? formatDistanceToNowStrict(
-                          new Date(otherUser.lastSeen)
-                        ) + " ago"
+                      ? formatDistanceToNowStrict(new Date(otherUser.lastSeen)) +
+                        " ago"
                       : ""
                   }`}
             </div>
@@ -200,9 +232,7 @@ export default function ChatRoomPage({ chatId, otherUser, onBack }) {
 
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3">
-        {messages
-          .filter((m) => m.pinned?.isPinned)
-          .length > 0 && (
+        {messages.filter((m) => m.pinned?.isPinned).length > 0 && (
           <div className="sticky top-0 bg-gray-100 dark:bg-gray-800 p-2 rounded-md mb-2">
             <div className="text-xs font-semibold text-gray-700 mb-1">
               📌 Pinned
@@ -300,7 +330,9 @@ export default function ChatRoomPage({ chatId, otherUser, onBack }) {
             onTouchStart={startRecording}
             onTouchEnd={stopRecording}
             className={`p-2 rounded-full ${
-              isRecording ? "bg-red-500 text-white" : "bg-gray-100 dark:bg-gray-700"
+              isRecording
+                ? "bg-red-500 text-white"
+                : "bg-gray-100 dark:bg-gray-700"
             }`}
           >
             <Mic className="w-5 h-5" />
@@ -378,6 +410,23 @@ export default function ChatRoomPage({ chatId, otherUser, onBack }) {
             </button>
           </div>
         </div>
+      )}
+
+      {/* Incoming Call Modal */}
+      {incomingCall && (
+        <IncomingCallModal
+          call={incomingCall}
+          onAccept={() => startCall(incomingCall)}
+          onReject={({ auto }) => {
+            if (auto) {
+              console.log("Call auto-declined after timeout ⏱️");
+              // Optionally notify server to mark missed call
+            } else {
+              console.log("User manually rejected call ❌");
+            }
+            setIncomingCall(null);
+          }}
+        />
       )}
     </div>
   );
