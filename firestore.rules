@@ -53,16 +53,15 @@ service cloud.firestore {
     // -------------------------------
     match /wallets/{userId} {
       allow read: if request.auth.uid == userId;
-      allow write: if false; // only admin server
+      allow write: if request.auth.uid == userId;
     }
 
     // -------------------------------
     // 📞 CALLS COLLECTION
     // -------------------------------
     match /calls/{callId} {
-      allow read: if request.auth != null 
-        && (resource.data.caller == request.auth.uid || resource.data.callee == request.auth.uid);
-      allow create, update, delete: if false; // server only
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
     }
 
     // -------------------------------
