@@ -1,47 +1,72 @@
-// /src/hooks/useCallSocket.js
 import { useEffect, useRef } from "react";
-import io from "socket.io-client";
-import { auth } from "../firebaseClient";
+import { io } from "socket.io-client"; // Explicit named import is recommended
+import { getAuth } from "firebase/auth";
 
-export default function useCallSocket({ onConnected, onEnded, type = "voice", targetUser }) {
+export default function useCallSocket({ type, targetUser, onConnected, onEnded }) {
   const socketRef = useRef(null);
 
   useEffect(() => {
-    const initSocket = async () => {
-      const token = await auth.currentUser.getIdToken();
-      const socket = io(import.meta.env.VITE_SERVER_URL, {
-        auth: { token },
-        transports: ["websocket"],
-      });
+    if (!targetUser?.id) return;
 
-      socket.on("connect", () => {
-        console.log("🔌 Socket connected");
-        socket.emit("call:start", { to: targetUser.uid, type });
-      });
+    let isMounted = true;
 
-      socket.on("call:connected", () => {
-        console.log("✅ Call connected");
-        onConnected?.();
-      });
+    async function initSocket() {
+      try {
+        const auth = getAuth();
+        const user = auth.currentUser;
+        if (!user) throw new Error("No authenticated user");
 
-      socket.on("call:end", (reason) => {
-        console.log("❌ Call ended:", reason);
-        onEnded?.(reason);
-      });
+        const token = await user.getIdToken();
 
-      socketRef.current = socket;
-    };
+        const socket = io("https://your-server.example.com", {
+          auth: { token },
+          transports: ["websocket"],
+        });
+
+        socketRef.current = socket;
+
+        socket.on("connect", () => {
+          console.log("🔌 Socket connected");
+          socket.emit("call:initiate", { to: targetUser.id, type });
+        });
+
+        socket.on("call:connected", () => {
+          if (!isMounted) return;
+          onConnected?.();
+        });
+
+        socket.on("call:end", (data) => {
+          if (!isMounted) return;
+          onEnded?.(data);
+        });
+
+        socket.on("call:low_balance", () => {
+          alert("Low balance! Call will end shortly.");
+          onEnded?.({ reason: "low_balance" });
+        });
+
+        socket.on("connect_error", (err) => {
+          console.error("Socket connection error:", err);
+        });
+      } catch (err) {
+        console.error("Failed to initialize call socket:", err);
+      }
+    }
 
     initSocket();
 
     return () => {
-      socketRef.current?.disconnect();
+      isMounted = false;
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
     };
-  }, [targetUser, type]);
+  }, [targetUser?.id, type, onConnected, onEnded]);
 
-  const endCall = () => {
+  function endCall() {
     socketRef.current?.emit("call:end", { reason: "user_hangup" });
-  };
+  }
 
   return { socket: socketRef.current, endCall };
 }
