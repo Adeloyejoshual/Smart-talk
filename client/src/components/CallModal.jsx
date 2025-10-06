@@ -1,42 +1,29 @@
 import React, { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import useCallSocket from "../hooks/useCallSocket";
 
-export default function CallModal({ type = "voice", user, socket, onClose }) {
-  const [status, setStatus] = useState("connecting"); // connecting | active | ended
+export default function CallModal({ type = "voice", user, onClose }) {
+  const [status, setStatus] = useState("connecting");
   const [duration, setDuration] = useState(0);
-  const [intervalId, setIntervalId] = useState(null);
   const [muted, setMuted] = useState(false);
   const [cameraOn, setCameraOn] = useState(true);
 
-  // --- Simulate call lifecycle events from server
-  useEffect(() => {
-    if (!socket) return;
-
-    socket.on("call:connected", () => {
-      setStatus("active");
-      const id = setInterval(() => setDuration((d) => d + 1), 1000);
-      setIntervalId(id);
-    });
-
-    socket.on("call:end", () => {
-      clearInterval(intervalId);
+  const { socket, endCall } = useCallSocket({
+    type,
+    targetUser: user,
+    onConnected: () => setStatus("active"),
+    onEnded: () => {
       setStatus("ended");
-      setTimeout(() => onClose?.(), 3000); // auto-close
-    });
+      setTimeout(() => onClose?.(), 2000);
+    },
+  });
 
-    return () => {
-      socket.off("call:connected");
-      socket.off("call:end");
-      clearInterval(intervalId);
-    };
-  }, [socket]);
-
-  // --- Manual end call
-  const handleEnd = () => {
-    socket.emit("call:end", { reason: "user_hangup" });
-    setStatus("ended");
-    setTimeout(() => onClose?.(), 1000);
-  };
+  // ⏱️ Duration timer
+  useEffect(() => {
+    if (status !== "active") return;
+    const id = setInterval(() => setDuration((d) => d + 1), 1000);
+    return () => clearInterval(id);
+  }, [status]);
 
   const fmtTime = (s) => {
     const m = Math.floor(s / 60).toString().padStart(2, "0");
@@ -53,56 +40,35 @@ export default function CallModal({ type = "voice", user, socket, onClose }) {
         style={{
           position: "fixed",
           inset: 0,
-          background: "rgba(0,0,0,0.8)",
+          background: "rgba(0,0,0,0.85)",
+          color: "#fff",
           display: "flex",
           flexDirection: "column",
-          alignItems: "center",
           justifyContent: "center",
-          color: "#fff",
+          alignItems: "center",
           zIndex: 2000,
         }}
       >
-        <div style={{ textAlign: "center" }}>
-          <h2>{user.name}</h2>
-          <p style={{ opacity: 0.8 }}>
-            {status === "connecting" && "Connecting..."}
-            {status === "active" && fmtTime(duration)}
-            {status === "ended" && "Call Ended"}
-          </p>
-        </div>
+        <h2>{user.name}</h2>
+        <p>
+          {status === "connecting" && "Connecting..."}
+          {status === "active" && fmtTime(duration)}
+          {status === "ended" && "Call Ended"}
+        </p>
 
-        {/* Controls */}
         {status === "active" && (
-          <div style={{ display: "flex", gap: 20, marginTop: 20 }}>
+          <div style={{ display: "flex", gap: 20, marginTop: 30 }}>
             {type === "video" && (
-              <button
-                onClick={() => setCameraOn(!cameraOn)}
-                style={{
-                  background: cameraOn ? "#4caf50" : "#888",
-                  borderRadius: "50%",
-                  padding: 14,
-                }}
-              >
-                📷
+              <button onClick={() => setCameraOn(!cameraOn)} style={{ borderRadius: "50%", padding: 14 }}>
+                {cameraOn ? "📷" : "🚫"}
               </button>
             )}
-            <button
-              onClick={() => setMuted(!muted)}
-              style={{
-                background: muted ? "#888" : "#4caf50",
-                borderRadius: "50%",
-                padding: 14,
-              }}
-            >
+            <button onClick={() => setMuted(!muted)} style={{ borderRadius: "50%", padding: 14 }}>
               {muted ? "🔇" : "🎙️"}
             </button>
             <button
-              onClick={handleEnd}
-              style={{
-                background: "red",
-                borderRadius: "50%",
-                padding: 14,
-              }}
+              onClick={endCall}
+              style={{ borderRadius: "50%", padding: 14, background: "red", color: "#fff" }}
             >
               ⛔
             </button>
