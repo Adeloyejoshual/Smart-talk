@@ -59,16 +59,27 @@ export default function CallModal({ type = "voice", user, onClose }) {
         {status === "active" && (
           <div style={{ display: "flex", gap: 20, marginTop: 30 }}>
             {type === "video" && (
-              <button onClick={() => setCameraOn(!cameraOn)} style={{ borderRadius: "50%", padding: 14 }}>
+              <button
+                onClick={() => setCameraOn(!cameraOn)}
+                style={{ borderRadius: "50%", padding: 14 }}
+              >
                 {cameraOn ? "📷" : "🚫"}
               </button>
             )}
-            <button onClick={() => setMuted(!muted)} style={{ borderRadius: "50%", padding: 14 }}>
+            <button
+              onClick={() => setMuted(!muted)}
+              style={{ borderRadius: "50%", padding: 14 }}
+            >
               {muted ? "🔇" : "🎙️"}
             </button>
             <button
               onClick={endCall}
-              style={{ borderRadius: "50%", padding: 14, background: "red", color: "#fff" }}
+              style={{
+                borderRadius: "50%",
+                padding: 14,
+                background: "red",
+                color: "#fff",
+              }}
             >
               ⛔
             </button>
