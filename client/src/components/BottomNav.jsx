@@ -1,9 +1,8 @@
-// /src/components/BottomNav.jsx
 import React, { useEffect, useState } from "react";
 import { useTheme } from "../context/ThemeContext";
-import { Home, Settings, User } from "lucide-react";
+import { Home, Phone, Wallet, Settings } from "lucide-react";
 
-// 🔥 Pulse animation (CSS-in-JS)
+// 🔹 Pulse animation for unread badge
 const pulseKeyframes = `
 @keyframes pulse {
   0% { transform: scale(1); opacity: 1; }
@@ -12,7 +11,6 @@ const pulseKeyframes = `
 }
 `;
 
-// Inject animation only once
 if (!document.getElementById("bottom-nav-pulse-style")) {
   const style = document.createElement("style");
   style.id = "bottom-nav-pulse-style";
@@ -21,26 +19,29 @@ if (!document.getElementById("bottom-nav-pulse-style")) {
 }
 
 export default function BottomNav({ current, onChange, unreadCount = 0 }) {
-  const { theme } = useTheme();
+  const { theme, accentColor } = useTheme(); // 🎨 use global accent color
   const [prevUnread, setPrevUnread] = useState(0);
   const [pulse, setPulse] = useState(false);
 
   useEffect(() => {
     if (unreadCount > prevUnread) {
       setPulse(true);
-      setTimeout(() => setPulse(false), 700); // reset after animation
+      setTimeout(() => setPulse(false), 700);
     }
     setPrevUnread(unreadCount);
-  }, [unreadCount]);
+  }, [unreadCount, prevUnread]);
 
   const tabs = [
-    { id: "chats", label: "Chats", icon: <Home size={20} /> },
-    { id: "settings", label: "Settings", icon: <Settings size={20} /> },
-    { id: "profile", label: "Profile", icon: <User size={20} /> },
+    { id: "chats", label: "Chats", icon: <Home size={22} /> },
+    { id: "wallet", label: "Wallet", icon: <Wallet size={22} /> },
+    { id: "calls", label: "Calls", icon: <Phone size={22} /> },
+    { id: "settings", label: "Settings", icon: <Settings size={22} /> },
   ];
 
   return (
-    <div
+    <nav
+      role="navigation"
+      aria-label="Main Bottom Navigation"
       style={{
         position: "fixed",
         bottom: 0,
@@ -52,7 +53,8 @@ export default function BottomNav({ current, onChange, unreadCount = 0 }) {
         alignItems: "center",
         background: theme === "dark" ? "#1c1c1e" : "#fff",
         borderTop: theme === "dark" ? "1px solid #333" : "1px solid #ddd",
-        zIndex: 100,
+        zIndex: 1000,
+        transition: "background 0.3s ease, border-color 0.3s ease",
       }}
     >
       {tabs.map((tab) => {
@@ -63,6 +65,7 @@ export default function BottomNav({ current, onChange, unreadCount = 0 }) {
           <button
             key={tab.id}
             onClick={() => onChange(tab.id)}
+            aria-current={isActive ? "page" : undefined}
             style={{
               position: "relative",
               display: "flex",
@@ -72,23 +75,24 @@ export default function BottomNav({ current, onChange, unreadCount = 0 }) {
               background: "transparent",
               border: "none",
               color: isActive
-                ? theme === "dark"
-                  ? "#0a84ff"
-                  : "#007aff"
+                ? accentColor
                 : theme === "dark"
                 ? "#bbb"
                 : "#666",
               cursor: "pointer",
               flex: 1,
               fontSize: 12,
+              outline: "none",
+              transition: "color 0.25s ease",
             }}
           >
             <div style={{ position: "relative" }}>
               {tab.icon}
 
-              {/* 🔔 Unread badge */}
+              {/* 🔴 Unread badge */}
               {isChats && unreadCount > 0 && (
                 <span
+                  aria-label={`${unreadCount} unread messages`}
                   style={{
                     position: "absolute",
                     top: -6,
@@ -110,6 +114,6 @@ export default function BottomNav({ current, onChange, unreadCount = 0 }) {
           </button>
         );
       })}
-    </div>
+    </nav>
   );
 }
