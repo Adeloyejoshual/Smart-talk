@@ -82,7 +82,7 @@ export const signInWithGoogle = async () => {
   }
 };
 
-// Logout
+// Logout function
 export const logout = async () => {
   try {
     await signOut(auth);
@@ -91,15 +91,15 @@ export const logout = async () => {
   }
 };
 
-// Listen to auth changes (handy for global context)
+// Listen to auth state changes (for global auth context or UI updates)
 export const onAuthChange = (callback) => {
   return onAuthStateChanged(auth, callback);
 };
 
-// Server timestamp helper
+// Server timestamp helper for Firestore fields
 export const now = serverTimestamp();
 
 // ------------------------------
-// ✅ Export default (for convenience)
+// ✅ Export default for convenience
 // ------------------------------
 export default app;
