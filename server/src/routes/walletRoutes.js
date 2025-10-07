@@ -1,10 +1,14 @@
-// /src/routes/walletRoutes.js
 import express from "express";
-import { addCredit, getWallet } from "../controllers/paymentController.js";
+import {
+  getBalance,
+  creditWallet,
+  debitWallet,
+} from "../controllers/walletController.js";
 
 const router = express.Router();
 
-router.post("/add", addCredit);
-router.get("/:userId", getWallet);
+router.get("/balance/:uid", getBalance);
+router.post("/credit", creditWallet);
+router.post("/debit", debitWallet);
 
 export default router;
