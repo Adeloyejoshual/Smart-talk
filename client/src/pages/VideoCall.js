@@ -1,6 +1,7 @@
-
 import React, { useEffect, useRef, useState } from "react";
-import { auth } from "../firebaseClient";
+import { auth, db } from "../firebaseClient";
+import { updateDoc, doc } from "firebase/firestore";
+import { deductPerSecond } from "../utils/billing";
 import { useTheme } from "../context/ThemeContext";
 import { PhoneOff } from "lucide-react";
 import useBillingSocket from "../hooks/useBillingSocket";
@@ -14,10 +15,12 @@ export default function VideoCall({ callId, isCaller, onEnd }) {
   const [duration, setDuration] = useState(0);
   const [cost, setCost] = useState(0);
   const [forceEnd, setForceEnd] = useState(false);
+  const [callStatus, setCallStatus] = useState("connecting"); // e.g., "accepted", "ended", etc.
 
   const me = auth.currentUser;
+  const billingTimerRef = useRef(null);
 
-  // ✅ Connect to billing server
+  // Connect to billing server via socket
   const { startBilling, stopBilling, billingActive } = useBillingSocket({
     idToken: me?.accessToken,
     callId,
@@ -33,9 +36,9 @@ export default function VideoCall({ callId, isCaller, onEnd }) {
     },
   });
 
-  // 🎥 Start local video stream
+  // Start local video stream
   useEffect(() => {
-    const startVideo = async () => {
+    async function startVideo() {
       try {
         const media = await navigator.mediaDevices.getUserMedia({
           video: true,
@@ -48,11 +51,11 @@ export default function VideoCall({ callId, isCaller, onEnd }) {
       } catch (err) {
         console.error("Media error:", err);
       }
-    };
+    }
     startVideo();
   }, []);
 
-  // 🔗 Setup Peer Connection (simplified)
+  // Setup PeerConnection and start billing if caller connected
   useEffect(() => {
     if (!stream) return;
     const pc = new RTCPeerConnection();
@@ -67,23 +70,47 @@ export default function VideoCall({ callId, isCaller, onEnd }) {
 
     setPeer(pc);
 
-    // Start billing once connection is established
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === "connected" && isCaller) {
-        startBilling();
+      if (pc.connectionState === "connected") {
+        setCallStatus("accepted");
+        if (isCaller) startBilling();
+      }
+      if (pc.connectionState === "disconnected" || pc.connectionState === "failed") {
+        setCallStatus("ended");
       }
     };
 
     return () => pc.close();
   }, [stream, isCaller, startBilling]);
 
-  // 🧩 End call manually or by billing event
+  // Per-second billing deduction using useEffect and interval
+  useEffect(() => {
+    if (callStatus !== "accepted") return;
+
+    billingTimerRef.current = setInterval(async () => {
+      const success = await deductPerSecond(me.uid);
+      if (!success) {
+        clearInterval(billingTimerRef.current);
+        await updateDoc(doc(db, "calls", callId), { status: "ended", reason: "insufficient_funds" });
+        alert("Your balance is too low. Call ended.");
+        setForceEnd(true);
+        handleEndCall();
+      }
+    }, 1000);
+
+    return () => {
+      clearInterval(billingTimerRef.current);
+    };
+  }, [callStatus, callId, me.uid]);
+
+  // End call handler
   const handleEndCall = () => {
     stopBilling(me.uid);
     if (stream) {
       stream.getTracks().forEach((t) => t.stop());
     }
     if (peer) peer.close();
+    setCallStatus("ended");
     onEnd();
   };
 
@@ -100,17 +127,11 @@ export default function VideoCall({ callId, isCaller, onEnd }) {
         position: "relative",
       }}
     >
-      {/* Video Streams */}
       <video
         ref={remoteVideoRef}
         autoPlay
         playsInline
-        style={{
-          width: "100%",
-          height: "100%",
-          objectFit: "cover",
-          background: "#000",
-        }}
+        style={{ width: "100%", height: "100%", objectFit: "cover", background: "#000" }}
       />
       <video
         ref={localVideoRef}
@@ -129,7 +150,6 @@ export default function VideoCall({ callId, isCaller, onEnd }) {
         }}
       />
 
-      {/* Overlay Info */}
       <div
         style={{
           position: "absolute",
@@ -147,32 +167,17 @@ export default function VideoCall({ callId, isCaller, onEnd }) {
           Duration: {duration}s | Cost: ${cost.toFixed(4)}
         </div>
         {billingActive && (
-          <div
-            style={{
-              marginTop: 4,
-              color: "#0f0",
-              fontSize: 12,
-              fontWeight: 500,
-            }}
-          >
+          <div style={{ marginTop: 4, color: "#0f0", fontSize: 12, fontWeight: 500 }}>
             Billing Active 🔄
           </div>
         )}
         {forceEnd && (
-          <div
-            style={{
-              marginTop: 4,
-              color: "#ff3b30",
-              fontSize: 12,
-              fontWeight: 500,
-            }}
-          >
+          <div style={{ marginTop: 4, color: "#ff3b30", fontSize: 12, fontWeight: 500 }}>
             Call ended (low balance)
           </div>
         )}
       </div>
 
-      {/* End Call Button */}
       <button
         onClick={handleEndCall}
         style={{
