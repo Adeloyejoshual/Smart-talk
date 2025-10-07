@@ -1,15 +1,18 @@
+// 📁 CallPage.jsx
 import React, { useEffect, useState, useRef } from "react";
 import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
 import { db, auth } from "../firebaseClient";
 import { useTheme } from "../context/ThemeContext";
 import { Phone, Video, PhoneOff, Clock, RefreshCw } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
-export default function CallPage({ onStartCall }) {
+export default function CallPage() {
   const [calls, setCalls] = useState([]);
   const [filter, setFilter] = useState("all");
   const { theme } = useTheme();
   const me = auth.currentUser;
-  const prevMissedIds = useRef(new Set()); // to track missed call IDs
+  const prevMissedIds = useRef(new Set());
+  const navigate = useNavigate();
 
   // 🧠 Load call data
   useEffect(() => {
@@ -33,7 +36,7 @@ export default function CallPage({ onStartCall }) {
 
     const newOnes = missedNow.filter((id) => !prevMissedIds.current.has(id));
     if (newOnes.length > 0) {
-      const audio = new Audio("/sounds/missed_call.mp3"); // place sound in public/sounds/
+      const audio = new Audio("/sounds/missed_call.mp3");
       audio.volume = 0.4;
       audio.play().catch(() => {});
     }
@@ -71,6 +74,15 @@ export default function CallPage({ onStartCall }) {
   const missedCallsCount = calls.filter(
     (c) => c.status === "missed" && c.calleeId === me?.uid
   ).length;
+
+  // 🧭 Navigate to call pages
+  const handleStartCall = (type, callee) => {
+    if (type === "video") {
+      navigate("/call/video", { state: { callee } });
+    } else {
+      navigate("/call/voice", { state: { callee } });
+    }
+  };
 
   return (
     <div
@@ -242,7 +254,10 @@ export default function CallPage({ onStartCall }) {
                 {getStatusIcon(c.status)}
                 <button
                   onClick={() =>
-                    onStartCall(c.type, { id: c.calleeId, name: c.calleeName })
+                    handleStartCall(c.type, {
+                      id: isMeCaller ? c.calleeId : c.callerId,
+                      name: otherName,
+                    })
                   }
                   style={{
                     border: "none",
