@@ -1,30 +1,49 @@
-// /src/hooks/useCallSocket.js
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import { db, auth } from "../firebaseClient";
-import { doc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+import {
+  doc,
+  getDoc,
+  updateDoc,
+  increment,
+  serverTimestamp,
+  addDoc,
+  collection,
+} from "firebase/firestore";
 
-export default function useCallSocket({ type, targetUser, onConnected, onEnded, onMissed }) {
+export default function useCallSocket({
+  type,
+  targetUser,
+  onConnected,
+  onEnded,
+  onMissed,
+  peerConnection,
+  callData,
+  endCall,
+}) {
+  const [elapsed, setElapsed] = useState(0);
+  const timerRef = useRef(null);
+  const lastDeductRef = useRef(0);
   const socketRef = useRef(null);
   const me = auth.currentUser;
 
+  const COST_PER_SECOND = 0.0033; // Adjust as needed
+
+  // Initialize and manage socket connection, call signaling
   useEffect(() => {
     if (!me || !targetUser?.uid) return;
 
     const socket = io("https://your-api.example.com", { transports: ["websocket"] });
     socketRef.current = socket;
 
-    // 1️⃣ Register user socket
     socket.emit("register", { userId: me.uid });
 
-    // 2️⃣ Initiate call
     socket.emit("call:initiate", {
       fromUserId: me.uid,
       toUserId: targetUser.uid,
       type,
     });
 
-    // 3️⃣ Listen to events
     socket.on("call:connected", async ({ callId }) => {
       await updateDoc(doc(db, "calls", callId), { status: "active", startedAt: serverTimestamp() });
       onConnected?.();
@@ -48,9 +67,76 @@ export default function useCallSocket({ type, targetUser, onConnected, onEnded, 
     };
   }, [me, targetUser?.uid, type]);
 
-  function endCall() {
-    socketRef.current?.emit("call:end", { reason: "user_hangup" });
+  // Timer and wallet deduction every 5 seconds
+  useEffect(() => {
+    if (!callData?.active) return;
+
+    timerRef.current = setInterval(async () => {
+      setElapsed((prev) => prev + 1);
+
+      const now = Math.floor(Date.now() / 1000);
+      if (now - lastDeductRef.current >= 5) {
+        lastDeductRef.current = now;
+        await deductBalance(5 * COST_PER_SECOND);
+      }
+    }, 1000);
+
+    return () => clearInterval(timerRef.current);
+  }, [callData]);
+
+  // Deduct balance safely from Firestore wallet
+  async function deductBalance(amount) {
+    if (!me) return;
+    const walletRef = doc(db, "wallets", me.uid);
+    const snap = await getDoc(walletRef);
+    if (!snap.exists()) return;
+
+    const currentBalance = snap.data().balance || 0;
+
+    if (currentBalance < amount) {
+      clearInterval(timerRef.current);
+      await updateDoc(walletRef, { balance: 0 });
+      alert("⚠️ Call ended due to insufficient balance.");
+      handleEndCall();
+      return;
+    }
+
+    await updateDoc(walletRef, {
+      balance: increment(-amount),
+      lastUpdated: serverTimestamp(),
+    });
   }
 
-  return { socket: socketRef.current, endCall };
+  // Save call billing record on call end
+  async function saveCallRecord(duration) {
+    if (!me || !callData) return;
+
+    const totalCost = +(duration * COST_PER_SECOND).toFixed(2);
+
+    await addDoc(collection(db, "calls"), {
+      callerId: callData.callerId,
+      calleeId: callData.calleeId,
+      callerName: callData.callerName,
+      calleeName: callData.calleeName,
+      type: callData.type,
+      duration,
+      cost: totalCost,
+      status: "ended",
+      timestamp: serverTimestamp(),
+    });
+  }
+
+  // Cleanup timer, save billing info, and end call
+  function handleEndCall() {
+    clearInterval(timerRef.current);
+    saveCallRecord(elapsed);
+    endCall();
+  }
+
+  return {
+    elapsed,
+    handleEndCall,
+    socket: socketRef.current,
+    endCall,
+  };
 }
