@@ -1,7 +1,7 @@
-// 📁 /src/pages/WalletPage.jsx
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { auth } from "../firebaseClient";
+import { getCallRate } from "../utils/billing";
 
 export default function WalletPage() {
   const [wallet, setWallet] = useState({ balance: 0 });
@@ -9,7 +9,9 @@ export default function WalletPage() {
   const [amount, setAmount] = useState(5);
   const API = import.meta.env.VITE_API_URL || "/api";
 
-  // 🪙 Load wallet balance + saved cards
+  const rate = getCallRate();
+
+  // Load wallet balance + saved cards
   useEffect(() => {
     async function load() {
       if (!auth.currentUser) return;
@@ -26,14 +28,14 @@ export default function WalletPage() {
     load();
   }, [auth.currentUser]);
 
-  // ➕ Add Credit (Stripe Checkout)
+  // Add Credit (Stripe Checkout)
   const addCredit = async () => {
     const uid = auth.currentUser.uid;
     const res = await axios.post(`${API}/payment/stripe-session`, { amount, uid });
     window.location.href = res.data.url;
   };
 
-  // 💳 Set Default Card
+  // Set Default Card
   const setDefault = async (cardId) => {
     const uid = auth.currentUser.uid;
     await axios.post(`${API}/cards/set-default`, { uid, cardId });
@@ -42,7 +44,7 @@ export default function WalletPage() {
     alert("✅ Default card updated!");
   };
 
-  // 🗑️ Delete Card
+  // Delete Card
   const deleteCard = async (cardId) => {
     if (!window.confirm("Delete this saved card?")) return;
     await axios.delete(`${API}/cards/${cardId}`);
@@ -53,7 +55,7 @@ export default function WalletPage() {
     <div style={{ maxWidth: 900, margin: "20px auto", padding: 16 }}>
       <h2 style={{ textAlign: "center" }}>💼 Wallet</h2>
 
-      {/* 💰 Balance */}
+      {/* Balance Section */}
       <div
         style={{
           border: "1px solid #ddd",
@@ -73,7 +75,26 @@ export default function WalletPage() {
         </div>
       </div>
 
-      {/* 💳 Saved Cards Section */}
+      {/* Call Billing Info */}
+      <div
+        style={{
+          border: "1px solid #ddd",
+          padding: 16,
+          borderRadius: 12,
+          marginBottom: 20,
+          background: "#f0f0f0",
+        }}
+      >
+        <h3>📞 Call Billing</h3>
+        <p>Rate: ${rate}/sec</p>
+        <p>Example:</p>
+        <ul>
+          <li>1 min (60s) = ${(rate * 60).toFixed(2)} USD</li>
+          <li>5 min (300s) = ${(rate * 300).toFixed(2)} USD</li>
+        </ul>
+      </div>
+
+      {/* Saved Cards Section */}
       <div
         style={{
           border: "1px solid #ddd",
@@ -105,7 +126,6 @@ export default function WalletPage() {
                   Exp: {card.details?.exp_month || card.exp_month}/{card.details?.exp_year || card.exp_year} • {card.gateway}
                 </div>
               </div>
-
               <div style={{ display: "flex", gap: 8 }}>
                 {card.default ? (
                   <span
