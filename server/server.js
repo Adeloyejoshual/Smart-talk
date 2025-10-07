@@ -1,261 +1,532 @@
-import express from "express";
-import http from "http";
-import { Server as IOServer } from "socket.io";
-import admin from "firebase-admin";
-import cors from "cors";
-import bodyParser from "body-parser";
-import { v4 as uuidv4 } from "uuid";
+/**
+ * server.js
+ *
+ * Single-file server implementing:
+ *  - Express REST API: /api/wallet, /api/calls
+ *  - Socket.IO for realtime call lifecycle + per-second billing
+ *  - Mongoose models (User, Transaction, CallRecord) (embedded below)
+ *  - Firebase Admin token verification
+ *
+ * Usage: node server.js
+ *
+ * Env variables (put in server/.env):
+ *  - PORT=4000
+ *  - MONGODB_URI=mongodb+srv://<user>:<pass>@cluster.mongodb.net/appdb
+ *  - FIREBASE_ADMIN_KEY_PATH=./firebase-admin-key.json
+ *  - CALL_RATE_PER_SECOND=0.0033
+ *  - MIN_START_BALANCE=0.5
+ */
 
+import 'dotenv/config';
+import express from 'express';
+import http from 'http';
+import { Server as IOServer } from 'socket.io';
+import cors from 'cors';
+import bodyParser from 'body-parser';
+import mongoose from 'mongoose';
+import fs from 'fs';
+import admin from 'firebase-admin';
+import { v4 as uuidv4 } from 'uuid';
+
+// ---------- Config ----------
 const PORT = process.env.PORT || 4000;
-const COST_PER_SECOND = parseFloat(process.env.COST_PER_SECOND || "0.0035");
-const MIN_START_BALANCE = parseFloat(process.env.MIN_START_BALANCE || "0.5");
+const MONGODB_URI = process.env.MONGODB_URI;
+const FIREBASE_KEY_PATH = process.env.FIREBASE_ADMIN_KEY_PATH;
+const CALL_RATE_PER_SECOND = parseFloat(process.env.CALL_RATE_PER_SECOND || '0.0033');
+const MIN_START_BALANCE = parseFloat(process.env.MIN_START_BALANCE || '0.5');
 
-try {
-  admin.initializeApp(); // expects GOOGLE_APPLICATION_CREDENTIALS env var set
-} catch (err) {
-  console.error("Firebase admin initialization error:", err);
+if (!MONGODB_URI) {
+  console.error('Missing MONGODB_URI in .env');
   process.exit(1);
 }
-const db = admin.firestore();
+if (!FIREBASE_KEY_PATH || !fs.existsSync(FIREBASE_KEY_PATH)) {
+  console.error('Missing or invalid FIREBASE_ADMIN_KEY_PATH in .env');
+  process.exit(1);
+}
 
+// ---------- Firebase Admin ----------
+try {
+  const serviceAccount = JSON.parse(fs.readFileSync(FIREBASE_KEY_PATH, 'utf8'));
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+  });
+  console.log('✅ Firebase Admin initialized');
+} catch (err) {
+  console.error('Failed to initialize Firebase Admin:', err);
+  process.exit(1);
+}
+
+// ---------- MongoDB (Mongoose) ----------
+mongoose.set('strictQuery', true);
+await mongoose.connect(MONGODB_URI, {});
+
+console.log('🟢 MongoDB connected');
+
+// ---------- Define Mongoose Schemas / Models ----------
+
+const userSchema = new mongoose.Schema({
+  uid: { type: String, required: true, unique: true }, // Firebase UID
+  name: String,
+  email: String,
+  balance: { type: Number, default: 0 }, // USD
+  createdAt: { type: Date, default: Date.now },
+});
+const User = mongoose.model('User', userSchema);
+
+const transactionSchema = new mongoose.Schema({
+  userId: { type: String, required: true }, // uid
+  type: { type: String, enum: ['credit', 'debit'], required: true },
+  amount: { type: Number, required: true },
+  reason: String,
+  meta: Object,
+  createdAt: { type: Date, default: Date.now },
+});
+const Transaction = mongoose.model('Transaction', transactionSchema);
+
+const callRecordSchema = new mongoose.Schema({
+  callId: { type: String, required: true, unique: true },
+  callerId: String,
+  calleeId: String,
+  callerName: String,
+  calleeName: String,
+  type: { type: String, enum: ['voice', 'video'], default: 'video' },
+  status: { type: String, enum: ['ongoing', 'ended', 'missed', 'declined'], default: 'ongoing' },
+  duration: { type: Number, default: 0 }, // seconds
+  cost: { type: Number, default: 0 },
+  createdAt: { type: Date, default: Date.now },
+  endedAt: Date,
+});
+const CallRecord = mongoose.model('CallRecord', callRecordSchema);
+
+// ---------- Helper: Firebase token verify ----------
+async function verifyIdToken(idToken) {
+  if (!idToken) throw new Error('Missing id token');
+  try {
+    const decoded = await admin.auth().verifyIdToken(idToken);
+    return decoded; // contains uid, email, name, etc.
+  } catch (err) {
+    const e = new Error('Invalid auth token');
+    e.original = err;
+    throw e;
+  }
+}
+
+// ---------- Helper: atomic charge via MongoDB transaction ----------
+async function chargeCallerAtomic(uid, amount) {
+  /**
+   * Atomically deduct `amount` from user's balance and record a Transaction.
+   * Throws when insufficient funds or user not found.
+   */
+  if (amount <= 0) return { before: null, after: null };
+  const session = await mongoose.startSession();
+  try {
+    session.startTransaction();
+
+    const user = await User.findOne({ uid }).session(session);
+    if (!user) {
+      throw new Error('Wallet / user not found');
+    }
+    const before = Number(user.balance || 0);
+    if (before < amount) {
+      throw new Error('Insufficient funds');
+    }
+    const after = Number((before - amount).toFixed(6));
+    user.balance = after;
+    await user.save({ session });
+
+    await Transaction.create(
+      [
+        {
+          userId: uid,
+          type: 'debit',
+          amount,
+          reason: 'Call per-second charge',
+          createdAt: new Date(),
+        },
+      ],
+      { session }
+    );
+
+    await session.commitTransaction();
+    session.endSession();
+    return { before, after };
+  } catch (err) {
+    await session.abortTransaction().catch(() => {});
+    session.endSession();
+    throw err;
+  }
+}
+
+// ---------- In-memory session store for active calls ----------
+/**
+ * sessions: Map<callId, {
+ *   callId,
+ *   callerUid,
+ *   calleeUid,
+ *   seconds,
+ *   chargedSoFar,
+ *   intervalId
+ * }>
+ */
+const sessions = new Map();
+
+// ---------- Express + Socket.IO Setup ----------
 const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
 const server = http.createServer(app);
-const io = new IOServer(server, { cors: { origin: "*" } });
+const io = new IOServer(server, {
+  cors: {
+    origin: '*', // adjust for production
+    methods: ['GET', 'POST'],
+  },
+});
 
-const sessions = new Map();
-
-async function verifyIdToken(idToken) {
+// ---------- REST API: Wallet endpoints ----------
+app.get('/api/wallet/balance/:uid', async (req, res) => {
   try {
-    return await admin.auth().verifyIdToken(idToken);
-  } catch {
-    throw new Error("Invalid auth token");
+    const { uid } = req.params;
+    const user = await User.findOne({ uid });
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    return res.json({ balance: Number(user.balance || 0) });
+  } catch (err) {
+    console.error('/api/wallet/balance error', err);
+    return res.status(500).json({ message: err.message });
   }
-}
+});
 
-async function chargeCallerAtomic(uid, amount) {
-  const walletRef = db.collection("wallet").doc(uid);
-  return db.runTransaction(async (tx) => {
-    const snap = await tx.get(walletRef);
-    if (!snap.exists) throw new Error("Wallet not found");
-    const balance = Number(snap.data().balance || 0);
-    if (balance < amount) throw new Error("Insufficient funds");
-    const newBal = Number((balance - amount).toFixed(6));
-    tx.update(walletRef, { balance: newBal });
-    const txRef = walletRef.collection("transactions").doc();
-    tx.set(txRef, {
-      type: "debit",
-      amount,
-      reason: "Call per-second charge",
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      meta: {},
-    });
-    return { before: balance, after: newBal };
-  });
-}
-
-// POST /calls/start - create call doc, verify balance, emit to sockets
-app.post("/calls/start", async (req, res) => {
+app.post('/api/wallet/credit', async (req, res) => {
   try {
-    const token = req.headers.authorization?.startsWith("Bearer ")
-      ? req.headers.authorization.split(" ")[1]
-      : req.body.idToken;
-    if (!token) return res.status(401).json({ error: "Missing id token" });
+    const { uid, amount, reason = 'Top-up', meta = {} } = req.body;
+    if (!uid || !amount) return res.status(400).json({ message: 'Missing uid or amount' });
+
+    const user = await User.findOneAndUpdate(
+      { uid },
+      { $inc: { balance: Number(amount) } },
+      { upsert: true, new: true }
+    );
+
+    await Transaction.create({
+      userId: uid,
+      type: 'credit',
+      amount: Number(amount),
+      reason,
+      meta,
+      createdAt: new Date(),
+    });
+
+    return res.json({ balance: Number(user.balance || 0) });
+  } catch (err) {
+    console.error('/api/wallet/credit error', err);
+    return res.status(500).json({ message: err.message });
+  }
+});
+
+app.post('/api/wallet/debit', async (req, res) => {
+  try {
+    const { uid, amount, reason = 'Debit', meta = {} } = req.body;
+    if (!uid || !amount) return res.status(400).json({ message: 'Missing uid or amount' });
+
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    try {
+      const user = await User.findOne({ uid }).session(session);
+      if (!user || (user.balance || 0) < Number(amount)) {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(400).json({ message: 'Insufficient balance' });
+      }
+      user.balance = Number((user.balance - Number(amount)).toFixed(6));
+      await user.save({ session });
+
+      await Transaction.create(
+        [
+          {
+            userId: uid,
+            type: 'debit',
+            amount: Number(amount),
+            reason,
+            meta,
+            createdAt: new Date(),
+          },
+        ],
+        { session }
+      );
+      await session.commitTransaction();
+      session.endSession();
+      return res.json({ balance: user.balance });
+    } catch (errInner) {
+      await session.abortTransaction().catch(() => {});
+      session.endSession();
+      throw errInner;
+    }
+  } catch (err) {
+    console.error('/api/wallet/debit error', err);
+    return res.status(500).json({ message: err.message });
+  }
+});
+
+// ---------- REST API: Call endpoints ----------
+app.post('/api/calls/start', async (req, res) => {
+  /**
+   * Expected headers: Authorization: Bearer <idToken>
+   * Body: { calleeUid, calleeName?, type?: 'voice'|'video' }
+   */
+  try {
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : req.body.idToken;
+    if (!token) return res.status(401).json({ error: 'Missing id token' });
 
     const decoded = await verifyIdToken(token);
     const callerUid = decoded.uid;
-    const { calleeUid, calleeName = "", type = "video" } = req.body;
+    const { calleeUid, calleeName = '', type = 'video' } = req.body;
+    if (!calleeUid) return res.status(400).json({ error: 'Missing calleeUid' });
 
-    if (!calleeUid) return res.status(400).json({ error: "Missing calleeUid" });
+    // ensure user record exists
+    let caller = await User.findOne({ uid: callerUid });
+    if (!caller) {
+      caller = await User.create({ uid: callerUid, name: decoded.name || decoded.email || callerUid, email: decoded.email, balance: 0 });
+    }
 
-    const walletSnap = await db.collection("wallet").doc(callerUid).get();
-    const balance = walletSnap.exists ? Number(walletSnap.data().balance || 0) : 0;
-
-    if (balance < MIN_START_BALANCE)
-      return res.status(402).json({ error: "INSUFFICIENT_FUNDS", message: `Need at least $${MIN_START_BALANCE}` });
+    if ((caller.balance || 0) < MIN_START_BALANCE) {
+      return res.status(402).json({ error: 'INSUFFICIENT_FUNDS', message: `Need at least $${MIN_START_BALANCE} to start a call` });
+    }
 
     const callId = uuidv4();
-    const callRef = db.collection("calls").doc(callId);
-
-    const callDoc = {
+    const callDoc = await CallRecord.create({
+      callId,
       callerId: callerUid,
-      callerName: decoded.name || decoded.email || callerUid,
       calleeId: calleeUid,
+      callerName: decoded.name || decoded.email || callerUid,
       calleeName,
       type,
-      status: "ongoing",
-      timestamp: admin.firestore.FieldValue.serverTimestamp(),
-      duration: 0,
-      cost: 0
-    };
-    await callRef.set(callDoc, { merge: true });
+      status: 'ongoing',
+      createdAt: new Date(),
+    });
 
-    io.to(callerUid).emit("server:call-created", { callId, call: callDoc });
-    io.to(calleeUid).emit("server:incoming-call", { callId, call: callDoc });
-
+    // create in-memory session
     sessions.set(callId, {
+      callId,
       callerUid,
       calleeUid,
       seconds: 0,
       chargedSoFar: 0,
-      intervalId: null
+      intervalId: null,
     });
 
-    res.json({ success: true, callId, call: callDoc });
+    // notify via socket.io if users connected
+    io.to(callerUid).emit('server:call-created', { callId, call: callDoc });
+    io.to(calleeUid).emit('server:incoming-call', { callId, call: callDoc });
+
+    return res.json({ success: true, callId, call: callDoc });
   } catch (err) {
-    console.error("/calls/start error:", err);
-    res.status(500).json({ error: "server_error", message: err.message });
+    console.error('/api/calls/start error', err);
+    return res.status(500).json({ error: 'server_error', message: err.message });
   }
 });
 
-// POST /calls/end - end call, clear billing interval, finalize call doc, emit ended
-app.post("/calls/end", async (req, res) => {
+app.post('/api/calls/end', async (req, res) => {
+  /**
+   * End call (HTTP fallback). Body: { callId }
+   * Auth header same as start
+   */
   try {
-    const token = req.headers.authorization?.startsWith("Bearer ")
-      ? req.headers.authorization.split(" ")[1]
-      : req.body.idToken;
-    if (!token) return res.status(401).json({ error: "Missing id token" });
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : req.body.idToken;
+    if (!token) return res.status(401).json({ error: 'Missing id token' });
 
     const decoded = await verifyIdToken(token);
     const requesterUid = decoded.uid;
     const { callId } = req.body;
-
-    if (!callId) return res.status(400).json({ error: "Missing callId" });
+    if (!callId) return res.status(400).json({ error: 'Missing callId' });
 
     const session = sessions.get(callId);
-    if (session?.intervalId) clearInterval(session.intervalId);
+    if (session?.intervalId) {
+      clearInterval(session.intervalId);
+    }
     sessions.delete(callId);
 
-    const callRef = db.collection("calls").doc(callId);
-    const snap = await callRef.get();
-    const callData = snap.exists ? snap.data() : null;
-    const duration = session?.seconds || callData?.duration || 0;
-    const cost = session?.chargedSoFar || callData?.cost || 0;
-
-    await callRef.update({
-      status: "ended",
-      endedAt: admin.firestore.FieldValue.serverTimestamp(),
-      duration,
-      cost,
-    });
-
-    io.to(callId).emit("call:ended", { callId, endedBy: requesterUid, duration, cost });
-    if (session) {
-      io.to(session.callerUid).emit("call:ended", { callId, endedBy: requesterUid, duration, cost });
-      io.to(session.calleeUid).emit("call:ended", { callId, endedBy: requesterUid, duration, cost });
+    // finalize call record
+    const callDoc = await CallRecord.findOne({ callId });
+    const duration = session?.seconds || (callDoc?.duration || 0);
+    const cost = session?.chargedSoFar || (callDoc?.cost || 0);
+    if (callDoc) {
+      callDoc.status = 'ended';
+      callDoc.duration = duration;
+      callDoc.cost = cost;
+      callDoc.endedAt = new Date();
+      await callDoc.save();
     }
 
-    res.json({ success: true, callId, duration, cost });
+    io.to(callId).emit('call:ended', { callId, endedBy: requesterUid, duration, cost });
+    if (session) {
+      io.to(session.callerUid).emit('call:ended', { callId, endedBy: requesterUid, duration, cost });
+      io.to(session.calleeUid).emit('call:ended', { callId, endedBy: requesterUid, duration, cost });
+    }
+
+    return res.json({ success: true, callId, duration, cost });
   } catch (err) {
-    console.error("/calls/end error:", err);
-    res.status(500).json({ error: "server_error", message: err.message });
+    console.error('/api/calls/end error', err);
+    return res.status(500).json({ error: 'server_error', message: err.message });
   }
 });
 
-// Socket handlers
-io.on("connection", (socket) => {
-  console.log("socket connected:", socket.id);
+// ---------- Socket.IO handlers ----------
+io.on('connection', (socket) => {
+  console.log('socket connected:', socket.id);
 
-  socket.on("auth", async (data) => {
+  // client should send: { idToken }
+  socket.on('auth', async (data) => {
     try {
       const token = data?.idToken;
       if (!token) return;
       const decoded = await verifyIdToken(token);
       socket.uid = decoded.uid;
       socket.join(socket.uid);
-      console.log("socket authenticated for uid:", socket.uid);
+      console.log('socket authenticated for uid:', socket.uid);
+      socket.emit('auth:ok', { uid: socket.uid });
     } catch (err) {
-      console.warn("socket auth failed:", err.message);
-      socket.emit("error", { code: "AUTH_FAILED" });
+      console.warn('socket auth failed:', err.message);
+      socket.emit('error', { code: 'AUTH_FAILED', message: err.message });
     }
   });
 
-  socket.on("call:join", ({ callId }) => {
+  // client joins specific call room
+  socket.on('call:join', ({ callId }) => {
     if (!callId) return;
     socket.join(callId);
   });
 
-  socket.on("billing:start", async ({ callId }) => {
+  // Start billing via socket: emits billing ticks each second
+  socket.on('billing:start', async ({ callId } = {}) => {
     try {
+      if (!callId) return socket.emit('error', { code: 'MISSING_CALLID' });
       const session = sessions.get(callId);
-      if (!session) return socket.emit("error", { code: "NO_SESSION" });
-      if (socket.uid !== session.callerUid) return socket.emit("error", { code: "NOT_CALLER" });
+      if (!session) return socket.emit('error', { code: 'NO_SESSION' });
 
-      if (session.intervalId) return socket.emit("billing:started", { callId });
+      // only allow caller socket to start billing
+      if (socket.uid !== session.callerUid) return socket.emit('error', { code: 'NOT_CALLER' });
 
+      if (session.intervalId) return socket.emit('billing:started', { callId });
+
+      // tick every second: attempt to charge caller atomically each second
       session.intervalId = setInterval(async () => {
         try {
-          await chargeCallerAtomic(session.callerUid, COST_PER_SECOND);
+          // attempt to charge one second
+          await chargeCallerAtomic(session.callerUid, CALL_RATE_PER_SECOND);
+
           session.seconds += 1;
-          session.chargedSoFar = Number((session.chargedSoFar + COST_PER_SECOND).toFixed(6));
-          io.to(callId).emit("billing:update", {
+          session.chargedSoFar = Number((session.chargedSoFar + CALL_RATE_PER_SECOND).toFixed(6));
+
+          // also persist some progress occasionally (optional)
+          if (session.seconds % 10 === 0) {
+            await CallRecord.findOneAndUpdate(
+              { callId },
+              { duration: session.seconds, cost: session.chargedSoFar },
+              { upsert: true }
+            );
+          }
+
+          io.to(callId).emit('billing:update', {
             callId,
             seconds: session.seconds,
             charged: session.chargedSoFar,
           });
         } catch (err) {
-          console.warn("billing tick failed:", err.message);
+          // insufficient funds or other error -> force end the call
+          console.warn('billing tick failed for', session.callerUid, err.message);
           clearInterval(session.intervalId);
           sessions.delete(callId);
 
+          // finalize call record
           try {
-            const callRef = db.collection("calls").doc(callId);
-            const callSnap = await callRef.get();
-            const callData = callSnap.exists ? callSnap.data() : {};
-            const duration = session.seconds || callData.duration || 0;
-            const cost = session.chargedSoFar || callData.cost || 0;
-            await callRef.update({
-              status: "ended",
-              endedAt: admin.firestore.FieldValue.serverTimestamp(),
-              duration,
-              cost,
-            });
-          } catch (e2) {
-            console.error("finalize call doc failed:", e2.message);
+            const callDoc = await CallRecord.findOne({ callId });
+            const duration = session.seconds;
+            const cost = session.chargedSoFar;
+            if (callDoc) {
+              callDoc.status = 'ended';
+              callDoc.duration = duration;
+              callDoc.cost = cost;
+              callDoc.endedAt = new Date();
+              await callDoc.save();
+            } else {
+              await CallRecord.create({
+                callId,
+                callerId: session.callerUid,
+                calleeId: session.calleeUid,
+                duration,
+                cost,
+                status: 'ended',
+                createdAt: new Date(),
+                endedAt: new Date(),
+              });
+            }
+          } catch (finalizeErr) {
+            console.error('finalize call doc failed:', finalizeErr);
           }
 
-          io.to(callId).emit("call:force-end", { reason: "INSUFFICIENT_FUNDS" });
+          io.to(callId).emit('call:force-end', { reason: 'INSUFFICIENT_FUNDS' });
         }
       }, 1000);
 
       sessions.set(callId, session);
-      socket.emit("billing:started", { callId });
+      socket.emit('billing:started', { callId });
     } catch (err) {
-      console.error("billing:start error:", err);
-      socket.emit("error", { code: "BILLING_START_ERROR", message: err.message });
+      console.error('billing:start error', err);
+      socket.emit('error', { code: 'BILLING_START_ERROR', message: err.message });
     }
   });
 
-  socket.on("billing:stop", async ({ callId, endedBy }) => {
+  // Stop billing manually
+  socket.on('billing:stop', async ({ callId, endedBy } = {}) => {
     try {
       const session = sessions.get(callId);
       if (session?.intervalId) clearInterval(session.intervalId);
       sessions.delete(callId);
 
-      const callRef = db.collection("calls").doc(callId);
-      const callSnap = await callRef.get();
-      const callData = callSnap.exists ? callSnap.data() : {};
-      const duration = session?.seconds || callData.duration || 0;
-      const cost = session?.chargedSoFar || callData.cost || 0;
+      // finalize call doc
+      const callDoc = await CallRecord.findOne({ callId });
+      const duration = session?.seconds || (callDoc?.duration || 0);
+      const cost = session?.chargedSoFar || (callDoc?.cost || 0);
 
-      await callRef.update({
-        status: "ended",
-        endedAt: admin.firestore.FieldValue.serverTimestamp(),
-        duration,
-        cost,
-      });
+      if (callDoc) {
+        callDoc.status = 'ended';
+        callDoc.duration = duration;
+        callDoc.cost = cost;
+        callDoc.endedAt = new Date();
+        await callDoc.save();
+      } else {
+        await CallRecord.create({
+          callId,
+          callerId: session?.callerUid,
+          calleeId: session?.calleeUid,
+          duration,
+          cost,
+          status: 'ended',
+          createdAt: new Date(),
+          endedAt: new Date(),
+        });
+      }
 
-      io.to(callId).emit("call:ended", { callId, endedBy, duration, cost });
+      io.to(callId).emit('call:ended', { callId, endedBy, duration, cost });
     } catch (err) {
-      console.error("billing:stop error:", err);
+      console.error('billing:stop error', err);
+      socket.emit('error', { code: 'BILLING_STOP_ERROR', message: err.message });
     }
   });
 
-  socket.on("disconnect", () => {
-    console.log("socket disconnected:", socket.id);
+  socket.on('disconnect', () => {
+    // optional: cleanup sessions where the only participant left, but we keep sessions
+    console.log('socket disconnected', socket.id);
   });
 });
 
-server.listen(PORT, () => console.log(`Billing server listening on ${PORT}`));
+// ---------- Basic health endpoint ----------
+app.get('/', (req, res) => res.send('Billing server running ✅'));
+
+// ---------- Start server ----------
+server.listen(PORT, () => {
+  console.log(`⚡ Billing + Socket server listening on port ${PORT}`);
+  console.log(`⚡ CALL_RATE_PER_SECOND=${CALL_RATE_PER_SECOND} MIN_START_BALANCE=${MIN_START_BALANCE}`);
+});
