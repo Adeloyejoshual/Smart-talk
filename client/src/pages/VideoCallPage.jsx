@@ -1,42 +1,52 @@
-import React, { useEffect, useState } from "react";
-import useCallBalanceListener from "../hooks/useCallBalanceListener";
-import { motion, AnimatePresence } from "framer-motion";
-import { toast } from "react-hot-toast";
+// pages/VideoCallPage.jsx
+import React, { useState, useEffect } from "react";
+import { db, auth } from "../firebaseClient";
+import { doc, updateDoc } from "firebase/firestore";
+import { deductCallCost } from "../utils/wallet";
+import { calculateCost } from "../utils/billing";
 
-export default function VideoCallPage({ callId, otherUser, onEnd }) {
-  const [lowBalance, setLowBalance] = useState(false);
+export default function VideoCallPage({ callId, onCallEnd }) {
+  const [duration, setDuration] = useState(0);
+  const [isEnded, setIsEnded] = useState(false);
 
-  useCallBalanceListener(
-    callId,
-    () => {
-      toast.error("Call ended due to low balance");
-      onEnd();
-    },
-    () => {
-      if (!lowBalance) {
-        setLowBalance(true);
-        toast("Low balance — call will end soon", { icon: "⚠️" });
-      }
+  useEffect(() => {
+    let interval;
+    if (!isEnded) {
+      interval = setInterval(() => {
+        setDuration((d) => d + 1);
+      }, 1000);
     }
-  );
+    return () => clearInterval(interval);
+  }, [isEnded]);
+
+  const handleEndCall = async () => {
+    setIsEnded(true);
+    const userId = auth.currentUser?.uid;
+    const cost = await deductCallCost(userId, duration);
+
+    await updateDoc(doc(db, "calls", callId), {
+      status: "ended",
+      duration,
+      cost,
+      endedAt: new Date(),
+    });
+
+    alert(`📞 Call ended.\nDuration: ${duration}s\nCharged: $${cost.toFixed(3)}`);
+    onCallEnd?.();
+  };
 
   return (
-    <div className="h-screen w-full bg-black flex flex-col items-center justify-center text-white">
-      <h2 className="text-xl font-bold mb-4">Video call with {otherUser.name}</h2>
-      {/* your video stream logic here */}
-
-      <AnimatePresence>
-        {lowBalance && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-            className="fixed bottom-6 bg-yellow-600 text-white px-4 py-2 rounded-lg"
-          >
-            Low balance — call will end soon
-          </motion.div>
-        )}
-      </AnimatePresence>
+    <div className="flex flex-col items-center justify-center h-full text-center">
+      <h1 className="text-xl font-bold">Video Call Active</h1>
+      <p className="mt-3">⏱ Duration: {duration}s</p>
+      {!isEnded && (
+        <button
+          onClick={handleEndCall}
+          className="mt-6 bg-red-500 text-white px-6 py-2 rounded-xl"
+        >
+          End Call
+        </button>
+      )}
     </div>
   );
 }
