@@ -1,219 +1,164 @@
-// /server/server.js
-import "dotenv/config";
-import express from "express";
-import http from "http";
-import { Server as IOServer } from "socket.io";
-import cors from "cors";
-import mongoose from "mongoose";
-import fs from "fs";
-import admin from "firebase-admin";
-import walletRoutes from "./routes/walletRoutes.js";
-import Wallet from "./models/walletModel.js";
-import Transaction from "./models/transactionModel.js";
-import CallRecordModel from "./models/callRecordModel.js"; // we will create below
-import { v4 as uuidv4 } from "uuid";
+// server.js
+import 'dotenv/config';
+import http from 'http';
+import process from 'process';
+import { fileURLToPath } from 'url';
+import path from 'path';
+import { Server as IOServer } from 'socket.io';
+import helmet from 'helmet';
+import compression from 'compression';
+import rateLimit from 'express-rate-limit';
+import morgan from 'morgan';
 
-const PORT = process.env.PORT || 5000;
-const MONGODB_URI = process.env.MONGODB_URI;
-const FIREBASE_KEY_PATH = process.env.FIREBASE_ADMIN_KEY_PATH; // recommended to provide secret file path
-const CALL_RATE_PER_SECOND = parseFloat(process.env.CALL_RATE_PER_SECOND || "0.0033");
-const MIN_START_BALANCE = parseFloat(process.env.MIN_START_BALANCE || "0.5");
+// initialize/patch globals that other modules may expect
+// (adjust if your app already initializes these)
+import './src/utils/firebaseAdmin.js'; // initialize firebase admin (side-effect import)
 
-if (!MONGODB_URI) {
-  console.error("Missing MONGODB_URI");
-  process.exit(1);
-}
+// Import your app and infrastructure helpers
+import app from './app.js'; // your express app (server/app.js in the repo)
+import connectDB from './config/db.js'; // function that connects to MongoDB
+import initCallHandler from './socket/callHandler.js'; // sets up socket events: (io) => {}
+import initCallBilling from './callBilling.js'; // optional: (io) => {} or (server) => {}
+// If your project stores connectors in server/src or server/, adjust the paths accordingly.
 
-// init firebase admin
-try {
-  let serviceAccount;
-  if (FIREBASE_KEY_PATH && fs.existsSync(FIREBASE_KEY_PATH)) {
-    serviceAccount = JSON.parse(fs.readFileSync(FIREBASE_KEY_PATH, "utf8"));
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
-    });
-    console.log("Firebase Admin inited from key file", FIREBASE_KEY_PATH);
-  } else if (process.env.FIREBASE_PRIVATE_KEY) {
-    // alternative: use direct env vars (private key with \n)
-    const svc = {
-      project_id: process.env.FIREBASE_PROJECT_ID,
-      client_email: process.env.FIREBASE_CLIENT_EMAIL,
-      private_key: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"),
-    };
-    admin.initializeApp({
-      credential: admin.credential.cert(svc),
-    });
-    console.log("Firebase Admin inited from env vars");
-  } else {
-    throw new Error("No firebase admin credentials provided");
-  }
-} catch (err) {
-  console.error("Failed to initialize Firebase Admin:", err);
-  process.exit(1);
-}
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-// connect mongo
-await mongoose.connect(MONGODB_URI);
-console.log("MongoDB connected");
+const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
+const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || '*';
+const NODE_ENV = process.env.NODE_ENV || 'development';
 
-// express + socket
-const app = express();
-app.use(cors({ origin: process.env.FRONTEND_URL || "*", credentials: true }));
-app.use(express.json());
-
-// wallet routes
-app.use("/api/wallet", walletRoutes);
-
-// simple health
-app.get("/", (req, res) => res.send("✅ SmartTalk API is running"));
-
-// ----- call model (simple) -----
-/* create file /server/models/callRecordModel.js with the schema (provided further down) */
-import CallRecord from "./models/callRecordModel.js";
-
-/**
- * chargeCallerAtomic(uid, amount)
- * Uses Mongo transaction to atomically deduct and write transaction.
- */
-async function chargeCallerAtomic(uid, amount) {
-  if (amount <= 0) return { before: null, after: null };
-  const session = await mongoose.startSession();
+async function main() {
   try {
-    session.startTransaction();
-    const wallet = await Wallet.findOne({ uid }).session(session);
-    if (!wallet) throw new Error("Wallet not found");
-    const before = Number(wallet.balance || 0);
-    if (before < amount) throw new Error("Insufficient funds");
-    const after = Number((before - amount).toFixed(6));
-    wallet.balance = after;
-    await wallet.save({ session });
-    await Transaction.create(
-      [{ userId: uid, type: "debit", amount, reason: "Call per-second charge", createdAt: new Date() }],
-      { session }
-    );
-    await session.commitTransaction();
-    session.endSession();
-    return { before, after };
+    // Connect to DB first (fail early)
+    if (connectDB && typeof connectDB === 'function') {
+      await connectDB(process.env.MONGO_URI);
+      console.log('✅ MongoDB connected');
+    } else {
+      console.warn('⚠️ connectDB not found or not a function. Skipping DB connection.');
+    }
+
+    // Add some server-level middleware for security, compression, logging, rate-limiting
+    app.use(helmet());
+    app.use(compression());
+
+    if (NODE_ENV === 'development') {
+      app.use(morgan('dev'));
+    } else {
+      app.use(morgan('combined'));
+    }
+
+    // Basic rate limiting (adjust as needed)
+    const limiter = rateLimit({
+      windowMs: 15 * 60 * 1000, // 15 minutes
+      max: 300, // limit each IP to 300 requests per windowMs
+      standardHeaders: true,
+      legacyHeaders: false,
+    });
+    app.use(limiter);
+
+    // Serve static assets if client build exists
+    const clientBuildPath = path.join(__dirname, 'public');
+    app.use('/public', (await import('express')).default.static(clientBuildPath));
+
+    // Create HTTP server and attach Socket.IO
+    const server = http.createServer(app);
+    const io = new IOServer(server, {
+      cors: {
+        origin: CLIENT_ORIGIN,
+        methods: ['GET', 'POST'],
+        credentials: true,
+      },
+      pingTimeout: 60000,
+    });
+
+    // Optional: simple auth middleware for sockets (token verification).
+    // If you use Firebase Admin tokens, verify here in a socket middleware.
+    // Example (uncomment and adapt if desired):
+    /*
+    io.use(async (socket, next) => {
+      const token = socket.handshake.auth?.token || socket.handshake.headers?.authorization;
+      if (!token) return next();
+      try {
+        const admin = (await import('./src/utils/firebaseAdmin.js')).default;
+        const decoded = await admin.auth().verifyIdToken(token.replace('Bearer ', ''));
+        socket.uid = decoded.uid;
+        return next();
+      } catch (err) {
+        console.warn('Socket auth failed', err);
+        return next(); // or next(new Error('Unauthorized'));
+      }
+    });
+    */
+
+    // Initialize Socket handlers (calls, signaling, etc.)
+    if (initCallHandler && typeof initCallHandler === 'function') {
+      initCallHandler(io);
+      console.log('🔌 Call/socket handler initialized');
+    } else {
+      console.warn('⚠️ callHandler initializer not found or not a function.');
+    }
+
+    // Initialize call billing / per-second billing logic if exported
+    if (initCallBilling && typeof initCallBilling === 'function') {
+      try {
+        initCallBilling(io, { server });
+        console.log('💸 Call billing initialized');
+      } catch (err) {
+        console.warn('Call billing init raised an error (continuing):', err);
+      }
+    }
+
+    // Global error handling for uncaught exceptions/rejections
+    process.on('uncaughtException', (err) => {
+      console.error('Uncaught Exception — shutting down:', err);
+      // Optionally perform cleanup here, then exit
+      process.exit(1);
+    });
+
+    process.on('unhandledRejection', (reason, promise) => {
+      console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+      // depending on severity, you might want to stop the server:
+      // process.exit(1);
+    });
+
+    // Start listening
+    server.listen(PORT, () => {
+      console.log(`🚀 Server running in ${NODE_ENV} on port ${PORT}`);
+      console.log(`🌐 Allowed client origin: ${CLIENT_ORIGIN}`);
+    });
+
+    // Graceful shutdown
+    const shutdown = (signal) => {
+      console.log(`\n🛑 Received ${signal}. Shutting down gracefully...`);
+      server.close((err) => {
+        if (err) {
+          console.error('Error during server close:', err);
+          process.exit(1);
+        }
+        console.log('HTTP server closed.');
+        // close DB connections if you have one exported from connectDB
+        // e.g., mongoose.connection.close()
+        if (process.env.NODE_ENV === 'production') {
+          // any production-specific cleanup
+        }
+        // give exec a moment for cleanup then exit
+        setTimeout(() => process.exit(0), 500);
+      });
+
+      // force close after 10s
+      setTimeout(() => {
+        console.error('Forcing shutdown after 10s');
+        process.exit(1);
+      }, 10_000).unref();
+    };
+
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
   } catch (err) {
-    await session.abortTransaction().catch(() => {});
-    session.endSession();
-    throw err;
+    console.error('Fatal error during server startup:', err);
+    process.exit(1);
   }
 }
 
-// ---------- in-memory sessions ----------
-const sessions = new Map();
-
-// socket.io for call lifecycle & billing
-const server = http.createServer(app);
-const io = new IOServer(server, { cors: { origin: "*", methods: ["GET", "POST"] } });
-
-io.on("connection", (socket) => {
-  console.log("socket connected", socket.id);
-
-  socket.on("auth", async ({ idToken }) => {
-    try {
-      const decoded = await admin.auth().verifyIdToken(idToken);
-      socket.uid = decoded.uid;
-      socket.join(socket.uid);
-      socket.emit("auth:ok", { uid: socket.uid });
-    } catch (err) {
-      socket.emit("error", { code: "AUTH_FAILED", message: err.message });
-    }
-  });
-
-  socket.on("call:initiate", async ({ calleeUid, type = "video", idToken }) => {
-    try {
-      // verify caller from token (fallback if socket not authed)
-      let callerUid = socket.uid;
-      if (!callerUid) {
-        const decoded = await admin.auth().verifyIdToken(idToken);
-        callerUid = decoded.uid;
-      }
-      // check balance
-      const w = await Wallet.findOne({ uid: callerUid });
-      if (!w || w.balance < MIN_START_BALANCE) {
-        return socket.emit("call:failed", { code: "INSUFFICIENT_FUNDS" });
-      }
-      // create record & session
-      const callId = uuidv4();
-      const call = await CallRecord.create({
-        callId,
-        callerId: callerUid,
-        calleeId: calleeUid,
-        callerName: socket.uid || callerUid,
-        calleeName: calleeUid,
-        type,
-        status: "ongoing",
-        createdAt: new Date(),
-      });
-      sessions.set(callId, { callId, callerUid, calleeUid, seconds: 0, chargedSoFar: 0, intervalId: null });
-      io.to(callerUid).emit("server:call-created", { callId, call });
-      io.to(calleeUid).emit("server:incoming-call", { callId, call });
-      socket.emit("call:ok", { callId, call });
-    } catch (err) {
-      console.error("call:initiate error", err);
-      socket.emit("call:failed", { message: err.message });
-    }
-  });
-
-  socket.on("call:join", ({ callId }) => {
-    if (!callId) return;
-    socket.join(callId);
-  });
-
-  // billing:start — only caller can trigger
-  socket.on("billing:start", async ({ callId }) => {
-    const session = sessions.get(callId);
-    if (!session) return socket.emit("error", { code: "NO_SESSION" });
-    if (socket.uid !== session.callerUid) return socket.emit("error", { code: "NOT_CALLER" });
-    if (session.intervalId) return socket.emit("billing:started", { callId });
-
-    session.intervalId = setInterval(async () => {
-      try {
-        await chargeCallerAtomic(session.callerUid, CALL_RATE_PER_SECOND);
-        session.seconds += 1;
-        session.chargedSoFar = Number((session.chargedSoFar + CALL_RATE_PER_SECOND).toFixed(6));
-
-        // persist every 10s to the DB
-        if (session.seconds % 10 === 0) {
-          await CallRecord.findOneAndUpdate({ callId }, { duration: session.seconds, cost: session.chargedSoFar });
-        }
-
-        io.to(callId).emit("billing:update", { callId, seconds: session.seconds, charged: session.chargedSoFar });
-      } catch (err) {
-        // stop call if insufficient funds
-        clearInterval(session.intervalId);
-        sessions.delete(callId);
-        try {
-          await CallRecord.findOneAndUpdate({ callId }, { status: "ended", duration: session.seconds, cost: session.chargedSoFar, endedAt: new Date() });
-        } catch (e) {
-          console.error("finalize error", e);
-        }
-        io.to(callId).emit("call:force-end", { reason: "INSUFFICIENT_FUNDS" });
-      }
-    }, 1000);
-
-    sessions.set(callId, session);
-    socket.emit("billing:started", { callId });
-  });
-
-  // stop billing
-  socket.on("billing:stop", async ({ callId, endedBy }) => {
-    const session = sessions.get(callId);
-    if (session?.intervalId) clearInterval(session.intervalId);
-    sessions.delete(callId);
-    const duration = session?.seconds || 0;
-    const cost = session?.chargedSoFar || 0;
-    await CallRecord.findOneAndUpdate({ callId }, { status: "ended", duration, cost, endedAt: new Date() }, { upsert: true });
-    io.to(callId).emit("call:ended", { callId, endedBy, duration, cost });
-  });
-
-  socket.on("disconnect", () => {
-    // optionally tidy up
-  });
-});
-
-server.listen(PORT, () => {
-  console.log("Server listening on", PORT);
-});
+main();
