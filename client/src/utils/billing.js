@@ -5,7 +5,7 @@
  * You can hardcode, fetch from API, or calculate dynamically.
  */
 export function getCallRate() {
-  // Example: $0.0033 per second (i.e., $0.06 per minute)
+  // Example: $0.0033 per second (i.e., $0.198 per minute)
   return 0.0033;
 }
 
