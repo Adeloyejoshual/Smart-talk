@@ -1,0 +1,66 @@
+# render.yaml
+# 🌍 SmartTalk — Full Deployment (Backend + Frontend)
+# Frontend automatically links to backend URL via Render internal reference.
+
+services:
+  # =======================================
+  # 1️⃣ Backend API (Express / Node)
+  # =======================================
+  - type: web
+    name: smarttalk-api
+    env: node
+    rootDir: server
+    buildCommand: npm install
+    startCommand: node server.js
+
+    envVars:
+      # Basic Environment
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+
+      # 🗄️ Database
+      - key: MONGODB_URI
+        sync: false
+
+      # 🔥 Firebase
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_CLIENT_EMAIL
+        sync: false
+      - key: FIREBASE_PRIVATE_KEY
+        sync: false
+
+      # 💳 Payments
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: PAYSTACK_SECRET
+        sync: false
+      - key: FLW_SECRET
+        sync: false
+
+      # ⚙️ App Config
+      - key: CALL_RATE_PER_SECOND
+        value: "0.0033"
+      - key: MIN_START_BALANCE
+        value: "0.5"
+
+  # =======================================
+  # 2️⃣ Frontend App (React / Vite)
+  # =======================================
+  - type: static
+    name: smarttalk-frontend
+    rootDir: client
+    buildCommand: npm install && npm run build
+    publishDir: dist  # For Vite or React with build output in /dist
+
+    envVars:
+      # ⚡ Automatically link to backend (no manual entry needed)
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: smarttalk-api
+          property: url
