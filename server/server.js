@@ -1,13 +1,9 @@
 /**
- * SmartTalk Server
- * Unified backend for chat, calls, wallet & billing
- *
- * Features:
- *  - Express + MongoDB (Mongoose)
- *  - Firebase Admin (auth verification)
- *  - Safe model registration
- *  - Optional dynamic route mounting
- *  - Socket.IO billing & realtime call updates
+ * SmartTalk Unified Server
+ * ------------------------
+ * - Express + MongoDB + Firebase Admin
+ * - Handles: Wallet, Calls, Payments, Socket Billing
+ * - Serves React frontend in production (Render deployment)
  */
 
 import 'dotenv/config';
@@ -17,34 +13,36 @@ import cors from 'cors';
 import bodyParser from 'body-parser';
 import mongoose from 'mongoose';
 import fs from 'fs';
-import admin from 'firebase-admin';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { Server as IOServer } from 'socket.io';
+import admin from 'firebase-admin';
 import { v4 as uuidv4 } from 'uuid';
 
-// ---------- Paths & Environment ----------
+// ---------- Path setup ----------
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// ---------- Environment ----------
 const PORT = Number(process.env.PORT || 5000);
 const MONGODB_URI = process.env.MONGODB_URI;
 const FRONTEND_URL = process.env.FRONTEND_URL || '*';
 const CALL_RATE_PER_SECOND = parseFloat(process.env.CALL_RATE_PER_SECOND || '0.0033');
 const MIN_START_BALANCE = parseFloat(process.env.MIN_START_BALANCE || '0.5');
 
-// ---------- Validate Environment ----------
+// ---------- Validate environment ----------
 if (!MONGODB_URI) {
-  console.error('❌ Missing MONGODB_URI environment variable.');
+  console.error('❌ Missing MONGODB_URI environment variable. Aborting.');
   process.exit(1);
 }
 
-// ---------- Firebase Admin Initialization ----------
+// ---------- Initialize Firebase Admin ----------
 function initFirebase() {
   try {
     const keyPath = process.env.FIREBASE_ADMIN_KEY_PATH;
     if (keyPath && fs.existsSync(keyPath)) {
-      const serviceAccount = JSON.parse(fs.readFileSync(keyPath, 'utf8'));
+      const raw = fs.readFileSync(keyPath, 'utf8');
+      const serviceAccount = JSON.parse(raw);
       admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
       console.log(`✅ Firebase Admin initialized from file: ${keyPath}`);
       return;
@@ -56,44 +54,41 @@ function initFirebase() {
 
     if (projectId && clientEmail && privateKey) {
       privateKey = privateKey.includes('\\n') ? privateKey.replace(/\\n/g, '\n') : privateKey;
-      const serviceAccount = { project_id: projectId, client_email: clientEmail, private_key: privateKey };
-      admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+      admin.initializeApp({
+        credential: admin.credential.cert({ project_id: projectId, client_email: clientEmail, private_key: privateKey }),
+      });
       console.log('✅ Firebase Admin initialized from environment variables');
       return;
     }
 
-    throw new Error('Missing Firebase credentials');
+    throw new Error('Firebase admin credentials missing');
   } catch (err) {
     console.error('❌ Failed to initialize Firebase Admin:', err.message || err);
     process.exit(1);
   }
 }
+
 initFirebase();
 
-// ---------- MongoDB Connection ----------
+// ---------- MongoDB ----------
 mongoose.set('strictQuery', true);
 mongoose
-  .connect(MONGODB_URI, {})
+  .connect(MONGODB_URI)
   .then(() => console.log('🟢 MongoDB connected'))
   .catch((err) => {
     console.error('❌ MongoDB connection error:', err);
     process.exit(1);
   });
 
-// ---------- ENSURE MONGOOSE MODELS EXIST SAFELY ----------
-import mongoosePkg from 'mongoose';
-const { Schema } = mongoosePkg;
-
-// Helper to safely register models (avoids MissingSchemaError / OverwriteModelError)
+// ---------- Safe Model Registration ----------
+const { Schema } = mongoose;
 function safeModel(name, schemaDef, options = {}) {
-  if (mongoose.models[name]) {
-    return mongoose.models[name];
-  }
+  if (mongoose.models[name]) return mongoose.models[name];
   const schema = new Schema(schemaDef, options);
   return mongoose.model(name, schema);
 }
 
-// ✅ Define or reuse models
+// ✅ Define Models
 const User = safeModel('User', {
   uid: { type: String, required: true, unique: true },
   name: String,
@@ -131,7 +126,7 @@ async function verifyIdToken(idToken) {
   try {
     return await admin.auth().verifyIdToken(idToken);
   } catch (err) {
-    throw new Error('Invalid Firebase ID token');
+    throw new Error('Invalid id token');
   }
 }
 
@@ -147,7 +142,7 @@ async function chargeCallerAtomic(uid, amount) {
     const after = Number((before - amount).toFixed(6));
     user.balance = after;
     await user.save({ session });
-    await Transaction.create([{ userId: uid, type: 'debit', amount, reason: 'Call billing', createdAt: new Date() }], { session });
+    await Transaction.create([{ userId: uid, type: 'debit', amount, reason: 'Call charge', createdAt: new Date() }], { session });
     await session.commitTransaction();
     session.endSession();
     return { before, after };
@@ -158,7 +153,7 @@ async function chargeCallerAtomic(uid, amount) {
   }
 }
 
-// ---------- Express & Socket Setup ----------
+// ---------- Express + Socket.IO Setup ----------
 const app = express();
 const server = http.createServer(app);
 const io = new IOServer(server, { cors: { origin: FRONTEND_URL === '*' ? '*' : FRONTEND_URL, methods: ['GET', 'POST'] } });
@@ -167,15 +162,10 @@ app.use(cors({ origin: FRONTEND_URL === '*' ? '*' : FRONTEND_URL, credentials: t
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// ---------- Default Routes ----------
-app.get('/', (req, res) => res.send('🚀 SmartTalk API is running successfully!'));
-app.get('/health', (req, res) => res.json({ status: 'ok' }));
-
-// Wallet endpoints
+// ---------- Simple Wallet Endpoints ----------
 app.get('/api/wallet/balance/:uid', async (req, res) => {
   try {
-    const uid = req.params.uid;
-    const user = await User.findOne({ uid });
+    const user = await User.findOne({ uid: req.params.uid });
     if (!user) return res.status(404).json({ message: 'User not found' });
     res.json({ balance: Number(user.balance || 0) });
   } catch (err) {
@@ -188,14 +178,14 @@ app.post('/api/wallet/credit', async (req, res) => {
     const { uid, amount, reason = 'Top-up' } = req.body;
     if (!uid || !amount) return res.status(400).json({ message: 'Missing uid or amount' });
     const user = await User.findOneAndUpdate({ uid }, { $inc: { balance: Number(amount) } }, { upsert: true, new: true });
-    await Transaction.create({ userId: uid, type: 'credit', amount: Number(amount), reason });
-    res.json({ balance: Number(user.balance || 0) });
+    await Transaction.create({ userId: uid, type: 'credit', amount, reason });
+    res.json({ balance: user.balance });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
-// ---------- Socket.IO (Realtime Billing & Calls) ----------
+// ---------- Socket.IO Billing ----------
 const sessions = new Map();
 
 io.on('connection', (socket) => {
@@ -203,36 +193,28 @@ io.on('connection', (socket) => {
 
   socket.on('auth', async (data) => {
     try {
-      const token = data?.idToken;
-      const decoded = await verifyIdToken(token);
+      const decoded = await verifyIdToken(data.idToken);
       socket.uid = decoded.uid;
       socket.join(socket.uid);
       socket.emit('auth:ok', { uid: socket.uid });
-      console.log(`🔐 Socket authenticated: ${socket.uid}`);
+      console.log(`🔐 socket authenticated: ${socket.uid}`);
     } catch (err) {
       socket.emit('error', { code: 'AUTH_FAILED', message: err.message });
     }
   });
 
-  socket.on('call:join', ({ callId }) => {
-    if (!callId) return;
-    socket.join(callId);
-    console.log(`Socket ${socket.id} joined call ${callId}`);
-  });
-
   socket.on('billing:start', async ({ callId }) => {
     const session = sessions.get(callId);
     if (!session) return socket.emit('error', { code: 'NO_SESSION' });
-    if (socket.uid !== session.callerUid) return socket.emit('error', { code: 'NOT_CALLER' });
-
     if (session.intervalId) return;
+
     session.intervalId = setInterval(async () => {
       try {
         await chargeCallerAtomic(session.callerUid, CALL_RATE_PER_SECOND);
-        session.seconds += 1;
-        session.chargedSoFar = Number((session.chargedSoFar + CALL_RATE_PER_SECOND).toFixed(6));
-        io.to(callId).emit('billing:update', { callId, seconds: session.seconds, charged: session.chargedSoFar });
-      } catch (err) {
+        session.seconds++;
+        session.chargedSoFar += CALL_RATE_PER_SECOND;
+        io.to(callId).emit('billing:update', session);
+      } catch {
         clearInterval(session.intervalId);
         sessions.delete(callId);
         io.to(callId).emit('call:force-end', { reason: 'INSUFFICIENT_FUNDS' });
@@ -240,20 +222,24 @@ io.on('connection', (socket) => {
     }, 1000);
   });
 
-  socket.on('billing:stop', ({ callId }) => {
-    const session = sessions.get(callId);
-    if (session?.intervalId) clearInterval(session.intervalId);
-    sessions.delete(callId);
-    io.to(callId).emit('call:ended', { callId });
-  });
-
   socket.on('disconnect', () => {
     console.log('🔌 Socket disconnected:', socket.id);
   });
 });
 
+// ---------- Serve React Frontend ----------
+const clientBuildPath = path.join(__dirname, '../client/dist'); // or ../client/build
+if (fs.existsSync(clientBuildPath)) {
+  app.use(express.static(clientBuildPath));
+  app.get('*', (req, res) => res.sendFile(path.join(clientBuildPath, 'index.html')));
+  console.log('🎨 Serving React frontend');
+} else {
+  app.get('/', (req, res) => res.send('🚀 SmartTalk API is running successfully!'));
+  app.get('/health', (req, res) => res.json({ status: 'ok' }));
+}
+
 // ---------- Start Server ----------
 server.listen(PORT, () => {
   console.log(`⚡ SmartTalk server running on port ${PORT}`);
-  console.log(`⚙️ CALL_RATE_PER_SECOND=${CALL_RATE_PER_SECOND}, MIN_START_BALANCE=${MIN_START_BALANCE}`);
+  console.log(`⚡ CALL_RATE_PER_SECOND=${CALL_RATE_PER_SECOND}, MIN_START_BALANCE=${MIN_START_BALANCE}`);
 });
