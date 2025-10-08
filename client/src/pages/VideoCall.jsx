@@ -1,4 +1,4 @@
-// pages/VideoCallPage.jsx
+// pages/VideoCall.jsx
 import React, { useState, useEffect } from "react";
 import { db, auth } from "../firebaseClient";
 import { doc, updateDoc } from "firebase/firestore";
