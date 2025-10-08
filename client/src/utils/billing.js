@@ -1,20 +1,20 @@
-import { doc, getDoc, updateDoc, increment } from "firebase/firestore";
-import { db } from "../firebaseClient";
+// src/utils/billing.js
 
-const RATE_PER_SECOND = 0.0033; // $1 per 5 min
+/**
+ * Get the current per-second call rate.
+ * You can hardcode, fetch from API, or calculate dynamically.
+ */
+export function getCallRate() {
+  // Example: $0.0033 per second (i.e., $0.06 per minute)
+  return 0.0033;
+}
 
-// 💵 Check and deduct balance
-export async function deductPerSecond(userId, seconds = 1) {
-  const ref = doc(db, "wallets", userId);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) throw new Error("Wallet not found");
-  const balance = snap.data().balance || 0;
-  const cost = RATE_PER_SECOND * seconds;
-
-  if (balance < cost) {
-    return false; // insufficient funds
-  }
-
-  await updateDoc(ref, { balance: balance - cost });
-  return true;
+/**
+ * Calculate total cost for a call given duration.
+ * @param {number} duration - Call duration in seconds
+ * @returns {number} - Cost in USD
+ */
+export function calculateCost(duration) {
+  const rate = getCallRate();
+  return Number((duration * rate).toFixed(4));
 }
