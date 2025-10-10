@@ -1,17 +1,13 @@
-const mongoose = require("mongoose");
+import mongoose from "mongoose";
 
 const userSchema = new mongoose.Schema({
   uid: { type: String, required: true, unique: true }, // Firebase UID
-  email: { type: String, required: true },
-  displayName: String,
-  photoURL: String,
-  joinedAt: { type: Date, default: Date.now },
-  role: { type: String, default: "user" },
-  settings: {
-    theme: { type: String, default: "light" },
-    notifications: { type: Boolean, default: true },
-    sounds: { type: Boolean, default: true },
-  },
+  name: { type: String },
+  email: { type: String },
+  avatar: { type: String },
+  walletBalance: { type: Number, default: 0 },
+  theme: { type: String, default: "light" }, // Global theme control
+  createdAt: { type: Date, default: Date.now },
 });
 
-module.exports = mongoose.model("User", userSchema);
+export default mongoose.model("User", userSchema);
