@@ -1,9 +1,9 @@
-// public/env.js
-window.ENV = {
-  FIREBASE_API_KEY: "{{FIREBASE_API_KEY}}",
-  FIREBASE_AUTH_DOMAIN: "{{FIREBASE_AUTH_DOMAIN}}",
-  FIREBASE_PROJECT_ID: "{{FIREBASE_PROJECT_ID}}",
-  FIREBASE_STORAGE_BUCKET: "{{FIREBASE_STORAGE_BUCKET}}",
-  FIREBASE_MESSAGING_SENDER_ID: "{{FIREBASE_MESSAGING_SENDER_ID}}",
-  FIREBASE_APP_ID: "{{FIREBASE_APP_ID}}",
+export const firebaseConfig = {
+  apiKey: "AIzaSyBe2QkeEr9sfh0TUtj8Np-mU5WtYYOorYY",
+  authDomain: "smarttalk-9fe4a.firebaseapp.com",
+  projectId: "smarttalk-9fe4a",
+  storageBucket: "smarttalk-9fe4a.firebasestorage.app",
+  messagingSenderId: "103759612273",
+  appId: "1:103759612273:web:311d39bf7af9d51fe30ed0",
+  measurementId: "G-XD4MY1XF7E"
 };
