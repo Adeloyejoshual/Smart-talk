@@ -16,8 +16,8 @@ import fetch from "node-fetch";
 // ==========================
 // 🧩 Import Models & Routes
 // ==========================
-import { User } from "./models/User.js";
-import { Message } from "./models/Message.js";
+import User from "./models/User.js";
+import Message from "./models/Message.js";
 import userRoutes from "./routes/user.js";
 import walletRoutes from "./routes/wallet.js";
 
