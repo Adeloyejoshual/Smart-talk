@@ -1,8 +1,8 @@
-// firebase.js
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
-import { getAuth, onAuthStateChanged, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
-import { getFirestore } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-import { getStorage } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js";
+// client-side Firebase config — safe to be public
+// Reads values injected at build time via VITE_ env vars
+import { initializeApp } from "firebase/app";
+import { getAuth } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -11,20 +11,8 @@ const firebaseConfig = {
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
-export const storage = getStorage(app);
-export const provider = new GoogleAuthProvider();
-
-// Simple listener for user state
-onAuthStateChanged(auth, (user) => {
-  if (user) {
-    console.log("User logged in:", user.email);
-  } else {
-    console.log("No user logged in");
-  }
-});
