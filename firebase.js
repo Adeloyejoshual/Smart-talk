@@ -1,19 +1,25 @@
+// firebase.js
+// ==========================
+// 🔹 Firebase Frontend Config
+// ==========================
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
 import { getAuth, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
-import { getFirestore } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
-const app = initializeApp({
-  apiKey: window.ENV.FIREBASE_API_KEY,
-  authDomain: window.ENV.FIREBASE_AUTH_DOMAIN,
-  projectId: window.ENV.FIREBASE_PROJECT_ID,
-  storageBucket: window.ENV.FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: window.ENV.FIREBASE_MESSAGING_SENDER_ID,
-  appId: window.ENV.FIREBASE_APP_ID,
-  measurementId: window.ENV.FIREBASE_MEASUREMENT_ID
-});
+// Your Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyBe2QkeEr9sfh0TUtj8Np-mU5WtYYOorYY",
+  authDomain: "smarttalk-9fe4a.firebaseapp.com",
+  projectId: "smarttalk-9fe4a",
+  storageBucket: "smarttalk-9fe4a.firebasestorage.app",
+  messagingSenderId: "103759612273",
+  appId: "1:103759612273:web:311d39bf7af9d51fe30ed0"
+};
 
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+
+// Firebase Auth
 const auth = getAuth(app);
 const provider = new GoogleAuthProvider();
-const db = getFirestore(app);
 
-export { auth, provider, db };
+export { auth, provider };
