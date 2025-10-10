@@ -1,16 +1,18 @@
 {
-  "name": "smarttalk-simple",
+  "name": "smarttalk",
   "version": "1.0.0",
+  "main": "server.js",
   "type": "module",
   "scripts": {
-    "start": "node server.js",
-    "dev": "NODE_ENV=development node server.js"
+    "start": "node server.js"
   },
   "dependencies": {
-    "body-parser": "^1.20.2",
+    "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
     "express": "^4.18.2",
-    "socket.io": "^4.7.1",
-    "uuid": "^9.0.0"
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^7.6.1",
+    "socket.io": "^4.8.1"
   }
 }
