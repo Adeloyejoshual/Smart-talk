@@ -1,25 +1,26 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <title>SmartTalk</title>
-    <link rel="stylesheet" href="./styles.css" />
-  </head>
-  <body>
-    <div class="container">
-      <h1>💬 SmartTalk</h1>
-      <p id="status">Checking authentication...</p>
-      <p>Wallet Balance: <span id="wallet">$0.00</span></p>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SmartTalk</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>💬 SmartTalk</h1>
+    <p id="status">Checking authentication...</p>
+    <p>Wallet Balance: <span id="wallet">$0.00</span></p>
 
-      <div class="buttons">
-        <button id="login-btn">Login with Google</button>
-        <button id="refresh-btn">🔄 Refresh Balance</button>
-        <button id="logout-btn">Logout</button>
-      </div>
+    <div class="buttons">
+      <button id="login-btn">Login with Google</button>
+      <button id="refresh-btn">🔄 Refresh Balance</button>
+      <button id="logout-btn">Logout</button>
     </div>
+  </div>
 
-    <!-- Load environment values before app.js -->
-    <script src="./env.js"></script>
-    <script type="module" src="./app.js"></script>
-  </body>
+  <!-- Firebase + App Scripts -->
+  <script type="module" src="./firebase.js"></script>
+  <script type="module" src="./app.js"></script>
+</body>
 </html>
