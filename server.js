@@ -1,4 +1,3 @@
-
 // ==========================
 // 🌐 SmartTalk Server (ESM)
 // ==========================
@@ -15,11 +14,19 @@ import bodyParser from "body-parser";
 import fetch from "node-fetch";
 
 // ==========================
+// 🧩 Import Models & Routes
+// ==========================
+import { User } from "./models/User.js";
+import { Message } from "./models/Message.js";
+import userRoutes from "./routes/user.js";
+import walletRoutes from "./routes/wallet.js";
+
+// ==========================
 // 🔧 Basic Setup
 // ==========================
 dotenv.config();
-
 const app = express();
+
 app.use(cors());
 app.use(express.json());
 app.use(bodyParser.json());
@@ -55,24 +62,23 @@ try {
 }
 
 // ==========================
-// 💰 Payment Setup (Stripe / Paystack / Flutterwave)
+// 💰 Payment Setup (Stripe)
 // ==========================
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // ==========================
-// 🧠 Models (MongoDB)
+// 🧭 API Routes
 // ==========================
-import User from "./models/User.js";
-import Message from "./models/Message.js";
+app.use("/api/user", userRoutes);
+app.use("/api/wallet", walletRoutes);
 
 // ==========================
-// 💵 Wallet Route
+// 💵 Wallet Routes (Direct)
 // ==========================
 app.get("/api/wallet/:uid", async (req, res) => {
   try {
     const user = await User.findOne({ uid: req.params.uid });
     if (!user) return res.status(404).json({ success: false, message: "User not found" });
-
     res.json({ success: true, balance: user.walletBalance || 0 });
   } catch (error) {
     console.error(error);
@@ -120,20 +126,12 @@ app.post("/api/messages/send", async (req, res) => {
 // ==========================
 // 🌍 Frontend Routes
 // ==========================
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "login.html"));
-});
-
-app.get("/home", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "home.html"));
-});
-
-app.get("/chat", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "chat.html"));
-});
+app.get("/", (req, res) => res.sendFile(path.join(__dirname, "public", "login.html")));
+app.get("/home", (req, res) => res.sendFile(path.join(__dirname, "public", "home.html")));
+app.get("/chat", (req, res) => res.sendFile(path.join(__dirname, "public", "chat.html")));
 
 // ==========================
-// ⚙️ System Info Route
+// ⚙️ System Health Check
 // ==========================
 app.get("/api/health", (req, res) => {
   res.json({
