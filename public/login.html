@@ -1,68 +1,26 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SmartTalk – Login</title>
-  <link rel="stylesheet" href="styles/style.css" />
-  <script type="module">
-    // Initialize Firebase dynamically
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
-    import { getAuth, signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } 
-      from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
-
-    const firebaseConfig = {
-      apiKey: "{{FIREBASE_API_KEY}}",
-      authDomain: "{{FIREBASE_AUTH_DOMAIN}}",
-      projectId: "{{FIREBASE_PROJECT_ID}}",
-      storageBucket: "{{FIREBASE_STORAGE_BUCKET}}",
-      messagingSenderId: "{{FIREBASE_MESSAGING_SENDER_ID}}",
-      appId: "{{FIREBASE_APP_ID}}"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const provider = new GoogleAuthProvider();
-
-    async function login(e) {
-      e.preventDefault();
-      const email = document.getElementById("email").value.trim();
-      const password = document.getElementById("password").value.trim();
-      try {
-        await signInWithEmailAndPassword(auth, email, password);
-        localStorage.setItem("firebaseUser", JSON.stringify(auth.currentUser));
-        window.location.href = "/home.html";
-      } catch (err) {
-        alert(err.message);
-      }
-    }
-
-    async function googleLogin() {
-      try {
-        await signInWithPopup(auth, provider);
-        localStorage.setItem("firebaseUser", JSON.stringify(auth.currentUser));
-        window.location.href = "/home.html";
-      } catch (err) {
-        alert(err.message);
-      }
-    }
-
-    document.addEventListener("DOMContentLoaded", () => {
-      document.getElementById("loginForm").addEventListener("submit", login);
-      document.getElementById("googleBtn").addEventListener("click", googleLogin);
-    });
-  </script>
+  <meta charset="UTF-8">
+  <title>SmartTalk</title>
+  <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
-  <div class="auth-container">
-    <h1>SmartTalk</h1>
-    <form id="loginForm">
-      <input type="email" id="email" placeholder="Email" required />
-      <input type="password" id="password" placeholder="Password" required />
-      <button type="submit">Login</button>
-      <button type="button" id="googleBtn" class="google">Sign in with Google</button>
-      <p>Don't have an account? <a href="/register.html">Register</a></p>
-    </form>
+  <div class="container">
+    <h1>💬 SmartTalk</h1>
+    <p id="status">Checking authentication...</p>
+    <p>Wallet Balance: <span id="wallet">$0.00</span></p>
+
+    <div class="buttons">
+      <button id="login-btn">Login with Google</button>
+      <button id="refresh-btn">🔄 Refresh Balance</button>
+      <button id="logout-btn">Logout</button>
+    </div>
   </div>
+
+  <!-- Load environment variables -->
+  <script src="./js/env.js"></script>
+  <!-- Main app -->
+  <script type="module" src="./js/app.js"></script>
 </body>
 </html>
