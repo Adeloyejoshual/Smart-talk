@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>SmartTalk Login</title>
+  <link rel="stylesheet" href="/styles/style.css">
+</head>
+<body>
+  <div class="login-box">
+    <h1>SmartTalk Login</h1>
+    <input id="email" type="email" placeholder="Email">
+    <input id="password" type="password" placeholder="Password">
+    <button id="loginBtn">Login</button>
+    <p>Don't have an account? <a href="/register.html">Register</a></p>
+  </div>
+
+  <script type="module" src="/js/firebase.js"></script>
+  <script type="module">
+    import { signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+
+    const auth = window.firebaseAuth;
+    document.getElementById("loginBtn").addEventListener("click", async () => {
+      const email = email.value;
+      const password = password.value;
+      try {
+        const userCred = await signInWithEmailAndPassword(auth, email, password);
+        const token = await userCred.user.getIdToken();
+
+        // Sync user with backend MongoDB
+        await fetch("/api/auth/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        });
+
+        window.location.href = "/home.html";
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+  </script>
+</body>
+</html>
