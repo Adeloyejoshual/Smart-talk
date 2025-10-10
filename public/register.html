@@ -1,39 +1,70 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>SmartTalk Register</title>
-  <link rel="stylesheet" href="/styles/style.css">
-</head>
-<body>
-  <div class="register-box">
-    <h1>Create SmartTalk Account</h1>
-    <input id="email" type="email" placeholder="Email">
-    <input id="password" type="password" placeholder="Password">
-    <button id="registerBtn">Register</button>
-    <p>Already have an account? <a href="/login.html">Login</a></p>
-  </div>
-
-  <script type="module" src="/js/firebase.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SmartTalk – Register</title>
+  <link rel="stylesheet" href="styles/style.css" />
   <script type="module">
-    import { createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
+    import { getAuth, createUserWithEmailAndPassword, updateProfile, GoogleAuthProvider, signInWithPopup } 
+      from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 
-    const auth = window.firebaseAuth;
-    document.getElementById("registerBtn").addEventListener("click", async () => {
+    const firebaseConfig = {
+      apiKey: "{{FIREBASE_API_KEY}}",
+      authDomain: "{{FIREBASE_AUTH_DOMAIN}}",
+      projectId: "{{FIREBASE_PROJECT_ID}}",
+      storageBucket: "{{FIREBASE_STORAGE_BUCKET}}",
+      messagingSenderId: "{{FIREBASE_MESSAGING_SENDER_ID}}",
+      appId: "{{FIREBASE_APP_ID}}"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const provider = new GoogleAuthProvider();
+
+    async function register(e) {
+      e.preventDefault();
+      const name = document.getElementById("name").value.trim();
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value.trim();
       try {
-        const userCred = await createUserWithEmailAndPassword(auth, email.value, password.value);
-        const token = await userCred.user.getIdToken();
-
-        await fetch("/api/auth/sync", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        });
-
+        const userCred = await createUserWithEmailAndPassword(auth, email, password);
+        await updateProfile(userCred.user, { displayName: name });
+        localStorage.setItem("firebaseUser", JSON.stringify(auth.currentUser));
         window.location.href = "/home.html";
       } catch (err) {
         alert(err.message);
       }
+    }
+
+    async function googleRegister() {
+      try {
+        await signInWithPopup(auth, provider);
+        localStorage.setItem("firebaseUser", JSON.stringify(auth.currentUser));
+        window.location.href = "/home.html";
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+      document.getElementById("registerForm").addEventListener("submit", register);
+      document.getElementById("googleBtn").addEventListener("click", googleRegister);
     });
   </script>
+</head>
+<body>
+  <div class="auth-container">
+    <h1>SmartTalk</h1>
+    <form id="registerForm">
+      <input type="text" id="name" placeholder="Full Name" required />
+      <input type="email" id="email" placeholder="Email" required />
+      <input type="password" id="password" placeholder="Password" required />
+      <button type="submit">Register</button>
+      <button type="button" id="googleBtn" class="google">Register with Google</button>
+      <p>Already have an account? <a href="/login.html">Login</a></p>
+    </form>
+  </div>
 </body>
 </html>
