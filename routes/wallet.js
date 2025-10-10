@@ -1,44 +1,34 @@
-const express = require("express");
+// routes/wallet.js
+import express from "express";
 const router = express.Router();
-const Wallet = require("../models/Wallet");
-const User = require("../models/User");
-const verifyFirebaseToken = require("../middleware/authMiddleware");
+import User from "../models/User.js";
 
-// ✅ GET /api/wallet/:uid — Fetch balance
-router.get("/:uid", verifyFirebaseToken, async (req, res) => {
+// 🔹 Get Wallet Balance
+router.get("/:uid", async (req, res) => {
   try {
-    const { uid } = req.params;
-    let wallet = await Wallet.findOne({ userId: uid });
+    const user = await User.findOne({ uid: req.params.uid });
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
 
-    // If wallet missing, create one
-    if (!wallet) {
-      wallet = await Wallet.create({ userId: uid, balance: 0 });
-    }
-
-    res.json({ balance: wallet.balance, currency: wallet.currency });
-  } catch (err) {
-    console.error("Wallet Error:", err);
-    res.status(500).json({ error: "Failed to fetch wallet" });
+    res.json({ success: true, balance: user.walletBalance || 0 });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// ✅ POST /api/wallet/add-credit — Add funds manually
-router.post("/add-credit", verifyFirebaseToken, async (req, res) => {
+// 🔹 Add Funds
+router.post("/add", async (req, res) => {
   try {
     const { uid, amount } = req.body;
-    if (!uid || !amount) return res.status(400).json({ error: "Missing fields" });
+    const user = await User.findOne({ uid });
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
 
-    const wallet = await Wallet.findOne({ userId: uid });
-    if (!wallet) return res.status(404).json({ error: "Wallet not found" });
+    user.walletBalance = (user.walletBalance || 0) + Number(amount);
+    await user.save();
 
-    wallet.balance += parseFloat(amount);
-    await wallet.save();
-
-    res.json({ message: "Credit added", newBalance: wallet.balance });
-  } catch (err) {
-    console.error("Add Credit Error:", err);
-    res.status(500).json({ error: "Failed to add credit" });
+    res.json({ success: true, balance: user.walletBalance });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
-module.exports = router;
+export default router; // ✅ REQUIRED for import walletRoutes from "./routes/wallet.js";
