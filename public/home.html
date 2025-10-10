@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>SmartTalk Home</title>
+  <link rel="stylesheet" href="/styles/home.css">
+</head>
+<body>
+  <header>
+    <h2>SmartTalk</h2>
+    <div class="header-actions">
+      <button id="walletBtn">Wallet 💳</button>
+      <button id="logoutBtn">Logout</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="profile">
+      <h3>Welcome!</h3>
+      <p id="userEmail"></p>
+    </section>
+
+    <section id="wallet">
+      <p>Balance: <span id="balance">$0.00</span></p>
+    </section>
+
+    <div class="actions">
+      <button onclick="window.location.href='/chat.html'">💬 Chat</button>
+      <button onclick="window.location.href='/settings.html'">⚙️ Settings</button>
+    </div>
+  </main>
+
+  <script type="module" src="/js/firebase.js"></script>
+  <script type="module">
+    import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+    const auth = window.firebaseAuth;
+
+    const userEmail = document.getElementById("userEmail");
+    const balanceSpan = document.getElementById("balance");
+    const logoutBtn = document.getElementById("logoutBtn");
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) return (window.location.href = "/login.html");
+      userEmail.textContent = user.email;
+
+      const token = await user.getIdToken();
+      const res = await fetch("/api/wallet", { headers: { Authorization: `Bearer ${token}` } });
+      const data = await res.json();
+      balanceSpan.textContent = `$${data.balance.toFixed(2)}`;
+    });
+
+    logoutBtn.addEventListener("click", async () => {
+      await signOut(auth);
+      window.location.href = "/login.html";
+    });
+  </script>
+</body>
+</html>
