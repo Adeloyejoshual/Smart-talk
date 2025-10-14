@@ -1,20 +1,23 @@
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebaseConfig";
 
-export const saveCallHistory = async (callData) => {
+/**
+ * Saves a call record to Firestore callHistory collection
+ */
+export const saveCallHistory = async (data) => {
   try {
     await addDoc(collection(db, "callHistory"), {
-      callerId: callData.callerId,
-      callerName: callData.callerName,
-      receiverId: callData.receiverId,
-      receiverName: callData.receiverName,
-      status: callData.status, // "missed" | "answered" | "outgoing"
-      startTime: callData.startTime || null,
-      endTime: callData.endTime || null,
-      duration: callData.duration || 0,
+      callerId: data.callerId,
+      callerName: data.callerName,
+      receiverId: data.receiverId,
+      receiverName: data.receiverName,
+      status: data.status, // "answered" | "missed" | "outgoing"
+      startTime: data.startTime || null,
+      endTime: data.endTime || null,
+      duration: data.duration || 0,
       timestamp: serverTimestamp(),
     });
-  } catch (error) {
-    console.error("❌ Error saving call history:", error);
+  } catch (err) {
+    console.error("Error saving call history:", err);
   }
 };
