@@ -1,213 +1,276 @@
 // src/components/CallPage.jsx
 import React, { useEffect, useRef, useState } from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
+import { db, auth } from "../firebaseConfig";
 import {
   doc,
   onSnapshot,
   setDoc,
-  addDoc,
-  collection,
-  getDoc,
+  updateDoc,
   deleteDoc,
 } from "firebase/firestore";
-import { db, auth } from "../firebaseConfig";
 
 export default function CallPage() {
-  const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
-
-  const callType = searchParams.get("type"); // 'voice' or 'video'
-  const chatId = searchParams.get("chatId");
+  const [callType, setCallType] = useState("voice");
+  const [status, setStatus] = useState("Connecting...");
+  const [isRinging, setIsRinging] = useState(true);
+  const [duration, setDuration] = useState(0);
+  const [isOnCall, setIsOnCall] = useState(false);
+  const [callerName, setCallerName] = useState("");
+  const [callerPhoto, setCallerPhoto] = useState("");
 
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const pcRef = useRef(null);
+  const timerRef = useRef(null);
 
-  const [inCall, setInCall] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [isMuted, setIsMuted] = useState(false);
-  const [cameraOff, setCameraOff] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  const callerId = params.get("callerId");
+  const callId = params.get("callId");
+  const type = params.get("type") || "voice";
 
+  // 🎥 Initialize
   useEffect(() => {
+    setCallType(type);
     initCall();
     return () => endCall();
   }, []);
 
+  // ⏱ Duration Timer
+  useEffect(() => {
+    if (isOnCall) {
+      timerRef.current = setInterval(() => setDuration((prev) => prev + 1), 1000);
+    } else {
+      clearInterval(timerRef.current);
+    }
+    return () => clearInterval(timerRef.current);
+  }, [isOnCall]);
+
   const initCall = async () => {
-    try {
-      const localStream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: callType === "video",
-      });
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: ["stun:stun.l.google.com:19302"] }],
+    });
+    pcRef.current = pc;
 
-      localVideoRef.current.srcObject = localStream;
+    // Get mic (and camera if video)
+    const localStream = await navigator.mediaDevices.getUserMedia({
+      video: type === "video",
+      audio: true,
+    });
+    localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
+    if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
 
-      const pc = new RTCPeerConnection({
-        iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-      });
-      pcRef.current = pc;
+    pc.ontrack = (event) => {
+      remoteVideoRef.current.srcObject = event.streams[0];
+      setIsRinging(false);
+      setStatus("On Call");
+      setIsOnCall(true);
+    };
 
-      localStream.getTracks().forEach((track) =>
-        pc.addTrack(track, localStream)
-      );
+    const callDoc = doc(db, "calls", callId);
+    const candidatesRef = doc(db, "calls", `${callId}_candidates`);
 
-      pc.ontrack = (event) => {
-        remoteVideoRef.current.srcObject = event.streams[0];
-      };
+    pc.onicecandidate = async (event) => {
+      if (event.candidate) {
+        await setDoc(
+          candidatesRef,
+          { [auth.currentUser.uid]: event.candidate.toJSON() },
+          { merge: true }
+        );
+      }
+    };
 
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-
-      const callDoc = doc(collection(db, "calls"));
-      const offerCandidates = collection(callDoc, "offerCandidates");
-      const answerCandidates = collection(callDoc, "answerCandidates");
-
-      setDoc(callDoc, { offer, type: callType, chatId });
-
-      pc.onicecandidate = (event) => {
-        if (event.candidate) {
-          addDoc(offerCandidates, event.candidate.toJSON());
-        }
-      };
-
-      // Listen for answer
-      onSnapshot(callDoc, async (snapshot) => {
-        const data = snapshot.data();
-        if (!pc.currentRemoteDescription && data?.answer) {
-          const answerDescription = new RTCSessionDescription(data.answer);
-          await pc.setRemoteDescription(answerDescription);
-          setInCall(true);
-        }
-      });
-
-      // Listen for remote ICE candidates
-      onSnapshot(answerCandidates, (snapshot) => {
-        snapshot.docChanges().forEach((change) => {
-          if (change.type === "added") {
-            const candidate = new RTCIceCandidate(change.doc.data());
-            pc.addIceCandidate(candidate);
+    // Listen for ICE and call state
+    onSnapshot(candidatesRef, (snapshot) => {
+      const data = snapshot.data();
+      if (data) {
+        Object.entries(data).forEach(([uid, candidate]) => {
+          if (uid !== auth.currentUser.uid) {
+            pc.addIceCandidate(new RTCIceCandidate(candidate));
           }
         });
-      });
+      }
+    });
 
-      setLoading(false);
-    } catch (err) {
-      alert("Error starting call: " + err.message);
-      navigate(-1);
-    }
+    // Listen for offer/answer changes
+    onSnapshot(callDoc, async (snapshot) => {
+      const data = snapshot.data();
+      if (!data) {
+        setStatus("Call Ended");
+        setIsRinging(false);
+        setIsOnCall(false);
+        setTimeout(() => navigate("/chat"), 1500);
+        return;
+      }
+
+      // Load caller info for ringing UI
+      if (data.callerName) setCallerName(data.callerName);
+      if (data.callerPhoto) setCallerPhoto(data.callerPhoto);
+
+      if (data.offer && !data.answered && data.receiverId === auth.currentUser.uid) {
+        setStatus("Ringing...");
+        setIsRinging(true);
+        await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        await updateDoc(callDoc, {
+          answer,
+          answered: true,
+        });
+      } else if (data.answer && callerId === auth.currentUser.uid) {
+        setStatus("Call Connected ✅");
+        setIsRinging(false);
+        await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+        setIsOnCall(true);
+      }
+    });
   };
 
   const endCall = async () => {
-    if (pcRef.current) {
-      pcRef.current.close();
+    try {
+      pcRef.current?.close();
+      pcRef.current = null;
+      await deleteDoc(doc(db, "calls", callId));
+      await deleteDoc(doc(db, "calls", `${callId}_candidates`));
+    } catch (err) {
+      console.error(err);
     }
-    if (localVideoRef.current?.srcObject) {
-      localVideoRef.current.srcObject.getTracks().forEach((t) => t.stop());
-    }
-    navigate("/chat");
+    setIsRinging(false);
+    setIsOnCall(false);
+    setStatus("Call Ended");
+    setTimeout(() => navigate("/chat"), 1000);
   };
 
-  const toggleMute = () => {
-    const localStream = localVideoRef.current.srcObject;
-    localStream.getAudioTracks().forEach((track) => {
-      track.enabled = !track.enabled;
-    });
-    setIsMuted((m) => !m);
-  };
-
-  const toggleCamera = () => {
-    const localStream = localVideoRef.current.srcObject;
-    localStream.getVideoTracks().forEach((track) => {
-      track.enabled = !track.enabled;
-    });
-    setCameraOff((c) => !c);
+  const formatTime = (s) => {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m}:${sec < 10 ? "0" : ""}${sec}`;
   };
 
   return (
     <div
       style={{
         background: "#000",
+        color: "#fff",
         height: "100vh",
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        color: "#fff",
       }}
     >
-      <h2 style={{ marginBottom: "20px" }}>
-        {callType === "video" ? "🎥 Video Call" : "🎧 Voice Call"}
-      </h2>
-
-      {/* Video containers */}
-      <div
-        style={{
-          display: "flex",
-          gap: "10px",
-          justifyContent: "center",
-          width: "100%",
-          maxWidth: "900px",
-        }}
-      >
-        <video
-          ref={localVideoRef}
-          autoPlay
-          playsInline
-          muted
-          style={{
-            width: callType === "video" ? "45%" : "0",
-            borderRadius: "12px",
-            background: "#222",
-          }}
-        />
-        <video
-          ref={remoteVideoRef}
-          autoPlay
-          playsInline
-          style={{
-            width: callType === "video" ? "45%" : "0",
-            borderRadius: "12px",
-            background: "#222",
-          }}
-        />
-      </div>
-
-      {/* Controls */}
-      <div
-        style={{
-          marginTop: "30px",
-          display: "flex",
-          gap: "20px",
-          justifyContent: "center",
-        }}
-      >
-        {callType === "video" && (
-          <button
-            onClick={toggleCamera}
-            style={buttonStyle(cameraOff ? "#555" : "#28a745")}
+      {isRinging ? (
+        <div style={{ textAlign: "center" }}>
+          <img
+            src={callerPhoto || "/default-avatar.png"}
+            alt="Caller"
+            style={{
+              width: 120,
+              height: 120,
+              borderRadius: "50%",
+              border: "3px solid #00FF88",
+              marginBottom: 20,
+              objectFit: "cover",
+              animation: "pulse 1.2s infinite",
+            }}
+          />
+          <h2>{callerName || "Unknown Caller"}</h2>
+          <p style={{ fontSize: 18, marginBottom: 15 }}>
+            {callType === "video" ? "🎥 Video Call" : "📞 Voice Call"}
+          </p>
+          <p
+            style={{
+              color: "#0f0",
+              fontWeight: "bold",
+              animation: "blink 1s infinite",
+            }}
           >
-            {cameraOff ? "📷 Off" : "📸 On"}
+            {status}
+          </p>
+          <button
+            onClick={endCall}
+            style={{
+              marginTop: "25px",
+              background: "red",
+              color: "#fff",
+              border: "none",
+              borderRadius: "50%",
+              width: 70,
+              height: 70,
+              fontSize: 22,
+            }}
+          >
+            ❌
           </button>
-        )}
-        <button onClick={toggleMute} style={buttonStyle(isMuted ? "#555" : "#007bff")}>
-          {isMuted ? "🔇 Muted" : "🎤 Mic On"}
-        </button>
-        <button onClick={endCall} style={buttonStyle("#dc3545")}>
-          🔚 End Call
-        </button>
-      </div>
+        </div>
+      ) : (
+        <>
+          <h2>{callType === "video" ? "🎥 Video Call" : "🎤 Voice Call"}</h2>
+          <p>{status}</p>
+          {isOnCall && <p>Duration: {formatTime(duration)}</p>}
 
-      {loading && <p style={{ marginTop: "20px" }}>Starting call...</p>}
+          {callType === "video" && (
+            <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+              <video
+                ref={localVideoRef}
+                autoPlay
+                muted
+                playsInline
+                style={{
+                  width: "200px",
+                  height: "150px",
+                  borderRadius: "10px",
+                  border: "2px solid #333",
+                }}
+              />
+              <video
+                ref={remoteVideoRef}
+                autoPlay
+                playsInline
+                style={{
+                  width: "300px",
+                  height: "200px",
+                  borderRadius: "10px",
+                  border: "2px solid #333",
+                }}
+              />
+            </div>
+          )}
+
+          <button
+            onClick={endCall}
+            style={{
+              marginTop: "30px",
+              background: "red",
+              color: "white",
+              border: "none",
+              borderRadius: "50%",
+              width: "70px",
+              height: "70px",
+              fontSize: "22px",
+              cursor: "pointer",
+            }}
+          >
+            ❌
+          </button>
+        </>
+      )}
     </div>
   );
 }
 
-const buttonStyle = (bg) => ({
-  padding: "10px 20px",
-  background: bg,
-  color: "#fff",
-  border: "none",
-  borderRadius: "8px",
-  cursor: "pointer",
-  fontSize: "16px",
-});
+// 💫 animations
+const style = document.createElement("style");
+style.innerHTML = `
+@keyframes pulse {
+  0% { transform: scale(1); box-shadow: 0 0 5px #00FF88; }
+  50% { transform: scale(1.05); box-shadow: 0 0 20px #00FF88; }
+  100% { transform: scale(1); box-shadow: 0 0 5px #00FF88; }
+}
+@keyframes blink {
+  0%, 50%, 100% { opacity: 1; }
+  25%, 75% { opacity: 0.4; }
+}`;
+document.head.appendChild(style);
