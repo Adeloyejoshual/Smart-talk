@@ -1,111 +1,120 @@
-import React, { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+// src/components/CallPage.jsx
+import React, { useState, useEffect, useRef } from "react";
 import { db, auth } from "../firebaseConfig";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc, addDoc, collection, serverTimestamp } from "firebase/firestore";
 
-export default function CallPage() {
-  const { id } = useParams(); // receiver id
-  const navigate = useNavigate();
-  const [receiver, setReceiver] = useState(null);
+export default function CallPage({ receiverId }) {
   const [duration, setDuration] = useState(0);
   const [calling, setCalling] = useState(false);
-  const [intervalId, setIntervalId] = useState(null);
+  const [balance, setBalance] = useState(0);
+  const callTimer = useRef(null);
 
-  const CALL_RATE = 0.0033; // dollars per second
+  const RATE_PER_SECOND = 0.0033; // USD per second
 
-  // Fetch receiver info
   useEffect(() => {
-    const fetchReceiver = async () => {
-      const userDoc = await getDoc(doc(db, "users", id));
-      if (userDoc.exists()) setReceiver(userDoc.data());
+    const checkBalance = async () => {
+      const userRef = doc(db, "users", auth.currentUser.uid);
+      const userSnap = await getDoc(userRef);
+      if (userSnap.exists()) setBalance(userSnap.data().balance || 0);
     };
-    fetchReceiver();
-  }, [id]);
+    checkBalance();
+  }, []);
 
-  // Start call
+  // Start Call
   const startCall = async () => {
+    if (balance <= 0) {
+      alert("Insufficient balance! Please add funds first.");
+      return;
+    }
+
     setCalling(true);
     setDuration(0);
 
-    const timer = setInterval(() => {
+    // Start counting seconds
+    callTimer.current = setInterval(async () => {
       setDuration((prev) => prev + 1);
+
+      const newCost = (duration + 1) * RATE_PER_SECOND;
+      const remaining = balance - newCost;
+
+      // Stop call when balance finishes
+      if (remaining <= 0) {
+        stopCall();
+      }
     }, 1000);
-    setIntervalId(timer);
   };
 
-  // End call and charge the caller
-  const endCall = async () => {
-    clearInterval(intervalId);
+  // Stop Call
+  const stopCall = async () => {
+    if (callTimer.current) clearInterval(callTimer.current);
     setCalling(false);
 
-    const totalCost = duration * CALL_RATE;
+    const totalCost = duration * RATE_PER_SECOND;
+    const userRef = doc(db, "users", auth.currentUser.uid);
+    const userSnap = await getDoc(userRef);
 
-    const callerRef = doc(db, "users", auth.currentUser.uid);
-    const callerSnap = await getDoc(callerRef);
+    if (userSnap.exists()) {
+      const oldBalance = userSnap.data().balance || 0;
+      const newBalance = Math.max(oldBalance - totalCost, 0);
 
-    if (callerSnap.exists()) {
-      const callerData = callerSnap.data();
-      const newBalance = (callerData.balance || 0) - totalCost;
+      await updateDoc(userRef, { balance: newBalance });
 
-      await updateDoc(callerRef, { balance: newBalance >= 0 ? newBalance : 0 });
+      // Save transaction record
+      await addDoc(collection(db, "transactions"), {
+        uid: auth.currentUser.uid,
+        type: "Call",
+        duration: formatDuration(duration),
+        cost: parseFloat(totalCost.toFixed(2)),
+        createdAt: serverTimestamp(),
+      });
     }
 
-    alert(`Call ended. Duration: ${duration}s`);
-    navigate("/"); // back to home
+    alert(`Call ended. Duration: ${formatDuration(duration)}`);
+    setDuration(0);
+  };
+
+  const formatDuration = (seconds) => {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    return [h, m, s].map((v) => String(v).padStart(2, "0")).join(":");
   };
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        height: "100vh",
-        background: "#f2f2f2",
-      }}
-    >
-      <h2>Voice Call</h2>
+    <div style={{ padding: "20px", textAlign: "center" }}>
+      <h2>Call Page</h2>
+      <p>Receiver: <strong>{receiverId}</strong></p>
+      <p>Balance: ${balance.toFixed(2)}</p>
+      <p>Duration: {formatDuration(duration)}</p>
 
-      {receiver ? (
-        <>
-          <h3>{receiver.displayName || receiver.email}</h3>
-          <p>Duration: {duration} sec</p>
-
-          {!calling ? (
-            <button
-              onClick={startCall}
-              style={{
-                padding: "12px 24px",
-                fontSize: "16px",
-                background: "green",
-                color: "#fff",
-                border: "none",
-                borderRadius: "8px",
-                cursor: "pointer",
-              }}
-            >
-              Start Call
-            </button>
-          ) : (
-            <button
-              onClick={endCall}
-              style={{
-                padding: "12px 24px",
-                fontSize: "16px",
-                background: "red",
-                color: "#fff",
-                border: "none",
-                borderRadius: "8px",
-                cursor: "pointer",
-              }}
-            >
-              End Call
-            </button>
-          )}
-        </>
+      {!calling ? (
+        <button
+          onClick={startCall}
+          style={{
+            background: "green",
+            color: "#fff",
+            padding: "10px 20px",
+            borderRadius: "8px",
+            border: "none",
+            cursor: "pointer",
+          }}
+        >
+          Start Call
+        </button>
       ) : (
-        <p>Loading call info...</p>
+        <button
+          onClick={stopCall}
+          style={{
+            background: "red",
+            color: "#fff",
+            padding: "10px 20px",
+            borderRadius: "8px",
+            border: "none",
+            cursor: "pointer",
+          }}
+        >
+          End Call
+        </button>
       )}
     </div>
   );
