@@ -1,4 +1,3 @@
-// src/components/IncomingCallListener.jsx
 import React, { useEffect, useState, useRef } from "react";
 import {
   onSnapshot,
@@ -10,6 +9,7 @@ import {
 } from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
+import { saveCallHistory } from "../utils/saveCallHistory"; // ✅ Add this import
 
 export default function IncomingCallListener() {
   const [incomingCall, setIncomingCall] = useState(null);
@@ -55,8 +55,9 @@ export default function IncomingCallListener() {
 
       if (navigator.vibrate) navigator.vibrate([300, 200, 300, 200]);
 
+      // auto reject after 30s (missed call)
       timerRef.current = setTimeout(() => {
-        handleReject();
+        handleReject(true);
       }, 30000);
     }
 
@@ -70,14 +71,26 @@ export default function IncomingCallListener() {
     clearTimeout(timerRef.current);
   };
 
+  // ✅ ACCEPT CALL
   const handleAccept = async () => {
     if (!incomingCall) return;
     stopRinging();
 
-    // Optional: mark as answered (so it doesn't trigger again)
+    // Save as "answered"
+    await saveCallHistory({
+      callerId: incomingCall.callerId,
+      callerName: incomingCall.callerName,
+      receiverId: incomingCall.receiverId,
+      receiverName: incomingCall.receiverName,
+      status: "answered",
+      startTime: Date.now(),
+      callType: incomingCall.callType,
+    });
+
+    // Remove call doc (mark as handled)
     await deleteDoc(doc(db, "calls", incomingCall.id));
 
-    // Redirect to call page with params
+    // Redirect to call page
     navigate(
       `/call?type=${incomingCall.callType || "voice"}&chatId=${
         incomingCall.chatId
@@ -87,10 +100,23 @@ export default function IncomingCallListener() {
     setIncomingCall(null);
   };
 
-  const handleReject = async () => {
+  // ❌ REJECT CALL (or missed)
+  const handleReject = async (missed = false) => {
     if (!incomingCall) return;
     await deleteDoc(doc(db, "calls", incomingCall.id));
     stopRinging();
+
+    // Save as "missed" or "rejected"
+    await saveCallHistory({
+      callerId: incomingCall.callerId,
+      callerName: incomingCall.callerName,
+      receiverId: incomingCall.receiverId,
+      receiverName: incomingCall.receiverName,
+      status: missed ? "missed" : "rejected",
+      callType: incomingCall.callType,
+      timestamp: Date.now(),
+    });
+
     setIncomingCall(null);
   };
 
@@ -108,7 +134,7 @@ export default function IncomingCallListener() {
           <button onClick={handleAccept} style={acceptBtnStyle}>
             ✅ Accept
           </button>
-          <button onClick={handleReject} style={rejectBtnStyle}>
+          <button onClick={() => handleReject(false)} style={rejectBtnStyle}>
             ❌ Reject
           </button>
         </div>
