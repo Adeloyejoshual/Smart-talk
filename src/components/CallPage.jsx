@@ -1,187 +1,213 @@
 // src/components/CallPage.jsx
-import React, { useState, useEffect, useRef } from "react";
-import Peer from "simple-peer";
-import { db, auth } from "../firebaseConfig";
+import React, { useEffect, useRef, useState } from "react";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import {
   doc,
-  getDoc,
-  updateDoc,
+  onSnapshot,
+  setDoc,
   addDoc,
   collection,
-  onSnapshot,
-  serverTimestamp,
-  setDoc,
+  getDoc,
+  deleteDoc,
 } from "firebase/firestore";
+import { db, auth } from "../firebaseConfig";
 
-export default function CallPage({ receiverId }) {
-  const [stream, setStream] = useState(null);
-  const [remoteStream, setRemoteStream] = useState(null);
-  const [calling, setCalling] = useState(false);
-  const [duration, setDuration] = useState(0);
-  const [balance, setBalance] = useState(0);
-  const [peer, setPeer] = useState(null);
-  const callTimer = useRef(null);
+export default function CallPage() {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
 
-  const RATE_PER_SECOND = 0.0033;
+  const callType = searchParams.get("type"); // 'voice' or 'video'
+  const chatId = searchParams.get("chatId");
 
-  const localVideoRef = useRef();
-  const remoteVideoRef = useRef();
+  const localVideoRef = useRef(null);
+  const remoteVideoRef = useRef(null);
+  const pcRef = useRef(null);
+
+  const [inCall, setInCall] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [isMuted, setIsMuted] = useState(false);
+  const [cameraOff, setCameraOff] = useState(false);
 
   useEffect(() => {
-    const loadBalance = async () => {
-      const userRef = doc(db, "users", auth.currentUser.uid);
-      const snap = await getDoc(userRef);
-      if (snap.exists()) setBalance(snap.data().balance || 0);
-    };
-    loadBalance();
+    initCall();
+    return () => endCall();
   }, []);
 
-  // ✅ Start Call
-  const startCall = async () => {
-    if (balance <= 0) {
-      alert("Insufficient balance!");
-      return;
-    }
-
-    setCalling(true);
-    const localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-    setStream(localStream);
-    localVideoRef.current.srcObject = localStream;
-
-    const initiatorPeer = new Peer({ initiator: true, trickle: false, stream: localStream });
-    setPeer(initiatorPeer);
-
-    const callId = `${auth.currentUser.uid}_${receiverId}`;
-    const callRef = doc(db, "calls", callId);
-
-    // Create offer
-    initiatorPeer.on("signal", async (data) => {
-      await setDoc(callRef, { offer: data });
-    });
-
-    // Handle remote stream
-    initiatorPeer.on("stream", (remoteStream) => {
-      setRemoteStream(remoteStream);
-      remoteVideoRef.current.srcObject = remoteStream;
-    });
-
-    // Listen for answer
-    onSnapshot(callRef, (snapshot) => {
-      const data = snapshot.data();
-      if (data?.answer && !initiatorPeer.destroyed) {
-        initiatorPeer.signal(data.answer);
-      }
-    });
-
-    // Start billing timer
-    callTimer.current = setInterval(async () => {
-      setDuration((prev) => prev + 1);
-      const totalCost = (duration + 1) * RATE_PER_SECOND;
-      const remaining = balance - totalCost;
-
-      if (remaining <= 0) stopCall();
-    }, 1000);
-  };
-
-  // ✅ Join Call
-  const joinCall = async () => {
-    const localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-    setStream(localStream);
-    localVideoRef.current.srcObject = localStream;
-
-    const callId = `${receiverId}_${auth.currentUser.uid}`;
-    const callRef = doc(db, "calls", callId);
-    const callSnap = await getDoc(callRef);
-    const callData = callSnap.data();
-
-    const answerPeer = new Peer({ initiator: false, trickle: false, stream: localStream });
-    setPeer(answerPeer);
-
-    answerPeer.on("signal", async (data) => {
-      await updateDoc(callRef, { answer: data });
-    });
-
-    answerPeer.signal(callData.offer);
-
-    answerPeer.on("stream", (remoteStream) => {
-      setRemoteStream(remoteStream);
-      remoteVideoRef.current.srcObject = remoteStream;
-    });
-  };
-
-  // ✅ Stop Call + Deduct
-  const stopCall = async () => {
-    clearInterval(callTimer.current);
-    setCalling(false);
-    if (peer) peer.destroy();
-
-    const totalCost = duration * RATE_PER_SECOND;
-    const userRef = doc(db, "users", auth.currentUser.uid);
-    const userSnap = await getDoc(userRef);
-
-    if (userSnap.exists()) {
-      const currentBalance = userSnap.data().balance || 0;
-      const newBalance = Math.max(currentBalance - totalCost, 0);
-
-      await updateDoc(userRef, { balance: newBalance });
-
-      await addDoc(collection(db, "transactions"), {
-        uid: auth.currentUser.uid,
-        type: "Video Call",
-        duration: formatDuration(duration),
-        cost: parseFloat(totalCost.toFixed(2)),
-        createdAt: serverTimestamp(),
+  const initCall = async () => {
+    try {
+      const localStream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: callType === "video",
       });
-    }
 
-    alert(`Call ended. Duration: ${formatDuration(duration)}`);
-    setDuration(0);
+      localVideoRef.current.srcObject = localStream;
+
+      const pc = new RTCPeerConnection({
+        iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+      });
+      pcRef.current = pc;
+
+      localStream.getTracks().forEach((track) =>
+        pc.addTrack(track, localStream)
+      );
+
+      pc.ontrack = (event) => {
+        remoteVideoRef.current.srcObject = event.streams[0];
+      };
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      const callDoc = doc(collection(db, "calls"));
+      const offerCandidates = collection(callDoc, "offerCandidates");
+      const answerCandidates = collection(callDoc, "answerCandidates");
+
+      setDoc(callDoc, { offer, type: callType, chatId });
+
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          addDoc(offerCandidates, event.candidate.toJSON());
+        }
+      };
+
+      // Listen for answer
+      onSnapshot(callDoc, async (snapshot) => {
+        const data = snapshot.data();
+        if (!pc.currentRemoteDescription && data?.answer) {
+          const answerDescription = new RTCSessionDescription(data.answer);
+          await pc.setRemoteDescription(answerDescription);
+          setInCall(true);
+        }
+      });
+
+      // Listen for remote ICE candidates
+      onSnapshot(answerCandidates, (snapshot) => {
+        snapshot.docChanges().forEach((change) => {
+          if (change.type === "added") {
+            const candidate = new RTCIceCandidate(change.doc.data());
+            pc.addIceCandidate(candidate);
+          }
+        });
+      });
+
+      setLoading(false);
+    } catch (err) {
+      alert("Error starting call: " + err.message);
+      navigate(-1);
+    }
   };
 
-  const formatDuration = (seconds) => {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = seconds % 60;
-    return [h, m, s].map((v) => String(v).padStart(2, "0")).join(":");
+  const endCall = async () => {
+    if (pcRef.current) {
+      pcRef.current.close();
+    }
+    if (localVideoRef.current?.srcObject) {
+      localVideoRef.current.srcObject.getTracks().forEach((t) => t.stop());
+    }
+    navigate("/chat");
+  };
+
+  const toggleMute = () => {
+    const localStream = localVideoRef.current.srcObject;
+    localStream.getAudioTracks().forEach((track) => {
+      track.enabled = !track.enabled;
+    });
+    setIsMuted((m) => !m);
+  };
+
+  const toggleCamera = () => {
+    const localStream = localVideoRef.current.srcObject;
+    localStream.getVideoTracks().forEach((track) => {
+      track.enabled = !track.enabled;
+    });
+    setCameraOff((c) => !c);
   };
 
   return (
-    <div style={{ textAlign: "center", padding: "20px" }}>
-      <h2>Video Call</h2>
-      <p>Balance: ${balance.toFixed(2)}</p>
-      <p>Duration: {formatDuration(duration)}</p>
+    <div
+      style={{
+        background: "#000",
+        height: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        color: "#fff",
+      }}
+    >
+      <h2 style={{ marginBottom: "20px" }}>
+        {callType === "video" ? "🎥 Video Call" : "🎧 Voice Call"}
+      </h2>
 
-      <div style={{ display: "flex", justifyContent: "center", gap: "20px" }}>
-        <video ref={localVideoRef} autoPlay playsInline muted width="300" />
-        <video ref={remoteVideoRef} autoPlay playsInline width="300" />
+      {/* Video containers */}
+      <div
+        style={{
+          display: "flex",
+          gap: "10px",
+          justifyContent: "center",
+          width: "100%",
+          maxWidth: "900px",
+        }}
+      >
+        <video
+          ref={localVideoRef}
+          autoPlay
+          playsInline
+          muted
+          style={{
+            width: callType === "video" ? "45%" : "0",
+            borderRadius: "12px",
+            background: "#222",
+          }}
+        />
+        <video
+          ref={remoteVideoRef}
+          autoPlay
+          playsInline
+          style={{
+            width: callType === "video" ? "45%" : "0",
+            borderRadius: "12px",
+            background: "#222",
+          }}
+        />
       </div>
 
-      <div style={{ marginTop: "20px" }}>
-        {!calling ? (
-          <>
-            <button onClick={startCall} style={btnStyle("green")}>
-              Start Call
-            </button>
-            <button onClick={joinCall} style={btnStyle("blue")}>
-              Join Call
-            </button>
-          </>
-        ) : (
-          <button onClick={stopCall} style={btnStyle("red")}>
-            End Call
+      {/* Controls */}
+      <div
+        style={{
+          marginTop: "30px",
+          display: "flex",
+          gap: "20px",
+          justifyContent: "center",
+        }}
+      >
+        {callType === "video" && (
+          <button
+            onClick={toggleCamera}
+            style={buttonStyle(cameraOff ? "#555" : "#28a745")}
+          >
+            {cameraOff ? "📷 Off" : "📸 On"}
           </button>
         )}
+        <button onClick={toggleMute} style={buttonStyle(isMuted ? "#555" : "#007bff")}>
+          {isMuted ? "🔇 Muted" : "🎤 Mic On"}
+        </button>
+        <button onClick={endCall} style={buttonStyle("#dc3545")}>
+          🔚 End Call
+        </button>
       </div>
+
+      {loading && <p style={{ marginTop: "20px" }}>Starting call...</p>}
     </div>
   );
 }
 
-const btnStyle = (color) => ({
-  background: color,
-  color: "#fff",
+const buttonStyle = (bg) => ({
   padding: "10px 20px",
-  borderRadius: "8px",
+  background: bg,
+  color: "#fff",
   border: "none",
+  borderRadius: "8px",
   cursor: "pointer",
-  margin: "5px",
+  fontSize: "16px",
 });
