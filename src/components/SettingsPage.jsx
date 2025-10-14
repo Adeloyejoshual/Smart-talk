@@ -1,7 +1,15 @@
 // src/components/SettingsPage.jsx
 import React, { useEffect, useState, useContext } from "react";
 import { auth, db } from "../firebaseConfig";
-import { doc, onSnapshot, collection, query, where, orderBy, onSnapshot as onCollection } from "firebase/firestore";
+import {
+  doc,
+  onSnapshot,
+  collection,
+  query,
+  where,
+  orderBy,
+  onSnapshot as onCollection,
+} from "firebase/firestore";
 import { handleStripePayment, handleFlutterwavePayment } from "../payments";
 import { ThemeContext } from "../context/ThemeContext";
 
@@ -12,6 +20,7 @@ export default function SettingsPage() {
   const [user, setUser] = useState(null);
   const [newTheme, setNewTheme] = useState(theme);
   const [newWallpaper, setNewWallpaper] = useState(wallpaper);
+  const [previewWallpaper, setPreviewWallpaper] = useState(wallpaper);
 
   // ✅ Load current user and wallet in real-time
   useEffect(() => {
@@ -46,61 +55,52 @@ export default function SettingsPage() {
     return () => unsubscribe();
   }, []);
 
+  // 🖼️ Update live wallpaper preview
+  useEffect(() => {
+    setPreviewWallpaper(newWallpaper);
+  }, [newWallpaper]);
+
+  // 💾 Save theme & wallpaper
   const handleThemeChange = () => {
     updateSettings(newTheme, newWallpaper);
-    alert("Theme updated!");
+    alert("✅ Theme and wallpaper updated!");
   };
 
   if (!user) return <p>Loading user...</p>;
+
+  const isDark = newTheme === "dark";
 
   return (
     <div
       style={{
         padding: "20px",
-        background: theme === "dark" ? "#1e1e1e" : "#f5f5f5",
-        color: theme === "dark" ? "#fff" : "#000",
+        background: isDark ? "#1e1e1e" : "#f5f5f5",
+        color: isDark ? "#fff" : "#000",
         minHeight: "100vh",
+        transition: "all 0.3s ease",
       }}
     >
-      <h2>Settings</h2>
+      <h2>⚙️ Settings</h2>
 
       {/* 💵 Wallet Section */}
-      <div
-        style={{
-          marginTop: "20px",
-          padding: "20px",
-          borderRadius: "12px",
-          background: theme === "dark" ? "#333" : "#fff",
-          boxShadow: "0 2px 5px rgba(0,0,0,0.1)",
-        }}
-      >
+      <div style={sectionStyle(isDark)}>
         <h3>Wallet</h3>
-        <p>Balance: <strong>${balance.toFixed(2)}</strong></p>
+        <p>
+          Balance:{" "}
+          <strong style={{ color: isDark ? "#00e676" : "#007BFF" }}>
+            ${balance.toFixed(2)}
+          </strong>
+        </p>
         <div style={{ marginTop: "10px" }}>
           <button
             onClick={() => handleStripePayment(10, user.uid)}
-            style={{
-              marginRight: "10px",
-              padding: "10px 15px",
-              background: "#635BFF",
-              color: "#fff",
-              border: "none",
-              borderRadius: "8px",
-              cursor: "pointer",
-            }}
+            style={btnStyle("#635BFF")}
           >
             Add $10 (Stripe)
           </button>
           <button
             onClick={() => handleFlutterwavePayment(10, user.uid)}
-            style={{
-              padding: "10px 15px",
-              background: "#FF9A00",
-              color: "#fff",
-              border: "none",
-              borderRadius: "8px",
-              cursor: "pointer",
-            }}
+            style={btnStyle("#FF9A00")}
           >
             Add $10 (Flutterwave)
           </button>
@@ -108,69 +108,59 @@ export default function SettingsPage() {
       </div>
 
       {/* 🎨 Theme Settings */}
-      <div
-        style={{
-          marginTop: "30px",
-          padding: "20px",
-          borderRadius: "12px",
-          background: theme === "dark" ? "#333" : "#fff",
-          boxShadow: "0 2px 5px rgba(0,0,0,0.1)",
-        }}
-      >
+      <div style={sectionStyle(isDark)}>
         <h3>Theme & Wallpaper</h3>
-        <label>Theme: </label>
-        <select value={newTheme} onChange={(e) => setNewTheme(e.target.value)}>
-          <option value="light">Light</option>
-          <option value="dark">Dark</option>
+
+        <label>Theme:</label>
+        <select
+          value={newTheme}
+          onChange={(e) => setNewTheme(e.target.value)}
+          style={selectStyle(isDark)}
+        >
+          <option value="light">🌞 Light</option>
+          <option value="dark">🌙 Dark</option>
         </select>
-        <br /><br />
-        <label>Wallpaper URL: </label>
+
+        <br />
+        <br />
+        <label>Wallpaper URL:</label>
         <input
           type="text"
           value={newWallpaper}
           onChange={(e) => setNewWallpaper(e.target.value)}
-          style={{ width: "100%", marginTop: "5px" }}
+          placeholder="Paste image link"
+          style={inputStyle(isDark)}
         />
-        <br /><br />
-        <button
-          onClick={handleThemeChange}
+
+        {/* 🔥 Live Preview */}
+        <div
           style={{
-            padding: "10px 15px",
-            background: "#007BFF",
-            color: "#fff",
-            border: "none",
-            borderRadius: "8px",
+            ...previewBox,
+            backgroundColor: isDark ? "#000" : "#fff",
+            color: isDark ? "#fff" : "#000",
+            backgroundImage: previewWallpaper
+              ? `url(${previewWallpaper})`
+              : "none",
           }}
         >
-          Save
+          <p>🌈 Live Preview</p>
+          <small>(Your theme and wallpaper will look like this)</small>
+        </div>
+
+        <button onClick={handleThemeChange} style={btnStyle("#007BFF")}>
+          💾 Save
         </button>
       </div>
 
       {/* 📜 Transaction History */}
-      <div
-        style={{
-          marginTop: "30px",
-          padding: "20px",
-          borderRadius: "12px",
-          background: theme === "dark" ? "#333" : "#fff",
-          boxShadow: "0 2px 5px rgba(0,0,0,0.1)",
-        }}
-      >
+      <div style={sectionStyle(isDark)}>
         <h3>Transaction History</h3>
         {transactions.length === 0 ? (
           <p>No transactions yet.</p>
         ) : (
           <ul style={{ listStyle: "none", padding: 0 }}>
             {transactions.map((tx) => (
-              <li
-                key={tx.id}
-                style={{
-                  borderBottom: "1px solid #ddd",
-                  padding: "10px 0",
-                  display: "flex",
-                  justifyContent: "space-between",
-                }}
-              >
+              <li key={tx.id} style={txItemStyle(isDark)}>
                 <div>
                   <strong>{tx.gateway}</strong> — ${tx.amount.toFixed(2)}
                   <br />
@@ -191,3 +181,64 @@ export default function SettingsPage() {
     </div>
   );
 }
+
+// 💅 Shared Styles
+const sectionStyle = (isDark) => ({
+  marginTop: "30px",
+  padding: "20px",
+  borderRadius: "12px",
+  background: isDark ? "#333" : "#fff",
+  boxShadow: "0 2px 5px rgba(0,0,0,0.1)",
+});
+
+const btnStyle = (bg) => ({
+  marginRight: "10px",
+  padding: "10px 15px",
+  background: bg,
+  color: "#fff",
+  border: "none",
+  borderRadius: "8px",
+  cursor: "pointer",
+  fontWeight: "bold",
+});
+
+const selectStyle = (isDark) => ({
+  padding: "8px",
+  borderRadius: "6px",
+  background: isDark ? "#222" : "#fafafa",
+  color: isDark ? "#fff" : "#000",
+  border: "1px solid #666",
+  width: "100%",
+});
+
+const inputStyle = (isDark) => ({
+  width: "100%",
+  marginTop: "5px",
+  padding: "8px",
+  borderRadius: "6px",
+  border: "1px solid #555",
+  background: isDark ? "#222" : "#fafafa",
+  color: isDark ? "#fff" : "#000",
+});
+
+const previewBox = {
+  width: "100%",
+  height: "160px",
+  borderRadius: "10px",
+  border: "2px solid #555",
+  margin: "15px 0 20px",
+  display: "flex",
+  flexDirection: "column",
+  justifyContent: "center",
+  alignItems: "center",
+  backgroundSize: "cover",
+  backgroundRepeat: "no-repeat",
+  backgroundPosition: "center",
+};
+
+const txItemStyle = (isDark) => ({
+  borderBottom: isDark ? "1px solid #555" : "1px solid #ddd",
+  padding: "10px 0",
+  display: "flex",
+  justifyContent: "space-between",
+});
