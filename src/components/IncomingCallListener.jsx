@@ -1,6 +1,13 @@
 // src/components/IncomingCallListener.jsx
 import React, { useEffect, useState, useRef } from "react";
-import { onSnapshot, collection, query, where, deleteDoc, doc } from "firebase/firestore";
+import {
+  onSnapshot,
+  collection,
+  query,
+  where,
+  deleteDoc,
+  doc,
+} from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
 
@@ -10,54 +17,51 @@ export default function IncomingCallListener() {
   const timerRef = useRef(null);
   const navigate = useNavigate();
 
-  // 🔔 preload ringtone
+  // 🎵 Preload ringtone
   useEffect(() => {
     ringtoneRef.current = new Audio("/ringtone.mp3");
     ringtoneRef.current.loop = true;
   }, []);
 
-  // 👂 listen for new calls
+  // 👂 Listen for incoming calls
   useEffect(() => {
     if (!auth.currentUser) return;
-    const q = query(collection(db, "calls"), where("receiverId", "==", auth.currentUser.uid));
+
+    const q = query(
+      collection(db, "calls"),
+      where("receiverId", "==", auth.currentUser.uid)
+    );
+
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      snapshot.docs.forEach((docSnap) => {
-        const data = docSnap.data();
-        if (data?.offer && !data?.answered) {
-          setIncomingCall({ id: docSnap.id, ...data });
+      snapshot.docChanges().forEach((change) => {
+        const data = change.doc.data();
+        if (change.type === "added" && data?.offer && !data?.answered) {
+          setIncomingCall({ id: change.doc.id, ...data });
         }
       });
     });
+
     return () => unsubscribe();
   }, [auth.currentUser]);
 
-  // 🎶 ringtone + vibrate + auto cancel
+  // 🎶 Play ringtone + auto cancel after 30s
   useEffect(() => {
     if (incomingCall) {
       try {
         ringtoneRef.current?.play();
-      } catch (e) {}
+      } catch (err) {
+        console.warn("Ringtone autoplay blocked:", err);
+      }
+
       if (navigator.vibrate) navigator.vibrate([300, 200, 300, 200]);
+
       timerRef.current = setTimeout(() => {
-        cancelCall();
+        handleReject();
       }, 30000);
     }
-    return () => {
-      stopRinging();
-    };
+
+    return () => stopRinging();
   }, [incomingCall]);
-
-  const acceptCall = () => {
-    stopRinging();
-    navigate(`/call/${incomingCall.callerId}`);
-  };
-
-  const cancelCall = async () => {
-    if (!incomingCall) return;
-    await deleteDoc(doc(db, "calls", incomingCall.id));
-    stopRinging();
-    setIncomingCall(null);
-  };
 
   const stopRinging = () => {
     ringtoneRef.current?.pause();
@@ -66,24 +70,50 @@ export default function IncomingCallListener() {
     clearTimeout(timerRef.current);
   };
 
+  const handleAccept = async () => {
+    if (!incomingCall) return;
+    stopRinging();
+
+    // Optional: mark as answered (so it doesn't trigger again)
+    await deleteDoc(doc(db, "calls", incomingCall.id));
+
+    // Redirect to call page with params
+    navigate(
+      `/call?type=${incomingCall.callType || "voice"}&chatId=${
+        incomingCall.chatId
+      }&caller=${encodeURIComponent(incomingCall.callerName || "Unknown")}`
+    );
+
+    setIncomingCall(null);
+  };
+
+  const handleReject = async () => {
+    if (!incomingCall) return;
+    await deleteDoc(doc(db, "calls", incomingCall.id));
+    stopRinging();
+    setIncomingCall(null);
+  };
+
   if (!incomingCall) return null;
 
   return (
     <div style={overlayStyle}>
-      <div style={popupStyle} className="animate-popup">
-        <h2 style={titleStyle}>📞 Incoming Call</h2>
+      <div style={popupStyle}>
+        <h2 style={titleStyle}>
+          {incomingCall.callType === "video" ? "🎥 Video Call" : "📞 Voice Call"}
+        </h2>
         <p style={nameStyle}>{incomingCall.callerName || "Unknown User"}</p>
 
         <div style={buttonContainer}>
-          <button onClick={acceptCall} style={acceptBtnStyle}>
+          <button onClick={handleAccept} style={acceptBtnStyle}>
             ✅ Accept
           </button>
-          <button onClick={cancelCall} style={rejectBtnStyle}>
+          <button onClick={handleReject} style={rejectBtnStyle}>
             ❌ Reject
           </button>
         </div>
 
-        <p style={{ fontSize: "12px", color: "#eee", marginTop: "10px" }}>
+        <p style={{ fontSize: "12px", color: "#ddd", marginTop: "12px" }}>
           Auto-cancel in 30s…
         </p>
       </div>
@@ -91,7 +121,7 @@ export default function IncomingCallListener() {
   );
 }
 
-// 🌈 styles
+// 🎨 Styles
 const overlayStyle = {
   position: "fixed",
   inset: 0,
@@ -100,7 +130,7 @@ const overlayStyle = {
   alignItems: "center",
   justifyContent: "center",
   zIndex: 9999,
-  backdropFilter: "blur(8px)",
+  backdropFilter: "blur(6px)",
 };
 
 const popupStyle = {
@@ -132,41 +162,35 @@ const buttonContainer = {
   gap: "20px",
 };
 
-const btnBase = {
+const baseButton = {
   border: "none",
   borderRadius: "50%",
   width: "65px",
   height: "65px",
   fontSize: "16px",
-  fontWeight: "bold",
   cursor: "pointer",
-  transition: "all 0.3s ease",
   color: "#fff",
-  animation: "pulse 1.2s infinite",
+  fontWeight: "bold",
+  transition: "transform 0.2s",
 };
 
 const acceptBtnStyle = {
-  ...btnBase,
-  background: "linear-gradient(135deg, #0f0, #05a)",
-  boxShadow: "0 0 15px rgba(0,255,0,0.6)",
+  ...baseButton,
+  background: "linear-gradient(135deg, #00ff99, #00aaff)",
+  boxShadow: "0 0 15px rgba(0,255,100,0.5)",
 };
 
 const rejectBtnStyle = {
-  ...btnBase,
-  background: "linear-gradient(135deg, #f00, #a00)",
-  boxShadow: "0 0 15px rgba(255,0,0,0.6)",
+  ...baseButton,
+  background: "linear-gradient(135deg, #ff4444, #cc0000)",
+  boxShadow: "0 0 15px rgba(255,0,0,0.5)",
 };
 
-// 💫 Animations (inject CSS)
+// 💫 Inject CSS animations
 const style = document.createElement("style");
 style.innerHTML = `
 @keyframes fadeIn {
-  from { opacity: 0; transform: scale(0.95); }
+  from { opacity: 0; transform: scale(0.9); }
   to { opacity: 1; transform: scale(1); }
-}
-@keyframes pulse {
-  0% { transform: scale(1); box-shadow: 0 0 10px rgba(255,255,255,0.3); }
-  50% { transform: scale(1.1); box-shadow: 0 0 25px rgba(255,255,255,0.6); }
-  100% { transform: scale(1); box-shadow: 0 0 10px rgba(255,255,255,0.3); }
 }`;
 document.head.appendChild(style);
