@@ -21,7 +21,8 @@
     "dotenv": "^16.4.5",
     "@stripe/stripe-js": "^1.52.1",
     "stripe": "^14.23.0",
-    "framer-motion": "^11.0.0"
+    "framer-motion": "^11.0.0",
+    "flutterwave-react-v3": "^4.0.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",
