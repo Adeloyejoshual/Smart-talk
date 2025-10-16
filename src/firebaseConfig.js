@@ -27,9 +27,9 @@ export const auth = getAuth(app);
 export const storage = getStorage(app);
 
 // 🌐 Google sign-in provider
-const googleProvider = new GoogleAuthProvider();
+export const googleProvider = new GoogleAuthProvider(); // ✅ exported now!
 
-// ✅ Add this — handles Google login
+// ✅ Google sign-in function
 export const signInWithGoogle = async () => {
   try {
     const result = await signInWithPopup(auth, googleProvider);
@@ -41,7 +41,7 @@ export const signInWithGoogle = async () => {
   }
 };
 
-// ✅ Optional logout helper
+// ✅ Logout helper
 export const logout = async () => {
   try {
     await signOut(auth);
@@ -50,6 +50,6 @@ export const logout = async () => {
   }
 };
 
-// 💳 Payment keys (optional)
+// 💳 Payment keys
 export const STRIPE_PUBLIC_KEY = process.env.REACT_APP_STRIPE_PUBLIC_KEY;
 export const FLUTTERWAVE_PUBLIC_KEY = process.env.REACT_APP_FLUTTERWAVE_PUBLIC_KEY;
