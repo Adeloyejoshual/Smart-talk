@@ -27,9 +27,9 @@ export const auth = getAuth(app);
 export const storage = getStorage(app);
 
 // 🌐 Google sign-in provider
-export const googleProvider = new GoogleAuthProvider(); // ✅ exported now!
+export const googleProvider = new GoogleAuthProvider(); // ✅ 
 
-// ✅ Google sign-in function
+// ✅ Google 
 export const signInWithGoogle = async () => {
   try {
     const result = await signInWithPopup(auth, googleProvider);
@@ -41,7 +41,7 @@ export const signInWithGoogle = async () => {
   }
 };
 
-// ✅ Logout helper
+// ✅ Logout 
 export const logout = async () => {
   try {
     await signOut(auth);
