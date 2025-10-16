@@ -19,7 +19,8 @@
     "react-firebase-hooks": "^5.1.1",
     "firebase": "^11.0.0",
     "dotenv": "^16.4.5",
-    "@stripe/stripe-js": "^1.52.1"
+    "@stripe/stripe-js": "^1.52.1",
+    "stripe": "^14.23.0" 
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",
