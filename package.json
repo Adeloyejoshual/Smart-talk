@@ -22,7 +22,7 @@
     "@stripe/stripe-js": "^1.52.1",
     "stripe": "^14.23.0",
     "framer-motion": "^11.0.0",
-    "flutterwave-react-v3": "^3.0.9"
+    "flutterwave-react-v3"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",
