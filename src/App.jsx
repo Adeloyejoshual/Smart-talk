@@ -1,6 +1,6 @@
 // src/App.jsx
 import React from "react";
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import { ThemeProvider } from "./context/ThemeContext";
 import HomePage from "./components/HomePage";
 import ChatPage from "./components/ChatPage";
@@ -16,14 +16,22 @@ export default function App() {
     <ThemeProvider>
       <Router>
         <Routes>
-          {/* 👋 Landing page */}
-          <Route path="/" element={<HomePage />} />
+          {/* ✅ Default route shows Login */}
+          <Route path="/" element={<Navigate to="/login" />} />
 
-          {/* 👤 Auth pages */}
+          {/* Public routes */}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
 
-          {/* 🔒 Protected pages */}
+          {/* Protected routes */}
+          <Route
+            path="/home"
+            element={
+              <ProtectedRoute>
+                <HomePage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/chat"
             element={
