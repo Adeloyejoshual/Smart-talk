@@ -8,6 +8,7 @@ import CallPage from "./components/CallPage";
 import SettingsPage from "./components/SettingsPage";
 import CallHistoryPage from "./components/CallHistoryPage";
 import Login from "./pages/Login";
+import Register from "./pages/Register";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 export default function App() {
@@ -15,11 +16,14 @@ export default function App() {
     <ThemeProvider>
       <Router>
         <Routes>
-          {/* Public routes */}
+          {/* 👋 Landing page */}
           <Route path="/" element={<HomePage />} />
-          <Route path="/login" element={<Login />} />
 
-          {/* Protected routes */}
+          {/* 👤 Auth pages */}
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+
+          {/* 🔒 Protected pages */}
           <Route
             path="/chat"
             element={
