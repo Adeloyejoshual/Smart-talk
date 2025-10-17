@@ -1,12 +1,19 @@
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SmartTalk</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
-</html>
+// src/components/HomePage.jsx
+import React from "react";
+import { Link } from "react-router-dom";
+
+export default function HomePage() {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen text-center bg-gray-100">
+      <h1 className="text-3xl font-bold mb-6">Welcome to SmartTalk</h1>
+      <div className="space-x-4">
+        <Link to="/register" className="bg-blue-500 text-white px-4 py-2 rounded">
+          Register
+        </Link>
+        <Link to="/login" className="bg-green-500 text-white px-4 py-2 rounded">
+          Login
+        </Link>
+      </div>
+    </div>
+  );
+}
