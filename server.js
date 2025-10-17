@@ -14,29 +14,26 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ✅ Initialize Firebase Admin
+// ✅ Firebase Admin (backend)
 if (!admin.apps.length) {
   admin.initializeApp({
     credential: admin.credential.cert({
-      projectId: process.env.FIREBASE_PROJECT_ID || "smarttalk-9fe4a",
+      projectId: process.env.FIREBASE_PROJECT_ID,
       clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+      privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"),
     }),
   });
-  console.log("✅ Firebase Admin initialized:", process.env.FIREBASE_PROJECT_ID);
+  console.log("✅ Firebase Admin initialized");
 }
 
-// ✅ Initialize Stripe
+// ✅ Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-// 🔹 Example endpoint: create payment intent
+// API Example
 app.post("/api/payment", async (req, res) => {
   try {
     const { amount, currency } = req.body;
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount,
-      currency,
-    });
+    const paymentIntent = await stripe.paymentIntents.create({ amount, currency });
     res.json({ clientSecret: paymentIntent.client_secret });
   } catch (err) {
     console.error(err);
@@ -44,10 +41,9 @@ app.post("/api/payment", async (req, res) => {
   }
 });
 
-// 🔹 Serve React static files
+// Serve frontend
 app.use(express.static(path.join(__dirname, "dist")));
 
-// ✅ Fallback for all other routes
 app.get("*", (req, res) => {
   res.sendFile(path.resolve(__dirname, "dist", "index.html"));
 });
