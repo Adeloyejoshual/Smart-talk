@@ -1,14 +1,15 @@
+// src/firebaseConfig.js
 import { initializeApp } from "firebase/app";
 import {
   getAuth,
   GoogleAuthProvider,
   signInWithPopup,
-  signOut
+  signOut,
 } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
-// 🔐 Firebase config (from .env)
+// ✅ Use Vite env variables
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -21,22 +22,19 @@ const firebaseConfig = {
 // 🚀 Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// 📦 Firebase services
+// Services
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 export const storage = getStorage(app);
-
-// 🌐 Google sign-in provider
 export const googleProvider = new GoogleAuthProvider();
 
-// ✅ Google Sign-In
+// ✅ Sign in with Google
 export const signInWithGoogle = async () => {
   try {
     const result = await signInWithPopup(auth, googleProvider);
-    console.log("✅ Signed in:", result.user);
     return result.user;
   } catch (error) {
-    console.error("❌ Google Sign-In Error:", error);
+    console.error("Google Sign-In Error:", error);
     alert("Google Sign-In Failed");
   }
 };
@@ -50,6 +48,6 @@ export const logout = async () => {
   }
 };
 
-// 💳 Payment keys
+// 💳 Payment
 export const STRIPE_PUBLIC_KEY = import.meta.env.VITE_STRIPE_PUBLIC_KEY;
 export const FLUTTERWAVE_PUBLIC_KEY = import.meta.env.VITE_FLUTTERWAVE_PUBLIC_KEY;
