@@ -23,24 +23,22 @@ export default function ChatPage() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  // 🔐 Listen for auth state
+  // 🔐 Listen for login/logout
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((u) => {
-      if (u) {
-        setUser(u);
-        loadChats(u.uid);
-      } else {
-        navigate("/");
-      }
+      if (u) setUser(u);
+      else navigate("/");
     });
     return unsubscribe;
   }, [navigate]);
 
-  // 💬 Load user chats
-  const loadChats = (uid) => {
+  // 💬 Real-time Chat Listener
+  useEffect(() => {
+    if (!user) return;
+
     const q = query(
       collection(db, "chats"),
-      where("participants", "array-contains", uid),
+      where("participants", "array-contains", user.uid),
       orderBy("lastMessageAt", "desc")
     );
 
@@ -53,9 +51,9 @@ export default function ChatPage() {
     });
 
     return () => unsub();
-  };
+  }, [user]);
 
-  // ➕ Add friend by email
+  // ➕ Add Friend by Email
   const handleAddFriend = async () => {
     setMessage("");
     setLoading(true);
@@ -67,7 +65,7 @@ export default function ChatPage() {
         return;
       }
 
-      // Check if friend exists in Firestore
+      // 🔍 Check if friend exists
       const usersRef = collection(db, "users");
       const q = query(usersRef, where("email", "==", friendEmail));
       const snapshot = await getDocs(q);
@@ -87,7 +85,7 @@ export default function ChatPage() {
         return;
       }
 
-      // Check if chat already exists
+      // 🔁 Check if chat already exists
       const chatRef = collection(db, "chats");
       const chatQuery = query(
         chatRef,
@@ -107,7 +105,7 @@ export default function ChatPage() {
         return;
       }
 
-      // Create new chat document
+      // 🆕 Create new chat
       const newChat = await addDoc(chatRef, {
         participants: [user.uid, friendData.uid],
         name: friendData.name || friendData.email.split("@")[0],
@@ -120,7 +118,7 @@ export default function ChatPage() {
       setFriendEmail("");
       setShowAddFriend(false);
 
-      // ✅ Go directly to chat
+      // ✅ Redirect to chat
       navigate(`/chat/${newChat.id}`);
     } catch (error) {
       console.error(error);
@@ -130,10 +128,8 @@ export default function ChatPage() {
     setLoading(false);
   };
 
-  // 📱 Open selected chat
-  const openChat = (chat) => {
-    navigate(`/chat/${chat.id}`);
-  };
+  // 📱 Open chat
+  const openChat = (chat) => navigate(`/chat/${chat.id}`);
 
   const isDark = theme === "dark";
 
@@ -209,7 +205,7 @@ export default function ChatPage() {
         </div>
       )}
 
-      {/* 🔍 Search bar */}
+      {/* 🔍 Search */}
       <div style={{ padding: "10px" }}>
         <input
           type="text"
@@ -227,7 +223,7 @@ export default function ChatPage() {
         />
       </div>
 
-      {/* 💬 Chat list */}
+      {/* 💬 Chat List */}
       <div style={{ padding: "10px" }}>
         {chats
           .filter(
@@ -244,7 +240,7 @@ export default function ChatPage() {
                 alignItems: "center",
                 justifyContent: "space-between",
                 padding: "10px 0",
-                borderBottom: "1px solid #eee",
+                borderBottom: isDark ? "1px solid #333" : "1px solid #eee",
                 cursor: "pointer",
               }}
             >
@@ -269,17 +265,21 @@ export default function ChatPage() {
               </div>
               <small style={{ color: "#888" }}>
                 {chat.lastMessageAt
-                  ? new Date(chat.lastMessageAt.seconds * 1000).toLocaleTimeString(
-                      [],
-                      { hour: "2-digit", minute: "2-digit" }
-                    )
+                  ? new Date(
+                      chat.lastMessageAt.seconds
+                        ? chat.lastMessageAt.seconds * 1000
+                        : chat.lastMessageAt
+                    ).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })
                   : ""}
               </small>
             </div>
           ))}
       </div>
 
-      {/* ➕ Floating button */}
+      {/* ➕ Floating Add Button */}
       <button
         onClick={() => setShowAddFriend(true)}
         style={{
@@ -300,7 +300,7 @@ export default function ChatPage() {
         +
       </button>
 
-      {/* ⚙️ Floating profile & call buttons */}
+      {/* ⚙️ Bottom Nav */}
       <div
         style={{
           position: "fixed",
@@ -310,10 +310,7 @@ export default function ChatPage() {
           justifyContent: "space-around",
         }}
       >
-        <button
-          onClick={() => navigate("/call")}
-          style={navBtnStyle("#007AFF")}
-        >
+        <button onClick={() => navigate("/call")} style={navBtnStyle("#007AFF")}>
           📞 Call
         </button>
         <button
