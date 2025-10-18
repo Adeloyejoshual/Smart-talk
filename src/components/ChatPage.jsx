@@ -1,4 +1,3 @@
-// src/components/ChatPage.jsx
 import React, { useEffect, useState, useContext } from "react";
 import { db, auth } from "../firebaseConfig";
 import {
@@ -7,8 +6,6 @@ import {
   where,
   orderBy,
   onSnapshot,
-  doc,
-  getDoc,
 } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 import { ThemeContext } from "../context/ThemeContext";
@@ -20,9 +17,9 @@ export default function ChatPage() {
   const [user, setUser] = useState(null);
   const navigate = useNavigate();
 
-  // 🔐 Listen to user auth
+  // 🔐 Listen for auth state
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(async (u) => {
+    const unsubscribe = auth.onAuthStateChanged((u) => {
       if (u) {
         setUser(u);
         loadChats(u.uid);
@@ -33,7 +30,7 @@ export default function ChatPage() {
     return unsubscribe;
   }, [navigate]);
 
-  // 💬 Load user chats in realtime
+  // 💬 Load user chats
   const loadChats = (uid) => {
     const q = query(
       collection(db, "chats"),
@@ -98,6 +95,37 @@ export default function ChatPage() {
         </button>
       </div>
 
+      {/* 👋 Welcome Banner */}
+      {user && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            padding: "15px 20px",
+            borderBottom:
+              theme === "dark" ? "1px solid #333" : "1px solid #eee",
+          }}
+        >
+          <img
+            src={user.photoURL || "https://via.placeholder.com/50"}
+            alt="user"
+            style={{
+              width: 50,
+              height: 50,
+              borderRadius: "50%",
+              objectFit: "cover",
+            }}
+          />
+          <div>
+            <h3 style={{ margin: 0 }}>
+              Welcome, {user.displayName || user.email.split("@")[0]} 👋
+            </h3>
+            <small style={{ color: "#888" }}>Ready to start chatting?</small>
+          </div>
+        </div>
+      )}
+
       {/* 🔍 Search bar */}
       <div style={{ padding: "10px" }}>
         <input
@@ -158,17 +186,20 @@ export default function ChatPage() {
               </div>
               <small style={{ color: "#888" }}>
                 {chat.lastMessageAt
-                  ? new Date(chat.lastMessageAt.seconds * 1000).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })
+                  ? new Date(chat.lastMessageAt.seconds * 1000).toLocaleTimeString(
+                      [],
+                      {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      }
+                    )
                   : ""}
               </small>
             </div>
           ))}
       </div>
 
-      {/* ➕ Floating button to start new chat */}
+      {/* ➕ Floating new chat button */}
       <button
         onClick={() => navigate("/new-chat")}
         style={{
