@@ -4,8 +4,9 @@ import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "./context/ThemeContext";
 
 // ✅ Main pages
-import HomePage from "./components/HomePage"; // now acts as Login/Register + Google
+import HomePage from "./components/HomePage"; // login/register
 import ChatPage from "./components/ChatPage";
+import ChatConversationPage from "./components/ChatConversationPage"; // 🆕 Single chat
 import CallPage from "./components/CallPage";
 import SettingsPage from "./components/SettingsPage";
 import CallHistoryPage from "./components/CallHistoryPage";
@@ -16,10 +17,10 @@ export default function App() {
     <ThemeProvider>
       <Router>
         <Routes>
-          {/* ✅ Default route — shows HomePage (login/register) */}
+          {/* Default route — login/register */}
           <Route path="/" element={<HomePage />} />
 
-          {/* ✅ Protected routes — only for logged-in users */}
+          {/* Protected routes */}
           <Route
             path="/chat"
             element={
@@ -28,6 +29,17 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+
+          {/* 🆕 Single chat view */}
+          <Route
+            path="/chat/:chatId"
+            element={
+              <ProtectedRoute>
+                <ChatConversationPage />
+              </ProtectedRoute>
+            }
+          />
+
           <Route
             path="/call"
             element={
