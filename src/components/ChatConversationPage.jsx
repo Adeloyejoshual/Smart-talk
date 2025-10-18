@@ -1,4 +1,4 @@
-// src/components/ChatConversation.jsx
+// src/components/ChatConversationPage.jsx
 import React, { useEffect, useState, useRef, useContext } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
@@ -14,27 +14,24 @@ import {
 import { auth, db } from "../firebaseConfig";
 import { ThemeContext } from "../context/ThemeContext";
 
-export default function ChatConversation() {
-  const { id } = useParams(); // chat ID
+export default function ChatConversationPage() {
+  const { id } = useParams(); // Chat ID from URL
   const navigate = useNavigate();
   const { theme, wallpaper } = useContext(ThemeContext);
 
+  const [chatInfo, setChatInfo] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
-  const [chatInfo, setChatInfo] = useState(null);
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
-
   const messagesEndRef = useRef(null);
 
-  // ✅ Auto-scroll
+  // ✅ Scroll to latest message
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+  useEffect(scrollToBottom, [messages]);
 
   // ✅ Load chat info
   useEffect(() => {
@@ -45,44 +42,47 @@ export default function ChatConversation() {
         setChatInfo(docSnap.data());
       } else {
         alert("Chat not found!");
-        navigate("/chatlist");
+        navigate("/home");
       }
     };
     loadChat();
   }, [id, navigate]);
 
-  // ✅ Load messages in real time
+  // ✅ Real-time message listener
   useEffect(() => {
     const msgRef = collection(db, "chats", id, "messages");
     const q = query(msgRef, orderBy("createdAt", "asc"));
+
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setMessages(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
     });
+
     return () => unsubscribe();
   }, [id]);
 
-  // ✅ Handle sending message (text, file, or image)
+  // ✅ Send message
   const handleSend = async () => {
     if (!input.trim() && !file) return;
-    const msgData = {
+
+    const messageData = {
       sender: auth.currentUser.uid,
       text: input.trim() || "",
       createdAt: serverTimestamp(),
       type: file ? (file.type.startsWith("image") ? "image" : "file") : "text",
     };
+
     if (file) {
-      // Temporary local URL — later we’ll replace this with Firebase Storage
-      msgData.fileName = file.name;
-      msgData.fileURL = URL.createObjectURL(file);
+      messageData.fileName = file.name;
+      messageData.fileURL = URL.createObjectURL(file); // Temporary preview
     }
 
-    await addDoc(collection(db, "chats", id, "messages"), msgData);
+    await addDoc(collection(db, "chats", id, "messages"), messageData);
     setInput("");
     setFile(null);
     setPreview(null);
   };
 
-  // ✅ Handle file select & preview
+  // ✅ File upload & preview
   const handleFileChange = (e) => {
     const selected = e.target.files[0];
     if (selected) {
@@ -91,19 +91,15 @@ export default function ChatConversation() {
     }
   };
 
-  // ✅ Handle cancel file
+  // ✅ Cancel preview
   const cancelPreview = () => {
     setFile(null);
     setPreview(null);
   };
 
-  // ✅ Handle call buttons
-  const handleVoiceCall = () => {
-    navigate(`/call?chatId=${id}&type=voice`);
-  };
-  const handleVideoCall = () => {
-    navigate(`/call?chatId=${id}&type=video`);
-  };
+  // ✅ Handle call navigation
+  const handleVoiceCall = () => navigate(`/call?chatId=${id}&type=voice`);
+  const handleVideoCall = () => navigate(`/call?chatId=${id}&type=video`);
 
   return (
     <div
@@ -119,7 +115,7 @@ export default function ChatConversation() {
         flexDirection: "column",
       }}
     >
-      {/* 📞 Header */}
+      {/* 🧭 Header */}
       <div
         style={{
           background: theme === "dark" ? "#1e1e1e" : "#fff",
@@ -219,7 +215,7 @@ export default function ChatConversation() {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* 📎 Preview if selected */}
+      {/* 📎 Preview */}
       {preview && (
         <div
           style={{
@@ -235,7 +231,11 @@ export default function ChatConversation() {
               <img
                 src={preview}
                 alt="preview"
-                style={{ height: "60px", borderRadius: "8px", marginRight: "10px" }}
+                style={{
+                  height: "60px",
+                  borderRadius: "8px",
+                  marginRight: "10px",
+                }}
               />
             )}
             <span>{file.name}</span>
@@ -255,7 +255,7 @@ export default function ChatConversation() {
         </div>
       )}
 
-      {/* ✏️ Input */}
+      {/* ✏️ Message input */}
       <div
         style={{
           display: "flex",
