@@ -4,6 +4,7 @@ import {
   getAuth,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  updateProfile,
   onAuthStateChanged,
   signInWithPopup,
   GoogleAuthProvider,
@@ -13,6 +14,7 @@ import { app } from "../firebaseConfig";
 export default function HomePage() {
   const auth = getAuth(app);
   const navigate = useNavigate();
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isRegister, setIsRegister] = useState(false);
@@ -28,7 +30,12 @@ export default function HomePage() {
     e.preventDefault();
     try {
       if (isRegister) {
-        await createUserWithEmailAndPassword(auth, email, password);
+        const userCredential = await createUserWithEmailAndPassword(
+          auth,
+          email,
+          password
+        );
+        await updateProfile(userCredential.user, { displayName: name });
         alert("✅ Account created successfully!");
       } else {
         await signInWithEmailAndPassword(auth, email, password);
@@ -90,6 +97,23 @@ export default function HomePage() {
             marginBottom: "18px",
           }}
         >
+          {isRegister && (
+            <input
+              type="text"
+              placeholder="Full Name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required={isRegister}
+              style={{
+                padding: "12px",
+                borderRadius: "8px",
+                border: "none",
+                outline: "none",
+                fontSize: "15px",
+              }}
+            />
+          )}
+
           <input
             type="email"
             placeholder="Email address"
@@ -118,6 +142,7 @@ export default function HomePage() {
               fontSize: "15px",
             }}
           />
+
           <button
             type="submit"
             style={{
