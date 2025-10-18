@@ -1,4 +1,3 @@
-// src/components/HomePage.jsx
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -9,7 +8,7 @@ import {
   signInWithPopup,
   GoogleAuthProvider,
 } from "firebase/auth";
-import { app } from "../firebaseConfig"; // make sure firebaseConfig exports app
+import { app } from "../firebaseConfig";
 
 export default function HomePage() {
   const auth = getAuth(app);
@@ -25,7 +24,6 @@ export default function HomePage() {
     return unsubscribe;
   }, [auth, navigate]);
 
-  // Email login/register
   const handleEmailAuth = async (e) => {
     e.preventDefault();
     try {
@@ -41,7 +39,6 @@ export default function HomePage() {
     }
   };
 
-  // Google sign in
   const handleGoogleLogin = async () => {
     try {
       const provider = new GoogleAuthProvider();
@@ -57,100 +54,128 @@ export default function HomePage() {
       style={{
         minHeight: "100vh",
         display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
         justifyContent: "center",
-        background: "#f7f8fa",
-        padding: "1rem",
+        alignItems: "center",
+        background: "linear-gradient(135deg, #007bff 0%, #00c6ff 100%)",
+        fontFamily: "'Poppins', sans-serif",
       }}
     >
-      <h1 style={{ fontSize: "28px", marginBottom: "10px" }}>
-        Welcome to SmartTalk 💬
-      </h1>
-      <p style={{ color: "#555", marginBottom: "20px" }}>
-        {isRegister
-          ? "Create an account to start chatting"
-          : "Sign in with your email to continue"}
-      </p>
-
-      <form
-        onSubmit={handleEmailAuth}
+      <div
         style={{
-          display: "flex",
-          flexDirection: "column",
-          width: "280px",
-          gap: "12px",
+          background: "rgba(255,255,255,0.15)",
+          backdropFilter: "blur(10px)",
+          padding: "40px",
+          borderRadius: "16px",
+          boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
+          width: "90%",
+          maxWidth: "400px",
+          color: "#fff",
+          textAlign: "center",
+          animation: "fadeIn 0.6s ease-in-out",
         }}
       >
-        <input
-          type="email"
-          placeholder="Email address"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
+        <h1 style={{ fontSize: "26px", marginBottom: "8px" }}>SmartTalk 💬</h1>
+        <p style={{ fontSize: "14px", opacity: 0.9, marginBottom: "20px" }}>
+          {isRegister
+            ? "Create your account and start chatting instantly"
+            : "Login to your account and continue chatting"}
+        </p>
+
+        <form
+          onSubmit={handleEmailAuth}
           style={{
-            padding: "10px",
-            border: "1px solid #ccc",
-            borderRadius: "6px",
-          }}
-        />
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          style={{
-            padding: "10px",
-            border: "1px solid #ccc",
-            borderRadius: "6px",
-          }}
-        />
-        <button
-          type="submit"
-          style={{
-            background: "#007bff",
-            color: "white",
-            border: "none",
-            padding: "10px",
-            borderRadius: "6px",
-            cursor: "pointer",
+            display: "flex",
+            flexDirection: "column",
+            gap: "12px",
+            marginBottom: "18px",
           }}
         >
-          {isRegister ? "Register" : "Login"}
+          <input
+            type="email"
+            placeholder="Email address"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            style={{
+              padding: "12px",
+              borderRadius: "8px",
+              border: "none",
+              outline: "none",
+              fontSize: "15px",
+            }}
+          />
+          <input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            style={{
+              padding: "12px",
+              borderRadius: "8px",
+              border: "none",
+              outline: "none",
+              fontSize: "15px",
+            }}
+          />
+          <button
+            type="submit"
+            style={{
+              background: "#fff",
+              color: "#007bff",
+              fontWeight: "600",
+              border: "none",
+              borderRadius: "8px",
+              padding: "12px",
+              cursor: "pointer",
+              transition: "0.3s",
+            }}
+            onMouseOver={(e) => (e.target.style.background = "#e6e6e6")}
+            onMouseOut={(e) => (e.target.style.background = "#fff")}
+          >
+            {isRegister ? "Register" : "Login"}
+          </button>
+        </form>
+
+        <p
+          onClick={() => setIsRegister(!isRegister)}
+          style={{
+            cursor: "pointer",
+            textDecoration: "underline",
+            fontSize: "14px",
+            marginBottom: "16px",
+          }}
+        >
+          {isRegister
+            ? "Already have an account? Login"
+            : "Don’t have an account? Register"}
+        </p>
+
+        <p style={{ fontSize: "13px", opacity: 0.8, marginBottom: "10px" }}>or</p>
+
+        <button
+          onClick={handleGoogleLogin}
+          style={{
+            background: "#4285F4",
+            color: "white",
+            border: "none",
+            padding: "12px",
+            borderRadius: "8px",
+            fontSize: "15px",
+            cursor: "pointer",
+            width: "100%",
+          }}
+        >
+          🔑 Sign in with Google
         </button>
-      </form>
+      </div>
 
-      <p
-        onClick={() => setIsRegister(!isRegister)}
-        style={{
-          marginTop: "10px",
-          color: "#007bff",
-          cursor: "pointer",
-          textDecoration: "underline",
-        }}
-      >
-        {isRegister
-          ? "Already have an account? Login"
-          : "Don't have an account? Register"}
-      </p>
-
-      <p style={{ margin: "20px 0", color: "#888" }}>— or —</p>
-
-      <button
-        onClick={handleGoogleLogin}
-        style={{
-          background: "#4285F4",
-          color: "white",
-          border: "none",
-          padding: "12px 20px",
-          borderRadius: "6px",
-          fontSize: "16px",
-          cursor: "pointer",
-        }}
-      >
-        🔑 Sign in with Google
-      </button>
+      <style>{`
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
     </div>
   );
 }
