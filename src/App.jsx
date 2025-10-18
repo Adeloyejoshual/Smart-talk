@@ -1,14 +1,14 @@
 // src/App.jsx
 import React from "react";
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "./context/ThemeContext";
-import HomePage from "./components/HomePage";
+
+// ✅ Main pages
+import HomePage from "./components/HomePage"; // now acts as Login/Register + Google
 import ChatPage from "./components/ChatPage";
 import CallPage from "./components/CallPage";
 import SettingsPage from "./components/SettingsPage";
 import CallHistoryPage from "./components/CallHistoryPage";
-import Login from "./pages/Login";
-import Register from "./pages/Register";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 export default function App() {
@@ -16,22 +16,10 @@ export default function App() {
     <ThemeProvider>
       <Router>
         <Routes>
-          {/* ✅ Default route shows Login */}
-          <Route path="/" element={<Navigate to="/login" />} />
+          {/* ✅ Default route — shows HomePage (login/register) */}
+          <Route path="/" element={<HomePage />} />
 
-          {/* Public routes */}
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-
-          {/* Protected routes */}
-          <Route
-            path="/home"
-            element={
-              <ProtectedRoute>
-                <HomePage />
-              </ProtectedRoute>
-            }
-          />
+          {/* ✅ Protected routes — only for logged-in users */}
           <Route
             path="/chat"
             element={
