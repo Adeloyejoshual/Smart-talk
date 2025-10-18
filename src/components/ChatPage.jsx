@@ -1,12 +1,14 @@
 import React, { useEffect, useState, useContext } from "react";
-import { db, auth } from "../firebaseConfig";
 import {
   collection,
   query,
   where,
   orderBy,
   onSnapshot,
+  getDocs,
+  addDoc,
 } from "firebase/firestore";
+import { db, auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
 import { ThemeContext } from "../context/ThemeContext";
 
@@ -15,6 +17,10 @@ export default function ChatPage() {
   const [chats, setChats] = useState([]);
   const [search, setSearch] = useState("");
   const [user, setUser] = useState(null);
+  const [showAddFriend, setShowAddFriend] = useState(false);
+  const [friendEmail, setFriendEmail] = useState("");
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   // 🔐 Listen for auth state
@@ -49,22 +55,100 @@ export default function ChatPage() {
     return () => unsub();
   };
 
+  // ➕ Add friend by email
+  const handleAddFriend = async () => {
+    setMessage("");
+    setLoading(true);
+
+    try {
+      if (!friendEmail || !user) {
+        setMessage("Enter a valid email.");
+        setLoading(false);
+        return;
+      }
+
+      // Check if friend exists in Firestore
+      const usersRef = collection(db, "users");
+      const q = query(usersRef, where("email", "==", friendEmail));
+      const snapshot = await getDocs(q);
+
+      if (snapshot.empty) {
+        setMessage("❌ No user found with that email.");
+        setLoading(false);
+        return;
+      }
+
+      const friendDoc = snapshot.docs[0];
+      const friendData = friendDoc.data();
+
+      if (friendData.uid === user.uid) {
+        setMessage("⚠️ You can’t add yourself.");
+        setLoading(false);
+        return;
+      }
+
+      // Check if chat already exists
+      const chatRef = collection(db, "chats");
+      const chatQuery = query(
+        chatRef,
+        where("participants", "array-contains", user.uid)
+      );
+      const existingChats = await getDocs(chatQuery);
+      const existingChat = existingChats.docs.find((doc) => {
+        const data = doc.data();
+        return data.participants.includes(friendData.uid);
+      });
+
+      if (existingChat) {
+        setMessage("✅ Chat already exists. Opening chat...");
+        setShowAddFriend(false);
+        setLoading(false);
+        navigate(`/chat/${existingChat.id}`);
+        return;
+      }
+
+      // Create new chat document
+      const newChat = await addDoc(chatRef, {
+        participants: [user.uid, friendData.uid],
+        name: friendData.name || friendData.email.split("@")[0],
+        photoURL: friendData.photoURL || "",
+        lastMessage: "",
+        lastMessageAt: new Date(),
+      });
+
+      setMessage("✅ Friend added successfully!");
+      setFriendEmail("");
+      setShowAddFriend(false);
+
+      // ✅ Go directly to chat
+      navigate(`/chat/${newChat.id}`);
+    } catch (error) {
+      console.error(error);
+      setMessage("❌ Error adding friend.");
+    }
+
+    setLoading(false);
+  };
+
   // 📱 Open selected chat
   const openChat = (chat) => {
     navigate(`/chat/${chat.id}`);
   };
+
+  const isDark = theme === "dark";
 
   return (
     <div
       style={{
         background: wallpaper
           ? `url(${wallpaper}) no-repeat center/cover`
-          : theme === "dark"
+          : isDark
           ? "#121212"
           : "#fff",
         minHeight: "100vh",
-        color: theme === "dark" ? "#fff" : "#000",
-        paddingBottom: "70px",
+        color: isDark ? "#fff" : "#000",
+        paddingBottom: "90px",
+        transition: "0.3s ease",
       }}
     >
       {/* 🟢 Header */}
@@ -72,7 +156,7 @@ export default function ChatPage() {
         style={{
           position: "sticky",
           top: 0,
-          background: theme === "dark" ? "#1f1f1f" : "#f5f5f5",
+          background: isDark ? "#1f1f1f" : "#f5f5f5",
           padding: "15px",
           display: "flex",
           alignItems: "center",
@@ -103,8 +187,7 @@ export default function ChatPage() {
             alignItems: "center",
             gap: "10px",
             padding: "15px 20px",
-            borderBottom:
-              theme === "dark" ? "1px solid #333" : "1px solid #eee",
+            borderBottom: isDark ? "1px solid #333" : "1px solid #eee",
           }}
         >
           <img
@@ -138,8 +221,8 @@ export default function ChatPage() {
             padding: "10px",
             borderRadius: "8px",
             border: "1px solid #ccc",
-            background: theme === "dark" ? "#222" : "#fff",
-            color: theme === "dark" ? "#fff" : "#000",
+            background: isDark ? "#222" : "#fff",
+            color: isDark ? "#fff" : "#000",
           }}
         />
       </div>
@@ -177,7 +260,7 @@ export default function ChatPage() {
                     style={{
                       margin: 0,
                       fontSize: "14px",
-                      color: theme === "dark" ? "#ccc" : "#555",
+                      color: isDark ? "#ccc" : "#555",
                     }}
                   >
                     {chat.lastMessage || "No messages yet"}
@@ -188,10 +271,7 @@ export default function ChatPage() {
                 {chat.lastMessageAt
                   ? new Date(chat.lastMessageAt.seconds * 1000).toLocaleTimeString(
                       [],
-                      {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      }
+                      { hour: "2-digit", minute: "2-digit" }
                     )
                   : ""}
               </small>
@@ -199,12 +279,12 @@ export default function ChatPage() {
           ))}
       </div>
 
-      {/* ➕ Floating new chat button */}
+      {/* ➕ Floating button */}
       <button
-        onClick={() => navigate("/new-chat")}
+        onClick={() => setShowAddFriend(true)}
         style={{
           position: "fixed",
-          bottom: "20px",
+          bottom: "80px",
           right: "20px",
           background: "#25D366",
           color: "white",
@@ -214,11 +294,122 @@ export default function ChatPage() {
           height: "60px",
           fontSize: "28px",
           cursor: "pointer",
-          boxShadow: "0 3px 6px rgba(0,0,0,0.2)",
+          boxShadow: "0 3px 6px rgba(0,0,0,0.3)",
         }}
       >
         +
       </button>
+
+      {/* ⚙️ Floating profile & call buttons */}
+      <div
+        style={{
+          position: "fixed",
+          bottom: "10px",
+          width: "100%",
+          display: "flex",
+          justifyContent: "space-around",
+        }}
+      >
+        <button
+          onClick={() => navigate("/call")}
+          style={navBtnStyle("#007AFF")}
+        >
+          📞 Call
+        </button>
+        <button
+          onClick={() => navigate("/settings")}
+          style={navBtnStyle("#555")}
+        >
+          👤 Profile
+        </button>
+      </div>
+
+      {/* 📩 Add Friend Popup */}
+      {showAddFriend && (
+        <div style={popupOverlay}>
+          <div style={popupBox(isDark)}>
+            <h3>Add Friend by Email</h3>
+            <input
+              type="email"
+              value={friendEmail}
+              onChange={(e) => setFriendEmail(e.target.value)}
+              placeholder="Enter email address"
+              style={{
+                width: "100%",
+                padding: "10px",
+                borderRadius: "8px",
+                border: "1px solid #ccc",
+                marginBottom: "10px",
+              }}
+            />
+            <button
+              onClick={handleAddFriend}
+              disabled={loading}
+              style={{
+                width: "100%",
+                background: "#25D366",
+                color: "white",
+                padding: "10px",
+                border: "none",
+                borderRadius: "8px",
+                cursor: "pointer",
+              }}
+            >
+              {loading ? "Adding..." : "Add Friend"}
+            </button>
+            {message && <p style={{ marginTop: "10px" }}>{message}</p>}
+            <button
+              onClick={() => setShowAddFriend(false)}
+              style={{
+                marginTop: "10px",
+                width: "100%",
+                background: "#999",
+                color: "white",
+                padding: "10px",
+                border: "none",
+                borderRadius: "8px",
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+// 💅 Styles
+const navBtnStyle = (bg) => ({
+  background: bg,
+  color: "#fff",
+  border: "none",
+  borderRadius: "20px",
+  padding: "10px 20px",
+  fontWeight: "bold",
+  cursor: "pointer",
+  boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
+});
+
+const popupOverlay = {
+  position: "fixed",
+  top: 0,
+  left: 0,
+  width: "100%",
+  height: "100%",
+  background: "rgba(0,0,0,0.5)",
+  display: "flex",
+  justifyContent: "center",
+  alignItems: "center",
+  zIndex: 999,
+};
+
+const popupBox = (isDark) => ({
+  background: isDark ? "#222" : "#fff",
+  color: isDark ? "#fff" : "#000",
+  padding: "20px",
+  borderRadius: "12px",
+  width: "90%",
+  maxWidth: "400px",
+  textAlign: "center",
+});
