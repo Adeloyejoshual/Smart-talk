@@ -1,7 +1,10 @@
-// src/pages/Login.jsx
 import React, { useState } from "react";
-import { auth, provider } from "../firebaseConfig";
-import { signInWithEmailAndPassword, signInWithPopup } from "firebase/auth";
+import { auth, provider, db } from "../firebaseConfig";
+import {
+  signInWithEmailAndPassword,
+  signInWithPopup,
+} from "firebase/auth";
+import { doc, setDoc, getDoc } from "firebase/firestore";
 import { Link, useNavigate } from "react-router-dom";
 
 export default function Login() {
@@ -9,19 +12,53 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const navigate = useNavigate();
 
+  // 🔐 Email/Password Login
   const handleLogin = async (e) => {
     e.preventDefault();
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      const userCred = await signInWithEmailAndPassword(auth, email, password);
+      const user = userCred.user;
+
+      // ✅ Save user in Firestore if not already there
+      const userRef = doc(db, "users", user.uid);
+      const docSnap = await getDoc(userRef);
+
+      if (!docSnap.exists()) {
+        await setDoc(userRef, {
+          uid: user.uid,
+          name: user.displayName || user.email.split("@")[0],
+          email: user.email,
+          photoURL: user.photoURL || "",
+          createdAt: new Date(),
+        });
+      }
+
       navigate("/home");
     } catch (error) {
       alert(error.message);
     }
   };
 
+  // 🔐 Google Login
   const handleGoogle = async () => {
     try {
-      await signInWithPopup(auth, provider);
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+
+      // ✅ Save Google user in Firestore if not already there
+      const userRef = doc(db, "users", user.uid);
+      const docSnap = await getDoc(userRef);
+
+      if (!docSnap.exists()) {
+        await setDoc(userRef, {
+          uid: user.uid,
+          name: user.displayName || user.email.split("@")[0],
+          email: user.email,
+          photoURL: user.photoURL || "",
+          createdAt: new Date(),
+        });
+      }
+
       navigate("/home");
     } catch (error) {
       alert(error.message);
