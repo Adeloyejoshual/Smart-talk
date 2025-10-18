@@ -2,47 +2,50 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  auth,
-  signInWithGoogle,
-} from "../firebaseConfig";
-import {
+  getAuth,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   onAuthStateChanged,
+  signInWithPopup,
+  GoogleAuthProvider,
 } from "firebase/auth";
+import { app } from "../firebaseConfig"; // make sure firebaseConfig exports app
 
 export default function HomePage() {
+  const auth = getAuth(app);
+  const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isRegister, setIsRegister] = useState(false);
-  const navigate = useNavigate();
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) navigate("/chat");
     });
     return unsubscribe;
-  }, [navigate]);
+  }, [auth, navigate]);
 
+  // Email login/register
   const handleEmailAuth = async (e) => {
     e.preventDefault();
     try {
       if (isRegister) {
         await createUserWithEmailAndPassword(auth, email, password);
-        alert("Account created successfully!");
+        alert("✅ Account created successfully!");
       } else {
         await signInWithEmailAndPassword(auth, email, password);
       }
       navigate("/chat");
     } catch (error) {
-      console.error("Auth error:", error);
       alert(error.message);
     }
   };
 
+  // Google sign in
   const handleGoogleLogin = async () => {
     try {
-      await signInWithGoogle();
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
       navigate("/chat");
     } catch (error) {
       alert("Google Sign-In failed");
@@ -81,7 +84,7 @@ export default function HomePage() {
       >
         <input
           type="email"
-          placeholder="Email"
+          placeholder="Email address"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
