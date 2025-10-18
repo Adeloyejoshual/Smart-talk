@@ -8,7 +8,8 @@ import {
   updateProfile,
   onAuthStateChanged,
 } from "firebase/auth";
-import { app } from "../firebaseConfig";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { app, db } from "../firebaseConfig";
 
 export default function HomePage() {
   const auth = getAuth(app);
@@ -32,12 +33,27 @@ export default function HomePage() {
     e.preventDefault();
     try {
       if (isRegister) {
+        // 🆕 Register user
         const { user } = await createUserWithEmailAndPassword(auth, email, password);
+
+        // Set display name in Firebase Auth
         await updateProfile(user, { displayName: name });
+
+        // Save user profile in Firestore
+        await setDoc(doc(db, "users", user.uid), {
+          uid: user.uid,
+          name,
+          email,
+          createdAt: serverTimestamp(),
+          balance: 0,
+        });
+
         alert("✅ Account created successfully!");
       } else {
+        // 🔑 Login
         await signInWithEmailAndPassword(auth, email, password);
       }
+
       navigate("/chat");
     } catch (error) {
       alert(error.message);
