@@ -1,85 +1,82 @@
+// src/components/HomePage.jsx
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  getAuth,
-  signInWithEmailAndPassword,
+  auth,
+  signInWithGoogle,
+} from "../firebaseConfig";
+import {
   createUserWithEmailAndPassword,
-  GoogleAuthProvider,
-  signInWithPopup,
+  signInWithEmailAndPassword,
+  onAuthStateChanged,
 } from "firebase/auth";
-import { app } from "../firebaseConfig"; // make sure firebaseConfig exports 'app'
 
 export default function HomePage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isRegister, setIsRegister] = useState(false);
-  const [error, setError] = useState("");
   const navigate = useNavigate();
 
-  const auth = getAuth(app);
-
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((user) => {
-      if (user) navigate("/chatlist");
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) navigate("/chat");
     });
-    return () => unsubscribe();
-  }, [auth, navigate]);
+    return unsubscribe;
+  }, [navigate]);
 
-  const handleSubmit = async (e) => {
+  const handleEmailAuth = async (e) => {
     e.preventDefault();
-    setError("");
-
     try {
       if (isRegister) {
         await createUserWithEmailAndPassword(auth, email, password);
+        alert("Account created successfully!");
       } else {
         await signInWithEmailAndPassword(auth, email, password);
       }
-      navigate("/chatlist");
-    } catch (err) {
-      setError(err.message);
+      navigate("/chat");
+    } catch (error) {
+      console.error("Auth error:", error);
+      alert(error.message);
     }
   };
 
   const handleGoogleLogin = async () => {
     try {
-      const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
-      navigate("/chatlist");
-    } catch (err) {
-      console.error(err);
-      setError("Google Sign-In failed");
+      await signInWithGoogle();
+      navigate("/chat");
+    } catch (error) {
+      alert("Google Sign-In failed");
     }
   };
 
   return (
     <div
       style={{
+        minHeight: "100vh",
         display: "flex",
         flexDirection: "column",
-        justifyContent: "center",
         alignItems: "center",
-        height: "100vh",
-        background: "linear-gradient(135deg, #2b5876, #4e4376)",
-        color: "white",
-        fontFamily: "sans-serif",
+        justifyContent: "center",
+        background: "#f7f8fa",
+        padding: "1rem",
       }}
     >
-      <h1 style={{ fontSize: "28px", marginBottom: "20px" }}>
-        Welcome to CallChat App
+      <h1 style={{ fontSize: "28px", marginBottom: "10px" }}>
+        Welcome to SmartTalk 💬
       </h1>
+      <p style={{ color: "#555", marginBottom: "20px" }}>
+        {isRegister
+          ? "Create an account to start chatting"
+          : "Sign in with your email to continue"}
+      </p>
 
       <form
-        onSubmit={handleSubmit}
+        onSubmit={handleEmailAuth}
         style={{
-          background: "rgba(255,255,255,0.1)",
-          padding: "25px",
-          borderRadius: "12px",
-          width: "300px",
           display: "flex",
           flexDirection: "column",
-          alignItems: "center",
-          backdropFilter: "blur(10px)",
+          width: "280px",
+          gap: "12px",
         }}
       >
         <input
@@ -89,11 +86,9 @@ export default function HomePage() {
           onChange={(e) => setEmail(e.target.value)}
           required
           style={{
-            width: "100%",
             padding: "10px",
-            marginBottom: "10px",
+            border: "1px solid #ccc",
             borderRadius: "6px",
-            border: "none",
           }}
         />
         <input
@@ -103,14 +98,11 @@ export default function HomePage() {
           onChange={(e) => setPassword(e.target.value)}
           required
           style={{
-            width: "100%",
             padding: "10px",
-            marginBottom: "15px",
+            border: "1px solid #ccc",
             borderRadius: "6px",
-            border: "none",
           }}
         />
-
         <button
           type="submit"
           style={{
@@ -118,54 +110,44 @@ export default function HomePage() {
             color: "white",
             border: "none",
             padding: "10px",
-            width: "100%",
             borderRadius: "6px",
             cursor: "pointer",
-            fontWeight: "bold",
           }}
         >
           {isRegister ? "Register" : "Login"}
         </button>
-
-        <p
-          style={{
-            marginTop: "10px",
-            fontSize: "14px",
-            cursor: "pointer",
-            color: "#a0e7ff",
-          }}
-          onClick={() => setIsRegister(!isRegister)}
-        >
-          {isRegister
-            ? "Already have an account? Login"
-            : "Don’t have an account? Register"}
-        </p>
-
-        <hr style={{ width: "100%", margin: "15px 0", borderColor: "#ccc" }} />
-
-        <button
-          onClick={handleGoogleLogin}
-          type="button"
-          style={{
-            background: "#DB4437",
-            color: "white",
-            border: "none",
-            padding: "10px",
-            width: "100%",
-            borderRadius: "6px",
-            cursor: "pointer",
-            fontWeight: "bold",
-          }}
-        >
-          Sign in with Google
-        </button>
-
-        {error && (
-          <p style={{ color: "#ffcccc", marginTop: "10px", fontSize: "14px" }}>
-            {error}
-          </p>
-        )}
       </form>
+
+      <p
+        onClick={() => setIsRegister(!isRegister)}
+        style={{
+          marginTop: "10px",
+          color: "#007bff",
+          cursor: "pointer",
+          textDecoration: "underline",
+        }}
+      >
+        {isRegister
+          ? "Already have an account? Login"
+          : "Don't have an account? Register"}
+      </p>
+
+      <p style={{ margin: "20px 0", color: "#888" }}>— or —</p>
+
+      <button
+        onClick={handleGoogleLogin}
+        style={{
+          background: "#4285F4",
+          color: "white",
+          border: "none",
+          padding: "12px 20px",
+          borderRadius: "6px",
+          fontSize: "16px",
+          cursor: "pointer",
+        }}
+      >
+        🔑 Sign in with Google
+      </button>
     </div>
   );
 }
