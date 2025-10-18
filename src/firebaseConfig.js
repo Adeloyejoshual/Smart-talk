@@ -1,6 +1,6 @@
 // src/firebaseConfig.js
 import { initializeApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
@@ -13,34 +13,21 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-// ✅ Initialize Firebase once
+// Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// ✅ Firebase services
+// Services
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
-export const googleProvider = new GoogleAuthProvider();
 
-// ✅ Auth helpers
-export const signInWithGoogle = async () => {
-  try {
-    const result = await signInWithPopup(auth, googleProvider);
-    console.log("✅ Signed in:", result.user);
-    return result.user;
-  } catch (error) {
-    console.error("❌ Google Sign-In Error:", error);
-    throw error;
-  }
-};
+// Email/password helpers
+export const registerUser = (email, password) =>
+  createUserWithEmailAndPassword(auth, email, password);
 
-export const logout = async () => {
-  try {
-    await signOut(auth);
-  } catch (error) {
-    console.error("Logout Error:", error);
-  }
-};
+export const loginUser = (email, password) =>
+  signInWithEmailAndPassword(auth, email, password);
 
-// ✅ Export app instance
+export const logout = () => signOut(auth);
+
 export { app };
