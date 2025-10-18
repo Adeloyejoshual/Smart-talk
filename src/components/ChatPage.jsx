@@ -23,7 +23,7 @@ export default function ChatPage() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  // 🔐 Listen for login/logout
+  // 🔐 Listen for auth
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((u) => {
       if (u) setUser(u);
@@ -32,7 +32,7 @@ export default function ChatPage() {
     return unsubscribe;
   }, [navigate]);
 
-  // 💬 Real-time Chat Listener
+  // 💬 Load Chats
   useEffect(() => {
     if (!user) return;
 
@@ -65,7 +65,7 @@ export default function ChatPage() {
         return;
       }
 
-      // 🔍 Check if friend exists
+      // 🔍 Find friend by email
       const usersRef = collection(db, "users");
       const q = query(usersRef, where("email", "==", friendEmail));
       const snapshot = await getDocs(q);
@@ -98,7 +98,7 @@ export default function ChatPage() {
       });
 
       if (existingChat) {
-        setMessage("✅ Chat already exists. Opening chat...");
+        setMessage("✅ Chat already exists!");
         setShowAddFriend(false);
         setLoading(false);
         navigate(`/chat/${existingChat.id}`);
@@ -114,11 +114,12 @@ export default function ChatPage() {
         lastMessageAt: new Date(),
       });
 
+      // ✅ Success flow
       setMessage("✅ Friend added successfully!");
       setFriendEmail("");
       setShowAddFriend(false);
 
-      // ✅ Redirect to chat
+      // ⚡ Redirect to ChatConversationPage immediately
       navigate(`/chat/${newChat.id}`);
     } catch (error) {
       console.error(error);
@@ -128,10 +129,10 @@ export default function ChatPage() {
     setLoading(false);
   };
 
-  // 📱 Open chat
-  const openChat = (chat) => navigate(`/chat/${chat.id}`);
-
   const isDark = theme === "dark";
+
+  // 📱 Open Chat
+  const openChat = (chatId) => navigate(`/chat/${chatId}`);
 
   return (
     <div
@@ -175,7 +176,7 @@ export default function ChatPage() {
         </button>
       </div>
 
-      {/* 👋 Welcome Banner */}
+      {/* 👋 Welcome */}
       {user && (
         <div
           style={{
@@ -200,7 +201,7 @@ export default function ChatPage() {
             <h3 style={{ margin: 0 }}>
               Welcome, {user.displayName || user.email.split("@")[0]} 👋
             </h3>
-            <small style={{ color: "#888" }}>Ready to start chatting?</small>
+            <small style={{ color: "#888" }}>Start chatting now!</small>
           </div>
         </div>
       )}
@@ -225,6 +226,12 @@ export default function ChatPage() {
 
       {/* 💬 Chat List */}
       <div style={{ padding: "10px" }}>
+        {chats.length === 0 && (
+          <p style={{ textAlign: "center", color: "#999" }}>
+            No chats yet. Add a friend to start chatting!
+          </p>
+        )}
+
         {chats
           .filter(
             (c) =>
@@ -234,7 +241,7 @@ export default function ChatPage() {
           .map((chat) => (
             <div
               key={chat.id}
-              onClick={() => openChat(chat)}
+              onClick={() => openChat(chat.id)}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -279,7 +286,7 @@ export default function ChatPage() {
           ))}
       </div>
 
-      {/* ➕ Floating Add Button */}
+      {/* ➕ Floating Add Friend */}
       <button
         onClick={() => setShowAddFriend(true)}
         style={{
