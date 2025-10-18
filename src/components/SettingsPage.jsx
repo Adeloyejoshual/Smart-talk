@@ -10,6 +10,8 @@ import {
   orderBy,
   onSnapshot as onCollection,
 } from "firebase/firestore";
+import { signOut } from "firebase/auth";
+import { useNavigate } from "react-router-dom";
 import { handleStripePayment, handleFlutterwavePayment } from "../payments";
 import { ThemeContext } from "../context/ThemeContext";
 
@@ -21,6 +23,17 @@ export default function SettingsPage() {
   const [newTheme, setNewTheme] = useState(theme);
   const [newWallpaper, setNewWallpaper] = useState(wallpaper);
   const [previewWallpaper, setPreviewWallpaper] = useState(wallpaper);
+  const navigate = useNavigate();
+
+  // ✅ Logout handler
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      navigate("/"); // redirect to login
+    } catch (error) {
+      alert("Logout failed: " + error.message);
+    }
+  };
 
   // ✅ Load current user and wallet in real-time
   useEffect(() => {
@@ -132,7 +145,6 @@ export default function SettingsPage() {
           style={inputStyle(isDark)}
         />
 
-        {/* 🔥 Live Preview */}
         <div
           style={{
             ...previewBox,
@@ -177,6 +189,13 @@ export default function SettingsPage() {
             ))}
           </ul>
         )}
+      </div>
+
+      {/* 🚪 Logout */}
+      <div style={{ marginTop: "30px", textAlign: "center" }}>
+        <button onClick={handleLogout} style={btnStyle("#d32f2f")}>
+          🚪 Logout
+        </button>
       </div>
     </div>
   );
