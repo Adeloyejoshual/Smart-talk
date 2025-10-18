@@ -1,7 +1,10 @@
-// src/pages/Register.jsx
 import React, { useState } from "react";
-import { auth } from "../firebaseConfig";
-import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
+import { auth, db } from "../firebaseConfig";
+import {
+  createUserWithEmailAndPassword,
+  updateProfile,
+} from "firebase/auth";
+import { doc, setDoc } from "firebase/firestore";
 import { Link, useNavigate } from "react-router-dom";
 
 export default function Register() {
@@ -12,9 +15,24 @@ export default function Register() {
 
   const handleRegister = async (e) => {
     e.preventDefault();
+
     try {
+      // 🆕 Create new user in Firebase Auth
       const { user } = await createUserWithEmailAndPassword(auth, email, password);
+
+      // 🧑 Update display name
       await updateProfile(user, { displayName: name });
+
+      // 💾 Save user data in Firestore
+      await setDoc(doc(db, "users", user.uid), {
+        uid: user.uid,
+        name,
+        email,
+        photoURL: user.photoURL || "",
+        createdAt: new Date(),
+      });
+
+      alert("✅ Account created successfully!");
       navigate("/home");
     } catch (error) {
       alert(error.message);
@@ -51,6 +69,7 @@ export default function Register() {
         />
         <button type="submit" style={styles.button}>Register</button>
       </form>
+
       <p>
         Already have an account? <Link to="/login">Login</Link>
       </p>
