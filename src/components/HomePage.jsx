@@ -7,8 +7,6 @@ import {
   signInWithEmailAndPassword,
   updateProfile,
   onAuthStateChanged,
-  GoogleAuthProvider,
-  signInWithPopup,
 } from "firebase/auth";
 import { app } from "../firebaseConfig";
 
@@ -21,7 +19,7 @@ export default function HomePage() {
   const [password, setPassword] = useState("");
   const [isRegister, setIsRegister] = useState(false);
 
-  // Redirect logged-in user automatically
+  // 🔄 Redirect logged-in users automatically
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
       if (user) navigate("/chat");
@@ -29,7 +27,7 @@ export default function HomePage() {
     return unsub;
   }, [auth, navigate]);
 
-  // 🔐 Email & Password auth
+  // 🔐 Email & Password auth (Login or Register)
   const handleAuth = async (e) => {
     e.preventDefault();
     try {
@@ -43,17 +41,6 @@ export default function HomePage() {
       navigate("/chat");
     } catch (error) {
       alert(error.message);
-    }
-  };
-
-  // 🔑 Google Sign-In
-  const handleGoogleLogin = async () => {
-    try {
-      const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
-      navigate("/chat");
-    } catch (error) {
-      alert("❌ Google Sign-In failed: " + error.message);
     }
   };
 
@@ -104,11 +91,6 @@ export default function HomePage() {
             ? "Already have an account? Login"
             : "Don’t have an account? Register"}
         </p>
-
-        <hr style={styles.divider} />
-        <button onClick={handleGoogleLogin} style={styles.googleButton}>
-          🔑 Sign in with Google
-        </button>
       </div>
     </div>
   );
@@ -162,19 +144,5 @@ const styles = {
     textDecoration: "underline",
     fontSize: "14px",
     marginTop: "16px",
-  },
-  divider: {
-    border: "0.5px solid rgba(255,255,255,0.3)",
-    margin: "20px 0",
-  },
-  googleButton: {
-    background: "#4285F4",
-    color: "white",
-    border: "none",
-    padding: "12px",
-    borderRadius: "8px",
-    fontSize: "15px",
-    cursor: "pointer",
-    width: "100%",
   },
 };
