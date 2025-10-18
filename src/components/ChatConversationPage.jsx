@@ -1,4 +1,3 @@
-// src/components/ChatConversationPage.jsx
 import React, { useEffect, useState, useRef, useContext } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
@@ -11,7 +10,8 @@ import {
   onSnapshot,
   serverTimestamp,
 } from "firebase/firestore";
-import { auth, db } from "../firebaseConfig";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { auth, db, storage } from "../firebaseConfig";
 import { ThemeContext } from "../context/ThemeContext";
 
 export default function ChatConversationPage() {
@@ -20,69 +20,102 @@ export default function ChatConversationPage() {
   const { theme, wallpaper } = useContext(ThemeContext);
 
   const [chatInfo, setChatInfo] = useState(null);
+  const [friendInfo, setFriendInfo] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
+  const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef(null);
 
-  // ✅ Scroll to latest message
+  // ✅ Scroll to bottom when new messages arrive
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
-
   useEffect(scrollToBottom, [messages]);
 
   // ✅ Load chat info
   useEffect(() => {
     const loadChat = async () => {
-      const docRef = doc(db, "chats", id);
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-        setChatInfo(docSnap.data());
+      const chatRef = doc(db, "chats", id);
+      const chatSnap = await getDoc(chatRef);
+      if (chatSnap.exists()) {
+        const chatData = chatSnap.data();
+        setChatInfo(chatData);
+
+        // Determine friend UID
+        const friendId = chatData.members?.find(
+          (uid) => uid !== auth.currentUser.uid
+        );
+        if (friendId) {
+          const friendRef = doc(db, "users", friendId);
+          // Listen for live presence updates
+          return onSnapshot(friendRef, (friendSnap) => {
+            if (friendSnap.exists()) {
+              setFriendInfo(friendSnap.data());
+            }
+          });
+        }
       } else {
         alert("Chat not found!");
-        navigate("/home");
+        navigate("/chat");
       }
     };
-    loadChat();
+    const unsub = loadChat();
+    return () => unsub && unsub();
   }, [id, navigate]);
 
-  // ✅ Real-time message listener
+  // ✅ Real-time listener for messages
   useEffect(() => {
     const msgRef = collection(db, "chats", id, "messages");
     const q = query(msgRef, orderBy("createdAt", "asc"));
-
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setMessages(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
     });
-
     return () => unsubscribe();
   }, [id]);
 
-  // ✅ Send message
+  // ✅ Send message (text/file)
   const handleSend = async () => {
     if (!input.trim() && !file) return;
+    setLoading(true);
 
-    const messageData = {
-      sender: auth.currentUser.uid,
-      text: input.trim() || "",
-      createdAt: serverTimestamp(),
-      type: file ? (file.type.startsWith("image") ? "image" : "file") : "text",
-    };
+    try {
+      let fileURL = null;
+      let fileName = null;
+      let type = "text";
 
-    if (file) {
-      messageData.fileName = file.name;
-      messageData.fileURL = URL.createObjectURL(file); // Temporary preview
+      if (file) {
+        const storageRef = ref(
+          storage,
+          `chatFiles/${id}/${Date.now()}_${file.name}`
+        );
+        await uploadBytes(storageRef, file);
+        fileURL = await getDownloadURL(storageRef);
+        fileName = file.name;
+        type = file.type.startsWith("image") ? "image" : "file";
+      }
+
+      await addDoc(collection(db, "chats", id, "messages"), {
+        sender: auth.currentUser.uid,
+        text: input.trim(),
+        fileURL,
+        fileName,
+        type,
+        createdAt: serverTimestamp(),
+      });
+
+      setInput("");
+      setFile(null);
+      setPreview(null);
+    } catch (err) {
+      console.error("Send error:", err);
+      alert("Error sending message.");
+    } finally {
+      setLoading(false);
     }
-
-    await addDoc(collection(db, "chats", id, "messages"), messageData);
-    setInput("");
-    setFile(null);
-    setPreview(null);
   };
 
-  // ✅ File upload & preview
   const handleFileChange = (e) => {
     const selected = e.target.files[0];
     if (selected) {
@@ -90,14 +123,11 @@ export default function ChatConversationPage() {
       setPreview(URL.createObjectURL(selected));
     }
   };
-
-  // ✅ Cancel preview
   const cancelPreview = () => {
     setFile(null);
     setPreview(null);
   };
 
-  // ✅ Handle call navigation
   const handleVoiceCall = () => navigate(`/call?chatId=${id}&type=voice`);
   const handleVideoCall = () => navigate(`/call?chatId=${id}&type=video`);
 
@@ -119,17 +149,52 @@ export default function ChatConversationPage() {
       <div
         style={{
           background: theme === "dark" ? "#1e1e1e" : "#fff",
-          padding: "15px 20px",
+          padding: "12px 18px",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
           borderBottom: "1px solid #ccc",
         }}
       >
-        <div>
-          <h3 style={{ margin: 0 }}>{chatInfo?.name || "Chat"}</h3>
-          <small>{chatInfo?.email || ""}</small>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          {/* 🖼 Profile picture */}
+          <img
+            src={friendInfo?.photoURL || "/default-avatar.png"}
+            alt="profile"
+            style={{
+              width: "45px",
+              height: "45px",
+              borderRadius: "50%",
+              objectFit: "cover",
+              border: "2px solid #ccc",
+            }}
+          />
+          <div>
+            <h4 style={{ margin: 0 }}>
+              {friendInfo?.displayName || chatInfo?.name || "Chat"}
+            </h4>
+            <small style={{ color: theme === "dark" ? "#bbb" : "#666" }}>
+              {friendInfo?.email || chatInfo?.email}
+            </small>
+            <br />
+            <small
+              style={{
+                color: friendInfo?.online ? "limegreen" : "#aaa",
+                fontSize: "12px",
+              }}
+            >
+              {friendInfo?.online
+                ? "Online"
+                : friendInfo?.lastSeen
+                ? `Last seen ${new Date(
+                    friendInfo.lastSeen.seconds * 1000
+                  ).toLocaleString()}`
+                : "Offline"}
+            </small>
+          </div>
         </div>
+
+        {/* 📞 🎥 Buttons */}
         <div>
           <button
             onClick={handleVoiceCall}
@@ -255,7 +320,7 @@ export default function ChatConversationPage() {
         </div>
       )}
 
-      {/* ✏️ Message input */}
+      {/* ✏️ Input */}
       <div
         style={{
           display: "flex",
@@ -299,16 +364,18 @@ export default function ChatConversationPage() {
         </label>
         <button
           onClick={handleSend}
+          disabled={loading}
           style={{
             marginLeft: "5px",
             padding: "10px 15px",
-            background: "#007BFF",
+            background: loading ? "#999" : "#007BFF",
             color: "#fff",
             border: "none",
             borderRadius: "8px",
+            cursor: loading ? "not-allowed" : "pointer",
           }}
         >
-          Send
+          {loading ? "Sending..." : "Send"}
         </button>
       </div>
     </div>
