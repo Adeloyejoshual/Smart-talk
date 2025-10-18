@@ -1,7 +1,18 @@
 // src/firebaseConfig.js
 import { initializeApp } from "firebase/app";
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import {
+  getAuth,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  updateProfile,
+} from "firebase/auth";
+import {
+  getFirestore,
+  doc,
+  setDoc,
+  serverTimestamp,
+} from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
@@ -21,13 +32,31 @@ export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
 
-// Email/password helpers
-export const registerUser = (email, password) =>
-  createUserWithEmailAndPassword(auth, email, password);
+// 🆕 Register user with name, email, and password
+export const registerUser = async (name, email, password) => {
+  const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+  const user = userCredential.user;
 
+  // Update Firebase Auth profile
+  await updateProfile(user, { displayName: name });
+
+  // Create Firestore user document
+  await setDoc(doc(db, "users", user.uid), {
+    name,
+    email,
+    createdAt: serverTimestamp(),
+    balance: 0,
+    photoURL: null,
+  });
+
+  return user;
+};
+
+// 🔑 Login
 export const loginUser = (email, password) =>
   signInWithEmailAndPassword(auth, email, password);
 
+// 🚪 Logout
 export const logout = () => signOut(auth);
 
 export { app };
