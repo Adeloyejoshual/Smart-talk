@@ -15,7 +15,7 @@ import { auth, db, storage } from "../firebaseConfig";
 import { ThemeContext } from "../context/ThemeContext";
 
 export default function ChatConversationPage() {
-  const { id } = useParams(); // Chat ID from URL
+  const { chatId } = useParams();
   const navigate = useNavigate();
   const { theme, wallpaper } = useContext(ThemeContext);
 
@@ -28,54 +28,58 @@ export default function ChatConversationPage() {
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef(null);
 
-  // ✅ Scroll to bottom when new messages arrive
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
   useEffect(scrollToBottom, [messages]);
 
-  // ✅ Load chat info
+  // ✅ Load chat info & friend info
   useEffect(() => {
-    const loadChat = async () => {
-      const chatRef = doc(db, "chats", id);
-      const chatSnap = await getDoc(chatRef);
-      if (chatSnap.exists()) {
-        const chatData = chatSnap.data();
-        setChatInfo(chatData);
+    if (!chatId) return;
 
-        // Determine friend UID
-        const friendId = chatData.members?.find(
-          (uid) => uid !== auth.currentUser.uid
-        );
-        if (friendId) {
-          const friendRef = doc(db, "users", friendId);
-          // Listen for live presence updates
-          return onSnapshot(friendRef, (friendSnap) => {
-            if (friendSnap.exists()) {
-              setFriendInfo(friendSnap.data());
-            }
-          });
-        }
-      } else {
+    const chatRef = doc(db, "chats", chatId);
+
+    const loadChat = async () => {
+      const chatSnap = await getDoc(chatRef);
+      if (!chatSnap.exists()) {
         alert("Chat not found!");
         navigate("/chat");
+        return;
+      }
+
+      const chatData = chatSnap.data();
+      setChatInfo(chatData);
+
+      // ✅ Fix: use participants (not members)
+      const friendId = chatData.participants?.find(
+        (uid) => uid !== auth.currentUser.uid
+      );
+      if (friendId) {
+        const friendRef = doc(db, "users", friendId);
+        const unsub = onSnapshot(friendRef, (snap) => {
+          if (snap.exists()) setFriendInfo(snap.data());
+        });
+        return unsub;
       }
     };
-    const unsub = loadChat();
-    return () => unsub && unsub();
-  }, [id, navigate]);
 
-  // ✅ Real-time listener for messages
+    loadChat();
+  }, [chatId, navigate]);
+
+  // ✅ Real-time message listener
   useEffect(() => {
-    const msgRef = collection(db, "chats", id, "messages");
+    if (!chatId) return;
+    const msgRef = collection(db, "chats", chatId, "messages");
     const q = query(msgRef, orderBy("createdAt", "asc"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+
+    const unsub = onSnapshot(q, (snapshot) => {
       setMessages(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
     });
-    return () => unsubscribe();
-  }, [id]);
 
-  // ✅ Send message (text/file)
+    return () => unsub();
+  }, [chatId]);
+
+  // ✅ Send message
   const handleSend = async () => {
     if (!input.trim() && !file) return;
     setLoading(true);
@@ -88,7 +92,7 @@ export default function ChatConversationPage() {
       if (file) {
         const storageRef = ref(
           storage,
-          `chatFiles/${id}/${Date.now()}_${file.name}`
+          `chatFiles/${chatId}/${Date.now()}_${file.name}`
         );
         await uploadBytes(storageRef, file);
         fileURL = await getDownloadURL(storageRef);
@@ -96,7 +100,7 @@ export default function ChatConversationPage() {
         type = file.type.startsWith("image") ? "image" : "file";
       }
 
-      await addDoc(collection(db, "chats", id, "messages"), {
+      await addDoc(collection(db, "chats", chatId, "messages"), {
         sender: auth.currentUser.uid,
         text: input.trim(),
         fileURL,
@@ -108,6 +112,7 @@ export default function ChatConversationPage() {
       setInput("");
       setFile(null);
       setPreview(null);
+      scrollToBottom();
     } catch (err) {
       console.error("Send error:", err);
       alert("Error sending message.");
@@ -123,13 +128,32 @@ export default function ChatConversationPage() {
       setPreview(URL.createObjectURL(selected));
     }
   };
+
   const cancelPreview = () => {
     setFile(null);
     setPreview(null);
   };
 
-  const handleVoiceCall = () => navigate(`/call?chatId=${id}&type=voice`);
-  const handleVideoCall = () => navigate(`/call?chatId=${id}&type=video`);
+  const handleVoiceCall = () => navigate(`/call?chatId=${chatId}&type=voice`);
+  const handleVideoCall = () => navigate(`/call?chatId=${chatId}&type=video`);
+
+  // 🧭 Back button
+  const handleBack = () => navigate("/chat");
+
+  if (!chatInfo)
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: theme === "dark" ? "#fff" : "#000",
+        }}
+      >
+        Loading chat...
+      </div>
+    );
 
   return (
     <div
@@ -154,10 +178,24 @@ export default function ChatConversationPage() {
           alignItems: "center",
           justifyContent: "space-between",
           borderBottom: "1px solid #ccc",
+          position: "sticky",
+          top: 0,
+          zIndex: 2,
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          {/* 🖼 Profile picture */}
+          <button
+            onClick={handleBack}
+            style={{
+              background: "transparent",
+              border: "none",
+              fontSize: "22px",
+              cursor: "pointer",
+              marginRight: "8px",
+            }}
+          >
+            ←
+          </button>
           <img
             src={friendInfo?.photoURL || "/default-avatar.png"}
             alt="profile"
@@ -174,48 +212,22 @@ export default function ChatConversationPage() {
               {friendInfo?.displayName || chatInfo?.name || "Chat"}
             </h4>
             <small style={{ color: theme === "dark" ? "#bbb" : "#666" }}>
-              {friendInfo?.email || chatInfo?.email}
-            </small>
-            <br />
-            <small
-              style={{
-                color: friendInfo?.online ? "limegreen" : "#aaa",
-                fontSize: "12px",
-              }}
-            >
-              {friendInfo?.online
-                ? "Online"
-                : friendInfo?.lastSeen
-                ? `Last seen ${new Date(
-                    friendInfo.lastSeen.seconds * 1000
-                  ).toLocaleString()}`
-                : "Offline"}
+              {friendInfo?.email || ""}
             </small>
           </div>
         </div>
 
-        {/* 📞 🎥 Buttons */}
+        {/* 📞 🎥 */}
         <div>
           <button
             onClick={handleVoiceCall}
-            style={{
-              marginRight: "10px",
-              background: "transparent",
-              border: "none",
-              fontSize: "20px",
-              cursor: "pointer",
-            }}
+            style={iconBtnStyle}
           >
             📞
           </button>
           <button
             onClick={handleVideoCall}
-            style={{
-              background: "transparent",
-              border: "none",
-              fontSize: "20px",
-              cursor: "pointer",
-            }}
+            style={iconBtnStyle}
           >
             🎥
           </button>
@@ -351,15 +363,7 @@ export default function ChatConversationPage() {
           style={{ display: "none" }}
           id="fileInput"
         />
-        <label
-          htmlFor="fileInput"
-          style={{
-            padding: "10px",
-            cursor: "pointer",
-            fontSize: "18px",
-            marginLeft: "5px",
-          }}
-        >
+        <label htmlFor="fileInput" style={{ padding: "10px", cursor: "pointer", fontSize: "18px" }}>
           📎
         </label>
         <button
@@ -381,3 +385,12 @@ export default function ChatConversationPage() {
     </div>
   );
 }
+
+// 🎨 Small style helper
+const iconBtnStyle = {
+  marginLeft: "8px",
+  background: "transparent",
+  border: "none",
+  fontSize: "20px",
+  cursor: "pointer",
+};
