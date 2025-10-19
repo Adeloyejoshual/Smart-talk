@@ -29,7 +29,6 @@ export default function ChatConversationPage() {
   const [loading, setLoading] = useState(false);
 
   const messagesEndRef = useRef(null);
-
   const isDark = theme === "dark";
 
   // Scroll to bottom
@@ -38,7 +37,7 @@ export default function ChatConversationPage() {
   };
   useEffect(scrollToBottom, [messages]);
 
-  // Load chat & friend info
+  // Load chat and friend info
   useEffect(() => {
     if (!chatId) return;
 
@@ -70,11 +69,11 @@ export default function ChatConversationPage() {
     loadChat();
   }, [chatId, navigate]);
 
-  // Real-time messages listener
+  // Listen to messages in real-time
   useEffect(() => {
     if (!chatId) return;
     const msgRef = collection(db, "chats", chatId, "messages");
-    const q = query(msgRef, orderBy("createdAt", "asc")); // oldest first
+    const q = query(msgRef, orderBy("createdAt", "asc"));
 
     const unsub = onSnapshot(q, (snapshot) => {
       const msgs = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
@@ -109,9 +108,6 @@ export default function ChatConversationPage() {
       const msgRef = collection(db, "chats", chatId, "messages");
       await addDoc(msgRef, {
         sender: auth.currentUser.uid,
-        senderName:
-          auth.currentUser.displayName ||
-          auth.currentUser.email.split("@")[0],
         text: input.trim(),
         fileURL,
         fileName,
@@ -172,14 +168,14 @@ export default function ChatConversationPage() {
     <div
       style={{
         minHeight: "100vh",
+        display: "flex",
+        flexDirection: "column",
         background: wallpaper
           ? `url(${wallpaper}) center/cover no-repeat`
           : isDark
           ? "#121212"
           : "#f5f5f5",
         color: isDark ? "#fff" : "#000",
-        display: "flex",
-        flexDirection: "column",
       }}
     >
       {/* Header */}
@@ -222,9 +218,6 @@ export default function ChatConversationPage() {
           <h4 style={{ margin: 0 }}>
             {friendInfo?.displayName || chatInfo?.name || "Chat"}
           </h4>
-          <small style={{ color: isDark ? "#bbb" : "#666" }}>
-            {friendInfo?.email || ""}
-          </small>
         </div>
       </div>
 
@@ -237,6 +230,7 @@ export default function ChatConversationPage() {
           display: "flex",
           flexDirection: "column",
           gap: "10px",
+          marginBottom: "70px",
         }}
       >
         {messages.map((msg) => (
@@ -258,26 +252,18 @@ export default function ChatConversationPage() {
               wordBreak: "break-word",
             }}
           >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                fontSize: "12px",
-                marginBottom: "5px",
-                opacity: 0.7,
-              }}
-            >
-              <span>{msg.senderName}</span>
-              {msg.createdAt && (
-                <span>
-                  {new Date(
-                    msg.createdAt.seconds
-                      ? msg.createdAt.seconds * 1000
-                      : msg.createdAt
-                  ).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                </span>
-              )}
-            </div>
+            {/* Show sender name only for receiver */}
+            {msg.sender !== auth.currentUser.uid && (
+              <div
+                style={{
+                  fontWeight: "bold",
+                  marginBottom: "5px",
+                  fontSize: "12px",
+                }}
+              >
+                {friendInfo?.displayName || "Friend"}
+              </div>
+            )}
 
             {msg.type === "image" ? (
               <img
@@ -297,54 +283,44 @@ export default function ChatConversationPage() {
             ) : (
               msg.text
             )}
+
+            {/* Timestamp below */}
+            {msg.createdAt && (
+              <div
+                style={{
+                  fontSize: "10px",
+                  textAlign: "right",
+                  opacity: 0.6,
+                  marginTop: "4px",
+                }}
+              >
+                {new Date(
+                  msg.createdAt.seconds
+                    ? msg.createdAt.seconds * 1000
+                    : msg.createdAt
+                ).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </div>
+            )}
           </div>
         ))}
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Preview */}
-      {preview && (
-        <div
-          style={{
-            background: isDark ? "#333" : "#fff",
-            padding: "10px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center" }}>
-            {file.type.startsWith("image") && (
-              <img
-                src={preview}
-                alt="preview"
-                style={{ height: "60px", borderRadius: "8px", marginRight: "10px" }}
-              />
-            )}
-            <span>{file.name}</span>
-          </div>
-          <button
-            onClick={cancelPreview}
-            style={{
-              background: "red",
-              color: "#fff",
-              border: "none",
-              padding: "5px 10px",
-              borderRadius: "6px",
-            }}
-          >
-            ✖
-          </button>
-        </div>
-      )}
-
-      {/* Input */}
+      {/* Fixed input */}
       <div
         style={{
+          position: "fixed",
+          bottom: 0,
+          left: 0,
+          width: "100%",
           display: "flex",
+          alignItems: "center",
           padding: "10px",
-          borderTop: "1px solid #ccc",
           background: isDark ? "#1e1e1e" : "#fff",
+          borderTop: "1px solid #ccc",
         }}
       >
         <input
@@ -352,6 +328,7 @@ export default function ChatConversationPage() {
           placeholder="Type a message..."
           value={input}
           onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleSend()}
           style={{
             flex: 1,
             padding: "10px",
@@ -361,7 +338,6 @@ export default function ChatConversationPage() {
             background: isDark ? "#2c2c2c" : "#fff",
             color: isDark ? "#fff" : "#000",
           }}
-          onKeyDown={(e) => e.key === "Enter" && handleSend()}
         />
         <input
           type="file"
@@ -372,7 +348,7 @@ export default function ChatConversationPage() {
         />
         <label
           htmlFor="fileInput"
-          style={{ padding: "10px", cursor: "pointer", fontSize: "18px" }}
+          style={{ padding: "0 10px", cursor: "pointer", fontSize: "18px" }}
         >
           📎
         </label>
