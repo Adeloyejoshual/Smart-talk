@@ -1,5 +1,5 @@
 // src/components/SettingsPage.jsx
-import React, { useEffect, useState, useContext } from "react";
+import React, { useEffect, useState, useContext, useRef } from "react";
 import { auth, db } from "../firebaseConfig";
 import {
   doc,
@@ -24,6 +24,8 @@ export default function SettingsPage() {
   const [newWallpaper, setNewWallpaper] = useState(wallpaper);
   const [previewWallpaper, setPreviewWallpaper] = useState(wallpaper);
   const navigate = useNavigate();
+
+  const fileInputRef = useRef(null);
 
   // ✅ Logout handler
   const handleLogout = async () => {
@@ -79,6 +81,22 @@ export default function SettingsPage() {
     alert("✅ Theme and wallpaper updated!");
   };
 
+  // 📸 Handle wallpaper click & file selection
+  const handleWallpaperClick = () => {
+    fileInputRef.current.click();
+  };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setNewWallpaper(event.target.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   if (!user) return <p>Loading user...</p>;
 
   const isDark = newTheme === "dark";
@@ -91,12 +109,12 @@ export default function SettingsPage() {
         color: isDark ? "#fff" : "#000",
         minHeight: "100vh",
         transition: "all 0.3s ease",
-        position: "relative", // for floating back button
+        position: "relative",
       }}
     >
       {/* Floating Back Button */}
       <button
-        onClick={() => navigate("/chat")} // Adjust this route if your chat page is different
+        onClick={() => navigate("/chat")}
         style={{
           position: "absolute",
           top: "20px",
@@ -120,7 +138,6 @@ export default function SettingsPage() {
           (e.currentTarget.style.background = isDark ? "#555" : "#e0e0e0")
         }
       >
-        {/* SVG Arrow */}
         <svg
           xmlns="http://www.w3.org/2000/svg"
           width="20"
@@ -180,16 +197,11 @@ export default function SettingsPage() {
 
         <br />
         <br />
-        <label>Wallpaper URL:</label>
-        <input
-          type="text"
-          value={newWallpaper}
-          onChange={(e) => setNewWallpaper(e.target.value)}
-          placeholder="Paste image link"
-          style={inputStyle(isDark)}
-        />
+        <label>Wallpaper:</label>
 
+        {/* Clickable Live Preview */}
         <div
+          onClick={handleWallpaperClick}
           style={{
             ...previewBox,
             backgroundColor: isDark ? "#000" : "#fff",
@@ -197,11 +209,21 @@ export default function SettingsPage() {
             backgroundImage: previewWallpaper
               ? `url(${previewWallpaper})`
               : "none",
+            cursor: "pointer",
           }}
         >
           <p>🌈 Live Preview</p>
-          <small>(Your theme and wallpaper will look like this)</small>
+          <small>(Click to select a new wallpaper)</small>
         </div>
+
+        {/* Hidden file input */}
+        <input
+          type="file"
+          accept="image/*"
+          ref={fileInputRef}
+          style={{ display: "none" }}
+          onChange={handleFileChange}
+        />
 
         <button onClick={handleThemeChange} style={btnStyle("#007BFF")}>
           💾 Save
@@ -274,16 +296,6 @@ const selectStyle = (isDark) => ({
   width: "100%",
 });
 
-const inputStyle = (isDark) => ({
-  width: "100%",
-  marginTop: "5px",
-  padding: "8px",
-  borderRadius: "6px",
-  border: "1px solid #555",
-  background: isDark ? "#222" : "#fafafa",
-  color: isDark ? "#fff" : "#000",
-});
-
 const previewBox = {
   width: "100%",
   height: "160px",
@@ -298,6 +310,16 @@ const previewBox = {
   backgroundRepeat: "no-repeat",
   backgroundPosition: "center",
 };
+
+const inputStyle = (isDark) => ({
+  width: "100%",
+  marginTop: "5px",
+  padding: "8px",
+  borderRadius: "6px",
+  border: "1px solid #555",
+  background: isDark ? "#222" : "#fafafa",
+  color: isDark ? "#fff" : "#000",
+});
 
 const txItemStyle = (isDark) => ({
   borderBottom: isDark ? "1px solid #555" : "1px solid #ddd",
