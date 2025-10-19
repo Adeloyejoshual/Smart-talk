@@ -7,6 +7,7 @@ import {
   onSnapshot,
   getDocs,
   addDoc,
+  serverTimestamp,
 } from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
@@ -23,7 +24,9 @@ export default function ChatPage() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  // Auth listener
+  const isDark = theme === "dark";
+
+  // 🔐 Auth listener
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((u) => {
       if (u) setUser(u);
@@ -32,7 +35,7 @@ export default function ChatPage() {
     return unsubscribe;
   }, [navigate]);
 
-  // Load chats (persistent)
+  // 💬 Real-time chats
   useEffect(() => {
     if (!user) return;
 
@@ -53,7 +56,7 @@ export default function ChatPage() {
     return () => unsub();
   }, [user]);
 
-  // Add friend
+  // ➕ Add friend
   const handleAddFriend = async () => {
     setMessage("");
     setLoading(true);
@@ -65,7 +68,7 @@ export default function ChatPage() {
         return;
       }
 
-      // Find friend by email
+      // 🔍 Find friend by email
       const usersRef = collection(db, "users");
       const q = query(usersRef, where("email", "==", friendEmail));
       const snapshot = await getDocs(q);
@@ -85,7 +88,7 @@ export default function ChatPage() {
         return;
       }
 
-      // Check if chat already exists
+      // 🔁 Check if chat already exists
       const chatRef = collection(db, "chats");
       const chatQuery = query(chatRef, where("participants", "array-contains", user.uid));
       const existingChats = await getDocs(chatQuery);
@@ -101,19 +104,20 @@ export default function ChatPage() {
         return;
       }
 
-      // Create new chat
+      // 🆕 Create new chat
       const newChat = await addDoc(chatRef, {
         participants: [user.uid, friendData.uid],
         name: friendData.displayName || friendData.email.split("@")[0],
         photoURL: friendData.photoURL || "",
         lastMessage: "",
-        lastMessageAt: new Date(),
+        lastMessageAt: serverTimestamp(),
       });
 
       setMessage("✅ Friend added successfully!");
       setFriendEmail("");
       setShowAddFriend(false);
 
+      // ⚡ Redirect to chat
       navigate(`/chat/${newChat.id}`);
     } catch (error) {
       console.error("Add friend error:", error);
@@ -122,8 +126,6 @@ export default function ChatPage() {
 
     setLoading(false);
   };
-
-  const isDark = theme === "dark";
 
   const openChat = (chatId) => navigate(`/chat/${chatId}`);
 
@@ -141,7 +143,7 @@ export default function ChatPage() {
         transition: "0.3s ease",
       }}
     >
-      {/* Header */}
+      {/* 🟢 Header */}
       <div
         style={{
           position: "sticky",
@@ -169,7 +171,7 @@ export default function ChatPage() {
         </button>
       </div>
 
-      {/* Welcome */}
+      {/* 👋 Welcome */}
       {user && (
         <div
           style={{
@@ -199,7 +201,7 @@ export default function ChatPage() {
         </div>
       )}
 
-      {/* Search */}
+      {/* 🔍 Search */}
       <div style={{ padding: "10px" }}>
         <input
           type="text"
@@ -217,7 +219,7 @@ export default function ChatPage() {
         />
       </div>
 
-      {/* Chat List */}
+      {/* 💬 Chat List */}
       <div style={{ padding: "10px" }}>
         {chats.length === 0 && (
           <p style={{ textAlign: "center", color: "#999" }}>
@@ -259,7 +261,12 @@ export default function ChatPage() {
                       color: isDark ? "#ccc" : "#555",
                     }}
                   >
-                    {chat.lastMessage || "No messages yet"}
+                    {/* Truncate last message */}
+                    {chat.lastMessage
+                      ? chat.lastMessage.length > 30
+                        ? chat.lastMessage.substring(0, 30) + "..."
+                        : chat.lastMessage
+                      : "No messages yet"}
                   </p>
                 </div>
               </div>
@@ -269,14 +276,17 @@ export default function ChatPage() {
                       chat.lastMessageAt.seconds
                         ? chat.lastMessageAt.seconds * 1000
                         : chat.lastMessageAt
-                    ).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                    ).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })
                   : ""}
               </small>
             </div>
           ))}
       </div>
 
-      {/* Floating Add Friend */}
+      {/* ➕ Floating Add Friend */}
       <button
         onClick={() => setShowAddFriend(true)}
         style={{
@@ -297,7 +307,7 @@ export default function ChatPage() {
         +
       </button>
 
-      {/* Bottom Nav */}
+      {/* ⚙️ Bottom Nav */}
       <div
         style={{
           position: "fixed",
@@ -318,7 +328,7 @@ export default function ChatPage() {
         </button>
       </div>
 
-      {/* Add Friend Popup */}
+      {/* 📩 Add Friend Popup */}
       {showAddFriend && (
         <div style={popupOverlay}>
           <div style={popupBox(isDark)}>
@@ -373,7 +383,7 @@ export default function ChatPage() {
   );
 }
 
-// Styles
+// 💅 Styles
 const navBtnStyle = (bg) => ({
   background: bg,
   color: "#fff",
