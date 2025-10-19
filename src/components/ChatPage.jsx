@@ -7,6 +7,9 @@ import {
   onSnapshot,
   getDocs,
   addDoc,
+  serverTimestamp,
+  getDoc,
+  doc,
 } from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
@@ -35,7 +38,7 @@ export default function ChatPage() {
     return unsubscribe;
   }, [navigate]);
 
-  // 💬 Load Chats
+  // 💬 Load Chats realtime
   useEffect(() => {
     if (!user) return;
 
@@ -46,29 +49,14 @@ export default function ChatPage() {
     );
 
     const unsub = onSnapshot(q, (snapshot) => {
-      const chatList = snapshot.docs
-        .map((doc) => ({ id: doc.id, ...doc.data() }))
-        .sort((a, b) => {
-          const aTime = a.lastMessageAt?.seconds
-            ? a.lastMessageAt.seconds * 1000
-            : a.lastMessageAt
-            ? new Date(a.lastMessageAt).getTime()
-            : 0;
-          const bTime = b.lastMessageAt?.seconds
-            ? b.lastMessageAt.seconds * 1000
-            : b.lastMessageAt
-            ? new Date(b.lastMessageAt).getTime()
-            : 0;
-          return bTime - aTime; // newest first
-        });
-
+      const chatList = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       setChats(chatList);
     });
 
     return () => unsub();
   }, [user]);
 
-  // ➕ Add Friend by Email
+  // ➕ Add Friend
   const handleAddFriend = async () => {
     setMessage("");
     setLoading(true);
@@ -126,36 +114,23 @@ export default function ChatPage() {
         name: friendData.name || friendData.email.split("@")[0],
         photoURL: friendData.photoURL || "",
         lastMessage: "",
-        lastMessageAt: new Date(),
+        lastMessageAt: serverTimestamp(),
       });
 
-      // ✅ Optimistically update chat list
-      setChats((prev) => {
-        const newChats = [
-          {
-            id: newChatRef.id,
-            participants: [user.uid, friendData.uid],
-            name: friendData.name || friendData.email.split("@")[0],
-            photoURL: friendData.photoURL || "",
-            lastMessage: "",
-            lastMessageAt: new Date(),
-          },
-          ...prev,
-        ];
-        // Sort by lastMessageAt
-        newChats.sort((a, b) => new Date(b.lastMessageAt) - new Date(a.lastMessageAt));
-
-        // Scroll to top
-        if (chatListRef.current) {
-          chatListRef.current.scrollTo({ top: 0, behavior: "smooth" });
-        }
-
-        return newChats;
-      });
+      // Fetch new chat to ensure it shows in list
+      const newChatSnap = await getDoc(doc(db, "chats", newChatRef.id));
+      if (newChatSnap.exists()) {
+        setChats((prev) => [ { id: newChatSnap.id, ...newChatSnap.data() }, ...prev ]);
+      }
 
       setMessage("✅ Friend added successfully!");
       setFriendEmail("");
       setShowAddFriend(false);
+
+      // Scroll to top
+      if (chatListRef.current) {
+        chatListRef.current.scrollTo({ top: 0, behavior: "smooth" });
+      }
 
       navigate(`/chat/${newChatRef.id}`);
     } catch (error) {
@@ -169,7 +144,7 @@ export default function ChatPage() {
   // 📱 Open Chat
   const openChat = (chatId) => navigate(`/chat/${chatId}`);
 
-  // 🕒 Format message time
+  // 🕒 Format time
   const formatMessageTime = (timestamp) => {
     if (!timestamp) return "";
     let dateObj = timestamp.seconds ? new Date(timestamp.seconds * 1000) : new Date(timestamp);
@@ -214,12 +189,7 @@ export default function ChatPage() {
         <h2 style={{ margin: 0 }}>Chats</h2>
         <button
           onClick={() => navigate("/settings")}
-          style={{
-            background: "transparent",
-            border: "none",
-            fontSize: "18px",
-            cursor: "pointer",
-          }}
+          style={{ background: "transparent", border: "none", fontSize: "18px", cursor: "pointer" }}
         >
           ⚙️
         </button>
@@ -294,19 +264,11 @@ export default function ChatPage() {
                 cursor: "pointer",
               }}
             >
-              {/* Name and time */}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <strong style={{ fontSize: "16px" }}>{chat.name || "Unknown"}</strong>
                 <small style={{ color: "#888" }}>{formatMessageTime(chat.lastMessageAt)}</small>
               </div>
-              {/* Last message */}
-              <p
-                style={{
-                  margin: "3px 0 0 0",
-                  fontSize: "14px",
-                  color: isDark ? "#ccc" : "#555",
-                }}
-              >
+              <p style={{ margin: "3px 0 0 0", fontSize: "14px", color: isDark ? "#ccc" : "#555" }}>
                 {chat.lastMessage || "No messages yet"}
               </p>
             </div>
