@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useContext } from "react";
+import React, { useEffect, useState, useContext, useRef } from "react";
 import {
   collection,
   query,
@@ -22,6 +22,9 @@ export default function ChatPage() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const chatListRef = useRef(null);
+
+  const isDark = theme === "dark";
 
   // 🔐 Listen for auth
   useEffect(() => {
@@ -43,10 +46,22 @@ export default function ChatPage() {
     );
 
     const unsub = onSnapshot(q, (snapshot) => {
-      const chatList = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
+      const chatList = snapshot.docs
+        .map((doc) => ({ id: doc.id, ...doc.data() }))
+        .sort((a, b) => {
+          const aTime = a.lastMessageAt?.seconds
+            ? a.lastMessageAt.seconds * 1000
+            : a.lastMessageAt
+            ? new Date(a.lastMessageAt).getTime()
+            : 0;
+          const bTime = b.lastMessageAt?.seconds
+            ? b.lastMessageAt.seconds * 1000
+            : b.lastMessageAt
+            ? new Date(b.lastMessageAt).getTime()
+            : 0;
+          return bTime - aTime; // newest first
+        });
+
       setChats(chatList);
     });
 
@@ -106,7 +121,7 @@ export default function ChatPage() {
       }
 
       // 🆕 Create new chat
-      const newChat = await addDoc(chatRef, {
+      const newChatRef = await addDoc(chatRef, {
         participants: [user.uid, friendData.uid],
         name: friendData.name || friendData.email.split("@")[0],
         photoURL: friendData.photoURL || "",
@@ -114,13 +129,35 @@ export default function ChatPage() {
         lastMessageAt: new Date(),
       });
 
-      // ✅ Success flow
+      // ✅ Optimistically update chat list
+      setChats((prev) => {
+        const newChats = [
+          {
+            id: newChatRef.id,
+            participants: [user.uid, friendData.uid],
+            name: friendData.name || friendData.email.split("@")[0],
+            photoURL: friendData.photoURL || "",
+            lastMessage: "",
+            lastMessageAt: new Date(),
+          },
+          ...prev,
+        ];
+        // Sort by lastMessageAt
+        newChats.sort((a, b) => new Date(b.lastMessageAt) - new Date(a.lastMessageAt));
+
+        // Scroll to top
+        if (chatListRef.current) {
+          chatListRef.current.scrollTo({ top: 0, behavior: "smooth" });
+        }
+
+        return newChats;
+      });
+
       setMessage("✅ Friend added successfully!");
       setFriendEmail("");
       setShowAddFriend(false);
 
-      // ⚡ Redirect to ChatConversationPage immediately
-      navigate(`/chat/${newChat.id}`);
+      navigate(`/chat/${newChatRef.id}`);
     } catch (error) {
       console.error(error);
       setMessage("❌ Error adding friend.");
@@ -129,10 +166,22 @@ export default function ChatPage() {
     setLoading(false);
   };
 
-  const isDark = theme === "dark";
-
   // 📱 Open Chat
   const openChat = (chatId) => navigate(`/chat/${chatId}`);
+
+  // 🕒 Format message time
+  const formatMessageTime = (timestamp) => {
+    if (!timestamp) return "";
+    let dateObj = timestamp.seconds ? new Date(timestamp.seconds * 1000) : new Date(timestamp);
+    const today = new Date();
+    const isToday =
+      dateObj.getDate() === today.getDate() &&
+      dateObj.getMonth() === today.getMonth() &&
+      dateObj.getFullYear() === today.getFullYear();
+    return isToday
+      ? dateObj.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      : dateObj.toLocaleDateString([], { day: "2-digit", month: "short", year: "2-digit" });
+  };
 
   return (
     <div
@@ -190,12 +239,7 @@ export default function ChatPage() {
           <img
             src={user.photoURL || "https://via.placeholder.com/50"}
             alt="user"
-            style={{
-              width: 50,
-              height: 50,
-              borderRadius: "50%",
-              objectFit: "cover",
-            }}
+            style={{ width: 50, height: 50, borderRadius: "50%", objectFit: "cover" }}
           />
           <div>
             <h3 style={{ margin: 0 }}>
@@ -225,7 +269,7 @@ export default function ChatPage() {
       </div>
 
       {/* 💬 Chat List */}
-      <div style={{ padding: "10px" }}>
+      <div style={{ padding: "10px" }} ref={chatListRef}>
         {chats.length === 0 && (
           <p style={{ textAlign: "center", color: "#999" }}>
             No chats yet. Add a friend to start chatting!
@@ -244,44 +288,27 @@ export default function ChatPage() {
               onClick={() => openChat(chat.id)}
               style={{
                 display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
+                flexDirection: "column",
                 padding: "10px 0",
                 borderBottom: isDark ? "1px solid #333" : "1px solid #eee",
                 cursor: "pointer",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <img
-                  src={chat.photoURL || "https://via.placeholder.com/50"}
-                  alt="profile"
-                  style={{ width: 45, height: 45, borderRadius: "50%" }}
-                />
-                <div>
-                  <strong>{chat.name || "Unknown"}</strong>
-                  <p
-                    style={{
-                      margin: 0,
-                      fontSize: "14px",
-                      color: isDark ? "#ccc" : "#555",
-                    }}
-                  >
-                    {chat.lastMessage || "No messages yet"}
-                  </p>
-                </div>
+              {/* Name and time */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <strong style={{ fontSize: "16px" }}>{chat.name || "Unknown"}</strong>
+                <small style={{ color: "#888" }}>{formatMessageTime(chat.lastMessageAt)}</small>
               </div>
-              <small style={{ color: "#888" }}>
-                {chat.lastMessageAt
-                  ? new Date(
-                      chat.lastMessageAt.seconds
-                        ? chat.lastMessageAt.seconds * 1000
-                        : chat.lastMessageAt
-                    ).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })
-                  : ""}
-              </small>
+              {/* Last message */}
+              <p
+                style={{
+                  margin: "3px 0 0 0",
+                  fontSize: "14px",
+                  color: isDark ? "#ccc" : "#555",
+                }}
+              >
+                {chat.lastMessage || "No messages yet"}
+              </p>
             </div>
           ))}
       </div>
@@ -317,13 +344,10 @@ export default function ChatPage() {
           justifyContent: "space-around",
         }}
       >
-        <button onClick={() => navigate("/call")} style={navBtnStyle("#007AFF")}>
+        <button onClick={() => navigate("/call-history")} style={navBtnStyle("#007AFF")}>
           📞 Call
         </button>
-        <button
-          onClick={() => navigate("/settings")}
-          style={navBtnStyle("#555")}
-        >
+        <button onClick={() => navigate("/settings")} style={navBtnStyle("#555")}>
           👤 Profile
         </button>
       </div>
