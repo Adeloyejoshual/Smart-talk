@@ -91,9 +91,53 @@ export default function SettingsPage() {
         color: isDark ? "#fff" : "#000",
         minHeight: "100vh",
         transition: "all 0.3s ease",
+        position: "relative", // for floating back button
       }}
     >
-      <h2>⚙️ Settings</h2>
+      {/* Floating Back Button */}
+      <button
+        onClick={() => navigate("/chat")} // Adjust this route if your chat page is different
+        style={{
+          position: "absolute",
+          top: "20px",
+          left: "20px",
+          cursor: "pointer",
+          padding: "8px",
+          borderRadius: "50%",
+          border: "none",
+          background: isDark ? "#555" : "#e0e0e0",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          transition: "all 0.2s",
+          zIndex: 1000,
+          boxShadow: "0 2px 6px rgba(0,0,0,0.3)",
+        }}
+        onMouseEnter={(e) =>
+          (e.currentTarget.style.background = isDark ? "#777" : "#ccc")
+        }
+        onMouseLeave={(e) =>
+          (e.currentTarget.style.background = isDark ? "#555" : "#e0e0e0")
+        }
+      >
+        {/* SVG Arrow */}
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke={isDark ? "#fff" : "#000"}
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <polyline points="15 18 9 12 15 6" />
+        </svg>
+      </button>
+
+      {/* Page Title */}
+      <h2 style={{ textAlign: "center", marginBottom: "20px" }}>⚙️ Settings</h2>
 
       {/* 💵 Wallet Section */}
       <div style={sectionStyle(isDark)}>
