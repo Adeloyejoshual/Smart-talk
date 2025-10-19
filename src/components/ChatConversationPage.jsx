@@ -15,26 +15,24 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { auth, db, storage } from "../firebaseConfig";
 import { ThemeContext } from "../context/ThemeContext";
 
-// Helper to format last seen
+// Format last seen
 const formatLastSeen = (lastSeen, isOnline) => {
-  if (isOnline) return "online";
+  if (isOnline) return "Online";
   if (!lastSeen) return "";
   const now = new Date();
   const last = lastSeen.toDate ? lastSeen.toDate() : new Date(lastSeen);
-  const diffSec = Math.floor((now - last) / 1000);
-  const diffMin = Math.floor(diffSec / 60);
-  const diffHr = Math.floor(diffMin / 60);
-
-  if (now.toDateString() === last.toDateString()) {
-    if (diffMin < 1) return "just now";
-    if (diffMin < 60) return `${diffMin} minute${diffMin > 1 ? "s" : ""} ago`;
-    return `${diffHr} hour${diffHr > 1 ? "s" : ""} ago`;
-  }
-
+  const diff = (now - last) / 1000;
+  const min = Math.floor(diff / 60);
+  const hr = Math.floor(min / 60);
   const yesterday = new Date(now);
   yesterday.setDate(now.getDate() - 1);
-  if (yesterday.toDateString() === last.toDateString()) return "Yesterday";
 
+  if (now.toDateString() === last.toDateString()) {
+    if (min < 1) return "just now";
+    if (min < 60) return `${min} minute${min > 1 ? "s" : ""} ago`;
+    return `${hr} hour${hr > 1 ? "s" : ""} ago`;
+  }
+  if (yesterday.toDateString() === last.toDateString()) return "Yesterday";
   return last.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
 };
 
@@ -42,166 +40,140 @@ export default function ChatConversationPage() {
   const { chatId } = useParams();
   const navigate = useNavigate();
   const { theme, wallpaper } = useContext(ThemeContext);
+  const isDark = theme === "dark";
 
-  const [chatInfo, setChatInfo] = useState(null);
-  const [friendInfo, setFriendInfo] = useState(null);
+  const [friend, setFriend] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [files, setFiles] = useState([]);
   const [previews, setPreviews] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [fullImage, setFullImage] = useState(null);
 
   const messagesEndRef = useRef(null);
-  const isDark = theme === "dark";
+  const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
 
-  // Scroll to bottom
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
   useEffect(scrollToBottom, [messages]);
 
-  // Load chat and friend info
+  // Load chat + friend info
   useEffect(() => {
     if (!chatId) return;
     const chatRef = doc(db, "chats", chatId);
-
-    const loadChat = async () => {
-      const chatSnap = await getDoc(chatRef);
-      if (!chatSnap.exists()) {
-        alert("Chat not found!");
-        navigate("/chat");
-        return;
-      }
-
-      const chatData = chatSnap.data();
-      setChatInfo(chatData);
-
-      const friendId = chatData.participants?.find(
-        (uid) => uid !== auth.currentUser.uid
-      );
-      if (friendId) {
-        const friendRef = doc(db, "users", friendId);
-        const unsub = onSnapshot(friendRef, (snap) => {
-          if (snap.exists()) setFriendInfo(snap.data());
-        });
-        return unsub;
-      }
-    };
-
-    loadChat();
+    getDoc(chatRef).then(async (snap) => {
+      if (!snap.exists()) return navigate("/chat");
+      const data = snap.data();
+      const friendId = data.participants.find((uid) => uid !== auth.currentUser.uid);
+      const friendRef = doc(db, "users", friendId);
+      onSnapshot(friendRef, (fSnap) => {
+        if (fSnap.exists()) setFriend(fSnap.data());
+      });
+    });
   }, [chatId, navigate]);
 
   // Listen to messages
   useEffect(() => {
     if (!chatId) return;
-    const msgRef = collection(db, "chats", chatId, "messages");
-    const q = query(msgRef, orderBy("createdAt", "asc"));
+    const q = query(collection(db, "chats", chatId, "messages"), orderBy("createdAt", "asc"));
+    const unsub = onSnapshot(q, async (snap) => {
+      const msgs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setMessages(msgs);
 
-    const unsub = onSnapshot(q, (snapshot) => {
-      setMessages(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+      // Update "delivered" for receiver when they open the chat
+      const batch = msgs.filter(
+        (m) => m.sender !== auth.currentUser.uid && m.status === "sent"
+      );
+      for (const m of batch) {
+        await updateDoc(doc(db, "chats", chatId, "messages", m.id), { status: "delivered" });
+      }
     });
-
-    return () => unsub();
+    return unsub;
   }, [chatId]);
 
-  // Handle file selection
+  // When chat is visible, mark all delivered messages as seen
+  useEffect(() => {
+    const markSeen = async () => {
+      const unseen = messages.filter(
+        (m) => m.sender !== auth.currentUser.uid && m.status === "delivered"
+      );
+      for (const m of unseen) {
+        await updateDoc(doc(db, "chats", chatId, "messages", m.id), { status: "seen" });
+      }
+    };
+    if (messages.length > 0) markSeen();
+  }, [messages, chatId]);
+
+  // File selection
   const handleFileChange = (e) => {
     const selected = Array.from(e.target.files);
-    if (selected.length > 0) {
-      setFiles(selected);
-      setPreviews(selected.map((f) => URL.createObjectURL(f)));
-    }
+    setFiles([...files, ...selected]);
+    setPreviews([
+      ...previews,
+      ...selected.map((f) => (f.type.startsWith("image/") ? URL.createObjectURL(f) : null)),
+    ]);
   };
 
-  const cancelPreview = (index) => {
-    const newFiles = [...files];
-    const newPreviews = [...previews];
-    newFiles.splice(index, 1);
-    newPreviews.splice(index, 1);
-    setFiles(newFiles);
-    setPreviews(newPreviews);
+  const cancelPreview = (i) => {
+    const f = [...files];
+    const p = [...previews];
+    f.splice(i, 1);
+    p.splice(i, 1);
+    setFiles(f);
+    setPreviews(p);
   };
 
   // Send message
   const handleSend = async () => {
     if (!input.trim() && files.length === 0) return;
-    if (!auth.currentUser) return;
-    setLoading(true);
+    setSending(true);
+
+    const msgRef = collection(db, "chats", chatId, "messages");
+    const allMsgs = [];
 
     try {
-      const msgRef = collection(db, "chats", chatId, "messages");
-
       // Upload files
-      let uploadedFiles = [];
-      for (let i = 0; i < files.length; i++) {
-        const f = files[i];
-        const storageRef = ref(storage, `chatFiles/${chatId}/${Date.now()}_${f.name}`);
-        await uploadBytes(storageRef, f);
-        const fileURL = await getDownloadURL(storageRef);
-        uploadedFiles.push({
-          fileURL,
-          fileName: f.name,
-          type: f.type.startsWith("image") ? "image" : "file",
+      for (const file of files) {
+        const fileRef = ref(storage, `chatFiles/${chatId}/${Date.now()}_${file.name}`);
+        await uploadBytes(fileRef, file);
+        const url = await getDownloadURL(fileRef);
+        allMsgs.push({
+          sender: auth.currentUser.uid,
+          fileURL: url,
+          fileName: file.name,
+          type: file.type.startsWith("image") ? "image" : "file",
+          createdAt: serverTimestamp(),
+          status: "sent",
         });
       }
 
-      // Add text message first if any
       if (input.trim()) {
-        await addDoc(msgRef, {
+        allMsgs.push({
           sender: auth.currentUser.uid,
           text: input.trim(),
-          fileURL: null,
-          fileName: null,
           type: "text",
           createdAt: serverTimestamp(),
+          status: "sent",
         });
       }
 
-      // Add files
-      for (let f of uploadedFiles) {
-        await addDoc(msgRef, {
-          sender: auth.currentUser.uid,
-          text: "",
-          ...f,
-          createdAt: serverTimestamp(),
-        });
-      }
+      for (const m of allMsgs) await addDoc(msgRef, m);
 
-      // Update chat last message
-      const chatRef = doc(db, "chats", chatId);
-      await updateDoc(chatRef, {
-        lastMessage: input.trim() || (uploadedFiles[0]?.fileName ?? ""),
+      await updateDoc(doc(db, "chats", chatId), {
+        lastMessage: input.trim() || allMsgs[0]?.fileName || "📎 File",
         lastMessageAt: serverTimestamp(),
       });
 
       setInput("");
       setFiles([]);
       setPreviews([]);
-      scrollToBottom();
-    } catch (err) {
-      console.error("Send error:", err);
-      alert("Error sending message.");
+    } catch (e) {
+      console.error(e);
+      alert("Message failed");
     } finally {
-      setLoading(false);
+      setSending(false);
     }
   };
 
-  const handleBack = () => navigate("/chat");
-
-  if (!chatInfo)
-    return (
-      <div
-        style={{
-          minHeight: "100vh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: isDark ? "#fff" : "#000",
-        }}
-      >
-        Loading chat...
-      </div>
-    );
+  if (!friend) return <div style={{ padding: 20 }}>Loading chat...</div>;
 
   return (
     <div
@@ -213,50 +185,42 @@ export default function ChatConversationPage() {
           ? `url(${wallpaper}) center/cover no-repeat`
           : isDark
           ? "#121212"
-          : "#f5f5f5",
+          : "#f4f4f4",
         color: isDark ? "#fff" : "#000",
       }}
     >
       {/* Header */}
       <div
         style={{
-          background: isDark ? "#1e1e1e" : "#fff",
-          padding: "12px 18px",
           display: "flex",
           alignItems: "center",
+          padding: "12px 16px",
+          background: isDark ? "#1f1f1f" : "#fff",
           borderBottom: "1px solid #ccc",
-          position: "sticky",
-          top: 0,
-          zIndex: 2,
         }}
       >
         <button
-          onClick={handleBack}
+          onClick={() => navigate("/chat")}
           style={{
-            background: "transparent",
+            background: "none",
             border: "none",
-            fontSize: "22px",
+            fontSize: 20,
+            marginRight: 10,
+            color: isDark ? "#fff" : "#000",
             cursor: "pointer",
-            marginRight: "10px",
           }}
         >
           ←
         </button>
         <img
-          src={friendInfo?.photoURL || "/default-avatar.png"}
-          alt="profile"
-          style={{
-            width: "45px",
-            height: "45px",
-            borderRadius: "50%",
-            objectFit: "cover",
-            border: "2px solid #ccc",
-          }}
+          src={friend?.photoURL || "/default-avatar.png"}
+          alt="user"
+          style={{ width: 45, height: 45, borderRadius: "50%" }}
         />
-        <div style={{ marginLeft: "10px" }}>
-          <h4 style={{ margin: 0 }}>{friendInfo?.displayName || chatInfo?.name || "Chat"}</h4>
-          <small style={{ fontSize: "12px", color: "#888" }}>
-            {formatLastSeen(friendInfo?.lastSeen, friendInfo?.isOnline)}
+        <div style={{ marginLeft: 10 }}>
+          <h4 style={{ margin: 0 }}>{friend.displayName}</h4>
+          <small style={{ color: "#888" }}>
+            {formatLastSeen(friend.lastSeen, friend.isOnline)}
           </small>
         </div>
       </div>
@@ -265,75 +229,142 @@ export default function ChatConversationPage() {
       <div
         style={{
           flex: 1,
+          padding: 15,
           overflowY: "auto",
-          padding: "15px",
           display: "flex",
           flexDirection: "column",
-          gap: "10px",
-          marginBottom: "100px",
+          gap: 10,
+          marginBottom: 100,
         }}
       >
-        {messages.map((msg) => (
+        {messages.map((m) => (
           <div
-            key={msg.id}
+            key={m.id}
             style={{
-              alignSelf: msg.sender === auth.currentUser.uid ? "flex-end" : "flex-start",
-              background: msg.sender === auth.currentUser.uid ? "#007bff" : isDark ? "#333" : "#ddd",
-              color: msg.sender === auth.currentUser.uid ? "#fff" : "#000",
-              padding: "10px",
-              borderRadius: "10px",
-              maxWidth: "70%",
+              alignSelf: m.sender === auth.currentUser.uid ? "flex-end" : "flex-start",
+              background:
+                m.sender === auth.currentUser.uid
+                  ? "#007bff"
+                  : isDark
+                  ? "#2e2e2e"
+                  : "#e0e0e0",
+              color: m.sender === auth.currentUser.uid ? "#fff" : "#000",
+              padding: 10,
+              borderRadius: 10,
+              maxWidth: "75%",
               wordBreak: "break-word",
             }}
           >
-            {/* Receiver Name */}
-            {msg.sender !== auth.currentUser.uid && (
-              <div style={{ fontWeight: "bold", marginBottom: "5px", fontSize: "12px" }}>
-                {friendInfo?.displayName || "Friend"}
-              </div>
+            {m.type === "text" && m.text}
+            {m.type === "image" && (
+              <img
+                src={m.fileURL}
+                alt="sent"
+                onClick={() => setFullImage(m.fileURL)}
+                style={{ maxWidth: "100%", borderRadius: 8, cursor: "pointer" }}
+              />
             )}
-
-            {/* Text */}
-            {msg.type === "text" && msg.text}
-            {/* Image */}
-            {msg.type === "image" && (
-              <img src={msg.fileURL} alt="sent" style={{ width: "100%", borderRadius: "8px" }} />
-            )}
-            {/* File */}
-            {msg.type === "file" && (
+            {m.type === "file" && (
               <a
-                href={msg.fileURL}
+                href={m.fileURL}
                 target="_blank"
                 rel="noopener noreferrer"
-                style={{ color: "#fff", textDecoration: "underline" }}
+                style={{
+                  color: m.sender === auth.currentUser.uid ? "#fff" : "#007bff",
+                  textDecoration: "underline",
+                }}
               >
-                📎 {msg.fileName}
+                📎 {m.fileName}
               </a>
             )}
-
-            {/* Timestamp */}
-            {msg.createdAt && (
-              <div style={{ fontSize: "10px", textAlign: "right", opacity: 0.6, marginTop: "4px" }}>
-                {new Date(msg.createdAt.seconds ? msg.createdAt.seconds * 1000 : msg.createdAt).toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </div>
-            )}
+            <div
+              style={{
+                fontSize: 10,
+                textAlign: "right",
+                opacity: 0.7,
+                marginTop: 5,
+              }}
+            >
+              {m.createdAt?.seconds
+                ? new Date(m.createdAt.seconds * 1000).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })
+                : "Sending..."}{" "}
+              {m.sender === auth.currentUser.uid && (
+                <>
+                  {m.status === "sending" && "🕓"}
+                  {m.status === "sent" && "✅"}
+                  {m.status === "delivered" && "📬"}
+                  {m.status === "seen" && "👁"}
+                </>
+              )}
+            </div>
           </div>
         ))}
+        {sending && (
+          <div
+            style={{
+              alignSelf: "flex-end",
+              background: "#007bff",
+              color: "#fff",
+              padding: "10px 15px",
+              borderRadius: 10,
+              opacity: 0.7,
+            }}
+          >
+            Sending...
+          </div>
+        )}
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Preview Selected Files */}
-      {previews.length > 0 && (
-        <div style={{ padding: "10px", display: "flex", gap: "10px", overflowX: "auto", borderTop: "1px solid #ccc", background: isDark ? "#1e1e1e" : "#fff" }}>
-          {previews.map((src, i) => (
+      {/* File Previews */}
+      {files.length > 0 && (
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            padding: 10,
+            background: isDark ? "#1f1f1f" : "#fff",
+            borderTop: "1px solid #ccc",
+            overflowX: "auto",
+          }}
+        >
+          {files.map((f, i) => (
             <div key={i} style={{ position: "relative" }}>
-              <img src={src} alt="preview" style={{ height: "60px", borderRadius: "8px" }} />
+              {f.type.startsWith("image/") ? (
+                <img src={previews[i]} alt="preview" style={{ height: 70, borderRadius: 8 }} />
+              ) : (
+                <div
+                  style={{
+                    height: 70,
+                    width: 70,
+                    background: "#ccc",
+                    borderRadius: 8,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 24,
+                  }}
+                >
+                  📎
+                </div>
+              )}
               <button
                 onClick={() => cancelPreview(i)}
-                style={{ position: "absolute", top: -5, right: -5, background: "red", color: "#fff", border: "none", borderRadius: "50%", width: 20, height: 20, fontSize: "12px", cursor: "pointer" }}
+                style={{
+                  position: "absolute",
+                  top: -6,
+                  right: -6,
+                  background: "red",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "50%",
+                  width: 20,
+                  height: 20,
+                  cursor: "pointer",
+                }}
               >
                 ✖
               </button>
@@ -342,8 +373,19 @@ export default function ChatConversationPage() {
         </div>
       )}
 
-      {/* Fixed Input */}
-      <div style={{ position: "fixed", bottom: 0, left: 0, width: "100%", display: "flex", alignItems: "center", padding: "10px", background: isDark ? "#1e1e1e" : "#fff", borderTop: "1px solid #ccc" }}>
+      {/* Input Bar */}
+      <div
+        style={{
+          position: "fixed",
+          bottom: 0,
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          background: isDark ? "#1f1f1f" : "#fff",
+          borderTop: "1px solid #ccc",
+          padding: 10,
+        }}
+      >
         <input
           type="text"
           placeholder="Type a message..."
@@ -352,24 +394,61 @@ export default function ChatConversationPage() {
           onKeyDown={(e) => e.key === "Enter" && handleSend()}
           style={{
             flex: 1,
-            padding: "10px",
-            borderRadius: "8px",
+            borderRadius: 8,
             border: "1px solid #ccc",
-            outline: "none",
+            padding: 10,
             background: isDark ? "#2c2c2c" : "#fff",
             color: isDark ? "#fff" : "#000",
           }}
         />
-        <input type="file" accept="image/*,.pdf,.doc,.docx,.txt" multiple onChange={handleFileChange} style={{ display: "none" }} id="fileInput" />
-        <label htmlFor="fileInput" style={{ padding: "0 10px", cursor: "pointer", fontSize: "18px" }}>📎</label>
+        <input
+          id="fileInput"
+          type="file"
+          multiple
+          accept="image/*,.pdf,.doc,.docx,.txt"
+          style={{ display: "none" }}
+          onChange={handleFileChange}
+        />
+        <label htmlFor="fileInput" style={{ fontSize: 22, marginLeft: 10, cursor: "pointer" }}>
+          📎
+        </label>
         <button
           onClick={handleSend}
-          disabled={loading}
-          style={{ marginLeft: "5px", padding: "10px 15px", background: loading ? "#999" : "#007BFF", color: "#fff", border: "none", borderRadius: "8px", cursor: loading ? "not-allowed" : "pointer" }}
+          disabled={sending}
+          style={{
+            marginLeft: 10,
+            padding: "10px 16px",
+            background: sending ? "#888" : "#007bff",
+            color: "#fff",
+            border: "none",
+            borderRadius: 8,
+          }}
         >
-          {loading ? "Sending..." : "Send"}
+          {sending ? "..." : "Send"}
         </button>
       </div>
+
+      {/* Full Image View */}
+      {fullImage && (
+        <div
+          onClick={() => setFullImage(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.85)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 999,
+          }}
+        >
+          <img
+            src={fullImage}
+            alt="full"
+            style={{ maxHeight: "90%", maxWidth: "90%", borderRadius: 10 }}
+          />
+        </div>
+      )}
     </div>
   );
 }
