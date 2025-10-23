@@ -1,4 +1,4 @@
-// src/components/ChatConversationPage.jsx
+// ChatConversationPage.jsx
 import React, { useEffect, useState, useRef, useContext } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
@@ -12,99 +12,251 @@ import {
   serverTimestamp,
   updateDoc,
 } from "firebase/firestore";
-import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+import {
+  ref as storageRef,
+  uploadBytesResumable,
+  getDownloadURL,
+} from "firebase/storage";
 import { auth, db, storage } from "../firebaseConfig";
 import { ThemeContext } from "../context/ThemeContext";
+
+/*
+  Features:
+   - multi-file preview + remove
+   - resumable uploads with progress
+   - optimistic local messages while uploading
+   - message status lifecycle via Firestore: sending|sent|delivered|seen
+   - typing indicator (updates users/{uid}.typing[chatId])
+   - best-effort presence (writes users/{uid}.isOnline / lastSeen on unload)
+*/
+
+function MessageStatus({ status }) {
+  if (status === "sending") return <span style={{ marginLeft: 6 }}>⌛</span>;
+  if (status === "sent") return <span style={{ marginLeft: 6 }}>✔</span>;
+  if (status === "delivered") return <span style={{ marginLeft: 6 }}>✔✔</span>;
+  if (status === "seen") return <span style={{ marginLeft: 6, color: "#34B7F1" }}>✔✔</span>;
+  return null;
+}
+
+function formatLastSeen(ts, isOnline) {
+  if (isOnline) return "Online";
+  if (!ts) return "";
+  const last = ts.toDate ? ts.toDate() : new Date(ts);
+  const now = new Date();
+  const diffMin = Math.floor((now - last) / 1000 / 60);
+  if (now.toDateString() === last.toDateString()) {
+    if (diffMin < 1) return "just now";
+    if (diffMin < 60) return `${diffMin}m ago`;
+    return `${Math.floor(diffMin / 60)}h ago`;
+  }
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (yesterday.toDateString() === last.toDateString()) return "Yesterday";
+  return last.toLocaleDateString();
+}
 
 export default function ChatConversationPage() {
   const { chatId } = useParams();
   const navigate = useNavigate();
   const { theme, wallpaper } = useContext(ThemeContext);
+  const isDark = theme === "dark";
 
   const [chatInfo, setChatInfo] = useState(null);
   const [friendInfo, setFriendInfo] = useState(null);
-  const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState("");
-  const [files, setFiles] = useState([]);
+  const [messages, setMessages] = useState([]); // remote messages from Firestore
+  const [localMessages, setLocalMessages] = useState([]); // optimistic messages
+  const [text, setText] = useState("");
+  const [files, setFiles] = useState([]); // File objects user selected
+  const [previews, setPreviews] = useState([]); // preview URLs for images
   const [uploading, setUploading] = useState(false);
+  const [friendTyping, setFriendTyping] = useState(false);
 
-  const messagesEndRef = useRef(null);
-  const isDark = theme === "dark";
+  const endRef = useRef(null);
+  const myUid = auth.currentUser?.uid;
 
-  // Auto-scroll
+  // auto scroll on messages change
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, localMessages]);
 
-  // Load chat + friend info
+  // best-effort presence: mark online and on unload update lastSeen
+  useEffect(() => {
+    if (!myUid) return;
+    const userRef = doc(db, "users", myUid);
+    updateDoc(userRef, { isOnline: true }).catch(() => {});
+
+    const handleUnload = async () => {
+      try {
+        await updateDoc(userRef, { isOnline: false, lastSeen: serverTimestamp() });
+      } catch (e) {
+        // best-effort
+      }
+    };
+    window.addEventListener("beforeunload", handleUnload);
+    return () => {
+      updateDoc(userRef, { isOnline: false, lastSeen: serverTimestamp() }).catch(() => {});
+      window.removeEventListener("beforeunload", handleUnload);
+    };
+  }, [myUid]);
+
+  // load chat meta + friend info (real-time for friend)
   useEffect(() => {
     if (!chatId) return;
     const chatRef = doc(db, "chats", chatId);
+    let unsubFriend = null;
 
-    const loadChat = async () => {
-      const chatSnap = await getDoc(chatRef);
-      if (!chatSnap.exists()) {
-        alert("Chat not found!");
+    (async () => {
+      const snap = await getDoc(chatRef);
+      if (!snap.exists()) {
+        alert("Chat not found");
         navigate("/chat");
         return;
       }
-
-      const chatData = chatSnap.data();
-      setChatInfo(chatData);
-
-      const friendId = chatData.participants?.find(
-        (uid) => uid !== auth.currentUser.uid
-      );
+      const data = snap.data();
+      setChatInfo({ id: snap.id, ...data });
+      // friend id
+      const friendId = data.participants?.find((p) => p !== myUid);
       if (friendId) {
         const friendRef = doc(db, "users", friendId);
-        const unsub = onSnapshot(friendRef, (snap) => {
-          if (snap.exists()) setFriendInfo(snap.data());
+        unsubFriend = onSnapshot(friendRef, (fsnap) => {
+          if (fsnap.exists()) {
+            setFriendInfo({ id: fsnap.id, ...fsnap.data() });
+            setFriendTyping(Boolean(fsnap.data()?.typing?.[chatId]));
+          }
         });
-        return unsub;
       }
-    };
-    loadChat();
-  }, [chatId, navigate]);
+    })();
 
-  // Real-time messages
+    return () => {
+      if (unsubFriend) unsubFriend();
+    };
+  }, [chatId, myUid, navigate]);
+
+  // listen to messages (remote)
   useEffect(() => {
     if (!chatId) return;
     const msgRef = collection(db, "chats", chatId, "messages");
     const q = query(msgRef, orderBy("createdAt", "asc"));
-
-    const unsub = onSnapshot(q, (snapshot) => {
-      const msgs = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    const unsub = onSnapshot(q, async (snap) => {
+      const msgs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       setMessages(msgs);
+
+      // mark incoming sent -> delivered (we are viewing)
+      const incoming = msgs.filter((m) => m.sender !== myUid && m.status === "sent");
+      for (const m of incoming) {
+        try {
+          await updateDoc(doc(db, "chats", chatId, "messages", m.id), { status: "delivered" });
+        } catch (e) {}
+      }
     });
-
     return () => unsub();
-  }, [chatId]);
+  }, [chatId, myUid]);
 
-  // Send message
+  // mark delivered -> seen for messages (we are viewing the conversation)
+  useEffect(() => {
+    if (!chatId) return;
+    const toMark = messages.filter((m) => m.sender !== myUid && m.status === "delivered");
+    for (const m of toMark) {
+      updateDoc(doc(db, "chats", chatId, "messages", m.id), { status: "seen" }).catch(() => {});
+    }
+  }, [messages, chatId, myUid]);
+
+  // typing indicator: set typing flag on my user doc when typing
+  useEffect(() => {
+    if (!myUid) return;
+    const userRef = doc(db, "users", myUid);
+    let timer = null;
+    if (text && text.length > 0) {
+      // set typing true and debounce set false after 1.2s idle
+      updateDoc(userRef, { [`typing.${chatId}`]: true }).catch(() => {});
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        updateDoc(userRef, { [`typing.${chatId}`]: false }).catch(() => {});
+      }, 1200);
+    } else {
+      updateDoc(userRef, { [`typing.${chatId}`]: false }).catch(() => {});
+    }
+    return () => clearTimeout(timer);
+  }, [text, myUid, chatId]);
+
+  // file selection
+  const onFilesSelected = (e) => {
+    const chosen = Array.from(e.target.files || []);
+    if (!chosen.length) return;
+    setFiles((prev) => [...prev, ...chosen]);
+    setPreviews((p) => [
+      ...p,
+      ...chosen.map((f) => (f.type.startsWith("image/") ? URL.createObjectURL(f) : null)),
+    ]);
+  };
+
+  const removeFileAt = (index) => {
+    setFiles((s) => s.filter((_, i) => i !== index));
+    setPreviews((p) => p.filter((_, i) => i !== index));
+  };
+
+  // optimistic local message helper
+  const pushLocal = (payload) => {
+    const tempId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    const localMsg = { id: tempId, ...payload, createdAt: new Date(), status: "sending", local: true };
+    setLocalMessages((prev) => [...prev, localMsg]);
+    return tempId;
+  };
+  const removeLocal = (tempId) => setLocalMessages((prev) => prev.filter((m) => m.id !== tempId));
+
+  // handle send: upload files (resumable) then add message docs
   const handleSend = async () => {
-    if (!input.trim() && files.length === 0) return;
-    if (!auth.currentUser) return;
+    if ((!text || !text.trim()) && files.length === 0) return;
+    if (!myUid) return;
 
     setUploading(true);
-    try {
-      const msgRef = collection(db, "chats", chatId, "messages");
-      const fileURLs = [];
 
-      // Upload multiple files
-      for (const file of files) {
-        const fileRef = ref(storage, `chatFiles/${chatId}/${Date.now()}_${file.name}`);
-        const uploadTask = uploadBytesResumable(fileRef, file);
+    // Prepare optimistic messages (preview)
+    const tempIds = [];
+    try {
+      // Add previews for files
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i];
+        pushLocal({
+          sender: myUid,
+          text: f.type.startsWith("image/") ? "" : "",
+          fileURL: previews[i] || null,
+          fileName: f.name,
+          type: f.type.startsWith("image/") ? "image" : "file",
+          status: "sending",
+        });
+      }
+      // add text optimistic
+      if (text && text.trim()) {
+        pushLocal({
+          sender: myUid,
+          text: text.trim(),
+          fileURL: null,
+          type: "text",
+          status: "sending",
+        });
+      }
+
+      // Upload files sequentially (reliable & easy to follow)
+      const uploaded = [];
+      for (const f of files) {
+        const sRef = storageRef(storage, `chatFiles/${chatId}/${Date.now()}_${f.name}`);
+        const task = uploadBytesResumable(sRef, f);
+
+        // await completion with promise
         await new Promise((resolve, reject) => {
-          uploadTask.on(
+          task.on(
             "state_changed",
-            null,
-            reject,
+            (snap) => {
+              // could expose progress: snap.bytesTransferred / snap.totalBytes
+            },
+            (err) => reject(err),
             async () => {
-              const url = await getDownloadURL(uploadTask.snapshot.ref);
-              fileURLs.push({
-                name: file.name,
+              const url = await getDownloadURL(task.snapshot.ref);
+              uploaded.push({
+                fileName: f.name,
                 url,
-                type: file.type.startsWith("image") ? "image" : "file",
+                type: f.type.startsWith("image/") ? "image" : "file",
               });
               resolve();
             }
@@ -112,329 +264,137 @@ export default function ChatConversationPage() {
         });
       }
 
-      await addDoc(msgRef, {
-        sender: auth.currentUser.uid,
-        text: input.trim(),
-        attachments: fileURLs,
-        status: "sending",
-        createdAt: serverTimestamp(),
-      });
+      // Create messages in Firestore for uploaded files (preserve order)
+      const msgCol = collection(db, "chats", chatId, "messages");
+      const createdMessages = [];
 
-      // Update last message in chat
-      const chatRef = doc(db, "chats", chatId);
-      await updateDoc(chatRef, {
-        lastMessage: input.trim() || (fileURLs.length ? "📎 Attachment" : ""),
+      for (const u of uploaded) {
+        const payload = {
+          sender: myUid,
+          text: "",
+          fileURL: u.url,
+          fileName: u.fileName,
+          type: u.type,
+          createdAt: serverTimestamp(),
+          status: "sent",
+        };
+        const docRef = await addDoc(msgCol, payload);
+        createdMessages.push({ id: docRef.id, ...payload });
+      }
+
+      // Text msg
+      if (text && text.trim()) {
+        const payload = {
+          sender: myUid,
+          text: text.trim(),
+          fileURL: null,
+          fileName: null,
+          type: "text",
+          createdAt: serverTimestamp(),
+          status: "sent",
+        };
+        const docRef = await addDoc(msgCol, payload);
+        createdMessages.push({ id: docRef.id, ...payload });
+      }
+
+      // update chat preview
+      await updateDoc(doc(db, "chats", chatId), {
+        lastMessage: text?.trim() || (createdMessages[0]?.fileName || ""),
         lastMessageAt: serverTimestamp(),
       });
 
-      setInput("");
+      // clear optimistic local ones
+      setLocalMessages([]);
+      setText("");
       setFiles([]);
+      setPreviews([]);
+      endRef.current?.scrollIntoView({ behavior: "smooth" });
     } catch (err) {
-      console.error("Error sending message:", err);
-      alert("Error sending message.");
+      console.error("Send failed", err);
+      alert("Failed to send. Check connection.");
+      // keep local messages to allow retry
     } finally {
       setUploading(false);
     }
   };
 
-  const handleFileChange = (e) => {
-    const selected = Array.from(e.target.files);
-    setFiles((prev) => [...prev, ...selected]);
-  };
+  // combined list: remote messages plus local optimistic at end
+  const combined = [...messages, ...localMessages];
 
-  const removeFile = (index) => {
-    setFiles((prev) => prev.filter((_, i) => i !== index));
-  };
+  const openProfile = () => friendInfo && navigate(`/profile/${friendInfo.id}`);
+  const openMedia = () => navigate(`/media/${chatId}`);
 
   const handleBack = () => navigate("/chat");
 
+  if (!chatInfo) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: isDark ? "#fff" : "#000" }}>
+        Loading chat...
+      </div>
+    );
+  }
+
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        flexDirection: "column",
-        background: wallpaper
-          ? `url(${wallpaper}) center/cover no-repeat`
-          : isDark
-          ? "#121212"
-          : "#f5f5f5",
-        color: isDark ? "#fff" : "#000",
-      }}
-    >
-      {/* Header */}
-      <div
-        style={{
-          background: isDark ? "#1e1e1e" : "#fff",
-          padding: "12px 18px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          borderBottom: "1px solid #ccc",
-          position: "sticky",
-          top: 0,
-          zIndex: 2,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center" }}>
-          <button
-            onClick={handleBack}
-            style={{
-              background: "transparent",
-              border: "none",
-              fontSize: "22px",
-              cursor: "pointer",
-              marginRight: "10px",
-            }}
-          >
-            ←
-          </button>
-          <img
-            src={friendInfo?.photoURL || "/default-avatar.png"}
-            alt="profile"
-            style={{
-              width: "45px",
-              height: "45px",
-              borderRadius: "50%",
-              objectFit: "cover",
-              border: "2px solid #ccc",
-            }}
-          />
-          <div style={{ marginLeft: "10px" }}>
-            <h4 style={{ margin: 0 }}>{friendInfo?.displayName || "Friend"}</h4>
-            <span style={{ fontSize: "12px", color: "#888" }}>
-              {friendInfo?.lastSeen
-                ? formatLastSeen(friendInfo.lastSeen)
-                : "Online"}
-            </span>
-          </div>
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: wallpaper ? `url(${wallpaper}) center/cover no-repeat` : isDark ? "#121212" : "#f5f5f5", color: isDark ? "#fff" : "#000" }}>
+      {/* header */}
+      <div style={{ background: isDark ? "#1e1e1e" : "#fff", padding: "12px 18px", display: "flex", alignItems: "center", borderBottom: "1px solid #ccc", position: "sticky", top: 0, zIndex: 2 }}>
+        <button onClick={handleBack} style={{ background: "transparent", border: "none", fontSize: "22px", cursor: "pointer", marginRight: "10px" }}>←</button>
+        <img src={friendInfo?.photoURL || "/default-avatar.png"} alt="avatar" style={{ width: "45px", height: "45px", borderRadius: "50%", objectFit: "cover", border: "2px solid #ccc", cursor: "pointer" }} onClick={openProfile} />
+        <div style={{ marginLeft: "10px" }}>
+          <h4 style={{ margin: 0 }}>{friendInfo?.displayName || chatInfo?.name || "Chat"}</h4>
+          <small style={{ color: "#888" }}>{formatLastSeen(friendInfo?.lastSeen, friendInfo?.isOnline)}</small>
         </div>
-
-        {/* 3-dot + call buttons */}
-        <div style={{ display: "flex", gap: "12px" }}>
-          <button style={iconBtnStyle}>📞</button>
-          <button style={iconBtnStyle}>🎥</button>
-          <button style={iconBtnStyle}>⋮</button>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
+          <button style={{ background: "transparent", border: "none", fontSize: 20, cursor: "pointer" }}>📞</button>
+          <button style={{ background: "transparent", border: "none", fontSize: 20, cursor: "pointer" }}>🎥</button>
+          <button style={{ background: "transparent", border: "none", fontSize: 20, cursor: "pointer" }} onClick={() => openMedia()}>⋮</button>
         </div>
       </div>
 
-      {/* Messages */}
-      <div
-        style={{
-          flex: 1,
-          overflowY: "auto",
-          padding: "15px",
-          display: "flex",
-          flexDirection: "column",
-          gap: "10px",
-          marginBottom: "100px",
-        }}
-      >
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            style={{
-              alignSelf:
-                msg.sender === auth.currentUser.uid ? "flex-end" : "flex-start",
-              background:
-                msg.sender === auth.currentUser.uid
-                  ? "#DCF8C6"
-                  : isDark
-                  ? "#333"
-                  : "#fff",
-              color: "#000",
-              padding: "10px",
-              borderRadius: "10px",
-              maxWidth: "70%",
-              boxShadow: "0 1px 2px rgba(0,0,0,0.1)",
-            }}
-          >
-            {msg.text && <div>{msg.text}</div>}
+      {/* messages */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "15px", display: "flex", flexDirection: "column", gap: "10px", marginBottom: "120px" }}>
+        {combined.map((m) => {
+          const mine = m.sender === myUid;
+          return (
+            <div key={m.id} style={{ alignSelf: mine ? "flex-end" : "flex-start", maxWidth: "75%" }}>
+              <div style={{ padding: "10px", borderRadius: 10, background: mine ? (isDark ? "#1f6feb" : "#007bff") : (isDark ? "#2b2b2b" : "#fff"), color: mine ? "#fff" : "#000", boxShadow: "0 1px 2px rgba(0,0,0,0.06)" }}>
+                {!mine && <div style={{ fontWeight: "600", marginBottom: 6, fontSize: 13 }}>{friendInfo?.displayName || "Friend"}</div>}
 
-            {/* Attachments */}
-            {msg.attachments?.map((file, idx) =>
-              file.type === "image" ? (
-                <img
-                  key={idx}
-                  src={file.url}
-                  alt="attachment"
-                  style={{
-                    width: "100%",
-                    borderRadius: "8px",
-                    marginTop: "8px",
-                  }}
-                />
-              ) : (
-                <a
-                  key={idx}
-                  href={file.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ color: "#007bff", textDecoration: "none" }}
-                >
-                  📎 {file.name}
-                </a>
-              )
-            )}
+                {m.type === "image" && <img src={m.fileURL} alt={m.fileName} style={{ width: "100%", borderRadius: 8 }} />}
+                {m.type === "file" && <a href={m.fileURL} target="_blank" rel="noreferrer" style={{ color: mine ? "#fff" : "#007BFF" }}>📎 {m.fileName}</a>}
+                {m.type === "text" && <div style={{ whiteSpace: "pre-wrap" }}>{m.text}</div>}
 
-            <div
-              style={{
-                fontSize: "10px",
-                textAlign: "right",
-                opacity: 0.6,
-                marginTop: "4px",
-              }}
-            >
-              {msg.createdAt?.seconds
-                ? new Date(msg.createdAt.seconds * 1000).toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })
-                : ""}
-              {msg.sender === auth.currentUser.uid && (
-                <span style={{ marginLeft: "5px" }}>
-                  {msg.status === "seen"
-                    ? "✔✔"
-                    : msg.status === "sent"
-                    ? "✔"
-                    : "⌛"}
-                </span>
-              )}
+                <div style={{ fontSize: 11, textAlign: "right", opacity: 0.85, marginTop: 6 }}>
+                  <span>{m.createdAt?.seconds ? new Date(m.createdAt.seconds * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : (m.createdAt instanceof Date ? m.createdAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Sending...")}</span>
+                  {mine && <MessageStatus status={m.status || (m.local ? "sending" : "sent")} />}
+                </div>
+              </div>
             </div>
-          </div>
-        ))}
-        <div ref={messagesEndRef} />
+          );
+        })}
+
+        {/* bottom ref */}
+        <div ref={endRef} />
       </div>
 
-      {/* Input Section */}
-      <div
-        style={{
-          position: "fixed",
-          bottom: 0,
-          left: 0,
-          width: "100%",
-          display: "flex",
-          alignItems: "center",
-          padding: "10px",
-          background: isDark ? "#1e1e1e" : "#fff",
-          borderTop: "1px solid #ccc",
-        }}
-      >
-        <label htmlFor="fileInput" style={{ fontSize: "22px", cursor: "pointer" }}>
-          📎
-        </label>
-        <input
-          type="file"
-          id="fileInput"
-          multiple
-          accept="image/*,.pdf,.doc,.docx,.txt"
-          onChange={handleFileChange}
-          style={{ display: "none" }}
-        />
+      {/* file previews strip + input (fixed) */}
+      <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, padding: 10, background: isDark ? "#111" : "#fff", borderTop: "1px solid #ccc", display: "flex", alignItems: "center", gap: 8 }}>
+        <label htmlFor="fileInput" style={{ cursor: "pointer", fontSize: 22 }}>📎</label>
+        <input id="fileInput" type="file" multiple accept="image/*,.pdf,.doc,.docx,.txt" style={{ display: "none" }} onChange={onFilesSelected} />
 
-        {/* Preview Strip */}
-        <div
-          style={{
-            display: "flex",
-            overflowX: "auto",
-            maxWidth: "200px",
-            margin: "0 10px",
-          }}
-        >
-          {files.map((file, index) => (
-            <div
-              key={index}
-              style={{
-                position: "relative",
-                width: "50px",
-                height: "50px",
-                borderRadius: "8px",
-                overflow: "hidden",
-                marginRight: "6px",
-              }}
-            >
-              <img
-                src={URL.createObjectURL(file)}
-                alt="preview"
-                style={{ width: "100%", height: "100%", objectFit: "cover" }}
-              />
-              <button
-                onClick={() => removeFile(index)}
-                style={{
-                  position: "absolute",
-                  top: "-5px",
-                  right: "-5px",
-                  background: "#fff",
-                  color: "#000",
-                  border: "none",
-                  borderRadius: "50%",
-                  width: "18px",
-                  height: "18px",
-                  cursor: "pointer",
-                }}
-              >
-                ×
-              </button>
+        <div style={{ display: "flex", gap: 8, overflowX: "auto", maxWidth: 240 }}>
+          {previews.map((p, i) => (
+            <div key={i} style={{ position: "relative", width: 56, height: 56, borderRadius: 8, overflow: "hidden" }}>
+              {p ? <img src={p} alt="preview" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ background: "#eee", width: "100%", height: "100%" }} />}
+              <button onClick={() => removeFileAt(i)} style={{ position: "absolute", top: -6, right: -6, width: 20, height: 20, borderRadius: "50%", background: "#fff", border: "none", cursor: "pointer" }}>✖</button>
             </div>
           ))}
         </div>
 
-        <input
-          type="text"
-          placeholder="Type a message..."
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSend()}
-          style={{
-            flex: 1,
-            padding: "10px",
-            borderRadius: "8px",
-            border: "1px solid #ccc",
-            outline: "none",
-            background: isDark ? "#2c2c2c" : "#fff",
-            color: isDark ? "#fff" : "#000",
-          }}
-        />
-        <button
-          onClick={handleSend}
-          disabled={uploading}
-          style={{
-            marginLeft: "8px",
-            padding: "10px 15px",
-            background: uploading ? "#999" : "#007BFF",
-            color: "#fff",
-            border: "none",
-            borderRadius: "50%",
-            cursor: uploading ? "not-allowed" : "pointer",
-          }}
-        >
-          {uploading ? "⌛" : "↑"}
-        </button>
+        <textarea value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }} placeholder="Type a message..." style={{ flex: 1, padding: 10, borderRadius: 8, border: "1px solid #ccc", resize: "none", minHeight: 40, maxHeight: 120, background: isDark ? "#222" : "#fff", color: isDark ? "#fff" : "#000" }} />
+
+        <button onClick={handleSend} disabled={uploading} style={{ padding: "10px 12px", borderRadius: 8, background: uploading ? "#999" : "#007BFF", color: "#fff", border: "none", cursor: uploading ? "not-allowed" : "pointer" }}>{uploading ? "⌛" : "Send"}</button>
       </div>
     </div>
   );
 }
-
-// Helper: format last seen
-function formatLastSeen(timestamp) {
-  const date = new Date(timestamp.seconds * 1000);
-  const now = new Date();
-  const diff = (now - date) / 1000 / 60; // minutes
-
-  if (diff < 1) return "Online";
-  if (diff < 60) return `${Math.floor(diff)}m ago`;
-  if (date.toDateString() === now.toDateString())
-    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
-  return date.toLocaleDateString();
-}
-
-const iconBtnStyle = {
-  background: "transparent",
-  border: "none",
-  fontSize: "20px",
-  cursor: "pointer",
-};
