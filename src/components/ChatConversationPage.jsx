@@ -1,3 +1,4 @@
+// ChatConversationPage.jsx
 import React, { useEffect, useState, useRef, useContext } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
@@ -18,9 +19,8 @@ import {
 } from "firebase/storage";
 import { auth, db, storage } from "../firebaseConfig";
 import { ThemeContext } from "../context/ThemeContext";
-import { FixedSizeList as List } from 'react-window';
 
-// Message status display component
+// Message status component
 function MessageStatus({ status }) {
   if (status === "sending") return <span style={{ marginLeft: 6 }}>⌛</span>;
   if (status === "sent") return <span style={{ marginLeft: 6 }}>✔</span>;
@@ -29,7 +29,7 @@ function MessageStatus({ status }) {
   return null;
 }
 
-// Format last seen / online styling
+// Format last seen / online
 function formatLastSeen(ts, isOnline) {
   if (isOnline) return "Online";
   if (!ts) return "";
@@ -47,7 +47,7 @@ function formatLastSeen(ts, isOnline) {
   return last.toLocaleDateString();
 }
 
-// Format message day labels
+// Format message day for grouping
 function formatMessageDay(date) {
   const msgDate = date instanceof Date ? date : date.toDate ? date.toDate() : new Date(date);
   const now = new Date();
@@ -77,11 +77,12 @@ export default function ChatConversationPage() {
   const endRef = useRef(null);
   const myUid = auth.currentUser?.uid;
 
+  // Scroll to bottom when messages change
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, localMessages]);
 
-  // Presence handling: update user online/offline status
+  // Presence
   useEffect(() => {
     if (!myUid) return;
     const userRef = doc(db, "users", myUid);
@@ -98,7 +99,7 @@ export default function ChatConversationPage() {
     };
   }, [myUid]);
 
-  // Load chat and friend info
+  // Load chat & friend info
   useEffect(() => {
     if (!chatId) return;
     const chatRef = doc(db, "chats", chatId);
@@ -131,7 +132,7 @@ export default function ChatConversationPage() {
     };
   }, [chatId, myUid, navigate]);
 
-  // Listen to messages realtime
+  // Listen messages
   useEffect(() => {
     if (!chatId) return;
     const msgRef = collection(db, "chats", chatId, "messages");
@@ -140,7 +141,7 @@ export default function ChatConversationPage() {
       const msgs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       setMessages(msgs);
 
-      // Mark incoming sent -> delivered
+      // mark incoming sent -> delivered
       const incoming = msgs.filter((m) => m.sender !== myUid && m.status === "sent");
       for (const m of incoming) {
         try {
@@ -177,7 +178,7 @@ export default function ChatConversationPage() {
     return () => clearTimeout(timer);
   }, [text, myUid, chatId]);
 
-  // File selection handlers
+  // File selection
   const onFilesSelected = (e) => {
     const chosen = Array.from(e.target.files || []);
     if (!chosen.length) return;
@@ -192,7 +193,7 @@ export default function ChatConversationPage() {
     setPreviews((p) => p.filter((_, i) => i !== index));
   };
 
-  // Local optimistic messages
+  // Optimistic local messages
   const pushLocal = (payload) => {
     const tempId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
     const localMsg = { id: tempId, ...payload, createdAt: new Date(), status: "sending", local: true };
@@ -200,36 +201,14 @@ export default function ChatConversationPage() {
     return tempId;
   };
 
-  // Upload with retry helper
-  const uploadWithRetry = async (file, retries = 3) => {
-    while (retries > 0) {
-      try {
-        const sRef = storageRef(storage, `chatFiles/${chatId}/${Date.now()}_${file.name}`);
-        const task = uploadBytesResumable(sRef, file);
-        await new Promise((resolve, reject) => {
-          task.on(
-            "state_changed",
-            () => {},
-            (err) => reject(err),
-            () => resolve()
-          );
-        });
-        return await getDownloadURL(task.snapshot.ref);
-      } catch (err) {
-        retries -= 1;
-        if (retries === 0) throw err;
-      }
-    }
-  };
-
-  // Send message with retry logic
+  // Send message
   const handleSend = async () => {
     if ((!text || !text.trim()) && files.length === 0) return;
     if (!myUid) return;
 
     setUploading(true);
     try {
-      // Add local previews for files
+      // Files first
       for (let i = 0; i < files.length; i++) {
         const f = files[i];
         pushLocal({
@@ -241,18 +220,31 @@ export default function ChatConversationPage() {
           status: "sending",
         });
       }
+
       if (text && text.trim()) {
         pushLocal({ sender: myUid, text: text.trim(), fileURL: null, type: "text", status: "sending" });
       }
 
-      // Upload files with retry and send messages
       const uploaded = [];
       for (const f of files) {
-        const url = await uploadWithRetry(f);
-        uploaded.push({ fileName: f.name, url, type: f.type.startsWith("image/") ? "image" : "file" });
+        const sRef = storageRef(storage, `chatFiles/${chatId}/${Date.now()}_${f.name}`);
+        const task = uploadBytesResumable(sRef, f);
+        await new Promise((resolve, reject) => {
+          task.on(
+            "state_changed",
+            () => {},
+            (err) => reject(err),
+            async () => {
+              const url = await getDownloadURL(task.snapshot.ref);
+              uploaded.push({ fileName: f.name, url, type: f.type.startsWith("image/") ? "image" : "file" });
+              resolve();
+            }
+          );
+        });
       }
 
       const msgCol = collection(db, "chats", chatId, "messages");
+
       for (const u of uploaded) {
         await addDoc(msgCol, {
           sender: myUid,
@@ -264,6 +256,7 @@ export default function ChatConversationPage() {
           status: "sent",
         });
       }
+
       if (text && text.trim()) {
         await addDoc(msgCol, {
           sender: myUid,
@@ -276,7 +269,6 @@ export default function ChatConversationPage() {
         });
       }
 
-      // Update last message on chat document
       await updateDoc(doc(db, "chats", chatId), {
         lastMessage: text?.trim() || uploaded[0]?.fileName || "",
         lastMessageAt: serverTimestamp(),
@@ -289,7 +281,7 @@ export default function ChatConversationPage() {
       endRef.current?.scrollIntoView({ behavior: "smooth" });
     } catch (err) {
       console.error(err);
-      alert("Failed to send after multiple tries. Check your connection.");
+      alert("Failed to send. Check your connection.");
     } finally {
       setUploading(false);
     }
@@ -312,29 +304,6 @@ export default function ChatConversationPage() {
     }
     groupedMessages.push(m);
   });
-
-  // Virtualized message row rendering
-  const Row = ({ index, style }) => {
-    const m = groupedMessages[index];
-    if (m.type === "day") {
-      return (
-        <div style={{ ...style, textAlign: "center", margin: "10px 0", color: "#888", fontSize: 12, fontWeight: "600" }}>
-          {m.label}
-        </div>
-      );
-    }
-    const mine = m.sender === myUid;
-    return (
-      <div style={{ ...style, display: "flex", justifyContent: mine ? "flex-end" : "flex-start", marginBottom: 6 }}>
-        <div style={{ background: mine ? "#34B7F1" : "#e5e5ea", color: mine ? "#fff" : "#000", padding: "8px 12px", borderRadius: "15px", maxWidth: "70%", wordBreak: "break-word" }}>
-          {m.type === "text" && m.text}
-          {m.type === "image" && <img src={m.fileURL} alt="sent" style={{ width: "150px", borderRadius: "10px" }} />}
-          {m.type === "file" && <a href={m.fileURL} target="_blank" rel="noreferrer" style={{ color: mine ? "#fff" : "#007BFF" }}>📎 {m.fileName}</a>}
-          <div style={{ fontSize: 10, textAlign: "right" }}><MessageStatus status={m.status} /></div>
-        </div>
-      </div>
-    );
-  };
 
   const handleBack = () => navigate("/chat");
   const openProfile = () => friendInfo && navigate(`/profile/${friendInfo.id}`);
@@ -368,14 +337,27 @@ export default function ChatConversationPage() {
 
       {/* Messages */}
       <div style={{ flex: 1, overflowY: "auto", padding: "10px" }}>
-        <List
-          height={600} // Adjust this to your desired height
-          itemCount={groupedMessages.length}
-          itemSize={70} // Estimate row height
-          width="100%"
-        >
-          {Row}
-        </List>
+        {groupedMessages.map((item) => {
+          if (item.type === "day") {
+            return (
+              <div key={item.id} style={{ textAlign: "center", margin: "10px 0", color: "#888", fontSize: 12, fontWeight: "600" }}>
+                {item.label}
+              </div>
+            );
+          }
+          const m = item;
+          const mine = m.sender === myUid;
+          return (
+            <div key={m.id} style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start", marginBottom: 6 }}>
+              <div style={{ background: mine ? "#34B7F1" : "#e5e5ea", color: mine ? "#fff" : "#000", padding: "8px 12px", borderRadius: "15px", maxWidth: "70%", wordBreak: "break-word" }}>
+                {m.type === "text" && m.text}
+                {m.type === "image" && <img src={m.fileURL} alt="sent" style={{ width: "150px", borderRadius: "10px" }} />}
+                {m.type === "file" && <a href={m.fileURL} target="_blank" rel="noreferrer" style={{ color: mine ? "#fff" : "#007BFF" }}>📎 {m.fileName}</a>}
+                <div style={{ fontSize: 10, textAlign: "right" }}><MessageStatus status={m.status} /></div>
+              </div>
+            </div>
+          );
+        })}
         <div ref={endRef} />
       </div>
 
