@@ -47,6 +47,17 @@ function formatLastSeen(ts, isOnline) {
   return last.toLocaleDateString();
 }
 
+// Format message day for grouping
+function formatMessageDay(date) {
+  const msgDate = date instanceof Date ? date : date.toDate ? date.toDate() : new Date(date);
+  const now = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(now.getDate() - 1);
+  if (msgDate.toDateString() === now.toDateString()) return "Today";
+  if (msgDate.toDateString() === yesterday.toDateString()) return "Yesterday";
+  return msgDate.toLocaleDateString();
+}
+
 export default function ChatConversationPage() {
   const { chatId } = useParams();
   const navigate = useNavigate();
@@ -66,7 +77,7 @@ export default function ChatConversationPage() {
   const endRef = useRef(null);
   const myUid = auth.currentUser?.uid;
 
-  // Scroll to bottom when messages update
+  // Scroll to bottom when messages change
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, localMessages]);
@@ -76,7 +87,6 @@ export default function ChatConversationPage() {
     if (!myUid) return;
     const userRef = doc(db, "users", myUid);
     updateDoc(userRef, { isOnline: true }).catch(() => {});
-
     const handleUnload = async () => {
       try {
         await updateDoc(userRef, { isOnline: false, lastSeen: serverTimestamp() });
@@ -142,7 +152,7 @@ export default function ChatConversationPage() {
     return () => unsub();
   }, [chatId, myUid]);
 
-  // delivered -> seen
+  // Delivered -> seen
   useEffect(() => {
     if (!chatId) return;
     const toMark = messages.filter((m) => m.sender !== myUid && m.status === "delivered");
@@ -197,9 +207,8 @@ export default function ChatConversationPage() {
     if (!myUid) return;
 
     setUploading(true);
-
     try {
-      // Add files optimistically
+      // Files first
       for (let i = 0; i < files.length; i++) {
         const f = files[i];
         pushLocal({
@@ -211,12 +220,11 @@ export default function ChatConversationPage() {
           status: "sending",
         });
       }
-      // Add text optimistically
+
       if (text && text.trim()) {
         pushLocal({ sender: myUid, text: text.trim(), fileURL: null, type: "text", status: "sending" });
       }
 
-      // Upload files to Firebase Storage
       const uploaded = [];
       for (const f of files) {
         const sRef = storageRef(storage, `chatFiles/${chatId}/${Date.now()}_${f.name}`);
@@ -279,7 +287,24 @@ export default function ChatConversationPage() {
     }
   };
 
-  const combined = [...messages, ...localMessages];
+  // Combine and group messages by day
+  const allMessages = [...messages, ...localMessages].sort((a, b) => {
+    const aTime = a.createdAt?.seconds ? a.createdAt.seconds * 1000 : a.createdAt?.getTime();
+    const bTime = b.createdAt?.seconds ? b.createdAt.seconds * 1000 : b.createdAt?.getTime();
+    return aTime - bTime;
+  });
+
+  const groupedMessages = [];
+  let lastDay = "";
+  allMessages.forEach((m) => {
+    const dayLabel = formatMessageDay(m.createdAt);
+    if (dayLabel !== lastDay) {
+      groupedMessages.push({ type: "day", id: `day-${dayLabel}-${m.id}`, label: dayLabel });
+      lastDay = dayLabel;
+    }
+    groupedMessages.push(m);
+  });
+
   const handleBack = () => navigate("/chat");
   const openProfile = () => friendInfo && navigate(`/profile/${friendInfo.id}`);
   const handleVoiceCall = () => navigate(`/call/${chatId}`);
@@ -295,7 +320,6 @@ export default function ChatConversationPage() {
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: wallpaper ? `url(${wallpaper}) center/cover no-repeat` : isDark ? "#121212" : "#f5f5f5", color: isDark ? "#fff" : "#000" }}>
-
       {/* Header */}
       <div style={{ background: isDark ? "#1e1e1e" : "#fff", padding: "12px 18px", display: "flex", alignItems: "center", borderBottom: "1px solid #ccc", position: "sticky", top: 0, zIndex: 2 }}>
         <button onClick={handleBack} style={{ background: "transparent", border: "none", fontSize: "22px", cursor: "pointer", marginRight: "10px" }}>←</button>
@@ -313,19 +337,31 @@ export default function ChatConversationPage() {
 
       {/* Messages */}
       <div style={{ flex: 1, overflowY: "auto", padding: "10px" }}>
-        {combined.map((m) => (
-          <div key={m.id} style={{ display: "flex", justifyContent: m.sender === myUid ? "flex-end" : "flex-start", marginBottom: "6px" }}>
-            <div style={{ background: m.sender === myUid ? "#34B7F1" : "#e5e5ea", color: m.sender === myUid ? "#fff" : "#000", padding: "8px 12px", borderRadius: "15px", maxWidth: "70%", wordBreak: "break-word" }}>
-              {m.type === "text" && m.text}
-              {m.type === "image" && <img src={m.fileURL} alt="sent" style={{ width: "150px", borderRadius: "10px" }} />}
-              <div style={{ fontSize: "10px", textAlign: "right" }}><MessageStatus status={m.status} /></div>
+        {groupedMessages.map((item) => {
+          if (item.type === "day") {
+            return (
+              <div key={item.id} style={{ textAlign: "center", margin: "10px 0", color: "#888", fontSize: 12, fontWeight: "600" }}>
+                {item.label}
+              </div>
+            );
+          }
+          const m = item;
+          const mine = m.sender === myUid;
+          return (
+            <div key={m.id} style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start", marginBottom: 6 }}>
+              <div style={{ background: mine ? "#34B7F1" : "#e5e5ea", color: mine ? "#fff" : "#000", padding: "8px 12px", borderRadius: "15px", maxWidth: "70%", wordBreak: "break-word" }}>
+                {m.type === "text" && m.text}
+                {m.type === "image" && <img src={m.fileURL} alt="sent" style={{ width: "150px", borderRadius: "10px" }} />}
+                {m.type === "file" && <a href={m.fileURL} target="_blank" rel="noreferrer" style={{ color: mine ? "#fff" : "#007BFF" }}>📎 {m.fileName}</a>}
+                <div style={{ fontSize: 10, textAlign: "right" }}><MessageStatus status={m.status} /></div>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         <div ref={endRef} />
       </div>
 
-      {/* Input area */}
+      {/* Input */}
       <div style={{ padding: "10px", display: "flex", gap: 6, borderTop: "1px solid #ccc" }}>
         <input type="file" multiple onChange={onFilesSelected} style={{ display: "none" }} id="fileInput" />
         <label htmlFor="fileInput" style={{ cursor: "pointer" }}>📎</label>
