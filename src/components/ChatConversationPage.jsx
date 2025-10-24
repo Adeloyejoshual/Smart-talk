@@ -71,13 +71,15 @@ export default function ChatConversationPage() {
   const [text, setText] = useState("");
   const [files, setFiles] = useState([]);
   const [previews, setPreviews] = useState([]);
-  const [uploading, setUploading] = useState(false);
   const [friendTyping, setFriendTyping] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const endRef = useRef(null);
   const myUid = auth.currentUser?.uid;
 
-  // Scroll to bottom when messages change
+  const toggleMenu = () => setMenuOpen(!menuOpen);
+
+  // Scroll to bottom
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, localMessages]);
@@ -178,22 +180,7 @@ export default function ChatConversationPage() {
     return () => clearTimeout(timer);
   }, [text, myUid, chatId]);
 
-  // File selection
-  const onFilesSelected = (e) => {
-    const chosen = Array.from(e.target.files || []);
-    if (!chosen.length) return;
-    setFiles((prev) => [...prev, ...chosen]);
-    setPreviews((p) => [
-      ...p,
-      ...chosen.map((f) => (f.type.startsWith("image/") ? URL.createObjectURL(f) : null)),
-    ]);
-  };
-  const removeFileAt = (index) => {
-    setFiles((s) => s.filter((_, i) => i !== index));
-    setPreviews((p) => p.filter((_, i) => i !== index));
-  };
-
-  // Optimistic local messages
+  // Push local message
   const pushLocal = (payload) => {
     const tempId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
     const localMsg = { id: tempId, ...payload, createdAt: new Date(), status: "sending", local: true };
@@ -201,94 +188,89 @@ export default function ChatConversationPage() {
     return tempId;
   };
 
-  // Send message
-  const handleSend = async () => {
-    if ((!text || !text.trim()) && files.length === 0) return;
-    if (!myUid) return;
+  // Upload single file
+  const uploadFile = async (file) => {
+    const tempId = pushLocal({
+      sender: myUid,
+      text: "",
+      fileURL: URL.createObjectURL(file),
+      fileName: file.name,
+      type: file.type.startsWith("image/") ? "image" : "file",
+      status: "sending",
+    });
 
-    setUploading(true);
-    try {
-      // Files first
-      for (let i = 0; i < files.length; i++) {
-        const f = files[i];
-        pushLocal({
+    const sRef = storageRef(storage, `chatFiles/${chatId}/${Date.now()}_${file.name}`);
+    const task = uploadBytesResumable(sRef, file);
+
+    task.on(
+      "state_changed",
+      () => {},
+      (err) => {
+        console.error(err);
+        setLocalMessages((prev) =>
+          prev.map((m) => (m.id === tempId ? { ...m, status: "failed" } : m))
+        );
+      },
+      async () => {
+        const url = await getDownloadURL(task.snapshot.ref);
+        await addDoc(collection(db, "chats", chatId, "messages"), {
           sender: myUid,
           text: "",
-          fileURL: previews[i] || null,
-          fileName: f.name,
-          type: f.type.startsWith("image/") ? "image" : "file",
-          status: "sending",
-        });
-      }
-
-      if (text && text.trim()) {
-        pushLocal({ sender: myUid, text: text.trim(), fileURL: null, type: "text", status: "sending" });
-      }
-
-      const uploaded = [];
-      for (const f of files) {
-        const sRef = storageRef(storage, `chatFiles/${chatId}/${Date.now()}_${f.name}`);
-        const task = uploadBytesResumable(sRef, f);
-        await new Promise((resolve, reject) => {
-          task.on(
-            "state_changed",
-            () => {},
-            (err) => reject(err),
-            async () => {
-              const url = await getDownloadURL(task.snapshot.ref);
-              uploaded.push({ fileName: f.name, url, type: f.type.startsWith("image/") ? "image" : "file" });
-              resolve();
-            }
-          );
-        });
-      }
-
-      const msgCol = collection(db, "chats", chatId, "messages");
-
-      for (const u of uploaded) {
-        await addDoc(msgCol, {
-          sender: myUid,
-          text: "",
-          fileURL: u.url,
-          fileName: u.fileName,
-          type: u.type,
+          fileURL: url,
+          fileName: file.name,
+          type: file.type.startsWith("image/") ? "image" : "file",
           createdAt: serverTimestamp(),
           status: "sent",
         });
+        setLocalMessages((prev) => prev.filter((m) => m.id !== tempId));
       }
-
-      if (text && text.trim()) {
-        await addDoc(msgCol, {
-          sender: myUid,
-          text: text.trim(),
-          fileURL: null,
-          fileName: null,
-          type: "text",
-          createdAt: serverTimestamp(),
-          status: "sent",
-        });
-      }
-
-      await updateDoc(doc(db, "chats", chatId), {
-        lastMessage: text?.trim() || uploaded[0]?.fileName || "",
-        lastMessageAt: serverTimestamp(),
-      });
-
-      setLocalMessages([]);
-      setText("");
-      setFiles([]);
-      setPreviews([]);
-      endRef.current?.scrollIntoView({ behavior: "smooth" });
-    } catch (err) {
-      console.error(err);
-      alert("Failed to send. Check your connection.");
-    } finally {
-      setUploading(false);
-    }
+    );
   };
 
-  // Combine and group messages by day
+  // File selection
+  const onFilesSelected = (e) => {
+    const chosen = Array.from(e.target.files || []);
+    if (!chosen.length) return;
+    setFiles((prev) => [...prev, ...chosen]);
+    setPreviews((p) => [...p, ...chosen.map((f) => (f.type.startsWith("image/") ? URL.createObjectURL(f) : null))]]);
+    chosen.forEach(uploadFile);
+  };
+
+  // Send text message
+  const handleSend = async () => {
+    if (!text.trim()) return;
+    const msgCol = collection(db, "chats", chatId, "messages");
+    pushLocal({ sender: myUid, text: text.trim(), fileURL: null, type: "text", status: "sending" });
+
+    await addDoc(msgCol, {
+      sender: myUid,
+      text: text.trim(),
+      fileURL: null,
+      fileName: null,
+      type: "text",
+      createdAt: serverTimestamp(),
+      status: "sent",
+    });
+
+    await updateDoc(doc(db, "chats", chatId), {
+      lastMessage: text.trim(),
+      lastMessageAt: serverTimestamp(),
+    });
+    setText("");
+  };
+
+  // Combine all messages
   const allMessages = [...messages, ...localMessages].sort((a, b) => {
+    const aTime = a.createdAt?.seconds ? a.createdAt.seconds * 1000 : a.createdAt?.getTime();
+    const bTime = b.createdAt?.seconds ? b.createdAt.seconds * 1000 : b.createdAt?.getTime();
+    return aTime - bTime;
+  });
+
+  const groupedMessages = [];
+  let lastDay = "";
+  allMessages.forEach((m) => {
+    const dayLabel = formatMessageDay(m.createdAt
+const allMessages = [...messages, ...localMessages].sort((a, b) => {
     const aTime = a.createdAt?.seconds ? a.createdAt.seconds * 1000 : a.createdAt?.getTime();
     const bTime = b.createdAt?.seconds ? b.createdAt.seconds * 1000 : b.createdAt?.getTime();
     return aTime - bTime;
@@ -319,24 +301,61 @@ export default function ChatConversationPage() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: wallpaper ? `url(${wallpaper}) center/cover no-repeat` : isDark ? "#121212" : "#f5f5f5", color: isDark ? "#fff" : "#000" }}>
+    <div style={{
+      minHeight: "100vh",
+      display: "flex",
+      flexDirection: "column",
+      background: wallpaper ? `url(${wallpaper}) center/cover no-repeat` : isDark ? "#121212" : "#f5f5f5",
+      color: isDark ? "#fff" : "#000"
+    }}>
       {/* Header */}
-      <div style={{ background: isDark ? "#1e1e1e" : "#fff", padding: "12px 18px", display: "flex", alignItems: "center", borderBottom: "1px solid #ccc", position: "sticky", top: 0, zIndex: 2 }}>
+      <div style={{
+        background: isDark ? "#1e1e1e" : "#fff",
+        padding: "12px 18px",
+        display: "flex",
+        alignItems: "center",
+        borderBottom: "1px solid #ccc",
+        position: "sticky",
+        top: 0,
+        zIndex: 2
+      }}>
         <button onClick={handleBack} style={{ background: "transparent", border: "none", fontSize: "22px", cursor: "pointer", marginRight: "10px" }}>←</button>
         <img src={friendInfo?.photoURL || "/default-avatar.png"} alt="avatar" style={{ width: "45px", height: "45px", borderRadius: "50%", objectFit: "cover", cursor: "pointer" }} onClick={openProfile} />
         <div style={{ marginLeft: "10px" }}>
           <h4 style={{ margin: 0 }}>{friendInfo?.displayName || chatInfo?.name || "Friend"}</h4>
           <small style={{ color: "#34B7F1" }}>{friendTyping ? "typing..." : formatLastSeen(friendInfo?.lastSeen, friendInfo?.isOnline)}</small>
         </div>
-        <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
-          <button onClick={handleVoiceCall} style={{ background: "transparent", border: "none", fontSize: 20, cursor: "pointer" }}>📞</button>
-          <button onClick={handleVideoCall} style={{ background: "transparent", border: "none", fontSize: 20, cursor: "pointer" }}>🎥</button>
-          <button style={{ background: "transparent", border: "none", fontSize: 22, cursor: "pointer" }}>⋮</button>
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center" }}>
+          <button onClick={handleVoiceCall} style={{ background: "transparent", border: "none", fontSize: 20, cursor: "pointer", marginRight: 10 }}>📞</button>
+          <button onClick={handleVideoCall} style={{ background: "transparent", border: "none", fontSize: 20, cursor: "pointer", marginRight: 10 }}>🎥</button>
+          {/* Three-dot menu */}
+          <div style={{ position: "relative" }}>
+            <button onClick={toggleMenu} style={{ background: "transparent", border: "none", fontSize: 22, cursor: "pointer" }}>⋮</button>
+            {menuOpen && (
+              <div style={{
+                position: "absolute",
+                right: 0,
+                top: "100%",
+                background: isDark ? "#333" : "#fff",
+                border: "1px solid #ccc",
+                borderRadius: 6,
+                padding: 8,
+                minWidth: 140,
+                boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+                zIndex: 10
+              }}>
+                <div style={{ padding: 6, cursor: "pointer" }} onClick={openProfile}>View Profile</div>
+                <div style={{ padding: 6, cursor: "pointer" }}>Mute Notifications</div>
+                <div style={{ padding: 6, cursor: "pointer" }}>Clear Chat</div>
+                <div style={{ padding: 6, cursor: "pointer" }}>Delete Chat</div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Messages */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "10px" }}>
+      <div style={{ flex: 1, overflowY: "auto", padding: "10px", marginBottom: "160px" }}>
         {groupedMessages.map((item) => {
           if (item.type === "day") {
             return (
@@ -361,25 +380,28 @@ export default function ChatConversationPage() {
         <div ref={endRef} />
       </div>
 
-      {/* Input */}
-      <div style={{ padding: "10px", display: "flex", gap: 6, borderTop: "1px solid #ccc" }}>
-        <input type="file" multiple onChange={onFilesSelected} style={{ display: "none" }} id="fileInput" />
-        <label htmlFor="fileInput" style={{ cursor: "pointer" }}>📎</label>
-        <input type="text" placeholder="Type a message" value={text} onChange={(e) => setText(e.target.value)} style={{ flex: 1, padding: "8px 12px", borderRadius: "20px", border: "1px solid #ccc" }} />
-        <button onClick={handleSend} disabled={uploading} style={{ background: "#34B7F1", color: "#fff", border: "none", padding: "8px 16px", borderRadius: "20px", cursor: "pointer" }}>Send</button>
-      </div>
-
-      {/* File previews */}
-      {previews.length > 0 && (
-        <div style={{ display: "flex", gap: 8, padding: 6, overflowX: "auto" }}>
-          {previews.map((p, idx) => (
-            <div key={idx} style={{ position: "relative" }}>
-              {p ? <img src={p} alt="preview" style={{ width: 60, height: 60, objectFit: "cover", borderRadius: "10px" }} /> : <span>{files[idx]?.name}</span>}
-              <button onClick={() => removeFileAt(idx)} style={{ position: "absolute", top: -5, right: -5, background: "#ff4d4f", border: "none", borderRadius: "50%", color: "#fff", cursor: "pointer", width: 18, height: 18 }}>×</button>
-            </div>
-          ))}
+      {/* Pinned input + file previews */}
+      <div style={{ position: "fixed", bottom: 0, left: 0, width: "100%", background: isDark ? "#1e1e1e" : "#fff", borderTop: "1px solid #ccc", padding: 10, zIndex: 5 }}>
+        {/* File previews */}
+        {previews.length > 0 && (
+          <div style={{ display: "flex", gap: 8, marginBottom: 8, overflowX: "auto" }}>
+            {previews.map((p, idx) => p && <img key={idx} src={p} alt="preview" style={{ width: 60, height: 60, objectFit: "cover", borderRadius: 8 }} />)}
+          </div>
+        )}
+        <div style={{ display: "flex", alignItems: "center" }}>
+          <input type="file" multiple onChange={onFilesSelected} style={{ display: "none" }} id="fileInput" />
+          <label htmlFor="fileInput" style={{ cursor: "pointer", marginRight: 8 }}>📎</label>
+          <input
+            type="text"
+            placeholder="Type a message"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            style={{ flex: 1, padding: "8px 12px", borderRadius: 20, border: "1px solid #ccc", outline: "none", marginRight: 8 }}
+            onKeyDown={(e) => e.key === "Enter" && handleSend()}
+          />
+          <button onClick={handleSend} style={{ padding: "8px 12px", borderRadius: 20, background: "#34B7F1", border: "none", color: "#fff", cursor: "pointer" }}>Send</button>
         </div>
-      )}
+      </div>
     </div>
   );
 }
