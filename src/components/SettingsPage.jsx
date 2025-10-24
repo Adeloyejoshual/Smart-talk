@@ -3,12 +3,16 @@ import React, { useEffect, useState, useContext, useRef } from "react";
 import { auth, db } from "../firebaseConfig";
 import {
   doc,
+  getDoc,
+  setDoc,
+  updateDoc,
   onSnapshot,
   collection,
   query,
   where,
   orderBy,
   onSnapshot as onCollection,
+  serverTimestamp,
 } from "firebase/firestore";
 import { signOut } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
@@ -23,39 +27,45 @@ export default function SettingsPage() {
   const [newTheme, setNewTheme] = useState(theme);
   const [newWallpaper, setNewWallpaper] = useState(wallpaper);
   const [previewWallpaper, setPreviewWallpaper] = useState(wallpaper);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [checkedInToday, setCheckedInToday] = useState(false); // 🆕
   const navigate = useNavigate();
-
   const fileInputRef = useRef(null);
 
-  // ✅ Logout handler
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-      navigate("/"); // redirect to login
-    } catch (error) {
-      alert("Logout failed: " + error.message);
-    }
-  };
-
-  // ✅ Load current user and wallet in real-time
+  // ✅ Load user, wallet, and apply $5 new user bonus
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((userAuth) => {
+    const unsubscribe = auth.onAuthStateChanged(async (userAuth) => {
       if (userAuth) {
         setUser(userAuth);
         const userRef = doc(db, "users", userAuth.uid);
+        const userSnap = await getDoc(userRef);
+
+        // 💰 Give $5 bonus to new users
+        if (!userSnap.exists()) {
+          await setDoc(userRef, {
+            balance: 5.0,
+            createdAt: serverTimestamp(),
+            lastCheckin: null, // 🆕
+          });
+          alert("🎁 Welcome! You’ve received a $5 new user bonus!");
+        }
+
+        // 💵 Listen for balance updates
         const unsubBalance = onSnapshot(userRef, (docSnap) => {
           if (docSnap.exists()) {
-            setBalance(docSnap.data().balance || 0);
+            const data = docSnap.data();
+            setBalance(data.balance || 0);
+            checkLastCheckin(data.lastCheckin); // 🆕
           }
         });
 
+        // 🧾 Listen for transactions
         const txRef = collection(db, "transactions");
         const txQuery = query(
           txRef,
           where("uid", "==", userAuth.uid),
           orderBy("createdAt", "desc")
         );
-
         const unsubTx = onCollection(txQuery, (snapshot) => {
           setTransactions(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
         });
@@ -66,11 +76,60 @@ export default function SettingsPage() {
         };
       }
     });
-
     return () => unsubscribe();
   }, []);
 
-  // 🖼️ Update live wallpaper preview
+  // 🆕 Check if user has already checked in today
+  const checkLastCheckin = (lastCheckin) => {
+    if (!lastCheckin) return setCheckedInToday(false);
+    const lastDate = new Date(lastCheckin.seconds * 1000);
+    const today = new Date();
+    if (
+      lastDate.getDate() === today.getDate() &&
+      lastDate.getMonth() === today.getMonth() &&
+      lastDate.getFullYear() === today.getFullYear()
+    ) {
+      setCheckedInToday(true);
+    } else {
+      setCheckedInToday(false);
+    }
+  };
+
+  // 🆕 Handle Daily Check-in Reward
+  const handleDailyCheckin = async () => {
+    if (!user) return;
+    const userRef = doc(db, "users", user.uid);
+    const userSnap = await getDoc(userRef);
+
+    if (userSnap.exists()) {
+      const data = userSnap.data();
+      const lastCheckin = data.lastCheckin
+        ? new Date(data.lastCheckin.seconds * 1000)
+        : null;
+      const today = new Date();
+
+      if (
+        lastCheckin &&
+        lastCheckin.getDate() === today.getDate() &&
+        lastCheckin.getMonth() === today.getMonth() &&
+        lastCheckin.getFullYear() === today.getFullYear()
+      ) {
+        alert("✅ You already checked in today!");
+        return;
+      }
+
+      const newBalance = (data.balance || 0) + 0.25;
+      await updateDoc(userRef, {
+        balance: newBalance,
+        lastCheckin: serverTimestamp(),
+      });
+
+      setCheckedInToday(true);
+      alert("🎉 You earned +$0.25 for your daily check-in!");
+    }
+  };
+
+  // 🎨 Live wallpaper preview
   useEffect(() => {
     setPreviewWallpaper(newWallpaper);
   }, [newWallpaper]);
@@ -81,24 +140,28 @@ export default function SettingsPage() {
     alert("✅ Theme and wallpaper updated!");
   };
 
-  // 📸 Handle wallpaper click & file selection
-  const handleWallpaperClick = () => {
-    fileInputRef.current.click();
-  };
-
+  // 📸 Handle wallpaper click
+  const handleWallpaperClick = () => fileInputRef.current.click();
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
       const reader = new FileReader();
-      reader.onload = (event) => {
-        setNewWallpaper(event.target.result);
-      };
+      reader.onload = (event) => setNewWallpaper(event.target.result);
       reader.readAsDataURL(file);
     }
   };
 
-  if (!user) return <p>Loading user...</p>;
+  // 🚪 Logout
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      navigate("/");
+    } catch (error) {
+      alert("Logout failed: " + error.message);
+    }
+  };
 
+  if (!user) return <p>Loading user...</p>;
   const isDark = newTheme === "dark";
 
   return (
@@ -112,7 +175,7 @@ export default function SettingsPage() {
         position: "relative",
       }}
     >
-      {/* Floating Back Button */}
+      {/* 🔙 Back */}
       <button
         onClick={() => navigate("/chat")}
         style={{
@@ -124,39 +187,14 @@ export default function SettingsPage() {
           borderRadius: "50%",
           border: "none",
           background: isDark ? "#555" : "#e0e0e0",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          transition: "all 0.2s",
-          zIndex: 1000,
-          boxShadow: "0 2px 6px rgba(0,0,0,0.3)",
         }}
-        onMouseEnter={(e) =>
-          (e.currentTarget.style.background = isDark ? "#777" : "#ccc")
-        }
-        onMouseLeave={(e) =>
-          (e.currentTarget.style.background = isDark ? "#555" : "#e0e0e0")
-        }
       >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke={isDark ? "#fff" : "#000"}
-          strokeWidth="3"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <polyline points="15 18 9 12 15 6" />
-        </svg>
+        ⬅
       </button>
 
-      {/* Page Title */}
       <h2 style={{ textAlign: "center", marginBottom: "20px" }}>⚙️ Settings</h2>
 
-      {/* 💵 Wallet Section */}
+      {/* 💰 Wallet */}
       <div style={sectionStyle(isDark)}>
         <h3>Wallet</h3>
         <p>
@@ -165,6 +203,21 @@ export default function SettingsPage() {
             ${balance.toFixed(2)}
           </strong>
         </p>
+
+        {/* 🆕 Daily Check-in */}
+        <div style={{ marginTop: "10px" }}>
+          <button
+            onClick={handleDailyCheckin}
+            disabled={checkedInToday}
+            style={{
+              ...btnStyle(checkedInToday ? "#666" : "#4CAF50"),
+              opacity: checkedInToday ? 0.7 : 1,
+            }}
+          >
+            {checkedInToday ? "✅ Checked-in Today" : "🧩 Daily Check-in (+$0.25)"}
+          </button>
+        </div>
+
         <div style={{ marginTop: "10px" }}>
           <button
             onClick={() => handleStripePayment(10, user.uid)}
@@ -178,14 +231,18 @@ export default function SettingsPage() {
           >
             Add $10 (Flutterwave)
           </button>
+          <button
+            onClick={() => alert("💸 Withdraw feature coming soon!")}
+            style={btnStyle("#555")}
+          >
+            Withdraw
+          </button>
         </div>
       </div>
 
-      {/* 🎨 Theme Settings */}
+      {/* 🎨 Theme */}
       <div style={sectionStyle(isDark)}>
         <h3>Theme & Wallpaper</h3>
-
-        <label>Theme:</label>
         <select
           value={newTheme}
           onChange={(e) => setNewTheme(e.target.value)}
@@ -195,28 +252,15 @@ export default function SettingsPage() {
           <option value="dark">🌙 Dark</option>
         </select>
 
-        <br />
-        <br />
-        <label>Wallpaper:</label>
-
-        {/* Clickable Live Preview */}
         <div
           onClick={handleWallpaperClick}
           style={{
             ...previewBox,
-            backgroundColor: isDark ? "#000" : "#fff",
-            color: isDark ? "#fff" : "#000",
-            backgroundImage: previewWallpaper
-              ? `url(${previewWallpaper})`
-              : "none",
-            cursor: "pointer",
+            backgroundImage: previewWallpaper ? `url(${previewWallpaper})` : "none",
           }}
         >
           <p>🌈 Live Preview</p>
-          <small>(Click to select a new wallpaper)</small>
         </div>
-
-        {/* Hidden file input */}
         <input
           type="file"
           accept="image/*"
@@ -230,7 +274,7 @@ export default function SettingsPage() {
         </button>
       </div>
 
-      {/* 📜 Transaction History */}
+      {/* 📜 Transactions */}
       <div style={sectionStyle(isDark)}>
         <h3>Transaction History</h3>
         {transactions.length === 0 ? (
@@ -267,7 +311,7 @@ export default function SettingsPage() {
   );
 }
 
-// 💅 Shared Styles
+// 💅 Styles
 const sectionStyle = (isDark) => ({
   marginTop: "30px",
   padding: "20px",
@@ -275,7 +319,6 @@ const sectionStyle = (isDark) => ({
   background: isDark ? "#333" : "#fff",
   boxShadow: "0 2px 5px rgba(0,0,0,0.1)",
 });
-
 const btnStyle = (bg) => ({
   marginRight: "10px",
   padding: "10px 15px",
@@ -286,7 +329,6 @@ const btnStyle = (bg) => ({
   cursor: "pointer",
   fontWeight: "bold",
 });
-
 const selectStyle = (isDark) => ({
   padding: "8px",
   borderRadius: "6px",
@@ -295,7 +337,6 @@ const selectStyle = (isDark) => ({
   border: "1px solid #666",
   width: "100%",
 });
-
 const previewBox = {
   width: "100%",
   height: "160px",
@@ -310,17 +351,6 @@ const previewBox = {
   backgroundRepeat: "no-repeat",
   backgroundPosition: "center",
 };
-
-const inputStyle = (isDark) => ({
-  width: "100%",
-  marginTop: "5px",
-  padding: "8px",
-  borderRadius: "6px",
-  border: "1px solid #555",
-  background: isDark ? "#222" : "#fafafa",
-  color: isDark ? "#fff" : "#000",
-});
-
 const txItemStyle = (isDark) => ({
   borderBottom: isDark ? "1px solid #555" : "1px solid #ddd",
   padding: "10px 0",
