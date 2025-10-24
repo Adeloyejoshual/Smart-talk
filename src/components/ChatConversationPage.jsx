@@ -11,7 +11,6 @@ import {
   onSnapshot,
   serverTimestamp,
   updateDoc,
-  deleteField,
 } from "firebase/firestore";
 import {
   ref as storageRef,
@@ -21,76 +20,61 @@ import {
 import { auth, db, storage } from "../firebaseConfig";
 import { ThemeContext } from "../context/ThemeContext";
 
-/**
- * ChatConversationPage
- * - header + input fixed
- * - messages scrollable
- * - fixed "scroll to bottom" button that fades when at bottom
- * - reaction popup (single emoji per user, no counts) opened via long-press or click
- */
+/* ---------- small UI helpers ---------- */
+const formatLastSeen = (ts, isOnline) => {
+  if (isOnline) return "Online";
+  if (!ts) return "Offline";
+  const last = ts.toDate ? ts.toDate() : new Date(ts);
+  const mins = Math.floor((Date.now() - last) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  if (mins < 1440) return `${Math.floor(mins / 60)}h ago`;
+  return last.toLocaleDateString();
+};
 
-const DEFAULT_EMOJIS = ["❤️", "😂", "👍", "🔥", "😢", "👏"];
+const formatDayLabel = (d) => {
+  if (!d) return "";
+  const date = d.toDate ? d.toDate() : new Date(d);
+  const now = new Date();
+  if (date.toDateString() === now.toDateString()) return "Today";
+  const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
+  return date.toLocaleDateString();
+};
 
+/* ---------- component ---------- */
 export default function ChatConversationPage() {
-  const { chatId } = useParams();
+  const { chatId } = useParams(); // route param name: /chat/:chatId
   const navigate = useNavigate();
   const { theme, wallpaper } = useContext(ThemeContext);
   const isDark = theme === "dark";
 
   const [chatInfo, setChatInfo] = useState(null);
   const [friendInfo, setFriendInfo] = useState(null);
-  const [messages, setMessages] = useState([]);
-  const [localMessages, setLocalMessages] = useState([]);
+  const [messages, setMessages] = useState([]); // messages from Firestore
+  const [localMessages, setLocalMessages] = useState([]); // optimistic messages (uploads / sending)
   const [text, setText] = useState("");
-  const [files, setFiles] = useState([]);
-  const [previews, setPreviews] = useState([]);
+  const [files, setFiles] = useState([]); // selected files still uploading
+  const [filePreviews, setFilePreviews] = useState([]); // preview urls
+  const [sending, setSending] = useState(false);
   const [friendTyping, setFriendTyping] = useState(false);
 
-  // reaction popup
-  const [reactionOpenFor, setReactionOpenFor] = useState(null); // { msgId, x, y }
-  // scrolling
-  const messagesRef = useRef(null);
+  // scroll & UI state
+  const scrollRef = useRef(null);
   const endRef = useRef(null);
-  const [atBottom, setAtBottom] = useState(true);
+  const [isAtBottom, setIsAtBottom] = useState(true);
+  const [showImageViewer, setShowImageViewer] = useState(false);
+  const [viewerImage, setViewerImage] = useState(null);
 
   const myUid = auth.currentUser?.uid;
 
-  // ---------- Helpers ----------
-  const scrollToBottom = (smooth = true) => {
-    try {
-      if (messagesRef.current) {
-        messagesRef.current.scrollTo({
-          top: messagesRef.current.scrollHeight,
-          behavior: smooth ? "smooth" : "auto",
-        });
-      } else {
-        endRef.current?.scrollIntoView({ behavior: "smooth" });
-      }
-    } catch (e) {
-      endRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
-  };
-
-  // track scroll position -> show/hide down button
-  useEffect(() => {
-    const el = messagesRef.current;
-    if (!el) return;
-    const onScroll = () => {
-      const threshold = 80;
-      const isAtBottomNow =
-        el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
-      setAtBottom(isAtBottomNow);
-    };
-    el.addEventListener("scroll", onScroll);
-    onScroll();
-    return () => el.removeEventListener("scroll", onScroll);
-  }, []);
-
-  // ---------- Load chat + friend info ----------
+  /* ---------- Chat & Friend loading ---------- */
   useEffect(() => {
     if (!chatId) return;
     let unsubFriend = null;
-    (async () => {
+    let unsubChat = null;
+
+    const load = async () => {
       const chatRef = doc(db, "chats", chatId);
       const snap = await getDoc(chatRef);
       if (!snap.exists()) {
@@ -101,305 +85,310 @@ export default function ChatConversationPage() {
       const data = { id: snap.id, ...snap.data() };
       setChatInfo(data);
 
-      const friendId =
-        (data.participants && data.participants.find((p) => p !== myUid)) ||
-        null;
+      // friend is the other participant
+      const friendId = (data.participants || []).find((p) => p !== myUid);
       if (friendId) {
         const friendRef = doc(db, "users", friendId);
         unsubFriend = onSnapshot(friendRef, (fsnap) => {
           if (fsnap.exists()) {
             setFriendInfo({ id: fsnap.id, ...fsnap.data() });
+            // typing flag structure assumed: typing: { [chatId]: true }
             setFriendTyping(Boolean(fsnap.data()?.typing?.[chatId]));
           }
         });
       }
-    })();
-    return () => unsubFriend && unsubFriend();
+    };
+
+    load();
+
+    return () => {
+      if (unsubFriend) unsubFriend();
+      if (unsubChat) unsubChat();
+    };
   }, [chatId, myUid, navigate]);
 
-  // ---------- Real-time messages ----------
+  /* ---------- Real-time messages listener ---------- */
   useEffect(() => {
     if (!chatId) return;
-    const msgsRef = collection(db, "chats", chatId, "messages");
-    const q = query(msgsRef, orderBy("createdAt", "asc"));
+    const q = query(
+      collection(db, "chats", chatId, "messages"),
+      orderBy("createdAt", "asc")
+    );
     const unsub = onSnapshot(q, (snap) => {
-      const msgs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setMessages(msgs);
-      // mark delivered for unread messages (light approach)
-      msgs
-        .filter((m) => m.sender !== myUid && m.status === "sent")
-        .forEach((m) => {
-          // best-effort: update to delivered
-          updateDoc(doc(db, "chats", chatId, "messages", m.id), {
-            status: "delivered",
-          }).catch(() => {});
-        });
-      // if user is at bottom, auto scroll
-      if (atBottom) scrollToBottom(true);
+      const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setMessages(docs);
+      // mark delivered for incoming sent messages (simple optimistic update)
+      docs.forEach(async (m) => {
+        if (m.sender !== myUid && m.status === "sent") {
+          try {
+            const mDoc = doc(db, "chats", chatId, "messages", m.id);
+            await updateDoc(mDoc, { status: "delivered" });
+          } catch (e) {
+            /* ignore */
+          }
+        }
+      });
     });
     return () => unsub();
-  }, [chatId, myUid, atBottom]);
+  }, [chatId, myUid]);
 
-  // ---------- Local optimistic msgs (pushLocal) ----------
-  const pushLocal = (payload) => {
+  /* ---------- Scroll handling ---------- */
+  // on new messages: auto-scroll only if at bottom
+  useEffect(() => {
+    if (isAtBottom) {
+      endRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, localMessages, isAtBottom]);
+
+  // detect manual scroll
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const tolerance = 20;
+      const atBottom =
+        el.scrollHeight - el.scrollTop - el.clientHeight <= tolerance;
+      setIsAtBottom(atBottom);
+    };
+    el.addEventListener("scroll", onScroll);
+    // initial check
+    onScroll();
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
+  const scrollToBottom = () =>
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+
+  /* ---------- Image viewer ---------- */
+  const openViewer = (src) => {
+    setViewerImage(src);
+    setShowImageViewer(true);
+  };
+  const closeViewer = () => {
+    setShowImageViewer(false);
+    setViewerImage(null);
+  };
+
+  /* ---------- File selection & optimistic upload ---------- */
+  const handleFilesSelected = (e) => {
+    const chosen = Array.from(e.target.files || []);
+    if (!chosen.length) return;
+    // create local previews and kick off uploads
+    const newPreviews = chosen.map((f) =>
+      f.type.startsWith("image/") ? URL.createObjectURL(f) : null
+    );
+    setFilePreviews((p) => [...p, ...newPreviews]);
+    setFiles((p) => [...p, ...chosen]);
+    chosen.forEach((file) => uploadFile(file));
+  };
+
+  const pushLocalMessage = (payload) => {
     const tempId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    setLocalMessages((p) => [...p, { id: tempId, ...payload }]);
+    setLocalMessages((prev) => [...prev, { id: tempId, ...payload }]);
     return tempId;
   };
 
-  // ---------- File upload ----------
   const uploadFile = (file) => {
-    const tempId = pushLocal({
+    if (!chatId) return;
+    const tempId = pushLocalMessage({
       sender: myUid,
       text: "",
       fileURL: URL.createObjectURL(file),
       fileName: file.name,
       type: file.type.startsWith("image/") ? "image" : "file",
-      status: "sending",
+      status: "uploading",
+      progress: 0,
       createdAt: new Date(),
     });
 
-    const sRef = storageRef(storage, `chatFiles/${chatId}/${Date.now()}_${file.name}`);
-    const task = uploadBytesResumable(sRef, file);
+    const sref = storageRef(storage, `chatFiles/${chatId}/${Date.now()}_${file.name}`);
+    const task = uploadBytesResumable(sref, file);
+
     task.on(
       "state_changed",
-      null,
-      (err) => {
-        console.error("upload error", err);
-        setLocalMessages((prev) => prev.filter((m) => m.id !== tempId));
+      (snapshot) => {
+        const pct = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+        setLocalMessages((prev) =>
+          prev.map((m) => (m.id === tempId ? { ...m, progress: pct } : m))
+        );
+      },
+      (error) => {
+        console.error("upload error", error);
+        setLocalMessages((prev) =>
+          prev.map((m) => (m.id === tempId ? { ...m, status: "error" } : m))
+        );
       },
       async () => {
-        const url = await getDownloadURL(task.snapshot.ref);
-        await addDoc(collection(db, "chats", chatId, "messages"), {
-          sender: myUid,
-          text: "",
-          fileURL: url,
-          fileName: file.name,
-          type: file.type.startsWith("image/") ? "image" : "file",
-          createdAt: serverTimestamp(),
-          status: "sent",
-        });
-        setLocalMessages((prev) => prev.filter((m) => m.id !== tempId));
+        try {
+          const url = await getDownloadURL(task.snapshot.ref);
+          // add message to Firestore (serverTimestamp)
+          const docRef = await addDoc(collection(db, "chats", chatId, "messages"), {
+            sender: myUid,
+            text: "",
+            fileURL: url,
+            fileName: file.name,
+            type: file.type.startsWith("image/") ? "image" : "file",
+            createdAt: serverTimestamp(),
+            status: "sent",
+          });
+          // remove local placeholder
+          setLocalMessages((prev) => prev.filter((m) => m.id !== tempId));
+          // cleanup previews for that file (we can't know exact mapping reliably here)
+          // just remove first matching preview if exists
+          setFilePreviews((prev) => {
+            const next = [...prev];
+            const idx = next.findIndex((u) => u && u.includes(file.name.split(".")[0]));
+            if (idx >= 0) next.splice(idx, 1);
+            return next;
+          });
+        } catch (err) {
+          console.error(err);
+          setLocalMessages((prev) =>
+            prev.map((m) => (m.id === tempId ? { ...m, status: "error" } : m))
+          );
+        }
       }
     );
   };
 
-  // ---------- File selector ----------
-  const onFilesSelected = (e) => {
-    const chosen = Array.from(e.target.files || []);
-    if (!chosen.length) return;
-    setFiles((p) => [...p, ...chosen]);
-    setPreviews((p) => [...p, ...chosen.map((f) => (f.type.startsWith("image/") ? URL.createObjectURL(f) : null))]);
-    chosen.forEach(uploadFile);
-  };
-
-  // ---------- Send text ----------
+  /* ---------- Send text message ---------- */
   const handleSend = async () => {
-    const txt = text?.trim();
-    if (!txt && files.length === 0) return;
-    if (txt) {
-      pushLocal({ sender: myUid, text: txt, type: "text", status: "sending", createdAt: new Date() });
-      await addDoc(collection(db, "chats", chatId, "messages"), {
+    if (!text.trim()) return;
+    setSending(true);
+    const tempId = pushLocalMessage({
+      sender: myUid,
+      text: text.trim(),
+      type: "text",
+      status: "sending",
+      createdAt: new Date(),
+    });
+    setText("");
+
+    try {
+      const docRef = await addDoc(collection(db, "chats", chatId, "messages"), {
         sender: myUid,
-        text: txt,
-        type: "text",
+        text: text.trim(),
         fileURL: null,
+        type: "text",
         createdAt: serverTimestamp(),
         status: "sent",
       });
-    }
-    setText("");
-    setFiles([]);
-    setPreviews([]);
-    // after send go to bottom
-    setTimeout(() => scrollToBottom(true), 200);
-  };
-
-  // ---------- Reactions ----------
-  // openReactionPicker(msgId, clientX, clientY) -> opens a popup anchored to those coords
-  const openReactionPicker = (msgId, clientX, clientY) => {
-    const containerRect = messagesRef.current?.getBoundingClientRect();
-    let x = clientX;
-    let y = clientY;
-    if (containerRect) {
-      x = clientX - containerRect.left;
-      y = clientY - containerRect.top;
-    }
-    setReactionOpenFor({ msgId, x, y });
-  };
-
-  const closeReactionPicker = () => setReactionOpenFor(null);
-
-  // set or remove reaction
-  const toggleReaction = async (msg, emoji) => {
-    if (!myUid) return;
-    const msgRef = doc(db, "chats", chatId, "messages", msg.id);
-    const current = msg.reactions || {};
-    const currentForMe = current[myUid];
-    try {
-      if (currentForMe === emoji) {
-        // remove
-        await updateDoc(msgRef, { [`reactions.${myUid}`]: deleteField() });
-      } else {
-        await updateDoc(msgRef, { [`reactions.${myUid}`]: emoji });
-      }
+      // remove local placeholder
+      setLocalMessages((prev) => prev.filter((m) => m.id !== tempId));
     } catch (err) {
-      console.error("reaction error", err);
+      console.error("send text error", err);
+      setLocalMessages((prev) =>
+        prev.map((m) => (m.id === tempId ? { ...m, status: "error" } : m))
+      );
     } finally {
-      closeReactionPicker();
+      setSending(false);
     }
   };
 
-  // ---------- Utilities: combine messages + local and group days ----------
-  const allMessages = React.useMemo(() => {
-    const merged = [...messages, ...localMessages];
-    merged.sort((a, b) => {
-      const aT = a.createdAt?.seconds ? a.createdAt.seconds * 1000 : a.createdAt?.getTime?.() || new Date(a.createdAt).getTime?.?.() || 0;
-      const bT = b.createdAt?.seconds ? b.createdAt.seconds * 1000 : b.createdAt?.getTime?.() || new Date(b.createdAt).getTime?.?.() || 0;
-      return aT - bT;
-    });
-    return merged;
-  }, [messages, localMessages]);
+  /* ---------- Helper to render combined message list and group by day ---------- */
+  const allMessages = [...messages, ...localMessages].sort((a, b) => {
+    const aT = a.createdAt?.seconds ? a.createdAt.seconds * 1000 : a.createdAt?.getTime?.() || new Date(a.createdAt).getTime();
+    const bT = b.createdAt?.seconds ? b.createdAt.seconds * 1000 : b.createdAt?.getTime?.() || new Date(b.createdAt).getTime();
+    return aT - bT;
+  });
 
-  const grouped = React.useMemo(() => {
-    const res = [];
-    let lastDay = "";
-    allMessages.forEach((m) => {
-      const d = m.createdAt?.seconds ? new Date(m.createdAt.seconds * 1000) : m.createdAt instanceof Date ? m.createdAt : new Date(m.createdAt || Date.now());
-      const dayLabel = d.toDateString();
-      if (dayLabel !== lastDay) {
-        res.push({ type: "day", label: dayLabel, id: `day-${dayLabel}` });
-        lastDay = dayLabel;
-      }
-      res.push({ type: "msg", payload: m });
-    });
-    return res;
-  }, [allMessages]);
+  // group by day labels
+  const grouped = [];
+  let lastLabel = "";
+  allMessages.forEach((m) => {
+    const label = formatDayLabel(m.createdAt);
+    if (label !== lastLabel) {
+      grouped.push({ type: "day", id: `day-${label}`, label });
+      lastLabel = label;
+    }
+    grouped.push({ type: "msg", ...m });
+  });
 
-  // ---------- Long-press handling (for mobile) ----------
-  const longPressTimer = useRef(null);
-  const handleMsgMouseDown = (e, msg) => {
-    // start timer for long-press
-    longPressTimer.current = setTimeout(() => {
-      openReactionPicker(msg.id, e.clientX || (e.touches && e.touches[0]?.clientX), e.clientY || (e.touches && e.touches[0]?.clientY));
-    }, 500);
-  };
-  const clearLongPress = () => {
-    clearTimeout(longPressTimer.current);
-  };
-
-  // ---------- When chatId changes, scroll down after a small delay ----------
+  /* ---------- cleanup of preview URLs when component unmounts ---------- */
   useEffect(() => {
-    setTimeout(() => scrollToBottom(false), 300);
-  }, [chatId]);
+    return () => {
+      filePreviews.forEach((u) => {
+        try { URL.revokeObjectURL(u); } catch (e) {}
+      });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // When messages update and user is at bottom we scroll
-  useEffect(() => {
-    if (atBottom) scrollToBottom(true);
-  }, [messages]);
-
-  // ---------- JSX ----------
+  /* ---------- UI render ---------- */
   return (
     <div style={{
       minHeight: "100vh",
       display: "flex",
       flexDirection: "column",
-      background: wallpaper ? `url(${wallpaper}) center/cover no-repeat` : (isDark ? "#121212" : "#f5f5f5"),
-      color: isDark ? "#fff" : "#000"
+      background: wallpaper ? `url(${wallpaper}) center/cover no-repeat` : isDark ? "#0f0f10" : "#f5f5f5",
+      color: isDark ? "#fff" : "#000",
     }}>
-      {/* Header (fixed) */}
+      {/* HEADER (fixed) */}
       <div style={{
         display: "flex",
         alignItems: "center",
         gap: 12,
         padding: "12px 16px",
         borderBottom: "1px solid rgba(0,0,0,0.08)",
+        background: isDark ? "#121214" : "#fff",
         position: "sticky",
         top: 0,
-        zIndex: 4,
-        background: isDark ? "#111" : "#fff"
+        zIndex: 20,
       }}>
-        <button onClick={() => navigate("/chat")} style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 20 }}>←</button>
+        <button onClick={() => navigate("/chat")} style={{ background: "transparent", border: "none", fontSize: 20, cursor: "pointer" }}>←</button>
         <img src={friendInfo?.photoURL || "/default-avatar.png"} alt="avatar" style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover" }} />
         <div style={{ flex: 1 }}>
           <div style={{ fontWeight: 700 }}>{friendInfo?.displayName || chatInfo?.name || "Chat"}</div>
-          <div style={{ fontSize: 12, color: isDark ? "#cfd8dc" : "#666" }}>
-            {friendTyping ? "typing..." : (friendInfo?.isOnline ? "Online" : (friendInfo?.lastSeen ? `Last seen ${new Date(friendInfo.lastSeen.seconds * 1000).toLocaleString()}` : "Offline"))}
+          <div style={{ fontSize: 12, color: isDark ? "#9aa" : "#666" }}>
+            {friendTyping ? "typing..." : formatLastSeen(friendInfo?.lastSeen, friendInfo?.isOnline)}
           </div>
         </div>
-        <div style={{ display: "flex", gap: 6 }}>
-          <button onClick={() => navigate(`/voice-call/${chatId}`)} style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 20 }}>📞</button>
-          <button onClick={() => navigate(`/video-call/${chatId}`)} style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 20 }}>🎥</button>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button title="Voice call" onClick={() => navigate(`/call?chatId=${chatId}&type=voice`)} style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 18 }}>📞</button>
+          <button title="Video call" onClick={() => navigate(`/call?chatId=${chatId}&type=video`)} style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 18 }}>🎥</button>
         </div>
       </div>
 
-      {/* Messages container (scrollable) */}
-      <div
-        ref={messagesRef}
-        style={{
-          flex: 1,
-          overflowY: "auto",
-          padding: 12,
-          gap: 8,
-        }}
-      >
+      {/* MESSAGES (scrollable area) */}
+      <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: 12 }}>
         {grouped.map((item) => {
           if (item.type === "day") {
-            const dt = new Date(item.label);
-            const label = dt.toDateString() === new Date().toDateString() ? "Today" : dt.toLocaleDateString();
-            return <div key={item.id} style={{ textAlign: "center", margin: "12px 0", color: "#888", fontSize: 12 }}>{label}</div>;
+            return <div key={item.id} style={{ textAlign: "center", margin: "10px 0", color: isDark ? "#99a" : "#666", fontSize: 12 }}>{item.label}</div>;
           }
-          const m = item.payload;
+          const m = item;
           const mine = m.sender === myUid;
-          const reactions = m.reactions || {};
-          const uniqueEmojis = Array.from(new Set(Object.values(reactions || {}))).filter(Boolean);
+          const bubbleBg = mine ? (isDark ? "#1f6feb" : "#007bff") : (isDark ? "#2a2a2a" : "#e9e9ea");
+          const textColor = mine ? "#fff" : (isDark ? "#fff" : "#000");
           return (
-            <div
-              key={m.id}
-              onMouseDown={(e) => handleMsgMouseDown(e, m)}
-              onMouseUp={clearLongPress}
-              onMouseLeave={clearLongPress}
-              onTouchStart={(e) => handleMsgMouseDown(e, m)}
-              onTouchEnd={clearLongPress}
-              onClick={(e) => {
-                // quick click opens reaction picker (desktop)
-                // allow long-press to work without opening immediately
-                if (window.matchMedia && window.matchMedia("(hover: none)").matches) return;
-                openReactionPicker(m.id, e.clientX, e.clientY);
-              }}
-              style={{
-                display: "flex",
-                justifyContent: mine ? "flex-end" : "flex-start",
-                marginBottom: 8,
-              }}
-            >
-              <div style={{
-                background: mine ? (isDark ? "#3a9efc" : "#007bff") : (isDark ? "#2b2b2b" : "#eaeaea"),
-                color: mine ? "#fff" : "#000",
-                padding: "8px 12px",
-                borderRadius: 14,
-                maxWidth: "78%",
-                wordBreak: "break-word",
-                position: "relative"
-              }}>
-                {/* message content */}
-                {m.type === "image" && m.fileURL && <img src={m.fileURL} alt="sent" style={{ width: "100%", borderRadius: 10 }} />}
-                {m.type === "file" && m.fileURL && <a href={m.fileURL} target="_blank" rel="noreferrer" style={{ color: mine ? "#fff" : "#007bff" }}>📎 {m.fileName || "file"}</a>}
-                {m.type === "text" && <div>{m.text}</div>}
-
-                {/* reactions (unique set, single per user no counts) */}
-                {uniqueEmojis.length > 0 && (
-                  <div style={{ marginTop: 6, display: "flex", gap: 6 }}>
-                    {uniqueEmojis.map((em, idx) => (
-                      <div key={idx} style={{
-                        background: "rgba(0,0,0,0.06)",
-                        padding: "2px 6px",
-                        borderRadius: 12,
-                        fontSize: 14
-                      }}>{em}</div>
-                    ))}
+            <div key={m.id} style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start", marginBottom: 8 }}>
+              <div style={{ maxWidth: "72%", background: bubbleBg, color: textColor, padding: 10, borderRadius: 12, wordBreak: "break-word" }}>
+                {/* file or image */}
+                {m.type === "image" && m.fileURL && (
+                  <img
+                    src={m.fileURL}
+                    alt={m.fileName || "image"}
+                    style={{ width: "100%", borderRadius: 8, cursor: "pointer" }}
+                    onClick={() => openViewer(m.fileURL)}
+                  />
+                )}
+                {m.type === "file" && m.fileURL && (
+                  <div>
+                    <a href={m.fileURL} target="_blank" rel="noreferrer" style={{ color: textColor }}>
+                      📎 {m.fileName || "file"}
+                    </a>
                   </div>
                 )}
+                {/* text */}
+                {m.type === "text" && <div style={{ whiteSpace: "pre-wrap" }}>{m.text}</div>}
+                {/* progress and status */}
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, fontSize: 11, marginTop: 6 }}>
+                  {m.progress != null && <span>{m.progress}%</span>}
+                  {m.status === "sending" && <span>⌛</span>}
+                  {m.status === "uploading" && <span>⬆️</span>}
+                  {m.status === "sent" && <span>✔</span>}
+                  {m.status === "delivered" && <span>✔✔</span>}
+                  {m.status === "seen" && <span style={{ color: "#34B7F1" }}>✔✔</span>}
+                </div>
               </div>
             </div>
           );
@@ -407,117 +396,87 @@ export default function ChatConversationPage() {
         <div ref={endRef} />
       </div>
 
-      {/* Reaction picker popup (absolute over messages area) */}
-      {reactionOpenFor && (
-        <div
-          onClick={closeReactionPicker}
-          style={{
-            position: "fixed",
-            left: 0,
-            top: 0,
-            width: "100vw",
-            height: "100vh",
-            zIndex: 50,
-          }}
-        >
-          <div
-            style={{
-              position: "absolute",
-              // position within messagesRef container
-              left: (messagesRef.current?.getBoundingClientRect()?.left || 0) + (reactionOpenFor.x || 20),
-              top: (messagesRef.current?.getBoundingClientRect()?.top || 0) + (reactionOpenFor.y || 20),
-              transform: "translate(-50%, -120%)",
-              background: isDark ? "#222" : "#fff",
-              border: "1px solid rgba(0,0,0,0.08)",
-              borderRadius: 12,
-              padding: 8,
-              display: "flex",
-              gap: 8,
-              boxShadow: "0 6px 18px rgba(0,0,0,0.15)",
-            }}
-          >
-            {DEFAULT_EMOJIS.map((em) => (
-              <button
-                key={em}
-                onClick={async (e) => {
-                  e.stopPropagation();
-                  const msg = messages.find((x) => x.id === reactionOpenFor.msgId) || localMessages.find((x) => x.id === reactionOpenFor.msgId);
-                  if (!msg) { closeReactionPicker(); return; }
-                  await toggleReaction(msg, em);
-                }}
-                style={{
-                  fontSize: 20,
-                  background: "transparent",
-                  border: "none",
-                  cursor: "pointer",
-                  padding: 6,
-                }}
-              >
-                {em}
-              </button>
-            ))}
-          </div>
+      {/* DOWN ARROW (fixed above input) */}
+      <button
+        onClick={scrollToBottom}
+        title="Scroll to latest"
+        style={{
+          position: "fixed",
+          right: 20,
+          bottom: 96,
+          zIndex: 30,
+          width: 44,
+          height: 44,
+          borderRadius: 22,
+          border: "none",
+          boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: isDark ? "#0b72d6" : "#007bff",
+          color: "#fff",
+          cursor: "pointer",
+          opacity: isAtBottom ? 0 : 1,
+          transition: "opacity 250ms ease",
+        }}
+      >
+        ⬇
+      </button>
+
+      {/* PREVIEW STRIP (if any selected files not yet uploaded) */}
+      {filePreviews.length > 0 && (
+        <div style={{ display: "flex", gap: 8, padding: 8, overflowX: "auto", background: isDark ? "#0f0f10" : "#fff" }}>
+          {filePreviews.map((p, idx) => (
+            <div key={idx} style={{ width: 64, height: 64, borderRadius: 8, overflow: "hidden", background: "#eee", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              {p ? <img src={p} alt="preview" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ fontSize: 12 }}>{files[idx]?.name}</span>}
+            </div>
+          ))}
         </div>
       )}
 
-      {/* Input area (fixed) */}
+      {/* INPUT (fixed) */}
       <div style={{
         display: "flex",
         gap: 8,
         padding: 10,
         borderTop: "1px solid rgba(0,0,0,0.08)",
+        background: isDark ? "#0f0f10" : "#fff",
+        alignItems: "center",
         position: "sticky",
         bottom: 0,
-        zIndex: 5,
-        background: isDark ? "#111" : "#fff",
-        alignItems: "center"
+        zIndex: 25,
       }}>
-        <input id="fileInput" type="file" multiple onChange={onFilesSelected} style={{ display: "none" }} />
         <label htmlFor="fileInput" style={{ cursor: "pointer", fontSize: 20 }}>📎</label>
+        <input id="fileInput" type="file" multiple onChange={handleFilesSelected} style={{ display: "none" }} />
+
         <input
-          type="text"
-          placeholder="Type a message..."
           value={text}
           onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSend()}
+          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+          placeholder="Type a message"
           style={{
             flex: 1,
-            padding: "8px 12px",
+            padding: "10px 12px",
             borderRadius: 20,
             border: "1px solid rgba(0,0,0,0.12)",
             outline: "none",
-            background: isDark ? "#1b1b1b" : "#fff",
-            color: isDark ? "#fff" : "#000"
+            background: isDark ? "#121214" : "#fff",
+            color: isDark ? "#fff" : "#000",
           }}
         />
-        <button onClick={handleSend} style={{ background: "#34B7F1", color: "#fff", border: "none", padding: "8px 14px", borderRadius: 20, cursor: "pointer" }}>Send</button>
+        <button onClick={handleSend} disabled={sending} style={{ padding: "8px 14px", background: "#34B7F1", border: "none", color: "#fff", borderRadius: 20, cursor: "pointer" }}>
+          Send
+        </button>
       </div>
 
-      {/* Fixed down button (fades when at bottom) */}
-      <button
-        onClick={() => scrollToBottom(true)}
-        aria-label="Scroll to bottom"
-        style={{
-          position: "fixed",
-          right: 18,
-          bottom: 96,
-          width: 52,
-          height: 52,
-          borderRadius: 26,
-          border: "none",
-          fontSize: 20,
-          background: "#007bff",
-          color: "#fff",
-          boxShadow: "0 6px 18px rgba(0,0,0,0.18)",
-          zIndex: 60,
-          opacity: atBottom ? 0 : 1,
-          transform: atBottom ? "translateY(10px)" : "translateY(0)",
-          transition: "opacity 220ms ease, transform 220ms ease",
-          cursor: "pointer"
-        }}
-      >
-        ⬇️
-      </button>
+      {/* IMAGE VIEWER MODAL */}
+      {showImageViewer && viewerImage && (
+        <div onClick={closeViewer} style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, cursor: "zoom-out"
+        }}>
+          <img src={viewerImage} alt="full" style={{ maxWidth: "95%", maxHeight: "95%", borderRadius: 8 }} />
+        </div>
+      )}
     </div>
   );
 }
