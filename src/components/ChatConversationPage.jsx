@@ -232,7 +232,7 @@ export default function ChatConversationPage() {
     const chosen = Array.from(e.target.files || []);
     if (!chosen.length) return;
     setFiles((prev) => [...prev, ...chosen]);
-    setPreviews((p) => [...p, ...chosen.map((f) => (f.type.startsWith("image/") ? URL.createObjectURL(f) : null))]]);
+    setPreviews((p) => [...p, ...chosen.map((f) => (f.type.startsWith("image/") ? URL.createObjectURL(f) : null))]);
     chosen.forEach(uploadFile);
   };
 
@@ -259,18 +259,8 @@ export default function ChatConversationPage() {
     setText("");
   };
 
-  // Combine all messages
+  // Combine and group messages
   const allMessages = [...messages, ...localMessages].sort((a, b) => {
-    const aTime = a.createdAt?.seconds ? a.createdAt.seconds * 1000 : a.createdAt?.getTime();
-    const bTime = b.createdAt?.seconds ? b.createdAt.seconds * 1000 : b.createdAt?.getTime();
-    return aTime - bTime;
-  });
-
-  const groupedMessages = [];
-  let lastDay = "";
-  allMessages.forEach((m) => {
-    const dayLabel = formatMessageDay(m.createdAt
-const allMessages = [...messages, ...localMessages].sort((a, b) => {
     const aTime = a.createdAt?.seconds ? a.createdAt.seconds * 1000 : a.createdAt?.getTime();
     const bTime = b.createdAt?.seconds ? b.createdAt.seconds * 1000 : b.createdAt?.getTime();
     return aTime - bTime;
@@ -291,14 +281,6 @@ const allMessages = [...messages, ...localMessages].sort((a, b) => {
   const openProfile = () => friendInfo && navigate(`/profile/${friendInfo.id}`);
   const handleVoiceCall = () => navigate(`/call/${chatId}`);
   const handleVideoCall = () => navigate(`/video-call/${chatId}`);
-
-  if (!chatInfo) {
-    return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: isDark ? "#fff" : "#000" }}>
-        Loading chat...
-      </div>
-    );
-  }
 
   return (
     <div style={{
@@ -328,7 +310,6 @@ const allMessages = [...messages, ...localMessages].sort((a, b) => {
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center" }}>
           <button onClick={handleVoiceCall} style={{ background: "transparent", border: "none", fontSize: 20, cursor: "pointer", marginRight: 10 }}>📞</button>
           <button onClick={handleVideoCall} style={{ background: "transparent", border: "none", fontSize: 20, cursor: "pointer", marginRight: 10 }}>🎥</button>
-          {/* Three-dot menu */}
           <div style={{ position: "relative" }}>
             <button onClick={toggleMenu} style={{ background: "transparent", border: "none", fontSize: 22, cursor: "pointer" }}>⋮</button>
             {menuOpen && (
@@ -359,49 +340,103 @@ const allMessages = [...messages, ...localMessages].sort((a, b) => {
         {groupedMessages.map((item) => {
           if (item.type === "day") {
             return (
-              <div key={item.id} style={{ textAlign: "center", margin: "10px 0", color: "#888", fontSize: 12, fontWeight: "600" }}>
-                {item.label}
-              </div>
-            );
-          }
-          const m = item;
-          const mine = m.sender === myUid;
-          return (
-            <div key={m.id} style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start", marginBottom: 6 }}>
-              <div style={{ background: mine ? "#34B7F1" : "#e5e5ea", color: mine ? "#fff" : "#000", padding: "8px 12px", borderRadius: "15px", maxWidth: "70%", wordBreak: "break-word" }}>
-                {m.type === "text" && m.text}
-                {m.type === "image" && <img src={m.fileURL} alt="sent" style={{ width: "150px", borderRadius: "10px" }} />}
-                {m.type === "file" && <a href={m.fileURL} target="_blank" rel="noreferrer" style={{ color: mine ? "#fff" : "#007BFF" }}>📎 {m.fileName}</a>}
-                <div style={{ fontSize: 10, textAlign: "right" }}><MessageStatus status={m.status} /></div>
-              </div>
+              <div key={item.id} style={{ textAlign: "center",
+margin: "10px 0",
+              color: "#888",
+              fontSize: 12,
+              fontWeight: "600"
+            }}>
+              {item.label}
             </div>
           );
-        })}
-        <div ref={endRef} />
-      </div>
-
-      {/* Pinned input + file previews */}
-      <div style={{ position: "fixed", bottom: 0, left: 0, width: "100%", background: isDark ? "#1e1e1e" : "#fff", borderTop: "1px solid #ccc", padding: 10, zIndex: 5 }}>
-        {/* File previews */}
-        {previews.length > 0 && (
-          <div style={{ display: "flex", gap: 8, marginBottom: 8, overflowX: "auto" }}>
-            {previews.map((p, idx) => p && <img key={idx} src={p} alt="preview" style={{ width: 60, height: 60, objectFit: "cover", borderRadius: 8 }} />)}
+        }
+        const m = item;
+        const mine = m.sender === myUid;
+        return (
+          <div key={m.id} style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start", marginBottom: 6 }}>
+            <div style={{
+              background: mine ? "#34B7F1" : "#e5e5ea",
+              color: mine ? "#fff" : "#000",
+              padding: "8px 12px",
+              borderRadius: "15px",
+              maxWidth: "70%",
+              wordBreak: "break-word"
+            }}>
+              {m.type === "text" && m.text}
+              {m.type === "image" && <img src={m.fileURL} alt="sent" style={{ width: "150px", borderRadius: "10px" }} />}
+              {m.type === "file" && <a href={m.fileURL} target="_blank" rel="noreferrer" style={{ color: mine ? "#fff" : "#007BFF" }}>📎 {m.fileName}</a>}
+              <div style={{ fontSize: 10, textAlign: "right" }}>
+                <MessageStatus status={m.status} />
+              </div>
+            </div>
           </div>
-        )}
-        <div style={{ display: "flex", alignItems: "center" }}>
-          <input type="file" multiple onChange={onFilesSelected} style={{ display: "none" }} id="fileInput" />
-          <label htmlFor="fileInput" style={{ cursor: "pointer", marginRight: 8 }}>📎</label>
-          <input
-            type="text"
-            placeholder="Type a message"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            style={{ flex: 1, padding: "8px 12px", borderRadius: 20, border: "1px solid #ccc", outline: "none", marginRight: 8 }}
-            onKeyDown={(e) => e.key === "Enter" && handleSend()}
-          />
-          <button onClick={handleSend} style={{ padding: "8px 12px", borderRadius: 20, background: "#34B7F1", border: "none", color: "#fff", cursor: "pointer" }}>Send</button>
+        );
+      })}
+      <div ref={endRef} />
+    </div>
+
+    {/* Pinned input + file previews */}
+    <div style={{
+      position: "fixed",
+      bottom: 0,
+      left: 0,
+      width: "100%",
+      background: isDark ? "#1e1e1e" : "#fff",
+      borderTop: "1px solid #ccc",
+      padding: 10,
+      zIndex: 5
+    }}>
+      {/* File previews */}
+      {previews.length > 0 && (
+        <div style={{ display: "flex", gap: 8, marginBottom: 8, overflowX: "auto" }}>
+          {previews.map((p, idx) => (
+            <div key={idx} style={{ position: "relative" }}>
+              {p ? (
+                <img src={p} alt="preview" style={{ width: 60, height: 60, objectFit: "cover", borderRadius: 8 }} />
+              ) : (
+                <span>{files[idx]?.name}</span>
+              )}
+              <button onClick={() => {
+                setFiles((s) => s.filter((_, i) => i !== idx));
+                setPreviews((p) => p.filter((_, i) => i !== idx));
+              }}
+              style={{
+                position: "absolute",
+                top: -5,
+                right: -5,
+                background: "#ff4d4f",
+                border: "none",
+                borderRadius: "50%",
+                color: "#fff",
+                cursor: "pointer",
+                width: 18,
+                height: 18
+              }}>×</button>
+            </div>
+          ))}
         </div>
+      )}
+
+      {/* Input */}
+      <div style={{ display: "flex", alignItems: "center" }}>
+        <input type="file" multiple onChange={onFilesSelected} style={{ display: "none" }} id="fileInput" />
+        <label htmlFor="fileInput" style={{ cursor: "pointer", marginRight: 8 }}>📎</label>
+        <input
+          type="text"
+          placeholder="Type a message"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleSend()}
+          style={{ flex: 1, padding: "8px 12px", borderRadius: 20, border: "1px solid #ccc", outline: "none", marginRight: 8 }}
+        />
+        <button
+          onClick={handleSend}
+          style={{ padding: "8px 12px", borderRadius: 20, background: "#34B7F1", border: "none", color: "#fff", cursor: "pointer" }}
+        >
+          Send
+        </button>
       </div>
     </div>
+  </div>
   );
 }
