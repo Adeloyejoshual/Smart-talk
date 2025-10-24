@@ -1,27 +1,24 @@
-// src/components/UserProfilePage.jsx
+// UserProfilePage.jsx
 import React, { useEffect, useState, useContext } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
-import { auth, db } from "../firebaseConfig";
+import { doc, getDoc, collection, query, where, getDocs, addDoc, serverTimestamp } from "firebase/firestore";
+import { db, auth } from "../firebaseConfig";
 import { ThemeContext } from "../context/ThemeContext";
 
-function formatLastSeen(lastSeen, isOnline) {
+function formatLastSeen(ts, isOnline) {
   if (isOnline) return "Online";
-  if (!lastSeen) return "";
+  if (!ts) return "";
+  const last = ts.toDate ? ts.toDate() : new Date(ts);
   const now = new Date();
-  const last = lastSeen.toDate ? lastSeen.toDate() : new Date(lastSeen);
-  const diff = Math.floor((now - last) / 1000);
-  const mins = Math.floor(diff / 60);
-  const hrs = Math.floor(mins / 60);
   if (now.toDateString() === last.toDateString()) {
+    const mins = Math.floor((now - last) / 1000 / 60);
     if (mins < 1) return "just now";
-    if (mins < 60) return `${mins} minute${mins > 1 ? "s" : ""} ago`;
-    return `${hrs} hour${hrs > 1 ? "s" : ""} ago`;
+    if (mins < 60) return `${mins}m ago`;
+    return `${Math.floor(mins / 60)}h ago`;
   }
-  const yesterday = new Date(now);
-  yesterday.setDate(now.getDate() - 1);
+  const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
   if (yesterday.toDateString() === last.toDateString()) return "Yesterday";
-  return last.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+  return last.toLocaleDateString();
 }
 
 export default function UserProfilePage() {
@@ -35,59 +32,53 @@ export default function UserProfilePage() {
   useEffect(() => {
     if (!userId) return;
     const ref = doc(db, "users", userId);
-    getDoc(ref).then((snap) => {
-      if (snap.exists()) setUser({ id: snap.id, ...snap.data() });
-    });
+    getDoc(ref).then((snap) => { if (snap.exists()) setUser({ id: snap.id, ...snap.data() }); });
   }, [userId]);
 
   const startCall = (type) => {
-    // navigate to call page with params
+    // route to call page, adjust CallPage to accept params
     navigate(`/call?chatId=${userId}&type=${type}`);
   };
 
   const startChatWith = async () => {
-    // find or create chat between current user and userId, then navigate
     if (!auth.currentUser) return;
     const me = auth.currentUser.uid;
-    // search existing chat where participants contains both
-    // simple approach: query chats array-contains me and then find the one that includes userId
     const chatsRef = collection(db, "chats");
     const q = query(chatsRef, where("participants", "array-contains", me));
     const snap = await getDocs(q);
     const found = snap.docs.find((d) => d.data().participants.includes(userId));
     if (found) navigate(`/chat/${found.id}`);
     else {
-      const newChatRef = await addDoc(chatsRef, {
+      const newChat = await addDoc(chatsRef, {
         participants: [me, userId],
-        name: user?.displayName || "Chat",
+        name: user?.displayName || "",
         photoURL: user?.photoURL || "",
         lastMessage: "",
         lastMessageAt: serverTimestamp(),
       });
-      navigate(`/chat/${newChatRef.id}`);
+      navigate(`/chat/${newChat.id}`);
     }
   };
 
-  if (!user) return <div className="p-6">Loading profile...</div>;
+  if (!user) return <div style={{ padding: 20 }}>Loading profile...</div>;
 
   return (
-    <div className={`${isDark ? "bg-gray-900 text-white" : "bg-white text-gray-900"} min-h-screen`}>
-      <div className="px-4 py-4 flex items-center gap-3 border-b">
-        <button onClick={() => navigate(-1)}>←</button>
-        <h2 className="text-xl font-semibold m-0">{user.displayName || "Profile"}</h2>
+    <div style={{ minHeight: "100vh", background: isDark ? "#121212" : "#fff", color: isDark ? "#fff" : "#000" }}>
+      <div style={{ padding: 12, display: "flex", gap: 12, alignItems: "center", borderBottom: "1px solid #ccc" }}>
+        <button onClick={() => navigate(-1)} style={{ fontSize: 18 }}>←</button>
+        <h2 style={{ margin: 0 }}>{user.displayName || "Profile"}</h2>
       </div>
 
-      <div className="p-6 flex flex-col items-center">
-        <img src={user.photoURL || "/default-avatar.png"} alt="profile" className="w-36 h-36 rounded-full object-cover" />
-        <h3 className="mt-4 text-2xl">{user.displayName}</h3>
-        <p className="text-gray-400 mt-2">{formatLastSeen(user.lastSeen, user.isOnline)}</p>
-        {user.email && <p className="text-sm mt-1">{user.email}</p>}
-
-        <div className="mt-6 flex gap-3">
-          <button onClick={startChatWith} className="px-4 py-2 rounded-md bg-blue-600 text-white">💬 Start Chat</button>
-          <button onClick={() => navigate(`/media/${userId}`)} className="px-4 py-2 rounded-md border">{`🖼 View Media`}</button>
-          <button onClick={() => startCall("voice")} className="px-4 py-2 rounded-md border">📞 Voice Call</button>
-          <button onClick={() => startCall("video")} className="px-4 py-2 rounded-md border">🎥 Video Call</button>
+      <div style={{ padding: 20, display: "flex", flexDirection: "column", alignItems: "center" }}>
+        <img src={user.photoURL || "/default-avatar.png"} alt="profile" style={{ width: 140, height: 140, borderRadius: "50%", objectFit: "cover" }} />
+        <h3 style={{ marginTop: 12 }}>{user.displayName}</h3>
+        <p style={{ color: "#888" }}>{formatLastSeen(user.lastSeen, user.isOnline)}</p>
+        {user.email && <p style={{ color: isDark ? "#ddd" : "#444" }}>{user.email}</p>}
+        <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
+          <button onClick={startChatWith} style={{ padding: "8px 12px", borderRadius: 8, background: "#007BFF", color: "#fff", border: "none" }}>💬 Start Chat</button>
+          <button onClick={() => navigate(`/media/${userId}`)} style={{ padding: "8px 12px", borderRadius: 8 }}>🖼 View Media</button>
+          <button onClick={() => startCall("voice")} style={{ padding: "8px 12px", borderRadius: 8 }}>📞 Voice</button>
+          <button onClick={() => startCall("video")} style={{ padding: "8px 12px", borderRadius: 8 }}>🎥 Video</button>
         </div>
       </div>
     </div>
