@@ -42,7 +42,7 @@ export default function ChatPage() {
     const q = query(
       collection(db, "chats"),
       where("participants", "array-contains", user.uid),
-      orderBy("lastMessageAt", "desc") // Requires composite index
+      orderBy("lastMessageAt", "desc")
     );
 
     const unsub = onSnapshot(q, (snapshot) => {
@@ -56,7 +56,7 @@ export default function ChatPage() {
     return () => unsub();
   }, [user]);
 
-  // ➕ Add friend
+  // ➕ Add Friend
   const handleAddFriend = async () => {
     setMessage("");
     setLoading(true);
@@ -70,7 +70,7 @@ export default function ChatPage() {
 
       // 🔍 Find friend by email
       const usersRef = collection(db, "users");
-      const q = query(usersRef, where("email", "==", friendEmail));
+      const q = query(usersRef, where("email", "==", friendEmail.trim()));
       const snapshot = await getDocs(q);
 
       if (snapshot.empty) {
@@ -97,7 +97,6 @@ export default function ChatPage() {
       );
 
       if (existingChat) {
-        setMessage("✅ Chat already exists!");
         setShowAddFriend(false);
         setLoading(false);
         navigate(`/chat/${existingChat.id}`);
@@ -113,11 +112,9 @@ export default function ChatPage() {
         lastMessageAt: serverTimestamp(),
       });
 
-      setMessage("✅ Friend added successfully!");
+      // ✅ Clear popup + redirect immediately
       setFriendEmail("");
       setShowAddFriend(false);
-
-      // ⚡ Redirect to chat
       navigate(`/chat/${newChat.id}`);
     } catch (error) {
       console.error("Add friend error:", error);
@@ -261,7 +258,6 @@ export default function ChatPage() {
                       color: isDark ? "#ccc" : "#555",
                     }}
                   >
-                    {/* Truncate last message */}
                     {chat.lastMessage
                       ? chat.lastMessage.length > 30
                         ? chat.lastMessage.substring(0, 30) + "..."
@@ -317,13 +313,10 @@ export default function ChatPage() {
           justifyContent: "space-around",
         }}
       >
-        <button onClick={() => navigate("/call-history")} style={navBtnStyle("#007AFF")}>
+        <button onClick={() => navigate("/history")} style={navBtnStyle("#007AFF")}>
           📞 Call
         </button>
-        <button
-          onClick={() => navigate("/settings")}
-          style={navBtnStyle("#555")}
-        >
+        <button onClick={() => navigate("/settings")} style={navBtnStyle("#555")}>
           👤 Profile
         </button>
       </div>
