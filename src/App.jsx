@@ -10,6 +10,7 @@ import ChatConversationPage from "./components/ChatConversationPage"; // 🆕 Si
 import CallPage from "./components/CallPage";
 import SettingsPage from "./components/SettingsPage";
 import CallHistoryPage from "./components/CallHistoryPage";
+import WithdrawalPage from "./components/WithdrawalPage"; // 🆕 Add this line
 import ProtectedRoute from "./components/ProtectedRoute";
 
 export default function App() {
@@ -61,6 +62,16 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <CallHistoryPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* 🆕 Withdrawal page route */}
+          <Route
+            path="/withdrawal"
+            element={
+              <ProtectedRoute>
+                <WithdrawalPage />
               </ProtectedRoute>
             }
           />
