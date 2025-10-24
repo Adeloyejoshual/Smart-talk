@@ -74,7 +74,7 @@ export default function ChatPage() {
       const snapshot = await getDocs(q);
 
       if (snapshot.empty) {
-        setMessage("❌ No user found with that email.");
+        setMessage("User not found.");
         setLoading(false);
         return;
       }
