@@ -105,7 +105,7 @@ export default function ProtectedRoute({ children }) {
             WebkitTextFillColor: "transparent",
           }}
         >
-          Loading SmartTalk…
+          Loading…
         </h2>
 
         <p
@@ -116,7 +116,6 @@ export default function ProtectedRoute({ children }) {
             letterSpacing: 0.3,
           }}
         >
-          Checking 
         </p>
 
         <style>
