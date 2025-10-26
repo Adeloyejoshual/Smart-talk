@@ -116,7 +116,7 @@ export default function ProtectedRoute({ children }) {
             letterSpacing: 0.3,
           }}
         >
-          Checking authentication
+          Checking 
         </p>
 
         <style>
