@@ -1,5 +1,5 @@
 // src/components/ChatConversationPage.jsx
-import React, { useEffect, useState, useRef, useContext, useCallback } from "react";
+import React, { useEffect, useState, useRef, useContext } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   doc,
@@ -23,24 +23,16 @@ import { auth, db, storage } from "../firebaseConfig";
 import { ThemeContext } from "../context/ThemeContext";
 
 /**
- * ChatConversationPage.jsx
- *
- * Paste this file directly; it expects:
- * - Firebase: auth, db, storage
- * - ThemeContext providing { theme, wallpaper }
- *
- * Key behaviors:
- * - Attach popup auto-closes on outside click
- * - Previews above input only after user selects files; they are NOT in chat until user clicks Send
- * - Placeholders in messages collection created first, then upload updates doc -> final fileURL
- * - Receiver auto-downloads attachments to a blob URL and shows progress
- * - Permanent center down arrow (fades when at bottom)
- * - Block/Unblock, Clear Chat (batched), Report (to reports collection with emailTo)
- * - Long press header with quick actions (delete/reply/react)
- * - Swipe-right to reply (basic)
+ * Full, improved ChatConversationPage:
+ * - Attachment sheet slides up from bottom (WhatsApp-like)
+ * - Camera/Video use <input capture> where supported
+ * - Previews show immediately; nothing added to chat until Send clicked
+ * - Upload placeholder doc -> update doc with final fileURL
+ * - Live lastSeen from users/{id}
+ * - Reaction toggle (click same emoji to remove)
+ * - Dark mode contrast improvements
  */
 
-// ---------- helpers ----------
 const fmtTime = (ts) => {
   if (!ts) return "";
   const d = ts.toDate ? ts.toDate() : new Date(ts);
@@ -57,7 +49,6 @@ const dayLabel = (ts) => {
 };
 const EMOJIS = ["👍","❤️","😂","😮","😢","👏","🔥","😅"];
 
-// ---------- component ----------
 export default function ChatConversationPage() {
   const { chatId } = useParams();
   const navigate = useNavigate();
@@ -66,8 +57,9 @@ export default function ChatConversationPage() {
 
   const [chatInfo, setChatInfo] = useState(null);
   const [friendInfo, setFriendInfo] = useState(null);
+  const [friendLastSeenLabel, setFriendLastSeenLabel] = useState("");
   const [messages, setMessages] = useState([]);
-  const [limitCount, setLimitCount] = useState(50);
+  const [limitCount] = useState(50);
 
   // UI states
   const [selectedFiles, setSelectedFiles] = useState([]); // file objects user selected (preview stage)
@@ -75,7 +67,7 @@ export default function ChatConversationPage() {
   const [localUploads, setLocalUploads] = useState([]); // placeholders for uploads in progress (id = firestore doc id)
   const [downloadMap, setDownloadMap] = useState({}); // receiver download statuses { msgId: {status, progress, blobUrl} }
   const [text, setText] = useState("");
-  const [showAttach, setShowAttach] = useState(false);
+  const [attachSheetOpen, setAttachSheetOpen] = useState(false); // slides up from bottom
   const [menuOpen, setMenuOpen] = useState(false);
   const [replyTo, setReplyTo] = useState(null);
   const [blocked, setBlocked] = useState(false);
@@ -87,11 +79,15 @@ export default function ChatConversationPage() {
   const messagesRef = useRef(null);
   const endRef = useRef(null);
   const attachRef = useRef(null);
-  const myUid = auth.currentUser?.uid;
+  const imageInputRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const audioInputRef = useRef(null);
+  const videoInputRef = useRef(null);
 
+  const myUid = auth.currentUser?.uid;
   const [isAtBottom, setIsAtBottom] = useState(true);
 
-  // ---------- load chat & friend ----------
+  // ---------- load chat & friend (live) ----------
   useEffect(() => {
     if (!chatId) return;
     const chatRef = doc(db, "chats", chatId);
@@ -100,28 +96,49 @@ export default function ChatConversationPage() {
     (async () => {
       const snap = await getDoc(chatRef);
       if (!snap.exists()) { alert("Chat not found"); navigate("/chat"); return; }
-      const data = snap.data();
-      setChatInfo({ id: snap.id, ...data });
-      setBlocked(Boolean(data?.blockedBy?.includes(myUid)));
-      const friendId = data.participants?.find(p => p !== myUid);
+      setChatInfo({ id: snap.id, ...snap.data() });
+      setBlocked(Boolean(snap.data()?.blockedBy?.includes(myUid)));
+
+      const friendId = snap.data().participants?.find(p => p !== myUid);
       if (friendId) {
         const friendRef = doc(db, "users", friendId);
         unsubFriend = onSnapshot(friendRef, fsnap => {
           if (fsnap.exists()) {
-            setFriendInfo({ id: fsnap.id, ...fsnap.data() });
-            setFriendTyping(Boolean(fsnap.data()?.typing?.[chatId]));
+            const data = { id: fsnap.id, ...fsnap.data() };
+            setFriendInfo(data);
+            setFriendTyping(Boolean(data?.typing?.[chatId]));
+            // compute friendly last seen label
+            setFriendLastSeenLabel(formatLastSeenLabel(data));
           }
         });
       }
+
       unsubChat = onSnapshot(chatRef, cSnap => {
         if (cSnap.exists()) {
-          setChatInfo(prev => ({ ...(prev || {}), ...cSnap.data() }));
+          setChatInfo(prev => ({ ...(prev||{}), ...cSnap.data() }));
           setBlocked(Boolean(cSnap.data()?.blockedBy?.includes(myUid)));
         }
       });
     })();
+
     return () => { unsubFriend && unsubFriend(); unsubChat && unsubChat(); };
   }, [chatId, myUid, navigate]);
+
+  // helper to format lastSeen robustly
+  const formatLastSeenLabel = (userDoc) => {
+    if (!userDoc) return "";
+    if (userDoc.isOnline) return "Online";
+    const ts = userDoc.lastSeen;
+    if (!ts) return "Offline";
+    const d = ts.toDate ? ts.toDate() : new Date(ts);
+    const diffMin = Math.floor((Date.now() - d.getTime()) / 60000);
+    if (diffMin < 1) return "just now";
+    if (diffMin < 60) return `${diffMin}m ago`;
+    if (diffMin < 1440) return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    const yesterday = new Date(); yesterday.setDate(new Date().getDate() - 1);
+    if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  };
 
   // ---------- realtime messages (paginated) ----------
   useEffect(() => {
@@ -141,7 +158,7 @@ export default function ChatConversationPage() {
 
       // queue downloads for attachments with fileURL
       docs.forEach(m => {
-        if ((m.type === "image" || m.type === "file" || m.type === "audio") && m.fileURL) {
+        if ((m.type === "image" || m.type === "file" || m.type === "audio" || m.type === "video") && m.fileURL) {
           setDownloadMap(prev => {
             if (prev[m.id] && (prev[m.id].status === "done" || prev[m.id].status === "downloading")) return prev;
             return { ...prev, [m.id]: { ...(prev[m.id]||{}), status: "queued", progress: 0, blobUrl: null } };
@@ -149,7 +166,7 @@ export default function ChatConversationPage() {
         }
       });
 
-      // initial scroll to bottom
+      // scroll to bottom on initial load
       setTimeout(()=> { endRef.current?.scrollIntoView({ behavior: "auto" }); setIsAtBottom(true); }, 50);
     });
     return () => unsub();
@@ -193,28 +210,30 @@ export default function ChatConversationPage() {
     setPreviews(prev => [...prev, ...newPreviews]);
   };
 
-  // ---------- SEND queued files (user presses Send on preview bar) ----------
+  // Called when user clicks "Send" to actually send queued previews (works for images/audio/video/files)
   const sendQueuedFiles = async () => {
     if (!selectedFiles.length) return;
     const filesToSend = [...selectedFiles];
+    // clear preview UI immediately (user can continue)
     setSelectedFiles([]); setPreviews([]);
 
     for (const file of filesToSend) {
       try {
-        // create placeholder message doc (status: uploading)
+        const kind = file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : file.type.startsWith("audio/") ? "audio" : "file";
         const placeholder = {
           sender: myUid,
           text: "",
           fileURL: null,
           fileName: file.name,
-          type: file.type.startsWith("image/") ? "image" : (file.type.startsWith("audio/") ? "audio" : "file"),
+          type: kind,
           createdAt: serverTimestamp(),
           status: "uploading",
         };
         const docRef = await addDoc(collection(db, "chats", chatId, "messages"), placeholder);
 
         // local upload placeholder (shows on sender side until firestore doc updates)
-        setLocalUploads(prev => [...prev, { id: docRef.id, fileName: file.name, progress: 0, type: placeholder.type, previewUrl: URL.createObjectURL(file) }]);
+        const previewUrl = URL.createObjectURL(file);
+        setLocalUploads(prev => [...prev, { id: docRef.id, fileName: file.name, progress: 0, type: kind, previewUrl }]);
 
         // upload to storage
         const sRef = storageRef(storage, `chatFiles/${chatId}/${Date.now()}_${file.name}`);
@@ -232,9 +251,7 @@ export default function ChatConversationPage() {
           },
           async () => {
             const url = await getDownloadURL(task.snapshot.ref);
-            // update firestore message with final url & status
             await updateDoc(docRef, { fileURL: url, status: "sent", sentAt: serverTimestamp() }).catch(()=>{});
-            // remove local placeholder
             setLocalUploads(prev => prev.filter(l => l.id !== docRef.id));
             setTimeout(()=> scrollToBottom(true), 120);
           }
@@ -260,7 +277,6 @@ export default function ChatConversationPage() {
         return;
       }
 
-      // fetch with stream reading to get progress
       const resp = await fetch(m.fileURL);
       if (!resp.ok) throw new Error("Download failed: " + resp.status);
       const contentLength = resp.headers.get("Content-Length");
@@ -286,12 +302,11 @@ export default function ChatConversationPage() {
     } catch (err) {
       console.error("download failed", err);
       setDownloadMap(prev => ({ ...prev, [messageId]: { ...prev[messageId], status: "failed", progress: 0 } }));
-      // retry queued after 10s
       setTimeout(() => setDownloadMap(prev => ({ ...prev, [messageId]: { ...(prev[messageId]||{}), status: "queued" } })), 10000);
     }
   };
 
-  // helper to display best URL for message: downloaded blobUrl > fileURL > preview
+  // helper to display best URL for message: downloaded blobUrl > fileURL > local preview
   const getDisplayUrlForMessage = (m) => {
     const d = downloadMap[m.id];
     if (d && d.blobUrl) return d.blobUrl;
@@ -303,28 +318,36 @@ export default function ChatConversationPage() {
 
   // ---------- send text ----------
   const handleSendText = async () => {
-    if (!text.trim()) return;
+    if (!text.trim() && selectedFiles.length === 0) return;
     if (blocked) { alert("You blocked this user — unblock to send."); return; }
-    const payload = {
-      sender: myUid,
-      text: text.trim(),
-      fileURL: null,
-      fileName: null,
-      type: "text",
-      createdAt: serverTimestamp(),
-      status: "sent",
-    };
-    if (replyTo) {
-      payload.replyTo = { id: replyTo.id, text: replyTo.text?.slice(0,120) || (replyTo.fileName || "media"), sender: replyTo.sender };
-      setReplyTo(null);
+
+    // If there are queued files, send them first (non-blocking)
+    if (selectedFiles.length > 0) {
+      sendQueuedFiles();
     }
-    setText("");
-    try {
-      await addDoc(collection(db, "chats", chatId, "messages"), payload);
-      setTimeout(()=> scrollToBottom(true), 120);
-    } catch (err) {
-      console.error("send text failed", err);
-      alert("Failed to send message");
+
+    if (text.trim()) {
+      const payload = {
+        sender: myUid,
+        text: text.trim(),
+        fileURL: null,
+        fileName: null,
+        type: "text",
+        createdAt: serverTimestamp(),
+        status: "sent",
+      };
+      if (replyTo) {
+        payload.replyTo = { id: replyTo.id, text: replyTo.text?.slice(0,120) || (replyTo.fileName || "media"), sender: replyTo.sender };
+        setReplyTo(null);
+      }
+      setText("");
+      try {
+        await addDoc(collection(db, "chats", chatId, "messages"), payload);
+        setTimeout(()=> scrollToBottom(true), 120);
+      } catch (err) {
+        console.error("send text failed", err);
+        alert("Failed to send message");
+      }
     }
   };
 
@@ -400,11 +423,26 @@ export default function ChatConversationPage() {
     }
   };
 
-  // ---------- reactions ----------
+  // ---------- reactions: toggle (click same emoji to remove) ----------
   const applyReaction = async (messageId, emoji) => {
     try {
       const mRef = doc(db, "chats", chatId, "messages", messageId);
-      await updateDoc(mRef, { [`reactions.${myUid}`]: emoji });
+      // read current doc to check existing
+      const snap = await getDoc(mRef);
+      if (!snap.exists()) return;
+      const cur = snap.data();
+      const existing = cur?.reactions?.[myUid];
+      if (existing === emoji) {
+        // remove
+        await updateDoc(mRef, { [`reactions.${myUid}`]: null });
+        // note: Firestore doesn't allow setting nested key to null to delete; instead update with FieldValue.delete()
+        // but simple approach below - write an object without that key:
+        const newReactions = { ...(cur.reactions || {}) };
+        delete newReactions[myUid];
+        await updateDoc(mRef, { reactions: newReactions }).catch(()=>{});
+      } else {
+        await updateDoc(mRef, { [`reactions.${myUid}`]: emoji });
+      }
       setSelectedMessageId(null);
     } catch (err) {
       console.error("reaction", err);
@@ -429,13 +467,16 @@ export default function ChatConversationPage() {
     }
   };
 
-  // ---------- helper message renderer ----------
+  // ---------- message renderer ----------
   const MessageBubble = ({ m }) => {
     const mine = m.sender === myUid;
-    const reactions = m.reactions || {};
     const replySnippet = m.replyTo ? (m.replyTo.text || (m.replyTo.fileName || "media")) : null;
     const displayUrl = getDisplayUrlForMessage(m);
     const downloadInfo = downloadMap[m.id];
+
+    // improved palette for dark mode readability
+    const bubbleBg = mine ? (isDark ? "#0b84ff" : "#007bff") : (isDark ? "#1e1e1e" : "#fff");
+    const bubbleColor = mine ? "#fff" : (isDark ? "#e6e6e6" : "#000");
 
     return (
       <div style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start", marginBottom: 12, paddingLeft: 6, paddingRight: 6 }}>
@@ -447,33 +488,43 @@ export default function ChatConversationPage() {
           onPointerDown={(e) => onPointerDown(e)}
           onPointerUp={(e) => onPointerUpForReply(e, m)}
           style={{
-            background: mine ? (isDark ? "#0b84ff" : "#007bff") : (isDark ? "#222" : "#eee"),
-            color: mine ? "#fff" : "#000",
+            background: bubbleBg,
+            color: bubbleColor,
             padding: "10px 12px",
             borderRadius: 14,
             maxWidth: "78%",
             wordBreak: "break-word",
             position: "relative",
+            boxShadow: isDark ? "0 1px 6px rgba(0,0,0,0.6)" : "0 1px 4px rgba(0,0,0,0.06)"
           }}
         >
           {replySnippet && (
-            <div style={{ marginBottom: 6, padding: "6px 8px", borderRadius: 8, background: isDark ? "#0f0f0f" : "#fff", color: isDark ? "#ddd" : "#333", fontSize: 12 }}>
+            <div style={{ marginBottom: 6, padding: "6px 8px", borderRadius: 8, background: isDark ? "#111" : "#f8f8f8", color: isDark ? "#ddd" : "#333", fontSize: 12 }}>
               <span style={{ display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 220 }}>{replySnippet}</span>
             </div>
           )}
 
-          {m.type === "text" && <div>{m.text}</div>}
+          {m.type === "text" && <div style={{ color: bubbleColor }}>{m.text}</div>}
 
-          {["image", "file", "audio"].includes(m.type) && (
+          {["image", "file", "audio", "video"].includes(m.type) && (
             <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 8 }}>
               {m.type === "image" ? (
-                <img src={displayUrl || m.fileURL || (m.previewUrl || "")} alt={m.fileName || "image"} style={{ width: 220, height: "auto", borderRadius: 8, filter: (downloadInfo && downloadInfo.status === "downloading") || (m.status === "uploading") ? "blur(6px)" : "none", transition: "filter .2s" }} />
+                <img
+                  src={displayUrl || m.fileURL || (m.previewUrl || "")}
+                  alt={m.fileName || "image"}
+                  style={{ width: 220, height: "auto", borderRadius: 8, filter: (downloadInfo && downloadInfo.status === "downloading") || (m.status === "uploading") ? "blur(6px)" : "none", transition: "filter .2s" }}
+                />
+              ) : m.type === "video" ? (
+                <video controls src={displayUrl || m.fileURL} style={{ width: 220, borderRadius: 8 }} />
+              ) : m.type === "audio" ? (
+                <audio controls src={displayUrl || m.fileURL} style={{ width: 220 }} />
               ) : (
                 <div style={{ display: "flex", alignItems: "center", gap: 10, padding: 8, borderRadius: 8, background: mine ? "rgba(255,255,255,0.04)" : "#fff" }}>
                   <div style={{ width: 40, height: 40, borderRadius: 6, background: "#f0f0f0", display: "flex", alignItems: "center", justifyContent: "center" }}>📎</div>
                   <div style={{ maxWidth: 180 }}>
-                    <div style={{ fontWeight: 600 }}>{m.fileName || "file"}</div>
-                    <div style={{ fontSize: 12, color: "#666" }}>{m.type}</div>
+                    <div style={{ fontWeight: 600, color: bubbleColor }}>{m.fileName || "file"}</div>
+                    <div style={{ fontSize: 12, color: "#888" }}>{m.type}</div>
+                    {m.fileURL && <a href={displayUrl || m.fileURL} target="_blank" rel="noopener noreferrer" style={{ display: "block", marginTop: 6, color: isDark ? "#9ad3ff" : "#007bff" }}>Download</a>}
                   </div>
                 </div>
               )}
@@ -520,7 +571,6 @@ export default function ChatConversationPage() {
     grouped.push(m);
   });
 
-  // ---------- spinner component (circular percent) ----------
   function Spinner({ percent = 0 }) {
     return (
       <div style={{ width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -533,16 +583,16 @@ export default function ChatConversationPage() {
     );
   }
 
-  // ---------- attach popup outside-click auto-close ----------
+  // ---------- attach sheet outside-click auto-close ----------
   useEffect(() => {
     const handler = (e) => {
-      if (showAttach && attachRef.current && !attachRef.current.contains(e.target)) {
-        setShowAttach(false);
+      if (attachSheetOpen && attachRef.current && !attachRef.current.contains(e.target)) {
+        setAttachSheetOpen(false);
       }
     };
-    if (showAttach) document.addEventListener("mousedown", handler);
+    if (attachSheetOpen) document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [showAttach]);
+  }, [attachSheetOpen]);
 
   // ---------- UI ----------
   return (
@@ -553,20 +603,7 @@ export default function ChatConversationPage() {
         <img src={friendInfo?.photoURL || "/default-avatar.png"} alt="avatar" style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover", marginRight: 12, cursor: "pointer" }} onClick={() => friendInfo && navigate(`/user-profile/${friendInfo.id}`)} />
         <div>
           <div style={{ fontWeight: 700 }}>{friendInfo?.displayName || chatInfo?.name || "Friend"}</div>
-          <div style={{ fontSize: 12, color: isDark ? "#bbb" : "#666" }}>
-            {friendTyping ? "typing..." : (friendInfo?.isOnline ? "Online" : (friendInfo?.lastSeen ? (() => {
-              const ls = friendInfo.lastSeen;
-              if (!ls) return "Offline";
-              const ld = ls.toDate ? ls.toDate() : new Date(ls);
-              const diffMin = Math.floor((Date.now() - ld.getTime()) / 60000);
-              if (diffMin < 1) return "just now";
-              if (diffMin < 60) return `${diffMin}m ago`;
-              if (diffMin < 1440) return ld.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-              const yesterday = new Date(); yesterday.setDate(new Date().getDate() - 1);
-              if (ld.toDateString() === yesterday.toDateString()) return `Yesterday`;
-              return ld.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-            })() : "Offline"))}
-          </div>
+          <div style={{ fontSize: 12, color: isDark ? "#bbb" : "#666" }}>{friendTyping ? "typing..." : friendLastSeenLabel || "Offline"}</div>
         </div>
 
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
@@ -598,7 +635,7 @@ export default function ChatConversationPage() {
         </div>
       )}
 
-      {/* messages container */}
+      {/* messages */}
       <div ref={messagesRef} style={{ flex: 1, overflowY: "auto", padding: 12 }}>
         {grouped.map(g => {
           if (g.type === "day") return <div key={g.id} style={{ textAlign: "center", margin: "12px 0", color: "#888", fontSize: 12 }}>{g.label}</div>;
@@ -659,26 +696,10 @@ export default function ChatConversationPage() {
         </div>
       )}
 
-      {/* pinned input */}
+      {/* pinned input + attach button */}
       <div style={{ position: "sticky", bottom: 0, background: isDark ? "#0b0b0b" : "#fff", padding: 10, borderTop: "1px solid #ccc", display: "flex", alignItems: "center", gap: 8, zIndex: 50 }}>
-        <div style={{ position: "relative" }} ref={attachRef}>
-          <button onClick={() => setShowAttach(s => !s)} style={{ width: 44, height: 44, borderRadius: 12, fontSize: 20, background: "#f0f0f0", border: "none", cursor: "pointer" }}>＋</button>
-          {showAttach && (
-            <div style={{ position: "absolute", bottom: 56, left: 0, background: isDark ? "#222" : "#fff", border: "1px solid #ccc", borderRadius: 10, padding: 8, display: "flex", gap: 8 }}>
-              <label style={{ cursor: "pointer" }}>
-                📷
-                <input type="file" accept="image/*" multiple onChange={(e) => { onFilesSelected(e); setShowAttach(false); }} style={{ display: "none" }} />
-              </label>
-              <label style={{ cursor: "pointer" }}>
-                📁
-                <input type="file" multiple onChange={(e) => { onFilesSelected(e); setShowAttach(false); }} style={{ display: "none" }} />
-              </label>
-              <label style={{ cursor: "pointer" }}>
-                🎤
-                <input type="file" accept="audio/*" multiple onChange={(e) => { onFilesSelected(e); setShowAttach(false); }} style={{ display: "none" }} />
-              </label>
-            </div>
-          )}
+        <div style={{ position: "relative" }}>
+          <button onClick={() => setAttachSheetOpen(true)} style={{ width: 44, height: 44, borderRadius: 12, fontSize: 20, background: "#f0f0f0", border: "none", cursor: "pointer" }}>＋</button>
         </div>
 
         <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
@@ -694,6 +715,62 @@ export default function ChatConversationPage() {
         </div>
 
         <button onClick={handleSendText} disabled={blocked || (!text.trim() && localUploads.length === 0 && selectedFiles.length === 0)} style={{ background: "#34B7F1", color: "#fff", border: "none", borderRadius: 16, padding: "8px 12px", cursor: "pointer" }}>Send</button>
+      </div>
+
+      {/* Attachment sheet (WhatsApp-style) */}
+      <div aria-hidden={!attachSheetOpen} style={{
+        position: "fixed",
+        left: 0,
+        right: 0,
+        bottom: 0,
+        transform: attachSheetOpen ? "translateY(0)" : "translateY(110%)",
+        transition: "transform 220ms ease",
+        zIndex: 200,
+        pointerEvents: attachSheetOpen ? "auto" : "none",
+      }}>
+        <div ref={attachRef} style={{ margin: 0, padding: 16, borderTopLeftRadius: 14, borderTopRightRadius: 14, background: isDark ? "#121212" : "#fff", boxShadow: "0 -8px 30px rgba(0,0,0,0.2)" }}>
+          <div style={{ display: "flex", justifyContent: "space-around", marginBottom: 12 }}>
+            {/* Camera (mobile will use device camera when 'capture' attr is supported) */}
+            <label style={{ display: "flex", flexDirection: "column", alignItems: "center", cursor: "pointer" }}>
+              <div style={{ width: 54, height: 54, borderRadius: 12, background: "#f3f3f3", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>📷</div>
+              <small style={{ marginTop: 6 }}>Camera</small>
+              <input ref={imageInputRef} onChange={(e)=>{ onFilesSelected(e); setAttachSheetOpen(false); }} type="file" accept="image/*" capture="environment" style={{ display: "none" }} />
+            </label>
+
+            {/* Photos (gallery) */}
+            <label style={{ display: "flex", flexDirection: "column", alignItems: "center", cursor: "pointer" }}>
+              <div style={{ width: 54, height: 54, borderRadius: 12, background: "#f3f3f3", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>🖼️</div>
+              <small style={{ marginTop: 6 }}>Photos</small>
+              {/* photos: allow multiple selection */}
+              <input type="file" accept="image/*,video/*" multiple onChange={(e)=>{ onFilesSelected(e); setAttachSheetOpen(false); }} style={{ display: "none" }} />
+            </label>
+
+            {/* File */}
+            <label style={{ display: "flex", flexDirection: "column", alignItems: "center", cursor: "pointer" }}>
+              <div style={{ width: 54, height: 54, borderRadius: 12, background: "#f3f3f3", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>📁</div>
+              <small style={{ marginTop: 6 }}>File</small>
+              <input ref={fileInputRef} type="file" onChange={(e)=>{ onFilesSelected(e); setAttachSheetOpen(false); }} style={{ display: "none" }} />
+            </label>
+
+            {/* Audio */}
+            <label style={{ display: "flex", flexDirection: "column", alignItems: "center", cursor: "pointer" }}>
+              <div style={{ width: 54, height: 54, borderRadius: 12, background: "#f3f3f3", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>🎤</div>
+              <small style={{ marginTop: 6 }}>Audio</small>
+              <input ref={audioInputRef} type="file" accept="audio/*" onChange={(e)=>{ onFilesSelected(e); setAttachSheetOpen(false); }} style={{ display: "none" }} />
+            </label>
+
+            {/* Video */}
+            <label style={{ display: "flex", flexDirection: "column", alignItems: "center", cursor: "pointer" }}>
+              <div style={{ width: 54, height: 54, borderRadius: 12, background: "#f3f3f3", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>🎥</div>
+              <small style={{ marginTop: 6 }}>Video</small>
+              <input ref={videoInputRef} type="file" accept="video/*" capture="environment" onChange={(e)=>{ onFilesSelected(e); setAttachSheetOpen(false); }} style={{ display: "none" }} />
+            </label>
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "center" }}>
+            <button onClick={() => setAttachSheetOpen(false)} style={{ padding: "8px 14px", borderRadius: 8, background: "#eee", border: "none", cursor: "pointer" }}>Cancel</button>
+          </div>
+        </div>
       </div>
 
       {/* report modal small top-right */}
