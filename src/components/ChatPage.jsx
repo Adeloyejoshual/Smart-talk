@@ -8,6 +8,7 @@ import {
   getDocs,
   addDoc,
   serverTimestamp,
+  doc,
 } from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
@@ -35,7 +36,7 @@ export default function ChatPage() {
     return unsubscribe;
   }, [navigate]);
 
-  // 💬 Real-time chats
+  // 💬 Real-time chat list with last message + status
   useEffect(() => {
     if (!user) return;
 
@@ -45,11 +46,30 @@ export default function ChatPage() {
       orderBy("lastMessageAt", "desc")
     );
 
-    const unsub = onSnapshot(q, (snapshot) => {
-      const chatList = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
+    const unsub = onSnapshot(q, async (snapshot) => {
+      const chatList = [];
+
+      for (const chatDoc of snapshot.docs) {
+        const chatData = { id: chatDoc.id, ...chatDoc.data() };
+
+        // 📡 Listen to the latest message in each chat
+        const msgQuery = query(
+          collection(db, "chats", chatDoc.id, "messages"),
+          orderBy("createdAt", "desc")
+        );
+
+        const msgSnap = await getDocs(msgQuery);
+        const latest = msgSnap.docs[0]?.data() || null;
+        if (latest) {
+          chatData.lastMessage = latest.text || "📷 Photo";
+          chatData.lastMessageStatus = latest.status;
+          chatData.lastMessageSender = latest.senderId;
+          chatData.lastMessageAt = latest.createdAt;
+        }
+
+        chatList.push(chatData);
+      }
+
       setChats(chatList);
     });
 
@@ -68,7 +88,6 @@ export default function ChatPage() {
         return;
       }
 
-      // 🔍 Find friend by email
       const usersRef = collection(db, "users");
       const q = query(usersRef, where("email", "==", friendEmail.trim()));
       const snapshot = await getDocs(q);
@@ -88,7 +107,6 @@ export default function ChatPage() {
         return;
       }
 
-      // 🔁 Check if chat already exists
       const chatRef = collection(db, "chats");
       const chatQuery = query(chatRef, where("participants", "array-contains", user.uid));
       const existingChats = await getDocs(chatQuery);
@@ -103,7 +121,6 @@ export default function ChatPage() {
         return;
       }
 
-      // 🆕 Create new chat
       const newChat = await addDoc(chatRef, {
         participants: [user.uid, friendData.uid],
         name: friendData.displayName || friendData.email.split("@")[0],
@@ -112,7 +129,6 @@ export default function ChatPage() {
         lastMessageAt: serverTimestamp(),
       });
 
-      // ✅ Clear popup + redirect immediately
       setFriendEmail("");
       setShowAddFriend(false);
       navigate(`/chat/${newChat.id}`);
@@ -125,6 +141,18 @@ export default function ChatPage() {
   };
 
   const openChat = (chatId) => navigate(`/chat/${chatId}`);
+
+  const renderMessageTick = (chat) => {
+    const { lastMessageSender, lastMessageStatus } = chat;
+
+    if (lastMessageSender !== user?.uid) return null; // Only show ticks for sender
+
+    if (lastMessageStatus === "sent") return "✓";
+    if (lastMessageStatus === "delivered") return "✓✓";
+    if (lastMessageStatus === "seen")
+      return <span style={{ color: "#25D366" }}>✓✓</span>; // blue double tick
+    return "";
+  };
 
   return (
     <div
@@ -256,8 +284,12 @@ export default function ChatPage() {
                       margin: 0,
                       fontSize: "14px",
                       color: isDark ? "#ccc" : "#555",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "5px",
                     }}
                   >
+                    {renderMessageTick(chat)}{" "}
                     {chat.lastMessage
                       ? chat.lastMessage.length > 30
                         ? chat.lastMessage.substring(0, 30) + "..."
