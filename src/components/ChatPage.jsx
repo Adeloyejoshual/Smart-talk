@@ -8,7 +8,6 @@ import {
   getDocs,
   addDoc,
   serverTimestamp,
-  doc,
 } from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
@@ -36,7 +35,7 @@ export default function ChatPage() {
     return unsubscribe;
   }, [navigate]);
 
-  // 💬 Real-time chat list with last message + status
+  // 💬 Real-time chats with live last message
   useEffect(() => {
     if (!user) return;
 
@@ -46,31 +45,37 @@ export default function ChatPage() {
       orderBy("lastMessageAt", "desc")
     );
 
-    const unsub = onSnapshot(q, async (snapshot) => {
-      const chatList = [];
+    const unsub = onSnapshot(q, (snapshot) => {
+      const updatedChats = [];
 
-      for (const chatDoc of snapshot.docs) {
+      snapshot.docs.forEach((chatDoc) => {
         const chatData = { id: chatDoc.id, ...chatDoc.data() };
 
-        // 📡 Listen to the latest message in each chat
+        // 🔁 Listen to live last message for each chat
         const msgQuery = query(
           collection(db, "chats", chatDoc.id, "messages"),
           orderBy("createdAt", "desc")
         );
 
-        const msgSnap = await getDocs(msgQuery);
-        const latest = msgSnap.docs[0]?.data() || null;
-        if (latest) {
-          chatData.lastMessage = latest.text || "📷 Photo";
-          chatData.lastMessageStatus = latest.status;
-          chatData.lastMessageSender = latest.senderId;
-          chatData.lastMessageAt = latest.createdAt;
-        }
+        onSnapshot(msgQuery, (msgSnap) => {
+          const latest = msgSnap.docs[0]?.data() || null;
+          if (latest) {
+            chatData.lastMessage = latest.text || "📷 Photo";
+            chatData.lastMessageSender = latest.senderId;
+            chatData.lastMessageStatus = latest.status;
+            chatData.lastMessageAt = latest.createdAt;
+          }
 
-        chatList.push(chatData);
-      }
-
-      setChats(chatList);
+          setChats((prev) => {
+            const other = prev.filter((c) => c.id !== chatDoc.id);
+            return [...other, chatData].sort((a, b) => {
+              const aTime = a.lastMessageAt?.seconds || 0;
+              const bTime = b.lastMessageAt?.seconds || 0;
+              return bTime - aTime;
+            });
+          });
+        });
+      });
     });
 
     return () => unsub();
@@ -80,7 +85,6 @@ export default function ChatPage() {
   const handleAddFriend = async () => {
     setMessage("");
     setLoading(true);
-
     try {
       if (!friendEmail || !user) {
         setMessage("Enter a valid email.");
@@ -136,7 +140,6 @@ export default function ChatPage() {
       console.error("Add friend error:", error);
       setMessage("❌ Error adding friend.");
     }
-
     setLoading(false);
   };
 
@@ -144,13 +147,11 @@ export default function ChatPage() {
 
   const renderMessageTick = (chat) => {
     const { lastMessageSender, lastMessageStatus } = chat;
-
-    if (lastMessageSender !== user?.uid) return null; // Only show ticks for sender
-
+    if (lastMessageSender !== user?.uid) return null;
     if (lastMessageStatus === "sent") return "✓";
     if (lastMessageStatus === "delivered") return "✓✓";
     if (lastMessageStatus === "seen")
-      return <span style={{ color: "#25D366" }}>✓✓</span>; // blue double tick
+      return <span style={{ color: "#25D366" }}>✓✓</span>;
     return "";
   };
 
