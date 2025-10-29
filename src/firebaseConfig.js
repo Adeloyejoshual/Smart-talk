@@ -12,12 +12,13 @@ import {
   getFirestore,
   doc,
   setDoc,
-  updateDoc,
   serverTimestamp,
+  updateDoc,
+  getDoc,
 } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
-// 🧩 Firebase Config — stored in your .env file (make sure of the VITE_ prefix)
+// 🔥 Firebase Config (use your .env values)
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -27,68 +28,55 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-// 🔥 Initialize Firebase
+// 🚀 Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// 🧠 Firebase services
+// 📦 Firebase Services
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
 
-//
-// 🆕 Register a new user
-//
+/* --------------------------
+ 🧍 User Auth Helpers
+--------------------------- */
+
+// 🆕 Register new user with name, email, and password
 export const registerUser = async (name, email, password) => {
-  try {
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    const user = userCredential.user;
+  const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+  const user = userCredential.user;
 
-    // Update Firebase Auth profile
-    await updateProfile(user, { displayName: name });
+  // Update Auth profile
+  await updateProfile(user, { displayName: name });
 
-    // Create Firestore user document
-    await setDoc(doc(db, "users", user.uid), {
-      uid: user.uid,
-      name,
-      email,
-      photoURL: null,
-      balance: 0,
-      createdAt: serverTimestamp(),
-      isOnline: true,
-      lastSeen: serverTimestamp(),
-    });
+  // Create Firestore user document
+  await setDoc(doc(db, "users", user.uid), {
+    uid: user.uid,
+    displayName: name,
+    email: user.email,
+    photoURL: user.photoURL || null,
+    isOnline: true,
+    lastSeen: serverTimestamp(),
+    createdAt: serverTimestamp(),
+  });
 
-    return user;
-  } catch (error) {
-    console.error("Registration Error:", error);
-    throw error;
-  }
+  return user;
 };
 
-//
-// 🔑 Login user
-//
+// 🔑 Login existing user
 export const loginUser = async (email, password) => {
-  try {
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
-    const user = userCredential.user;
+  const userCredential = await signInWithEmailAndPassword(auth, email, password);
+  const user = userCredential.user;
 
-    // Update online status
-    await updateDoc(doc(db, "users", user.uid), {
-      isOnline: true,
-      lastSeen: serverTimestamp(),
-    });
+  // Update online status
+  await updateDoc(doc(db, "users", user.uid), {
+    isOnline: true,
+    lastSeen: serverTimestamp(),
+  });
 
-    return user;
-  } catch (error) {
-    console.error("Login Error:", error);
-    throw error;
-  }
+  return user;
 };
 
-//
-// 🚪 Logout user
-//
+// 🚪 Logout and set offline
 export const logout = async () => {
   const user = auth.currentUser;
   if (user) {
@@ -97,30 +85,21 @@ export const logout = async () => {
       lastSeen: serverTimestamp(),
     });
   }
-  return signOut(auth);
+  await signOut(auth);
 };
 
-//
-// 🌍 Real-time online/offline tracking
-//
-onAuthStateChanged(auth, async (user) => {
-  if (user) {
-    const userRef = doc(db, "users", user.uid);
-
-    // Mark as online
-    await updateDoc(userRef, {
-      isOnline: true,
-      lastSeen: serverTimestamp(),
-    });
-
-    // When user closes the browser tab or reloads
-    window.addEventListener("beforeunload", async () => {
-      await updateDoc(userRef, {
-        isOnline: false,
-        lastSeen: serverTimestamp(),
-      });
-    });
-  }
-});
+// 👀 Listen for auth changes (real-time user state)
+export const onUserStateChange = (callback) => {
+  return onAuthStateChanged(auth, async (user) => {
+    if (user) {
+      const userRef = doc(db, "users", user.uid);
+      const userSnap = await getDoc(userRef);
+      if (userSnap.exists()) callback({ ...userSnap.data(), id: userSnap.id });
+      else callback(null);
+    } else {
+      callback(null);
+    }
+  });
+};
 
 export { app };
