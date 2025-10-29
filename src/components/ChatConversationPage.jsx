@@ -1,5 +1,5 @@
 // src/components/ChatConversationPage.jsx
-import React, { useEffect, useState, useRef, useContext } from "react";
+import React, { useEffect, useState, useRef, useContext, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   doc,
@@ -8,7 +8,6 @@ import {
   addDoc,
   query,
   orderBy,
-  limit as fsLimit,
   onSnapshot,
   serverTimestamp,
   updateDoc,
@@ -23,119 +22,127 @@ import { auth, db, storage } from "../firebaseConfig";
 import { ThemeContext } from "../context/ThemeContext";
 
 /**
- * Full ChatConversationPage.jsx
- * - Attachment bottom sheet (Camera, Photos, Files) — slides from bottom and closes on outside tap
- * - No voice note support (removed)
- * - Image previews above input; Send commits them to chat
- * - Placeholder -> upload -> update doc flow
- * - Reaction toggle (add/remove)
- * - Live last seen rendering
+ * ChatConversationPage.jsx
+ * - Real-time messages, typing, last-seen
+ * - Attachment sheet (slide up), previews, fullscreen viewer
+ * - No voice note UI (mic removed)
+ * - Block/Unblock: if current user blocked friend, hide friend's messages locally
+ *
+ * Notes:
+ * - this file assumes `users` docs hold { isOnline: boolean, lastSeen: Timestamp, typing: { [chatId]: boolean } }
+ * - adjust fields if your schema differs.
  */
 
+// ---------- helpers ----------
 const fmtTime = (ts) => {
   if (!ts) return "";
   const d = ts.toDate ? ts.toDate() : new Date(ts);
   return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 };
-
-const fmtLastSeen = (ts) => {
+const dayLabel = (ts) => {
   if (!ts) return "";
-  if (ts === "Online") return "Online";
   const d = ts.toDate ? ts.toDate() : new Date(ts);
   const now = new Date();
-  const diffMs = now - d;
-  const diffMin = Math.floor(diffMs / 60000);
-  if (diffMin < 1) return "just now";
-  if (diffMin < 60) return `${diffMin}m ago`;
-  if (diffMin < 1440) return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   const yesterday = new Date(); yesterday.setDate(now.getDate() - 1);
+  if (d.toDateString() === now.toDateString()) return "Today";
   if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: d.getFullYear() !== now.getFullYear() ? "numeric" : undefined });
 };
-
-const EMOJIS = ["👍","❤️","😂","😮","😢","👏","🔥","😅"];
 
 export default function ChatConversationPage() {
   const { chatId } = useParams();
   const navigate = useNavigate();
-  const { theme, wallpaper } = useContext(ThemeContext);
+  const { theme, wallpaper } = useContext(ThemeContext || {});
   const isDark = theme === "dark";
 
+  const myUid = auth.currentUser?.uid;
+
+  // core state
   const [chatInfo, setChatInfo] = useState(null);
   const [friendInfo, setFriendInfo] = useState(null);
   const [messages, setMessages] = useState([]);
-  const [limitCount] = useState(50);
+  const [text, setText] = useState("");
+  const [selectedFiles, setSelectedFiles] = useState([]); // File objects waiting for Send
+  const [previews, setPreviews] = useState([]); // preview urls (image or name placeholder)
+  const [localUploads, setLocalUploads] = useState([]); // {id, progress, type, previewUrl}
+  const [downloadMap, setDownloadMap] = useState({}); // { messageId: {status, progress, blobUrl} }
 
   // UI states
-  const [selectedFiles, setSelectedFiles] = useState([]); // File objects (preview stage)
-  const [previews, setPreviews] = useState([]); // preview URLs (images) or null for non-image
-  const [localUploads, setLocalUploads] = useState([]); // placeholders for local upload progress
-  const [downloadMap, setDownloadMap] = useState({}); // { messageId: {status, progress, blobUrl} }
-  const [text, setText] = useState("");
-  const [attachOpen, setAttachOpen] = useState(false); // bottom sheet
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [replyTo, setReplyTo] = useState(null);
+  const [attachOpen, setAttachOpen] = useState(false);
+  const [viewer, setViewer] = useState({ open: false, url: null, type: null, fileName: null });
+  const [isAtBottom, setIsAtBottom] = useState(true);
   const [blocked, setBlocked] = useState(false);
   const [friendTyping, setFriendTyping] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [reportText, setReportText] = useState("");
   const [selectedMessageId, setSelectedMessageId] = useState(null);
 
-  const [lastSeenLabel, setLastSeenLabel] = useState("");
+  // refs
   const messagesRef = useRef(null);
   const endRef = useRef(null);
   const attachRef = useRef(null);
-  const fileInputRef = useRef(null);
-  const imageInputRef = useRef(null);
-  const myUid = auth.currentUser?.uid;
-  const [isAtBottom, setIsAtBottom] = useState(true);
+  const typingTimer = useRef(null);
+  const lastTypingUpdate = useRef(0);
 
-  // ---------- load chat info and friend (live) ----------
+  // ---------- load chat + friend live ----------
   useEffect(() => {
     if (!chatId) return;
     const chatRef = doc(db, "chats", chatId);
-    let unsubFriend = null;
     let unsubChat = null;
+    let unsubFriend = null;
 
     (async () => {
       const snap = await getDoc(chatRef);
-      if (!snap.exists()) { alert("Chat not found"); navigate("/chat"); return; }
+      if (!snap.exists()) {
+        alert("Chat not found");
+        navigate("/chat");
+        return;
+      }
       setChatInfo({ id: snap.id, ...snap.data() });
       setBlocked(Boolean(snap.data()?.blockedBy?.includes(myUid)));
 
-      const friendId = snap.data().participants?.find(p => p !== myUid);
-      if (friendId) {
-        const friendRef = doc(db, "users", friendId);
-        unsubFriend = onSnapshot(friendRef, uSnap => {
-          if (!uSnap.exists()) return;
-          const data = uSnap.data();
-          setFriendInfo({ id: uSnap.id, ...data });
-          setFriendTyping(Boolean(data?.typing?.[chatId]));
-          const ls = data?.isOnline ? "Online" : data?.lastSeen || null;
-          setLastSeenLabel(fmtLastSeen(ls));
-        });
-      }
-
-      unsubChat = onSnapshot(chatRef, cSnap => {
-        if (cSnap.exists()) {
-          setChatInfo(prev => ({ ...(prev||{}), ...cSnap.data() }));
-          setBlocked(Boolean(cSnap.data()?.blockedBy?.includes(myUid)));
+      // subscribe to chat doc (for block/unblock, lastMessage updates)
+      unsubChat = onSnapshot(chatRef, (c) => {
+        if (c.exists()) {
+          setChatInfo({ id: c.id, ...c.data() });
+          setBlocked(Boolean(c.data()?.blockedBy?.includes(myUid)));
         }
       });
+
+      // discover friend id
+      const friendId = snap.data().participants?.find((p) => p !== myUid);
+      if (friendId) {
+        const fu = doc(db, "users", friendId);
+        unsubFriend = onSnapshot(fu, (f) => {
+          if (!f.exists()) return;
+          setFriendInfo({ id: f.id, ...f.data() });
+          // typing & online
+          setFriendTyping(Boolean(f.data()?.typing?.[chatId]));
+        });
+      }
     })();
 
-    return () => { unsubFriend && unsubFriend(); unsubChat && unsubChat(); };
+    return () => { unsubChat && unsubChat(); unsubFriend && unsubFriend(); };
   }, [chatId, myUid, navigate]);
 
-  // ---------- realtime messages ----------
+  // ---------- messages realtime ----------
   useEffect(() => {
     if (!chatId) return;
-    const q = query(collection(db, "chats", chatId, "messages"), orderBy("createdAt", "desc"), fsLimit(limitCount));
-    const unsub = onSnapshot(q, snap => {
+    const msgsQ = query(collection(db, "chats", chatId, "messages"), orderBy("createdAt", "desc"));
+    const unsub = onSnapshot(msgsQ, (snap) => {
+      // reverse to ascending
       const docs = snap.docs.map(d => ({ id: d.id, ...d.data() })).reverse();
-      setMessages(docs);
 
-      // auto mark delivered for incoming (best-effort)
+      // If current user blocked friend, hide messages from friend
+      let filtered = docs;
+      if (blocked && chatInfo?.blockedBy?.includes(myUid)) {
+        filtered = docs.filter(m => m.sender === myUid);
+      }
+
+      setMessages(filtered);
+
+      // mark delivered for incoming messages
       docs.forEach(m => {
         if (m.sender !== myUid && m.status === "sent") {
           const mRef = doc(db, "chats", chatId, "messages", m.id);
@@ -145,20 +152,20 @@ export default function ChatConversationPage() {
 
       // queue downloads for attachments
       docs.forEach(m => {
-        if ((m.type === "image" || m.type === "file") && m.fileURL) {
+        if ((m.type === "image" || m.type === "file" || m.type === "audio") && m.fileURL) {
           setDownloadMap(prev => {
-            if (prev[m.id] && (prev[m.id].status === "done" || prev[m.id].status === "downloading")) return prev;
+            if (prev[m.id] && (prev[m.id].status === "downloading" || prev[m.id].status === "done")) return prev;
             return { ...prev, [m.id]: { ...(prev[m.id]||{}), status: "queued", progress: 0, blobUrl: null } };
           });
         }
       });
 
       // scroll to bottom on first load
-      setTimeout(()=> { endRef.current?.scrollIntoView({ behavior: "auto" }); setIsAtBottom(true); }, 40);
+      setTimeout(() => { endRef.current?.scrollIntoView({ behavior: "auto" }); setIsAtBottom(true); }, 60);
     });
 
     return () => unsub();
-  }, [chatId, limitCount, myUid]);
+  }, [chatId, blocked, chatInfo, myUid]);
 
   // ---------- start downloads for queued attachments ----------
   useEffect(() => {
@@ -166,7 +173,7 @@ export default function ChatConversationPage() {
       if (info.status === "queued") {
         setDownloadMap(prev => ({ ...prev, [msgId]: { ...prev[msgId], status: "downloading", progress: 0 } }));
         startDownloadForMessage(msgId).catch(err => {
-          console.error("download start error", err);
+          console.error("download start", err);
           setDownloadMap(prev => ({ ...prev, [msgId]: { ...prev[msgId], status: "failed" } }));
         });
       }
@@ -174,12 +181,12 @@ export default function ChatConversationPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [downloadMap]);
 
-  // ---------- scroll handler ----------
+  // ---------- scroll handler to toggle down arrow ----------
   useEffect(() => {
     const el = messagesRef.current;
     if (!el) return;
     const onScroll = () => {
-      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
       setIsAtBottom(atBottom);
       if (!atBottom) setSelectedMessageId(null);
     };
@@ -187,77 +194,20 @@ export default function ChatConversationPage() {
     return () => el.removeEventListener("scroll", onScroll);
   }, []);
 
-  const scrollToBottom = (smooth = true) => endRef.current?.scrollIntoView({ behavior: smooth ? "smooth" : "auto" });
-
-  // ---------- file selection (pictures & files) ----------
-  const onFilesSelected = (e) => {
-    const files = Array.from(e.target.files || []);
-    if (!files.length) return;
-    const newPreviews = files.map(f => f.type.startsWith("image/") ? URL.createObjectURL(f) : null);
-    setSelectedFiles(prev => [...prev, ...files]);
-    setPreviews(prev => [...prev, ...newPreviews]);
-  };
-
-  // ---------- send queued previews ----------
-  const sendQueuedFiles = async () => {
-    if (!selectedFiles.length) return;
-    const filesToSend = [...selectedFiles];
-    setSelectedFiles([]); setPreviews([]);
-
-    for (const file of filesToSend) {
-      try {
-        const placeholder = {
-          sender: myUid,
-          text: "",
-          fileURL: null,
-          fileName: file.name,
-          type: file.type.startsWith("image/") ? "image" : "file",
-          createdAt: serverTimestamp(),
-          status: "uploading",
-        };
-        const docRef = await addDoc(collection(db, "chats", chatId, "messages"), placeholder);
-
-        // local placeholder UI
-        setLocalUploads(prev => [...prev, { id: docRef.id, fileName: file.name, progress: 0, type: placeholder.type, previewUrl: URL.createObjectURL(file) }]);
-
-        // upload
-        const sRef = storageRef(storage, `chatFiles/${chatId}/${Date.now()}_${file.name}`);
-        const task = uploadBytesResumable(sRef, file);
-
-        task.on("state_changed",
-          (snap) => {
-            const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
-            setLocalUploads(prev => prev.map(l => l.id === docRef.id ? { ...l, progress: pct } : l));
-          },
-          (err) => {
-            console.error("upload error", err);
-            updateDoc(docRef, { status: "failed" }).catch(()=>{});
-            setLocalUploads(prev => prev.map(l => l.id === docRef.id ? { ...l, status: "failed" } : l));
-          },
-          async () => {
-            const url = await getDownloadURL(task.snapshot.ref);
-            await updateDoc(docRef, { fileURL: url, status: "sent", sentAt: serverTimestamp() }).catch(()=>{});
-            setLocalUploads(prev => prev.filter(l => l.id !== docRef.id));
-            setTimeout(()=> scrollToBottom(true), 120);
-          }
-        );
-      } catch (err) {
-        console.error("send queued file failed", err);
-      }
-    }
-  };
-
-  // ---------- receiver download: stream with progress ----------
+  // ---------- download streaming with progress (receiver) ----------
   const startDownloadForMessage = async (messageId) => {
     try {
       const mRef = doc(db, "chats", chatId, "messages", messageId);
-      const mSnap = await getDoc(mRef);
-      if (!mSnap.exists()) { setDownloadMap(prev => ({ ...prev, [messageId]: { ...prev[messageId], status: "failed" } })); return; }
-      const m = { id: mSnap.id, ...mSnap.data() };
-      if (!m.fileURL) { setDownloadMap(prev => ({ ...prev, [messageId]: { ...prev[messageId], status: "done", progress: 100, blobUrl: null } })); return; }
+      const snap = await getDoc(mRef);
+      if (!snap.exists()) { setDownloadMap(prev => ({ ...prev, [messageId]: { ...(prev[messageId]||{}), status: "failed" } })); return; }
+      const m = { id: snap.id, ...snap.data() };
+      if (!m.fileURL) {
+        setDownloadMap(prev => ({ ...prev, [messageId]: { ...(prev[messageId]||{}), status: "done", progress: 100, blobUrl: null } }));
+        return;
+      }
 
       const resp = await fetch(m.fileURL);
-      if (!resp.ok) throw new Error("Download failed: " + resp.status);
+      if (!resp.ok) throw new Error("fetch failed");
       const contentLength = resp.headers.get("Content-Length");
       const total = contentLength ? parseInt(contentLength, 10) : null;
       const reader = resp.body.getReader();
@@ -267,24 +217,25 @@ export default function ChatConversationPage() {
         const { done, value } = await reader.read();
         if (done) break;
         chunks.push(value);
-        received += value.length || value.byteLength || 0;
+        received += value.length;
         if (total) {
-          const pct = Math.round((received / total) * 100);
-          setDownloadMap(prev => ({ ...prev, [messageId]: { ...prev[messageId], status: "downloading", progress: pct } }));
+          const pct = Math.round((received/total)*100);
+          setDownloadMap(prev => ({ ...prev, [messageId]: { ...(prev[messageId]||{}), status: "downloading", progress: pct } }));
         } else {
-          setDownloadMap(prev => ({ ...prev, [messageId]: { ...prev[messageId], status: "downloading", progress: Math.min(99, (prev[messageId]?.progress || 0) + 5) } }));
+          setDownloadMap(prev => ({ ...prev, [messageId]: { ...(prev[messageId]||{}), status: "downloading", progress: Math.min(99, (prev[messageId]?.progress||0) + 6) } }));
         }
       }
       const blob = new Blob(chunks);
       const blobUrl = URL.createObjectURL(blob);
-      setDownloadMap(prev => ({ ...prev, [messageId]: { ...prev[messageId], status: "done", progress: 100, blobUrl } }));
+      setDownloadMap(prev => ({ ...prev, [messageId]: { ...(prev[messageId]||{}), status: "done", progress: 100, blobUrl } }));
     } catch (err) {
       console.error("download failed", err);
-      setDownloadMap(prev => ({ ...prev, [messageId]: { ...prev[messageId], status: "failed", progress: 0 } }));
+      setDownloadMap(prev => ({ ...prev, [messageId]: { ...(prev[messageId]||{}), status: "failed", progress: 0 } }));
       setTimeout(() => setDownloadMap(prev => ({ ...prev, [messageId]: { ...(prev[messageId]||{}), status: "queued" } })), 10000);
     }
   };
 
+  // helper to return best display URL for a message
   const getDisplayUrlForMessage = (m) => {
     const d = downloadMap[m.id];
     if (d && d.blobUrl) return d.blobUrl;
@@ -294,15 +245,70 @@ export default function ChatConversationPage() {
     return null;
   };
 
-  // ---------- send text ----------
-  const handleSendText = async () => {
-    if (!text.trim() && selectedFiles.length === 0) return;
-    if (blocked) { alert("You blocked this user — unblock to send."); return; }
+  // ---------- attachments selection (preview stage) ----------
+  const onFilesSelected = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    const newPreviews = files.map(f => f.type.startsWith("image/") ? URL.createObjectURL(f) : null);
+    setSelectedFiles(prev => [...prev, ...files]);
+    setPreviews(prev => [...prev, ...newPreviews]);
+  };
 
-    // if previews exist, prefer sending queued files first
-    if (selectedFiles.length > 0) {
+  // ---------- send queued files (when user clicks Send) ----------
+  const sendQueuedFiles = async () => {
+    if (!selectedFiles.length) return;
+    const toSend = [...selectedFiles];
+    setSelectedFiles([]); setPreviews([]);
+
+    for (const file of toSend) {
+      try {
+        const type = file.type.startsWith("image/") ? "image" : (file.type.startsWith("audio/") ? "audio" : "file");
+        const placeholder = {
+          sender: myUid,
+          text: "",
+          fileURL: null,
+          fileName: file.name,
+          type,
+          createdAt: serverTimestamp(),
+          status: "uploading",
+        };
+        const docRef = await addDoc(collection(db, "chats", chatId, "messages"), placeholder);
+
+        // add local placeholder upload UI
+        setLocalUploads(prev => [...prev, { id: docRef.id, fileName: file.name, progress: 0, type, previewUrl: file.type.startsWith("image/") ? URL.createObjectURL(file) : null }]);
+
+        // upload
+        const sRef = storageRef(storage, `chatFiles/${chatId}/${Date.now()}_${file.name}`);
+        const task = uploadBytesResumable(sRef, file);
+
+        task.on("state_changed",
+          (snap) => {
+            const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
+            setLocalUploads(prev => prev.map(u => u.id === docRef.id ? { ...u, progress: pct } : u));
+          },
+          (err) => {
+            console.error("upload err", err);
+            updateDoc(docRef, { status: "failed" }).catch(()=>{});
+            setLocalUploads(prev => prev.map(u => u.id === docRef.id ? { ...u, status: "failed" } : u));
+          },
+          async () => {
+            const url = await getDownloadURL(task.snapshot.ref);
+            await updateDoc(docRef, { fileURL: url, status: "sent", sentAt: serverTimestamp() }).catch(()=>{});
+            setLocalUploads(prev => prev.filter(u => u.id !== docRef.id));
+            setTimeout(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), 120);
+          }
+        );
+      } catch (err) {
+        console.error("send queued failed", err);
+      }
+    }
+  };
+
+  // ---------- send text (and if previews exist send them) ----------
+  const handleSend = async () => {
+    // if there are queued files, send them first
+    if (selectedFiles.length) {
       await sendQueuedFiles();
-      // if there is text too, send text after files
     }
     if (text.trim()) {
       const payload = {
@@ -314,20 +320,45 @@ export default function ChatConversationPage() {
         createdAt: serverTimestamp(),
         status: "sent",
       };
-      if (replyTo) {
-        payload.replyTo = { id: replyTo.id, text: replyTo.text?.slice(0,120) || (replyTo.fileName || "media"), sender: replyTo.sender };
-        setReplyTo(null);
-      }
-      setText("");
       try {
         await addDoc(collection(db, "chats", chatId, "messages"), payload);
-        setTimeout(()=> scrollToBottom(true), 150);
+        setText("");
+        // update chat.lastMessage + lastMessageAt for ChatList UI (optional)
+        const chatRef = doc(db, "chats", chatId);
+        updateDoc(chatRef, { lastMessage: payload.text, lastMessageAt: serverTimestamp() }).catch(()=>{});
+        setTimeout(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), 120);
       } catch (err) {
-        console.error("send text failed", err);
-        alert("Failed to send message");
+        console.error("send text", err);
       }
     }
+    // close attachment sheet after send
+    setAttachOpen(false);
   };
+
+  // ---------- typing indicator (update our user doc typing map) ----------
+  const updateTypingStatus = useCallback((isTyping) => {
+    if (!myUid || !chatId) return;
+    const userRef = doc(db, "users", myUid);
+    // write typing state under users/{myUid}.typing[chatId] = true/false
+    updateDoc(userRef, { [`typing.${chatId}`]: isTyping }).catch(()=>{});
+  }, [myUid, chatId]);
+
+  useEffect(() => {
+    // debounce typing updates
+    const now = Date.now();
+    if (text.trim()) {
+      updateTypingStatus(true);
+      lastTypingUpdate.current = now;
+      if (typingTimer.current) clearTimeout(typingTimer.current);
+      typingTimer.current = setTimeout(() => {
+        updateTypingStatus(false);
+      }, 1200);
+    } else {
+      updateTypingStatus(false);
+    }
+    // cleanup on unmount
+    return () => { if (typingTimer.current) clearTimeout(typingTimer.current); };
+  }, [text, updateTypingStatus]);
 
   // ---------- block/unblock ----------
   const toggleBlock = async () => {
@@ -348,23 +379,24 @@ export default function ChatConversationPage() {
     }
   };
 
-  // ---------- report ----------
-  const submitReport = async () => {
-    if (!reportText.trim()) { alert("Please write report details."); return; }
+  // ---------- reactions (toggle: remove if same exists) ----------
+  const applyReaction = async (messageId, emoji) => {
     try {
-      await addDoc(collection(db, "reports"), {
-        reporterId: myUid,
-        reportedId: friendInfo?.id || null,
-        chatId,
-        reason: reportText.trim(),
-        createdAt: serverTimestamp(),
-        emailTo: "smarttalkgit@gmail.com",
-      });
-      setReportText(""); setReportOpen(false); setMenuOpen(false);
-      alert("Report submitted. Thank you.");
+      const mRef = doc(db, "chats", chatId, "messages", messageId);
+      // fetch current to decide if remove or set
+      const mSnap = await getDoc(mRef);
+      if (!mSnap.exists()) return;
+      const curr = mSnap.data();
+      const existing = curr.reactions?.[myUid];
+      if (existing === emoji) {
+        // remove reaction
+        await updateDoc(mRef, { [`reactions.${myUid}`]: null });
+      } else {
+        await updateDoc(mRef, { [`reactions.${myUid}`]: emoji });
+      }
+      setSelectedMessageId(null);
     } catch (err) {
-      console.error("report submit", err);
-      alert("Failed to submit report");
+      console.error("reaction", err);
     }
   };
 
@@ -375,12 +407,11 @@ export default function ChatConversationPage() {
       await deleteDoc(doc(db, "chats", chatId, "messages", messageId));
       setSelectedMessageId(null);
     } catch (err) {
-      console.error("delete message", err);
-      alert("Failed to delete message");
+      console.error("delete", err);
     }
   };
 
-  // ---------- clear chat ----------
+  // ---------- clear chat (batched) ----------
   const clearChat = async () => {
     if (!window.confirm("Clear all messages in this chat? This will delete messages permanently.")) return;
     try {
@@ -397,76 +428,114 @@ export default function ChatConversationPage() {
       setMenuOpen(false);
     } catch (err) {
       console.error("clear chat", err);
-      alert("Failed to clear chat");
     }
   };
 
-  // ---------- reactions toggle (add / remove your reaction) ----------
-  const toggleReaction = async (messageId, emoji) => {
-    try {
-      const mRef = doc(db, "chats", chatId, "messages", messageId);
-      // fetch current doc to check existing reaction for this user
-      const snap = await getDoc(mRef);
-      if (!snap.exists()) return;
-      const cur = snap.data();
-      const curReactions = cur.reactions || {};
-      if (curReactions[myUid] === emoji) {
-        // remove
-        await updateDoc(mRef, { [`reactions.${myUid}`]: null });
-      } else {
-        await updateDoc(mRef, { [`reactions.${myUid}`]: emoji });
-      }
-      setSelectedMessageId(null);
-    } catch (err) {
-      console.error("reaction error", err);
-    }
+  // ---------- helper: open viewer (image/file/audio) ----------
+  const openViewer = (url, type, fileName = null) => {
+    setViewer({ open: true, url, type, fileName });
   };
 
-  // ---------- long press select & swipe-to-reply ----------
-  const longPressTimeout = useRef(null);
-  const startLongPress = (id) => { longPressTimeout.current = setTimeout(() => setSelectedMessageId(id), 450); };
-  const cancelLongPress = () => clearTimeout(longPressTimeout.current);
+  // ---------- UI components ----------
+  const MessageBubble = ({ m }) => {
+    const mine = m.sender === myUid;
+    const displayUrl = getDisplayUrlForMessage(m);
+    const dl = downloadMap[m.id];
+    const reactionList = m.reactions ? Object.values(m.reactions).filter(Boolean) : [];
 
-  const swipeStart = useRef({ x: 0, y: 0 });
-  const onPointerDown = (e) => swipeStart.current = { x: e.clientX || (e.touches && e.touches[0].clientX), y: e.clientY || (e.touches && e.touches[0].clientY) };
-  const onPointerUpForReply = (e, m) => {
-    const endX = e.clientX || (e.changedTouches && e.changedTouches[0].clientX);
-    const dx = endX - swipeStart.current.x;
-    if (dx > 110) { setReplyTo(m); setSelectedMessageId(null); setTimeout(()=> { const el = document.querySelector('input[type="text"]'); if (el) el.focus(); }, 50); }
+    // skip rendering if we filtered earlier (shouldn't happen)
+    return (
+      <div className={`flex ${mine ? "justify-end" : "justify-start"} mb-3 px-2`}>
+        <div
+          onContextMenu={(e) => { e.preventDefault(); setSelectedMessageId(m.id); }}
+          onMouseDown={() => { /* can implement long press on mobile separately */ }}
+          style={{
+            background: mine ? (isDark ? "#0b84ff" : "#007bff") : (isDark ? "#1e1e1e" : "#f3f3f3"),
+            color: mine ? "#fff" : (isDark ? "#fff" : "#000"),
+            padding: "10px 12px",
+            borderRadius: 14,
+            maxWidth: "78%",
+            position: "relative",
+            wordBreak: "break-word",
+          }}
+        >
+          {m.replyTo && (
+            <div className={`mb-2 p-2 rounded ${isDark ? "bg-[#111]" : "bg-white"} text-xs`} style={{ maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <strong style={{ fontSize: 12 }}>{m.replyTo.sender === myUid ? "You: " : ""}</strong>
+              <span>{m.replyTo.text || m.replyTo.fileName || "media"}</span>
+            </div>
+          )}
+
+          {/* text */}
+          {m.type === "text" && <div>{m.text}</div>}
+
+          {/* attachments */}
+          {["image", "file", "audio"].includes(m.type) && (
+            <div className="flex items-center gap-3 mt-1">
+              {m.type === "image" ? (
+                <img
+                  src={displayUrl || m.fileURL}
+                  alt={m.fileName || "image"}
+                  className="rounded-md cursor-pointer"
+                  style={{ width: 220 }}
+                  onClick={() => openViewer(displayUrl || m.fileURL, "image", m.fileName)}
+                />
+              ) : (
+                <div className={`flex items-center gap-3 p-2 rounded ${isDark ? "bg-[#111]" : "bg-white"}`} style={{ maxWidth: 320 }}>
+                  <div className="text-2xl">📎</div>
+                  <div className="flex-1">
+                    <div className="font-semibold">{m.fileName || "file"}</div>
+                    <div className="text-xs text-gray-400">{m.type}</div>
+                  </div>
+                  <div>
+                    <a href={displayUrl || m.fileURL} target="_blank" rel="noreferrer" className="text-sm underline">Open</a>
+                  </div>
+                </div>
+              )}
+              {/* progress overlay */}
+              {(m.status === "uploading" || (dl && (dl.status === "downloading" || dl.status === "queued"))) && (
+                <div style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)" }}>
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center bg-black/40 text-white text-xs">
+                    {m.status === "uploading" ? (() => {
+                      const u = localUploads.find(x => x.id === m.id);
+                      return u ? `${u.progress}%` : "0%";
+                    })() : (dl ? `${dl.progress}%` : "0%")}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* time + status */}
+          <div className="text-right text-xs mt-2 opacity-90">
+            <span>{fmtTime(m.createdAt)}</span>
+            {mine && <span className="ml-2">{m.status === "uploading" ? "⌛" : m.status === "sent" ? "✓" : m.status === "delivered" ? "✓✓" : m.status === "seen" ? "✓✓" : ""}</span>}
+          </div>
+
+          {/* reactions */}
+          {reactionList.length > 0 && (
+            <div style={{ position: "absolute", right: 6, bottom: -18 }} className={`p-1 rounded-full ${isDark ? "bg-[#111]" : "bg-white"} shadow`}>
+              <div style={{ fontSize: 12 }}>{reactionList.slice(0,3).join(" ")}</div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
   };
 
-  // ---------- merge & group messages by day ----------
-  const merged = [...messages];
+  // ---------- grouped messages by day ----------
   const grouped = [];
   let lastDay = null;
-  merged.forEach(m => {
-    const label = (() => {
-      if (!m.createdAt) return "";
-      const d = m.createdAt.toDate ? m.createdAt.toDate() : new Date(m.createdAt);
-      const now = new Date();
-      const yesterday = new Date(); yesterday.setDate(now.getDate() - 1);
-      if (d.toDateString() === now.toDateString()) return "Today";
-      if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
-      return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-    })();
-    if (label !== lastDay) { grouped.push({ type: "day", label, id: `day-${label}-${Math.random().toString(36).slice(2,6)}` }); lastDay = label; }
+  messages.forEach(m => {
+    const label = dayLabel(m.createdAt || new Date());
+    if (label !== lastDay) {
+      grouped.push({ type: "day", label, id: `day-${label}-${Math.random().toString(36).slice(2,6)}` });
+      lastDay = label;
+    }
     grouped.push(m);
   });
 
-  // ---------- spinner ----------
-  function Spinner({ percent = 0 }) {
-    return (
-      <div style={{ width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <svg viewBox="0 0 36 36" style={{ width: 36, height: 36 }}>
-          <path d="M18 2.0845a15.9155 15.9155 0 1 0 0 31.831" fill="none" stroke="#eee" strokeWidth="2" />
-          <path d="M18 2.0845a15.9155 15.9155 0 1 0 0 31.831" fill="none" stroke="#34B7F1" strokeWidth="2" strokeDasharray={`${percent},100`} strokeLinecap="round" />
-        </svg>
-        <div style={{ position: "absolute", fontSize: 10, color: "#fff", fontWeight: 700 }}>{Math.min(100, Math.round(percent))}%</div>
-      </div>
-    );
-  }
-
-  // ---------- attach outside click to close (for bottom sheet overlay) ----------
+  // ---------- attachment sheet outside click (close) ----------
   useEffect(() => {
     const handler = (e) => {
       if (attachOpen && attachRef.current && !attachRef.current.contains(e.target)) {
@@ -477,292 +546,189 @@ export default function ChatConversationPage() {
     return () => document.removeEventListener("mousedown", handler);
   }, [attachOpen]);
 
-  // ---------- MessageBubble renderer ----------
-  const MessageBubble = ({ m }) => {
-    const mine = m.sender === myUid;
-    const replySnippet = m.replyTo ? (m.replyTo.text || (m.replyTo.fileName || "media")) : null;
-    const displayUrl = getDisplayUrlForMessage(m);
-    const downloadInfo = downloadMap[m.id];
-
-    // bubble styles tuned for dark/light readability
-    const bubbleStyle = {
-      background: mine ? (isDark ? "#0b79d0" : "#0b84ff") : (isDark ? "#1d1d1d" : "#f1f1f1"),
-      color: mine ? "#fff" : (isDark ? "#e6e6e6" : "#111"),
-      padding: "10px 12px",
-      borderRadius: 14,
-      maxWidth: "78%",
-      wordBreak: "break-word",
-      position: "relative",
-    };
-
-    return (
-      <div style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start", marginBottom: 12, paddingLeft: 6, paddingRight: 6 }}>
-        <div
-          onMouseDown={() => startLongPress(m.id)}
-          onMouseUp={() => cancelLongPress()}
-          onTouchStart={() => startLongPress(m.id)}
-          onTouchEnd={() => cancelLongPress()}
-          onPointerDown={(e) => onPointerDown(e)}
-          onPointerUp={(e) => onPointerUpForReply(e, m)}
-          style={bubbleStyle}
-        >
-          {replySnippet && (
-            <div style={{ marginBottom: 6, padding: "6px 8px", borderRadius: 8, background: isDark ? "#0f0f0f" : "#fff", color: isDark ? "#cfcfcf" : "#444", fontSize: 12 }}>
-              <span style={{ display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 220 }}>{replySnippet}</span>
-            </div>
-          )}
-
-          {m.type === "text" && <div style={{ whiteSpace: "pre-wrap" }}>{m.text}</div>}
-
-          {["image","file"].includes(m.type) && (
-            <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 8 }}>
-              {m.type === "image" ? (
-                <img
-                  src={displayUrl || m.fileURL || (m.previewUrl || "")}
-                  alt={m.fileName || "image"}
-                  style={{
-                    width: 220,
-                    height: "auto",
-                    borderRadius: 8,
-                    filter: (downloadInfo && downloadInfo.status === "downloading") || (m.status === "uploading") ? "blur(6px)" : "none",
-                    transition: "filter .2s",
-                    display: "block"
-                  }}
-                />
-              ) : (
-                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: 8, borderRadius: 8, background: mine ? "rgba(255,255,255,0.02)" : "#fff" }}>
-                  <div style={{ width: 40, height: 40, borderRadius: 6, background: "#f0f0f0", display: "flex", alignItems: "center", justifyContent: "center" }}>📎</div>
-                  <div style={{ maxWidth: 180 }}>
-                    <div style={{ fontWeight: 600, color: isDark ? "#e6e6e6" : "#111" }}>{m.fileName || "file"}</div>
-                    <div style={{ fontSize: 12, color: "#666" }}>{m.type}</div>
-                    {/* allow download if blob or fileURL */}
-                    {displayUrl && <a href={displayUrl} download={m.fileName} target="_blank" rel="noreferrer" style={{ fontSize: 12, display: "block", marginTop: 6 }}>Download</a>}
-                  </div>
-                </div>
-              )}
-
-              {(m.status === "uploading" || (downloadInfo && (downloadInfo.status === "downloading" || downloadInfo.status === "queued"))) && (
-                <div style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)" }}>
-                  <Spinner percent={m.status === "uploading" ? (() => { const u = localUploads.find(x => x.id === m.id); return u ? u.progress : 0; })() : (downloadInfo ? downloadInfo.progress : 0)} />
-                </div>
-              )}
-
-              {downloadInfo && downloadInfo.status === "failed" && (
-                <div style={{ marginLeft: 8 }}>
-                  <button onClick={() => setDownloadMap(prev => ({ ...prev, [m.id]: { ...(prev[m.id]||{}), status: "queued", progress: 0 } }))} style={{ padding: "6px 8px", borderRadius: 8, border: "none", background: "#ffcc00", cursor: "pointer" }}>Retry</button>
-                </div>
-              )}
-            </div>
-          )}
-
-          <div style={{ fontSize: 11, textAlign: "right", marginTop: 6, opacity: 0.9 }}>
-            <span>{fmtTime(m.createdAt)}</span>
-            {mine && <span style={{ marginLeft: 8 }}>{m.status === "uploading" ? "⌛" : m.status === "sent" ? "✓" : m.status === "delivered" ? "✓✓" : m.status === "seen" ? "✓✓" : ""}</span>}
-          </div>
-
-          {/* reactions preview */}
-          {m.reactions && Object.keys(m.reactions).length > 0 && (
-            <div style={{ position: "absolute", bottom: -18, right: 6, background: isDark ? "#111" : "#fff", padding: "4px 8px", borderRadius: 12, fontSize: 12, boxShadow: "0 1px 6px rgba(0,0,0,0.12)" }}>
-              {Object.values(m.reactions).slice(0,3).join(" ")}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
-
-  // ---------- UI ----------
+  // ensure back arrow visible in dark mode (we use svg + tailwind text color)
+  // ---------- render ----------
   return (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: wallpaper ? `url(${wallpaper}) center/cover no-repeat` : (isDark ? "#070707" : "#f5f5f5"), color: isDark ? "#fff" : "#000" }}>
-      {/* header */}
-      <div style={{ display: "flex", alignItems: "center", padding: 12, borderBottom: "1px solid #ccc", position: "sticky", top: 0, background: isDark ? "#111" : "#fff", zIndex: 40 }}>
-        <button onClick={() => navigate("/chat")} style={{ fontSize: 20, background: "transparent", border: "none", cursor: "pointer", marginRight: 10 }}>←</button>
-        <img src={friendInfo?.photoURL || "/default-avatar.png"} alt="avatar" style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover", marginRight: 12, cursor: "pointer" }} onClick={() => friendInfo && navigate(`/user-profile/${friendInfo.id}`)} />
-        <div>
-          <div style={{ fontWeight: 700 }}>{friendInfo?.displayName || chatInfo?.name || "Friend"}</div>
-          <div style={{ fontSize: 12, color: isDark ? "#bbb" : "#666" }}>
-            {friendTyping ? "typing..." : fmtLastSeen(friendInfo?.isOnline ? "Online" : friendInfo?.lastSeen)}
+    <div className={`flex flex-col min-h-screen ${isDark ? "bg-[#070707] text-white" : "bg-gray-50 text-black"}`} style={{ backgroundImage: wallpaper ? `url(${wallpaper})` : undefined, backgroundSize: "cover" }}>
+      {/* Header */}
+      <div className={`sticky top-0 z-40 flex items-center gap-3 px-3 py-2 ${isDark ? "bg-[#0b0b0b] border-b border-[#222]" : "bg-white border-b border-gray-200"}`}>
+        <button onClick={() => navigate("/chat")} className={`p-2 rounded ${isDark ? "text-white" : "text-gray-700"}`}>
+          {/* simple arrow, contrast set by text color */}
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke={isDark ? "#fff" : "#111"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        </button>
+
+        <img src={friendInfo?.photoURL || "/default-avatar.png"} alt="avatar" className="w-11 h-11 rounded-full object-cover cursor-pointer" onClick={() => friendInfo && navigate(`/user-profile/${friendInfo.id}`)} />
+        <div className="flex-1">
+          <div className="font-semibold">{friendInfo?.displayName || chatInfo?.name || "Friend"}</div>
+          <div className="text-xs opacity-80">
+            {friendTyping ? "typing..." : (friendInfo?.isOnline ? "Online" : (friendInfo?.lastSeen ? (() => {
+              const ls = friendInfo.lastSeen;
+              if (!ls) return "Offline";
+              const ld = ls.toDate ? ls.toDate() : new Date(ls);
+              const diffMin = Math.floor((Date.now() - ld.getTime()) / 60000);
+              if (diffMin < 1) return "just now";
+              if (diffMin < 60) return `${diffMin}m ago`;
+              if (diffMin < 1440) return ld.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+              const yesterday = new Date(); yesterday.setDate(new Date().getDate() - 1);
+              if (ld.toDateString() === yesterday.toDateString()) return `Yesterday`;
+              return ld.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+            })() : "Offline"))}
           </div>
         </div>
 
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
-          <button onClick={() => navigate(`/voice-call/${chatId}`)} style={{ fontSize: 18, background: "transparent", border: "none", cursor: "pointer" }}>📞</button>
-          <button onClick={() => navigate(`/video-call/${chatId}`)} style={{ fontSize: 18, background: "transparent", border: "none", cursor: "pointer" }}>🎥</button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => navigate(`/voice-call/${chatId}`)} className="p-2">📞</button>
+          <button onClick={() => navigate(`/video-call/${chatId}`)} className="p-2">🎥</button>
 
-          <div style={{ position: "relative" }}>
-            <button onClick={() => setMenuOpen(s => !s)} style={{ fontSize: 18, background: "transparent", border: "none", cursor: "pointer" }}>⋮</button>
+          <div className="relative">
+            <button onClick={() => setMenuOpen(s => !s)} className="p-2">⋮</button>
             {menuOpen && (
-              <div style={{ position: "absolute", right: 0, top: 28, background: isDark ? "#222" : "#fff", border: "1px solid #ccc", borderRadius: 8, boxShadow: "0 6px 20px rgba(0,0,0,0.12)", zIndex: 50 }}>
-                <button onClick={() => { setMenuOpen(false); navigate(`/user-profile/${friendInfo?.id}`); }} style={{ display: "block", padding: "8px 14px", width: 220, textAlign: "left", background: "transparent", border: "none", cursor: "pointer" }}>View Profile</button>
-                <button onClick={() => { clearChat(); setMenuOpen(false); }} style={{ display: "block", padding: "8px 14px", width: 220, textAlign: "left", background: "transparent", border: "none", cursor: "pointer" }}>Clear Chat</button>
-                <button onClick={toggleBlock} style={{ display: "block", padding: "8px 14px", width: 220, textAlign: "left", background: "transparent", border: "none", cursor: "pointer" }}>{blocked ? "Unblock" : "Block"}</button>
-                <button onClick={() => { setReportOpen(true); setMenuOpen(false); }} style={{ display: "block", padding: "8px 14px", width: 220, textAlign: "left", background: "transparent", border: "none", cursor: "pointer" }}>Report</button>
+              <div className={`absolute right-0 mt-2 w-44 rounded shadow ${isDark ? "bg-[#222] text-white" : "bg-white text-black"}`}>
+                <button onClick={() => { setMenuOpen(false); navigate(`/user-profile/${friendInfo?.id}`); }} className="w-full text-left px-3 py-2 hover:bg-gray-100">View Profile</button>
+                <button onClick={() => { clearChat(); setMenuOpen(false); }} className="w-full text-left px-3 py-2 hover:bg-gray-100">Clear Chat</button>
+                <button onClick={toggleBlock} className="w-full text-left px-3 py-2 hover:bg-gray-100">{blocked ? "Unblock" : "Block"}</button>
+                <button onClick={() => { setReportOpen(true); setMenuOpen(false); }} className="w-full text-left px-3 py-2 hover:bg-gray-100">Report</button>
               </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* messages list */}
-      <div ref={messagesRef} style={{ flex: 1, overflowY: "auto", padding: 12 }}>
-        {grouped.map(g => {
-          if (g.type === "day") return <div key={g.id} style={{ textAlign: "center", margin: "12px 0", color: "#888", fontSize: 12 }}>{g.label}</div>;
-          return <MessageBubble key={g.id} m={g} />;
+      {/* messages */}
+      <div ref={messagesRef} className="flex-1 overflow-auto p-3" style={{ scrollbarGutter: "stable" }}>
+        {grouped.map(item => {
+          if (item.type === "day") return <div key={item.id} className="text-center text-xs text-gray-400 my-3">{item.label}</div>;
+          return <MessageBubble key={item.id} m={item} />;
         })}
-
-        {localUploads.map(u => (
-          <div key={u.id} style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
-            <div style={{ background: isDark ? "#0b84ff" : "#007bff", color: "#fff", padding: 10, borderRadius: 14, maxWidth: "78%", position: "relative" }}>
-              {u.type === "image" ? <img src={u.previewUrl} alt={u.fileName} style={{ width: 220, borderRadius: 8, filter: "blur(3px)" }} /> : <div style={{ display: "flex", gap: 8, alignItems: "center" }}><div>📎</div><div>{u.fileName}</div></div>}
-              <div style={{ marginTop: 8, fontSize: 11, textAlign: "right" }}>
-                <span>⌛</span> <span style={{ marginLeft: 8 }}>{u.progress}%</span>
-              </div>
-              <div style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)" }}>
-                <Spinner percent={u.progress} />
-              </div>
-            </div>
-          </div>
-        ))}
-
         <div ref={endRef} />
       </div>
 
-      {/* center down arrow */}
+      {/* center scroll button */}
       <button
-        onClick={() => scrollToBottom(true)}
-        style={{
-          position: "fixed",
-          left: "50%",
-          transform: "translateX(-50%)",
-          bottom: 120,
-          zIndex: 60,
-          background: "#007bff",
-          color: "#fff",
-          border: "none",
-          borderRadius: 22,
-          width: 48,
-          height: 48,
-          fontSize: 22,
-          cursor: "pointer",
-          opacity: isAtBottom ? 0 : 1,
-          transition: "opacity 0.25s",
-        }}
-        title="Scroll to latest"
+        onClick={() => endRef.current?.scrollIntoView({ behavior: "smooth" })}
+        className={`fixed left-1/2 transform -translate-x-1/2 bottom-28 z-50 w-12 h-12 rounded-full flex items-center justify-center shadow-lg ${isAtBottom ? "opacity-0 pointer-events-none" : "opacity-100"} transition-opacity`}
+        style={{ background: "#007bff", color: "#fff" }}
         aria-hidden={isAtBottom}
+        title="Scroll to latest"
       >
         ↓
       </button>
 
       {/* previews (above input) */}
       {previews.length > 0 && (
-        <div style={{ display: "flex", gap: 8, padding: 8, overflowX: "auto", alignItems: "center", borderTop: "1px solid #ddd", background: isDark ? "#0b0b0b" : "#fff" }}>
+        <div className={`flex gap-3 p-3 overflow-x-auto border-t ${isDark ? "bg-[#0b0b0b] border-[#222]" : "bg-white border-gray-200"}`}>
           {previews.map((p, idx) => (
-            <div key={idx} style={{ position: "relative" }}>
-              {p ? <img src={p} alt="preview" style={{ width: 80, height: 80, objectFit: "cover", borderRadius: 8 }} /> : <div style={{ width: 80, height: 80, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 8, background: "#eee" }}>{selectedFiles[idx]?.name}</div>}
-              <button onClick={() => { setSelectedFiles(s => s.filter((_,i) => i !== idx)); setPreviews(s => s.filter((_,i) => i !== idx)); }} style={{ position: "absolute", top: -6, right: -6, background: "#ff4d4f", border: "none", borderRadius: "50%", width: 22, height: 22, color: "#fff", cursor: "pointer" }}>✕</button>
+            <div key={idx} className="relative rounded-xl overflow-hidden" style={{ minWidth: 84, minHeight: 84, background: "#f2f2f2" }}>
+              {p ? (
+                <img src={p} alt="preview" className="w-20 h-20 object-cover rounded-md" onClick={() => openViewer(p, "image", selectedFiles[idx]?.name)} />
+              ) : (
+                <div className="w-20 h-20 flex items-center justify-center text-sm p-2">{selectedFiles[idx]?.name}</div>
+              )}
+              <button onClick={() => { setSelectedFiles(s => s.filter((_,i) => i !== idx)); setPreviews(s => s.filter((_,i) => i !== idx)); }} className="absolute -top-3 -right-3 bg-white rounded-full w-7 h-7 flex items-center justify-center shadow">
+                ✕
+              </button>
             </div>
           ))}
 
-          <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-            <button onClick={sendQueuedFiles} style={{ padding: "8px 12px", borderRadius: 8, background: "#34B7F1", color: "#fff", border: "none", cursor: "pointer" }}>Send</button>
-            <button onClick={() => { setSelectedFiles([]); setPreviews([]); }} style={{ padding: "8px 12px", borderRadius: 8, background: "#ddd", border: "none", cursor: "pointer" }}>Cancel</button>
+          <div className="flex-1" />
+          <div className="flex gap-2">
+            <button onClick={sendQueuedFiles} className="bg-blue-500 text-white px-3 py-2 rounded">Send</button>
+            <button onClick={() => { setSelectedFiles([]); setPreviews([]); }} className="bg-gray-300 px-3 py-2 rounded">Cancel</button>
           </div>
         </div>
       )}
 
-      {/* pinned input */}
-      <div style={{ position: "sticky", bottom: 0, background: isDark ? "#0b0b0b" : "#fff", padding: 10, borderTop: "1px solid #ccc", display: "flex", alignItems: "center", gap: 8, zIndex: 80 }}>
-        <div style={{ position: "relative" }} ref={attachRef}>
-          <button onClick={() => setAttachOpen(s => !s)} style={{ width: 44, height: 44, borderRadius: 12, fontSize: 20, background: "#f0f0f0", border: "none", cursor: "pointer" }}>＋</button>
+      {/* bottom input / attachment */}
+      <div className={`sticky bottom-0 z-40 p-3 border-t ${isDark ? "bg-[#0b0b0b] border-[#222]" : "bg-white border-gray-200"}`}>
+        <div className="flex items-center gap-3">
+          {/* + (attachment) */}
+          <div ref={attachRef} className="relative">
+            <button onClick={() => setAttachOpen(s => !s)} className={`w-12 h-12 rounded-xl ${isDark ? "bg-[#1b1b1b]" : "bg-white"} shadow flex items-center justify-center`}>＋</button>
+
+            {/* attachment sheet (slide up) */}
+            {attachOpen && (
+              <div className={`absolute left-0 bottom-14 w-[90vw] max-w-sm rounded-xl p-4 shadow-lg ${isDark ? "bg-[#111] text-white" : "bg-white text-black"}`}>
+                <div className="flex justify-around">
+                  {/* camera: use input captrue for mobile camera where supported */}
+                  <label className="flex flex-col items-center cursor-pointer">
+                    <div className="text-2xl mb-1">📷</div>
+                    <div className="text-xs">Camera</div>
+                    <input accept="image/*" capture="environment" type="file" onChange={onFilesSelected} className="hidden" />
+                  </label>
+
+                  <label className="flex flex-col items-center cursor-pointer">
+                    <div className="text-2xl mb-1">🖼️</div>
+                    <div className="text-xs">Photos</div>
+                    <input accept="image/*" multiple type="file" onChange={onFilesSelected} className="hidden" />
+                  </label>
+
+                  <label className="flex flex-col items-center cursor-pointer">
+                    <div className="text-2xl mb-1">📁</div>
+                    <div className="text-xs">Files</div>
+                    <input accept="*/*" type="file" multiple onChange={onFilesSelected} className="hidden" />
+                  </label>
+
+                  <label className="flex flex-col items-center cursor-pointer">
+                    <div className="text-2xl mb-1">🎧</div>
+                    <div className="text-xs">Audio</div>
+                    <input accept="audio/*" type="file" multiple onChange={onFilesSelected} className="hidden" />
+                  </label>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* text input */}
+          <div className="flex-1">
+            { /* reply bar can be added here if replyTo implemented */ }
+            <input
+              type="text"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleSend(); }}
+              placeholder="Type a message..."
+              className={`w-full px-4 py-3 rounded-2xl outline-none ${isDark ? "bg-[#111] text-white placeholder-gray-400" : "bg-gray-100 text-black"}`}
+            />
+          </div>
+
+          {/* Send button - also sends queued files if present */}
+          <button onClick={handleSend} className="bg-blue-500 text-white px-4 py-3 rounded-2xl">Send</button>
         </div>
-
-        <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-          {replyTo && (
-            <div style={{ padding: "6px 10px", borderRadius: 8, background: isDark ? "#111" : "#f0f0f0", marginBottom: 6 }}>
-              <small style={{ color: "#888", display: "block" }}>{replyTo.sender === myUid ? "You" : ""}</small>
-              <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{replyTo.text || replyTo.fileName || "media"}</div>
-              <button onClick={() => setReplyTo(null)} style={{ marginTop: 6, background: "transparent", border: "none", color: "#888", cursor: "pointer" }}>Cancel</button>
-            </div>
-          )}
-
-          <input type="text" placeholder={blocked ? "You blocked this user — unblock to send" : "Type a message..."} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleSendText(); }} disabled={blocked} style={{ padding: "10px 12px", borderRadius: 20, border: "1px solid #ccc", outline: "none", background: isDark ? "#111" : "#fff", color: isDark ? "#fff" : "#000" }} />
-        </div>
-
-        <button onClick={handleSendText} disabled={blocked || (!text.trim() && localUploads.length === 0 && selectedFiles.length === 0)} style={{ background: "#34B7F1", color: "#fff", border: "none", borderRadius: 16, padding: "8px 12px", cursor: "pointer" }}>Send</button>
       </div>
 
-      {/* attachment bottom sheet (WhatsApp-like) */}
-      {attachOpen && (
-        <>
-          {/* overlay */}
-          <div onClick={() => setAttachOpen(false)} style={{ position: "fixed", left: 0, top: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.3)", zIndex: 90 }} />
-
-          {/* sheet */}
-          <div style={{
-            position: "fixed",
-            left: 0,
-            right: 0,
-            bottom: 0,
-            zIndex: 100,
-            background: isDark ? "#111" : "#fff",
-            borderTopLeftRadius: 12,
-            borderTopRightRadius: 12,
-            boxShadow: "0 -8px 30px rgba(0,0,0,0.2)",
-            padding: 16,
-            transform: attachOpen ? "translateY(0)" : "translateY(100%)",
-            transition: "transform 220ms ease-out"
-          }} ref={attachRef}>
-
-            <div style={{ display: "flex", justifyContent: "space-around", alignItems: "center", gap: 12 }}>
-              <div style={{ textAlign: "center", cursor: "pointer" }} onClick={() => { /* camera - fallback to image input for now */ imageInputRef.current?.click(); setAttachOpen(false); }}>
-                <div style={{ width: 60, height: 60, borderRadius: 14, background: isDark ? "#1b1b1b" : "#f4f4f4", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28 }}>📷</div>
-                <div style={{ marginTop: 8, fontSize: 12 }}>Camera</div>
+      {/* viewer modal */}
+      {viewer.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80" onClick={() => setViewer({ open: false, url: null })}>
+          <div className="max-w-full max-h-full p-4" onClick={(e) => e.stopPropagation()}>
+            {viewer.type === "image" && <img src={viewer.url} alt={viewer.fileName} className="max-w-[95vw] max-h-[90vh] object-contain" />}
+            {viewer.type === "file" && (
+              <div className="bg-white p-4 rounded">
+                <div className="font-semibold">{viewer.fileName}</div>
+                <a href={viewer.url} target="_blank" rel="noreferrer" className="text-blue-600 underline">Open / Download</a>
               </div>
-
-              <div style={{ textAlign: "center", cursor: "pointer" }} onClick={() => { imageInputRef.current?.click(); setAttachOpen(false); }}>
-                <div style={{ width: 60, height: 60, borderRadius: 14, background: isDark ? "#1b1b1b" : "#f4f4f4", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28 }}>🖼️</div>
-                <div style={{ marginTop: 8, fontSize: 12 }}>Photos</div>
-              </div>
-
-              <div style={{ textAlign: "center", cursor: "pointer" }} onClick={() => { fileInputRef.current?.click(); setAttachOpen(false); }}>
-                <div style={{ width: 60, height: 60, borderRadius: 14, background: isDark ? "#1b1b1b" : "#f4f4f4", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28 }}>📁</div>
-                <div style={{ marginTop: 8, fontSize: 12 }}>File</div>
-              </div>
-            </div>
-
-            <div style={{ marginTop: 12, color: "#888", fontSize: 13, textAlign: "center" }}>Tap to attach</div>
-
-            {/* hidden inputs */}
-            <input ref={imageInputRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => onFilesSelected(e)} />
-            <input ref={fileInputRef} type="file" multiple style={{ display: "none" }} onChange={(e) => onFilesSelected(e)} />
+            )}
+            {viewer.type === "audio" && (
+              <audio controls src={viewer.url} className="max-w-full" />
+            )}
+            <button onClick={() => setViewer({ open: false, url: null })} className="absolute top-4 right-4 text-white text-2xl">✕</button>
           </div>
-        </>
+        </div>
       )}
 
       {/* report modal */}
       {reportOpen && (
-        <div style={{ position: "fixed", right: 16, top: 80, zIndex: 120, width: 320 }}>
-          <div style={{ background: isDark ? "#222" : "#fff", border: "1px solid #ccc", borderRadius: 8, padding: 12 }}>
-            <h4 style={{ margin: "0 0 8px 0" }}>Report user</h4>
-            <textarea value={reportText} onChange={(e) => setReportText(e.target.value)} placeholder="Describe the issue..." style={{ width: "100%", minHeight: 80, borderRadius: 6, padding: 8 }} />
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 8 }}>
-              <button onClick={() => setReportOpen(false)} style={{ padding: "8px 10px", borderRadius: 6, border: "none", background: "#ddd", cursor: "pointer" }}>Cancel</button>
-              <button onClick={submitReport} style={{ padding: "8px 10px", borderRadius: 6, border: "none", background: "#ff4d4f", color: "#fff", cursor: "pointer" }}>Send</button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className={`w-11/12 max-w-md p-4 rounded ${isDark ? "bg-[#111] text-white" : "bg-white text-black"}`}>
+            <h3 className="font-semibold mb-2">Report user</h3>
+            <textarea value={reportText} onChange={(e) => setReportText(e.target.value)} placeholder="Describe issue..." className="w-full h-28 p-2 rounded bg-gray-50 mb-3" />
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setReportOpen(false)} className="px-3 py-2 rounded bg-gray-300">Cancel</button>
+              <button onClick={async () => {
+                if (!reportText.trim()) return alert("Write something");
+                await addDoc(collection(db, "reports"), { reporterId: myUid, reportedId: friendInfo?.id || null, chatId, reason: reportText.trim(), createdAt: serverTimestamp() });
+                setReportText(""); setReportOpen(false); alert("Report submitted");
+              }} className="px-3 py-2 rounded bg-red-500 text-white">Send</button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* header action when message selected */}
-      {selectedMessageId && (
-        <div style={{ position: "fixed", top: 0, left: 0, right: 0, display: "flex", justifyContent: "center", padding: "8px 0", background: isDark ? "rgba(0,0,0,0.5)" : "rgba(255,255,255,0.9)", zIndex: 120 }}>
-          <div style={{ background: isDark ? "#222" : "#fff", padding: "6px 10px", borderRadius: 8, display: "flex", gap: 8, alignItems: "center", boxShadow: "0 6px 18px rgba(0,0,0,0.12)" }}>
-            <button onClick={() => deleteMessage(selectedMessageId)} style={{ border: "none", background: "transparent", cursor: "pointer" }}>🗑 Delete</button>
-            <button onClick={() => { const m = messages.find(x => x.id === selectedMessageId); setReplyTo(m || null); setSelectedMessageId(null); }} style={{ border: "none", background: "transparent", cursor: "pointer" }}>↩ Reply</button>
-            <div style={{ display: "flex", gap: 6 }}>
-              {EMOJIS.slice(0, 4).map(e => <button key={e} onClick={() => toggleReaction(selectedMessageId, e)} style={{ border: "none", background: "transparent", cursor: "pointer" }}>{e}</button>)}
-            </div>
-            <button onClick={() => setSelectedMessageId(null)} style={{ border: "none", background: "transparent", cursor: "pointer" }}>✖</button>
           </div>
         </div>
       )}
