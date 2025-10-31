@@ -5,23 +5,25 @@
   "private": true,
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "prebuild": "npm install || true",
+    "build": "npm install --no-audit --no-fund && vite build",
     "preview": "vite preview",
     "start": "node server.js"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "firebase-admin": "^12.6.0",
     "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.18.2",
+    "firebase": "^11.0.0",
+    "firebase-admin": "^12.6.0",
+    "framer-motion": "^11.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.26.1",
     "react-firebase-hooks": "^5.1.1",
-    "firebase": "^11.0.0",
-    "dotenv": "^16.4.5",
+    "react-icons": "^5.3.0",
+    "react-router-dom": "^6.26.1",
     "@stripe/stripe-js": "^1.52.1",
-    "stripe": "^14.23.0",
-    "framer-motion": "^11.0.0"
+    "stripe": "^14.23.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",
@@ -29,5 +31,8 @@
   },
   "engines": {
     "node": ">=18.0.0"
-  }
+  },
+  "cacheDirectories": [
+    "node_modules"
+  ]
 }
