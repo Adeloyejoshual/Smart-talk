@@ -1,12 +1,11 @@
 // src/App.jsx
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "./context/ThemeContext";
 import { auth, db } from "./firebaseConfig";
-import { doc, updateDoc, serverTimestamp, onSnapshot } from "firebase/firestore";
+import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 
-// ✅ Main pages
-import HomePage from "./components/HomePage"; // login/register
+import HomePage from "./components/HomePage";
 import ChatPage from "./components/ChatPage";
 import ChatConversationPage from "./components/ChatConversationPage";
 import CallPage from "./components/CallPage";
@@ -16,38 +15,34 @@ import WithdrawalPage from "./components/WithdrawalPage";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 export default function App() {
-  useEffect(() => {
-    // Watch auth user
-    const unsubscribe = auth.onAuthStateChanged(async (user) => {
-      if (user) {
-        const userRef = doc(db, "users", user.uid);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [user, setUser] = useState(null);
 
-        // Mark user online
-        const setOnline = async () => {
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged(async (u) => {
+      setUser(u);
+      setTimeout(() => setCheckingAuth(false), 800);
+
+      if (u) {
+        const userRef = doc(db, "users", u.uid);
+
+        const setOnline = async () =>
           await updateDoc(userRef, {
             isOnline: true,
             lastSeen: serverTimestamp(),
           });
-        };
 
-        // Mark user offline
-        const setOffline = async () => {
+        const setOffline = async () =>
           await updateDoc(userRef, {
             isOnline: false,
             lastSeen: serverTimestamp(),
           });
-        };
 
-        // When connected
         await setOnline();
 
-        // Detect app close or tab refresh
         window.addEventListener("beforeunload", setOffline);
-
-        // Keep connection alive every 30 seconds
         const interval = setInterval(setOnline, 30000);
 
-        // Clean up when user logs out or component unmounts
         return () => {
           setOffline();
           clearInterval(interval);
@@ -59,14 +54,74 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // 🟢 Step 1: Show SmartTalk splash while checking auth
+  if (checkingAuth) {
+    return (
+      <div
+        style={{
+          height: "100vh",
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          background: "#000",
+          flexDirection: "column",
+          gap: "10px",
+          color: "#fff",
+        }}
+      >
+        <div
+          style={{
+            width: 120,
+            height: 120,
+            borderRadius: "50%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background:
+              "linear-gradient(135deg, #3b82f6, #8b5cf6, #06b6d4, #2563eb)",
+            animation:
+              "gradientShift 5s ease infinite, pulseGlow 2s ease-in-out infinite",
+            backgroundSize: "300% 300%",
+          }}
+        >
+          <span
+            style={{
+              fontSize: 36,
+              fontWeight: "bold",
+              color: "#fff",
+              textShadow: "0 0 12px rgba(255,255,255,0.8)",
+            }}
+          >
+            ST
+          </span>
+        </div>
+        <p style={{ marginTop: 16, fontSize: 15, opacity: 0.8 }}>
+          SmartTalk is starting…
+        </p>
+        <style>
+          {`
+            @keyframes gradientShift {
+              0% { background-position: 0% 50%; }
+              50% { background-position: 100% 50%; }
+              100% { background-position: 0% 50%; }
+            }
+            @keyframes pulseGlow {
+              0%, 100% { transform: scale(1); filter: brightness(1); }
+              50% { transform: scale(1.05); filter: brightness(1.3); }
+            }
+          `}
+        </style>
+      </div>
+    );
+  }
+
+  // 🟢 Step 2: Go straight to chat if logged in, else to login
   return (
     <ThemeProvider>
       <Router>
         <Routes>
-          {/* Default route — login/register */}
-          <Route path="/" element={<HomePage />} />
+          <Route path="/" element={user ? <ChatPage /> : <HomePage />} />
 
-          {/* Protected routes */}
           <Route
             path="/chat"
             element={
@@ -75,8 +130,6 @@ export default function App() {
               </ProtectedRoute>
             }
           />
-
-          {/* 🆕 Single chat view */}
           <Route
             path="/chat/:chatId"
             element={
@@ -85,7 +138,6 @@ export default function App() {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/call"
             element={
@@ -110,8 +162,6 @@ export default function App() {
               </ProtectedRoute>
             }
           />
-
-          {/* 🆕 Withdrawal page */}
           <Route
             path="/withdrawal"
             element={
