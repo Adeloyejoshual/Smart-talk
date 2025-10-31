@@ -29,14 +29,22 @@ import { ThemeContext } from "../context/ThemeContext";
 
 /**
  * ChatConversationPage.jsx
- * - Full chat view with uploads/downloads and now:
- * - Long-press to open WhatsApp-style reaction bar (6 emojis + +)
- * - Reaction stored in Firestore under `reactions.{uid}`
- * - Action row on long-press: Copy, Edit (mine), Delete, Reply, Forward, Pin, Close
- * - Multi-select: repeated long-press toggles message selection; top bar shows count + quick actions
+ *
+ * Improvements in this version:
+ * - WhatsApp-style long-press / right-click menu with quick reactions + full emoji picker
+ * - Toggle reaction: clicking same emoji again removes your reaction
+ * - Actions from long-press: Copy, Edit (if your message), Delete (if your message), Reply, Forward (navigates), Pin/Unpin, Close
+ * - Reaction quickbar shows first 6 emojis + a "+" to open full picker
+ * - Fix online / lastSeen formatting (uses `lastSeen` field, not registration date)
+ * - Photo preview supported via localUploads and preview list
+ *
+ * Note:
+ * - This file expects Firestore messages at `chats/{chatId}/messages/{msgId}`, and user docs at `users/{uid}`
+ * - For edit/save flow we update the message doc's text (only allowed for messages you sent)
  */
 
-// ---------- helpers ----------
+const EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "👏", "🔥", "😅", "🤩", "😎", "🤔", "😴", "🙌", "🙏"];
+
 const fmtTime = (ts) => {
   if (!ts) return "";
   const d = ts.toDate ? ts.toDate() : new Date(ts);
@@ -51,10 +59,7 @@ const dayLabel = (ts) => {
   if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: d.getFullYear() !== now.getFullYear() ? "numeric" : undefined });
 };
-const DEFAULT_REACTIONS = ["❤️","😂","😮","😢","👍","👎"];
-const EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "👏", "🔥", "😅"];
 
-// ---------- component ----------
 export default function ChatConversationPage() {
   const { chatId } = useParams();
   const navigate = useNavigate();
@@ -65,9 +70,8 @@ export default function ChatConversationPage() {
   const [friendInfo, setFriendInfo] = useState(null);
 
   const [messages, setMessages] = useState([]);
-  const [limitCount, setLimitCount] = useState(50);
+  const [limitCount] = useState(50);
 
-  // UI states
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [previews, setPreviews] = useState([]);
   const [localUploads, setLocalUploads] = useState([]);
@@ -80,19 +84,35 @@ export default function ChatConversationPage() {
   const [friendTyping, setFriendTyping] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [reportText, setReportText] = useState("");
-  const [selectedMessageId, setSelectedMessageId] = useState(null); // single-message UI anchor
-  const [selectedMessageIds, setSelectedMessageIds] = useState([]); // multi-select array
-  const [reactionFor, setReactionFor] = useState(null); // message id that shows reaction bar
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const [emojiPickerFor, setEmojiPickerFor] = useState(null);
+  const [selectedMessageId, setSelectedMessageId] = useState(null); // used for header action strip
+  const [longPressMenu, setLongPressMenu] = useState(null); // { msg, x, y } or null
+  const [showFullEmojiPicker, setShowFullEmojiPicker] = useState(false);
+  const [editingMessage, setEditingMessage] = useState(null); // { id, text } when editing
 
   const messagesRef = useRef(null);
   const endRef = useRef(null);
+  const longPressTimer = useRef(null);
   const myUid = auth.currentUser?.uid;
 
   const [isAtBottom, setIsAtBottom] = useState(true);
 
-  // ---------- load chat + friend ----------
+  // ---------- helpers ----------
+  const formatLastSeenLabel = (userDoc) => {
+    if (!userDoc) return "";
+    if (userDoc.isOnline) return "Online";
+    const ts = userDoc.lastSeen;
+    if (!ts) return "Offline";
+    const d = ts.toDate ? ts.toDate() : new Date(ts);
+    const diffMin = Math.floor((Date.now() - d.getTime()) / 60000);
+    if (diffMin < 1) return "just now";
+    if (diffMin < 60) return `${diffMin}m ago`;
+    if (diffMin < 1440) return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    const yesterday = new Date(); yesterday.setDate(new Date().getDate() - 1);
+    if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  };
+
+  // ---------- load chat + friend (live) ----------
   useEffect(() => {
     if (!chatId) return;
     const chatRef = doc(db, "chats", chatId);
@@ -111,8 +131,9 @@ export default function ChatConversationPage() {
         const friendRef = doc(db, "users", friendId);
         unsubFriend = onSnapshot(friendRef, fsnap => {
           if (fsnap.exists()) {
-            setFriendInfo({ id: fsnap.id, ...fsnap.data() });
-            setFriendTyping(Boolean(fsnap.data()?.typing?.[chatId]));
+            const u = { id: fsnap.id, ...fsnap.data() };
+            setFriendInfo(u);
+            setFriendTyping(Boolean(u?.typing?.[chatId]));
           }
         });
       }
@@ -144,10 +165,9 @@ export default function ChatConversationPage() {
         }
       });
 
-      // for any message that has fileURL but not downloaded locally, start the auto-download
+      // schedule downloads for attachments
       docs.forEach(m => {
-        if ((m.type === "image" || m.type === "file" || m.type === "audio") && m.fileURL) {
-          // if not present in downloadMap, start download
+        if ((m.type === "image" || m.type === "file" || m.type === "audio" || m.type === "video") && m.fileURL) {
           setDownloadMap(prev => {
             if (prev[m.id] && (prev[m.id].status === "done" || prev[m.id].status === "downloading")) return prev;
             return { ...prev, [m.id]: { status: "queued", progress: 0, blobUrl: null } };
@@ -176,7 +196,7 @@ export default function ChatConversationPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [downloadMap]);
 
-  // ---------- scroll handler ----------
+  // ---------- scroll handler for down arrow ----------
   useEffect(() => {
     const el = messagesRef.current;
     if (!el) return;
@@ -191,11 +211,10 @@ export default function ChatConversationPage() {
 
   const scrollToBottom = (smooth = true) => endRef.current?.scrollIntoView({ behavior: smooth ? "smooth" : "auto" });
 
-  // ---------- ATTACHMENTS & UPLOAD FLOW ----------
+  // ---------- ATTACHMENTS & UPLOAD ----------
   const onFilesSelected = (e) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
-    // create local preview URLs
     const newPreviews = files.map(f => f.type.startsWith("image/") ? URL.createObjectURL(f) : null);
     setSelectedFiles(prev => [...prev, ...files]);
     setPreviews(prev => [...prev, ...newPreviews]);
@@ -213,7 +232,7 @@ export default function ChatConversationPage() {
           text: "",
           fileURL: null,
           fileName: file.name,
-          type: file.type.startsWith("image/") ? "image" : (file.type.startsWith("audio/") ? "audio" : "file"),
+          type: file.type.startsWith("image/") ? "image" : (file.type.startsWith("audio/") ? "audio" : (file.type.startsWith("video/") ? "video" : "file")),
           createdAt: serverTimestamp(),
           status: "uploading",
         };
@@ -247,15 +266,12 @@ export default function ChatConversationPage() {
     }
   };
 
-  // ---------- RECEIVER: download ----------
+  // ---------- receiver download (stream) ----------
   const startDownloadForMessage = async (messageId) => {
     try {
       const mRef = doc(db, "chats", chatId, "messages", messageId);
       const mSnap = await getDoc(mRef);
-      if (!mSnap.exists()) {
-        setDownloadMap(prev => ({ ...prev, [messageId]: { ...prev[messageId], status: "failed" } }));
-        return;
-      }
+      if (!mSnap.exists()) { setDownloadMap(prev => ({ ...prev, [messageId]: { ...prev[messageId], status: "failed" } })); return; }
       const m = { id: mSnap.id, ...mSnap.data() };
       if (!m.fileURL) {
         setDownloadMap(prev => ({ ...prev, [messageId]: { ...prev[messageId], status: "done", progress: 100, blobUrl: null } }));
@@ -278,7 +294,7 @@ export default function ChatConversationPage() {
           const pct = Math.round((received / total) * 100);
           setDownloadMap(prev => ({ ...prev, [messageId]: { ...prev[messageId], status: "downloading", progress: pct } }));
         } else {
-          setDownloadMap(prev => ({ ...prev, [messageId]: { ...prev[messageId], status: "downloading", progress: Math.min(99, (prev[messageId]?.progress||0) + 5) } }));
+          setDownloadMap(prev => ({ ...prev, [messageId]: { ...prev[messageId], status: "downloading", progress: Math.min(99, (prev[messageId]?.progress || 0) + 5) } }));
         }
       }
       const blob = new Blob(chunks);
@@ -302,28 +318,34 @@ export default function ChatConversationPage() {
 
   // ---------- send text ----------
   const handleSendText = async () => {
-    if (!text.trim()) return;
+    if (!text.trim() && selectedFiles.length === 0) return;
     if (blocked) { alert("You blocked this user — unblock to send."); return; }
-    const payload = {
-      sender: myUid,
-      text: text.trim(),
-      fileURL: null,
-      fileName: null,
-      type: "text",
-      createdAt: serverTimestamp(),
-      status: "sent",
-    };
-    if (replyTo) {
-      payload.replyTo = { id: replyTo.id, text: replyTo.text?.slice(0, 120) || (replyTo.fileName || "media"), sender: replyTo.sender };
-      setReplyTo(null);
-    }
-    setText("");
-    try {
-      await addDoc(collection(db, "chats", chatId, "messages"), payload);
-      setTimeout(() => scrollToBottom(true), 150);
-    } catch (err) {
-      console.error("send text failed", err);
-      alert("Failed to send message");
+
+    // send queued files (non-blocking)
+    if (selectedFiles.length > 0) sendQueuedFiles();
+
+    if (text.trim()) {
+      const payload = {
+        sender: myUid,
+        text: text.trim(),
+        fileURL: null,
+        fileName: null,
+        type: "text",
+        createdAt: serverTimestamp(),
+        status: "sent",
+      };
+      if (replyTo) {
+        payload.replyTo = { id: replyTo.id, text: replyTo.text?.slice(0,120) || (replyTo.fileName || "media"), sender: replyTo.sender };
+        setReplyTo(null);
+      }
+      setText("");
+      try {
+        await addDoc(collection(db, "chats", chatId, "messages"), payload);
+        setTimeout(()=> scrollToBottom(true), 150);
+      } catch (err) {
+        console.error("send text failed", err);
+        alert("Failed to send message");
+      }
     }
   };
 
@@ -371,8 +393,6 @@ export default function ChatConversationPage() {
     if (!window.confirm("Delete message?")) return;
     try {
       await deleteDoc(doc(db, "chats", chatId, "messages", messageId));
-      // clear selection if necessary
-      setSelectedMessageIds(prev => prev.filter(id => id !== messageId));
       setSelectedMessageId(null);
     } catch (err) {
       console.error("delete message", err);
@@ -380,7 +400,7 @@ export default function ChatConversationPage() {
     }
   };
 
-  // ---------- clear chat ----------
+  // ---------- clear chat (batched) ----------
   const clearChat = async () => {
     if (!window.confirm("Clear all messages in this chat? This will delete messages permanently.")) return;
     try {
@@ -401,172 +421,180 @@ export default function ChatConversationPage() {
     }
   };
 
-  // ---------- reactions stored in Firestore ----------
-  const applyReaction = async (messageId, emoji) => {
+  // ---------- reactions (toggle) ----------
+  const toggleReaction = async (messageId, emoji) => {
     try {
       const mRef = doc(db, "chats", chatId, "messages", messageId);
       const snap = await getDoc(mRef);
       if (!snap.exists()) return;
-      const cur = snap.data() || {};
+      const cur = snap.data();
       const existing = cur?.reactions?.[myUid];
-
       if (existing === emoji) {
         // remove reaction
         await updateDoc(mRef, { [`reactions.${myUid}`]: deleteField() });
       } else {
-        // set reaction
         await updateDoc(mRef, { [`reactions.${myUid}`]: emoji });
       }
-      // close reaction UI for this message
-      setReactionFor(null);
-      setSelectedMessageId(null);
+      setLongPressMenu(null);
+      setShowFullEmojiPicker(false);
     } catch (err) {
-      console.error("reaction", err);
+      console.error("toggleReaction error", err);
     }
   };
 
-  // ---------- message action helpers ----------
-  const copyMessageText = async (m) => {
+  // ---------- long-press handlers ----------
+  const startLongPress = (e, msg) => {
+    // e: pointer/touch/mouse event - compute coordinates for menu
+    const clientX = (e.touches && e.touches[0]?.clientX) || e.clientX || 100;
+    const clientY = (e.touches && e.touches[0]?.clientY) || e.clientY || 100;
+    clearTimeout(longPressTimer.current);
+    longPressTimer.current = setTimeout(() => {
+      setLongPressMenu({ msg, x: clientX, y: clientY });
+      // also select message id for header actions
+      setSelectedMessageId(msg.id);
+    }, 500); // 500ms long press
+  };
+  const cancelLongPress = () => {
+    clearTimeout(longPressTimer.current);
+  };
+
+  const onContextMenu = (e, msg) => {
+    e.preventDefault();
+    setLongPressMenu({ msg, x: e.clientX, y: e.clientY });
+    setSelectedMessageId(msg.id);
+  };
+
+  // ---------- other long-press actions ----------
+  const copyMessage = (m) => {
+    if (!m) return;
+    if (navigator.clipboard) navigator.clipboard.writeText(m.text || m.fileName || "");
+    setLongPressMenu(null);
+  };
+
+  const startEdit = (m) => {
+    if (!m || m.sender !== myUid) return;
+    setEditingMessage({ id: m.id, text: m.text || "" });
+    setLongPressMenu(null);
+    // focus will be handled by rendering the edit input
+  };
+
+  const saveEdit = async () => {
+    if (!editingMessage?.id) return;
     try {
-      const txt = m.type === "text" ? (m.text || "") : (m.fileName || "");
-      await navigator.clipboard.writeText(txt);
-      alert("Copied to clipboard");
-      // close UI
-      setReactionFor(null);
+      const mRef = doc(db, "chats", chatId, "messages", editingMessage.id);
+      await updateDoc(mRef, { text: editingMessage.text, edited: true });
+      setEditingMessage(null);
     } catch (err) {
-      console.error("copy failed", err);
-      alert("Copy failed");
+      console.error("saveEdit", err);
+      alert("Failed to save edit");
     }
-  };
-
-  const editMessage = async (m) => {
-    if (m.sender !== myUid) return alert("You can only edit your messages.");
-    const newText = window.prompt("Edit message", m.text || "");
-    if (newText == null) return;
-    try {
-      const mRef = doc(db, "chats", chatId, "messages", m.id);
-      await updateDoc(mRef, { text: newText, edited: true });
-      setReactionFor(null);
-    } catch (err) {
-      console.error("edit failed", err);
-      alert("Edit failed");
-    }
-  };
-
-  const replyToMessage = (m) => {
-    setReplyTo(m);
-    setSelectedMessageId(null);
-    setReactionFor(null);
   };
 
   const forwardMessage = (m) => {
-    // placeholder: navigate to a Forward screen; you should implement actual forward flow
-    navigate(`/forward/${m.id}`, { state: { message: m } });
-    setReactionFor(null);
-    setSelectedMessageId(null);
+    setLongPressMenu(null);
+    // simple navigation to a forward page - implement as you need
+    navigate(`/forward/${chatId}/${m.id}`);
   };
 
   const pinMessage = async (m) => {
     try {
-      const chatRef = doc(db, "chats", chatId);
-      await updateDoc(chatRef, { pinnedMessageId: m.id, pinnedMessageText: m.text || m.fileName || "" });
-      alert("Message pinned");
-      setReactionFor(null);
-      setSelectedMessageId(null);
+      const mRef = doc(db, "chats", chatId, "messages", m.id);
+      await updateDoc(mRef, { isPinned: !m.isPinned });
+      setLongPressMenu(null);
     } catch (err) {
-      console.error("pin failed", err);
-      alert("Pin failed");
+      console.error("pinMessage", err);
     }
   };
 
-  // ---------- selection helpers ----------
-  const toggleSelectMessage = (id) => {
-    setSelectedMessageIds(prev => {
-      if (prev.includes(id)) return prev.filter(x => x !== id);
-      return [...prev, id];
-    });
+  const replyMessage = (m) => {
+    setReplyTo(m);
+    setLongPressMenu(null);
+    setTimeout(()=> { const el = document.querySelector('input[type="text"]'); if (el) el.focus(); }, 50);
   };
 
-  const clearSelection = () => {
-    setSelectedMessageIds([]);
-    setSelectedMessageId(null);
-  };
+  // ---------- small spinner ----------
+  function Spinner({ percent = 0 }) {
+    return (
+      <div style={{ width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <svg viewBox="0 0 36 36" style={{ width: 32, height: 32 }}>
+          <path d="M18 2.0845a15.9155 15.9155 0 1 0 0 31.831" fill="none" stroke="#eee" strokeWidth="2" />
+          <path d="M18 2.0845a15.9155 15.9155 0 1 0 0 31.831" fill="none" stroke="#34B7F1" strokeWidth="2" strokeDasharray={`${percent},100`} strokeLinecap="round" />
+        </svg>
+      </div>
+    );
+  }
 
-  // ---------- helper UI renderers ----------
+  // ---------- message bubble renderer ----------
   const MessageBubble = ({ m }) => {
     const mine = m.sender === myUid;
-    const replySnippet = m.replyTo ? (m.replyTo.text || (m.replyTo.fileName || "media")) : null;
+    const reactions = m.reactions || {};
+    // compute a compact reaction summary (emoji -> count)
+    const reactionCounts = {};
+    Object.values(reactions || {}).forEach(r => {
+      if (!r) return;
+      reactionCounts[r] = (reactionCounts[r] || 0) + 1;
+    });
+    const reactionSummary = Object.entries(reactionCounts).slice(0, 3).map(([e, c]) => (c > 1 ? `${e} ${c}` : e)).join(" ");
+
     const displayUrl = getDisplayUrlForMessage(m);
     const downloadInfo = downloadMap[m.id];
-    const selected = selectedMessageIds.includes(m.id);
-
-    // long-press detection
-    const longPressRef = useRef(null);
-    const onPointerDown = (e) => {
-      e.preventDefault && e.preventDefault();
-      longPressRef.current = setTimeout(() => {
-        // if nothing selected, set single selection and open actions
-        // toggle selection if already selected -> multi-select behavior
-        toggleSelectMessage(m.id);
-        setSelectedMessageId(m.id);
-        setReactionFor(m.id); // show reactions/action row
-      }, 450);
-    };
-    const onPointerUp = (e) => {
-      clearTimeout(longPressRef.current);
-    };
-    const onPointerCancel = () => clearTimeout(longPressRef.current);
 
     return (
-      <div style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start", marginBottom: 12, paddingLeft: 6, paddingRight: 6 }}>
+      <div
+        style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start", marginBottom: 12, paddingLeft: 6, paddingRight: 6 }}
+      >
         <div
-          onMouseDown={onPointerDown}
-          onMouseUp={onPointerUp}
-          onMouseLeave={onPointerCancel}
-          onTouchStart={onPointerDown}
-          onTouchEnd={onPointerUp}
-          onTouchCancel={onPointerCancel}
+          onMouseDown={(e) => startLongPress(e, m)}
+          onMouseUp={cancelLongPress}
+          onMouseLeave={cancelLongPress}
+          onTouchStart={(e) => startLongPress(e, m)}
+          onTouchEnd={cancelLongPress}
+          onContextMenu={(e) => onContextMenu(e, m)}
           style={{
-            background: selected ? (isDark ? "#264653" : "#e6f0ff") : (mine ? (isDark ? "#0b84ff" : "#007bff") : (isDark ? "#222" : "#eee")),
-            color: mine ? "#fff" : (isDark ? "#fff" : "#000"),
+            background: mine ? (isDark ? "#0b84ff" : "#007bff") : (isDark ? "#222" : "#fff"),
+            color: mine ? "#fff" : (isDark ? "#e6e6e6" : "#000"),
             padding: "10px 12px",
             borderRadius: 14,
             maxWidth: "78%",
             wordBreak: "break-word",
             position: "relative",
-            border: selected ? `2px solid ${isDark ? "#9ad3ff" : "#34B7F1"}` : "none",
-            cursor: "pointer"
+            boxShadow: isDark ? "0 1px 6px rgba(0,0,0,0.6)" : "0 1px 4px rgba(0,0,0,0.06)"
           }}
         >
-          {/* reply preview */}
-          {replySnippet && (
-            <div style={{ marginBottom: 6, padding: "6px 8px", borderRadius: 8, background: isDark ? "#0f0f0f" : "#fff", color: isDark ? "#ddd" : "#333", fontSize: 12 }}>
-              <span style={{ display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 220 }}>{replySnippet}</span>
+          {/* reply snippet */}
+          {m.replyTo && (
+            <div style={{ marginBottom: 6, padding: "6px 8px", borderRadius: 8, background: isDark ? "#111" : "#f6f6f6", color: isDark ? "#ddd" : "#333", fontSize: 12 }}>
+              <span style={{ display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 220 }}>{m.replyTo.text || m.replyTo.fileName || "media"}</span>
             </div>
           )}
 
-          {/* content */}
-          {m.type === "text" && <div>{m.text}{m.edited ? " · edited" : ""}</div>}
+          {/* message content */}
+          {m.type === "text" && <div>{m.text}{m.edited ? <small style={{ marginLeft: 6, opacity: 0.8 }}>(edited)</small> : null}</div>}
 
-          {["image", "file", "audio", "video"].includes(m.type) && (
+          {["image", "video", "audio", "file"].includes(m.type) && (
             <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 8 }}>
               {m.type === "image" ? (
                 <img
                   src={displayUrl || m.fileURL || (m.previewUrl || "")}
                   alt={m.fileName || "image"}
-                  style={{ width: 220, height: "auto", borderRadius: 8, filter: (downloadInfo && downloadInfo.status === "downloading") || (m.status === "uploading") ? "blur(6px)" : "none", transition: "filter .2s" }}
+                  style={{ width: 220, height: "auto", borderRadius: 8, filter: (downloadInfo && downloadInfo.status === "downloading") || (m.status === "uploading") ? "blur(6px)" : "none", transition: "filter .2s", cursor: "pointer" }}
+                  onClick={() => {
+                    // open image in new tab
+                    const url = displayUrl || m.fileURL;
+                    if (url) window.open(url, "_blank");
+                  }}
                 />
               ) : m.type === "video" ? (
                 <video controls src={displayUrl || m.fileURL} style={{ width: 220, borderRadius: 8 }} />
               ) : m.type === "audio" ? (
                 <audio controls src={displayUrl || m.fileURL} style={{ width: 220 }} />
               ) : (
-                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: 8, borderRadius: 8, background: mine ? "rgba(255,255,255,0.06)" : "#fff" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: 8, borderRadius: 8, background: mine ? "rgba(255,255,255,0.04)" : "#fff" }}>
                   <div style={{ width: 40, height: 40, borderRadius: 6, background: "#f0f0f0", display: "flex", alignItems: "center", justifyContent: "center" }}>📎</div>
                   <div style={{ maxWidth: 180 }}>
-                    <div style={{ fontWeight: 600 }}>{m.fileName || "file"}</div>
-                    <div style={{ fontSize: 12, color: "#666" }}>{m.type}</div>
-                    {m.fileURL && <a href={displayUrl || m.fileURL} target="_blank" rel="noopener noreferrer" style={{ display: "block", marginTop: 6, color: isDark ? "#9ad3ff" : "#007bff" }}>Open</a>}
+                    <div style={{ fontWeight: 600, color: mine ? "#fff" : "#000" }}>{m.fileName || "file"}</div>
+                    <div style={{ fontSize: 12, color: "#888" }}>{m.type}</div>
+                    {m.fileURL && <a href={displayUrl || m.fileURL} target="_blank" rel="noopener noreferrer" style={{ display: "block", marginTop: 6, color: isDark ? "#9ad3ff" : "#007bff" }}>Download</a>}
                   </div>
                 </div>
               )}
@@ -588,46 +616,19 @@ export default function ChatConversationPage() {
             </div>
           )}
 
-          {/* timestamp / status */}
+          {/* timestamp and status */}
           <div style={{ fontSize: 11, textAlign: "right", marginTop: 6, opacity: 0.9 }}>
             <span>{fmtTime(m.createdAt)}</span>
             {mine && <span style={{ marginLeft: 8 }}>{m.status === "uploading" ? "⌛" : m.status === "sent" ? "✔" : m.status === "delivered" ? "✔✔" : m.status === "seen" ? "✔✔" : ""}</span>}
           </div>
 
-          {/* small reactions preview */}
-          {m.reactions && Object.keys(m.reactions).length > 0 && (
+          {/* reaction summary under bubble */}
+          {Object.keys(reactionCounts || {}).length > 0 && (
             <div style={{ position: "absolute", bottom: -18, right: 6, background: isDark ? "#111" : "#fff", padding: "4px 8px", borderRadius: 12, fontSize: 12, boxShadow: "0 1px 6px rgba(0,0,0,0.12)" }}>
-              {Object.values(m.reactions).slice(0, 3).join(" ")}
+              {Object.entries(reactionCounts).slice(0,3).map(([emoji, cnt]) => <span key={emoji} style={{ marginRight: 6 }}>{cnt > 1 ? `${emoji} ${cnt}` : emoji}</span>)}
             </div>
           )}
-
         </div>
-
-        {/* reaction/action overlay for this message */}
-        {reactionFor === m.id && (
-          <div style={{ position: "relative", width: "100%", display: "flex", justifyContent: mine ? "flex-end" : "flex-start", marginTop: 6 }}>
-            <div style={{ position: "absolute", top: -60, transform: "translateY(-100%)", left: mine ? "auto" : 0, right: mine ? 0 : "auto", display: "flex", flexDirection: "column", alignItems: mine ? "flex-end" : "flex-start" }}>
-              {/* reaction bar */}
-              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: 8, borderRadius: 20, background: isDark ? "#111" : "#fff", boxShadow: "0 6px 20px rgba(0,0,0,0.12)" }}>
-                {DEFAULT_REACTIONS.map(r => (
-                  <button key={r} onClick={() => applyReaction(m.id, r)} style={{ border: "none", background: "transparent", fontSize: 22, cursor: "pointer" }}>{r}</button>
-                ))}
-                <button onClick={() => { setShowEmojiPicker(true); setEmojiPickerFor(m.id); }} style={{ border: "none", background: "transparent", fontSize: 20, cursor: "pointer" }}>＋</button>
-              </div>
-
-              {/* action row */}
-              <div style={{ display: "flex", gap: 8, marginTop: 8, background: isDark ? "#111" : "#fff", padding: 6, borderRadius: 10, boxShadow: "0 6px 20px rgba(0,0,0,0.08)" }}>
-                <button title="Copy" onClick={() => copyMessageText(m)} style={{ border: "none", background: "transparent", cursor: "pointer" }}>📋</button>
-                {mine && <button title="Edit" onClick={() => editMessage(m)} style={{ border: "none", background: "transparent", cursor: "pointer" }}>✏️</button>}
-                <button title="Delete" onClick={() => deleteMessage(m.id)} style={{ border: "none", background: "transparent", cursor: "pointer" }}>🗑️</button>
-                <button title="Reply" onClick={() => replyToMessage(m)} style={{ border: "none", background: "transparent", cursor: "pointer" }}>💬</button>
-                <button title="Forward" onClick={() => forwardMessage(m)} style={{ border: "none", background: "transparent", cursor: "pointer" }}>📤</button>
-                <button title="Pin" onClick={() => pinMessage(m)} style={{ border: "none", background: "transparent", cursor: "pointer" }}>📌</button>
-                <button title="Close" onClick={() => { setReactionFor(null); setSelectedMessageId(null); }} style={{ border: "none", background: "transparent", cursor: "pointer" }}>✖</button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     );
   };
@@ -642,75 +643,18 @@ export default function ChatConversationPage() {
     grouped.push(m);
   });
 
-  // ---------- spinner ----------
-  function Spinner({ percent = 0 }) {
-    return (
-      <div style={{ width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <svg viewBox="0 0 36 36" style={{ width: 36, height: 36 }}>
-          <path d="M18 2.0845a15.9155 15.9155 0 1 0 0 31.831A15.9155 15.9155 0 1 0 18 2.0845" fill="none" stroke="#eee" strokeWidth="2" />
-          <path d="M18 2.0845a15.9155 15.9155 0 1 0 0 31.831" fill="none" stroke="#34B7F1" strokeWidth="2" strokeDasharray={`${percent},100`} strokeLinecap="round" />
-        </svg>
-        <div style={{ position: "absolute", fontSize: 10, color: "#fff", fontWeight: 700 }}>{percent}%</div>
-      </div>
-    );
-  }
-
-  // ---------- Emoji picker (simple built-in) ----------
-  const AllEmojiPicker = ({ onPick, onClose }) => {
-    // Small curated set to avoid massive list — replace with full picker if desired
-    const more = ["😀","😃","😄","😁","😆","😅","🤣","😊","🙂","🙃","😉","😍","🤩","😘","😎","🤔","🤨","😐","🤗","😇","🤯","😴","🤤","😪","🤒","🤕","🤢","🤮","🤧","🥳","🥺","🤝","👏","🙌","👍","👎","👊","✊","✌️","🤞","🤟","🤘","👋","👌","🙏","💪","🫶"];
-    return (
-      <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, top: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300 }}>
-        <div style={{ background: isDark ? "#222" : "#fff", padding: 12, borderRadius: 12, maxWidth: 540, width: "95%", boxShadow: "0 10px 40px rgba(0,0,0,0.4)" }}>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {more.map(e => <button key={e} onClick={() => { onPick(e); onClose(); }} style={{ fontSize: 22, padding: 8, borderRadius: 8, cursor: "pointer", border: "none", background: "transparent" }}>{e}</button>)}
-          </div>
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
-            <button onClick={onClose} style={{ padding: "8px 12px", borderRadius: 8, border: "none", cursor: "pointer", background: "#ddd" }}>Close</button>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  // ---------- top multi-select bar ----------
-  const MultiSelectBar = () => {
-    if (selectedMessageIds.length === 0) return null;
-    return (
-      <div style={{ position: "fixed", top: 10, left: 0, right: 0, display: "flex", justifyContent: "center", zIndex: 400 }}>
-        <div style={{ background: isDark ? "#222" : "#fff", padding: 8, borderRadius: 10, display: "flex", gap: 10, alignItems: "center", boxShadow: "0 6px 20px rgba(0,0,0,0.12)" }}>
-          <div style={{ fontWeight: 700 }}>{selectedMessageIds.length} selected</div>
-          <button onClick={() => { /* forward multiple */ navigate(`/forward/multiple`, { state: { ids: selectedMessageIds } }); }} style={{ border: "none", background: "transparent", cursor: "pointer" }}>📤 Forward</button>
-          <button onClick={() => clearSelection()} style={{ border: "none", background: "transparent", cursor: "pointer" }}>❌ Clear</button>
-        </div>
-      </div>
-    );
-  };
-
   // ---------- UI ----------
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: wallpaper ? `url(${wallpaper}) center/cover no-repeat` : (isDark ? "#070707" : "#f5f5f5"), color: isDark ? "#fff" : "#000" }}>
-      {/* Multi-select top bar */}
-      <MultiSelectBar />
-
       {/* header */}
       <div style={{ display: "flex", alignItems: "center", padding: 12, borderBottom: "1px solid #ccc", position: "sticky", top: 0, background: isDark ? "#111" : "#fff", zIndex: 30 }}>
         <button onClick={() => navigate("/chat")} style={{ fontSize: 20, background: "transparent", border: "none", cursor: "pointer", marginRight: 10 }}>←</button>
         <img src={friendInfo?.photoURL || "/default-avatar.png"} alt="avatar" style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover", marginRight: 12, cursor: "pointer" }} onClick={() => friendInfo && navigate(`/user-profile/${friendInfo.id}`)} />
         <div>
           <div style={{ fontWeight: 700 }}>{friendInfo?.displayName || chatInfo?.name || "Friend"}</div>
-          <div style={{ fontSize: 12, color: isDark ? "#bbb" : "#666" }}>{friendTyping ? "typing..." : (friendInfo?.isOnline ? "Online" : (friendInfo?.lastSeen ? (() => {
-            const ls = friendInfo.lastSeen;
-            if (!ls) return "Offline";
-            const ld = ls.toDate ? ls.toDate() : new Date(ls);
-            const diffMin = Math.floor((Date.now() - ld.getTime()) / 60000);
-            if (diffMin < 1) return "just now";
-            if (diffMin < 60) return `${diffMin}m ago`;
-            if (diffMin < 1440) return ld.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-            const yesterday = new Date(); yesterday.setDate(new Date().getDate() - 1);
-            if (ld.toDateString() === yesterday.toDateString()) return `Yesterday`;
-            return ld.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-          })() : "Offline"))}</div>
+          <div style={{ fontSize: 12, color: isDark ? "#bbb" : "#666" }}>
+            {friendTyping ? "typing..." : (friendInfo ? formatLastSeenLabel(friendInfo) : "Offline")}
+          </div>
         </div>
 
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
@@ -757,7 +701,7 @@ export default function ChatConversationPage() {
         <div ref={endRef} />
       </div>
 
-      {/* down arrow */}
+      {/* centered down arrow */}
       <button
         onClick={() => scrollToBottom(true)}
         style={{
@@ -783,7 +727,7 @@ export default function ChatConversationPage() {
         ↓
       </button>
 
-      {/* previews */}
+      {/* previews (above input) */}
       {previews.length > 0 && (
         <div style={{ display: "flex", gap: 8, padding: 8, overflowX: "auto", alignItems: "center", borderTop: "1px solid #ddd", background: isDark ? "#0b0b0b" : "#fff" }}>
           {previews.map((p, idx) => (
@@ -800,7 +744,7 @@ export default function ChatConversationPage() {
         </div>
       )}
 
-      {/* pinned input */}
+      {/* pinned input / edit area */}
       <div style={{ position: "sticky", bottom: 0, background: isDark ? "#0b0b0b" : "#fff", padding: 10, borderTop: "1px solid #ccc", display: "flex", alignItems: "center", gap: 8, zIndex: 50 }}>
         <div style={{ position: "relative" }}>
           <button onClick={() => setShowAttach(s => !s)} style={{ width: 44, height: 44, borderRadius: 12, fontSize: 20, background: "#f0f0f0", border: "none", cursor: "pointer" }}>＋</button>
@@ -831,7 +775,15 @@ export default function ChatConversationPage() {
             </div>
           )}
 
-          <input type="text" placeholder={blocked ? "You blocked this user — unblock to send" : "Type a message..."} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleSendText(); }} disabled={blocked} style={{ padding: "10px 12px", borderRadius: 20, border: "1px solid #ccc", outline: "none", background: isDark ? "#111" : "#fff", color: isDark ? "#fff" : "#000" }} />
+          {editingMessage ? (
+            <div style={{ display: "flex", gap: 8 }}>
+              <input value={editingMessage.text} onChange={(e) => setEditingMessage(prev => ({ ...prev, text: e.target.value }))} style={{ flex: 1, padding: "10px 12px", borderRadius: 20, border: "1px solid #ccc", outline: "none", background: isDark ? "#111" : "#fff", color: isDark ? "#fff" : "#000" }} />
+              <button onClick={saveEdit} style={{ padding: "8px 12px", borderRadius: 16, background: "#34B7F1", color: "#fff", border: "none", cursor: "pointer" }}>Save</button>
+              <button onClick={() => setEditingMessage(null)} style={{ padding: "8px 12px", borderRadius: 16, background: "#ddd", border: "none", cursor: "pointer" }}>Cancel</button>
+            </div>
+          ) : (
+            <input type="text" placeholder={blocked ? "You blocked this user — unblock to send" : "Type a message..."} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleSendText(); }} disabled={blocked} style={{ padding: "10px 12px", borderRadius: 20, border: "1px solid #ccc", outline: "none", background: isDark ? "#111" : "#fff", color: isDark ? "#fff" : "#000" }} />
+          )}
         </div>
 
         <button onClick={handleSendText} disabled={blocked || (!text.trim() && localUploads.length === 0 && selectedFiles.length === 0)} style={{ background: "#34B7F1", color: "#fff", border: "none", borderRadius: 16, padding: "8px 12px", cursor: "pointer" }}>Send</button>
@@ -851,15 +803,70 @@ export default function ChatConversationPage() {
         </div>
       )}
 
-      {/* emoji picker modal */}
-      {showEmojiPicker && emojiPickerFor && (
-        <AllEmojiPicker
-          onPick={async (e) => {
-            // apply chosen emoji to the correct message
-            await applyReaction(emojiPickerFor, e);
+      {/* header actions strip (when a message selected via long-press) */}
+      {selectedMessageId && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, display: "flex", justifyContent: "center", padding: "8px 0", background: isDark ? "rgba(0,0,0,0.5)" : "rgba(255,255,255,0.9)", zIndex: 120 }}>
+          <div style={{ background: isDark ? "#222" : "#fff", padding: "6px 10px", borderRadius: 8, display: "flex", gap: 8, alignItems: "center", boxShadow: "0 6px 18px rgba(0,0,0,0.12)" }}>
+            <button onClick={() => deleteMessage(selectedMessageId)} style={{ border: "none", background: "transparent", cursor: "pointer" }}>🗑 Delete</button>
+            <button onClick={() => { const m = messages.find(x => x.id === selectedMessageId); setReplyTo(m || null); setSelectedMessageId(null); }} style={{ border: "none", background: "transparent", cursor: "pointer" }}>↩ Reply</button>
+            <div style={{ display: "flex", gap: 6 }}>
+              {EMOJIS.slice(0, 4).map(e => <button key={e} onClick={() => toggleReaction(selectedMessageId, e)} style={{ border: "none", background: "transparent", cursor: "pointer" }}>{e}</button>)}
+            </div>
+            <button onClick={() => setSelectedMessageId(null)} style={{ border: "none", background: "transparent", cursor: "pointer" }}>✖</button>
+          </div>
+        </div>
+      )}
+
+      {/* LONG-PRESS MENU: quick reaction bar + actions */}
+      {longPressMenu && (
+        <div
+          aria-hidden={!longPressMenu}
+          style={{
+            position: "fixed",
+            left: longPressMenu.x - 140,
+            top: Math.max(24, longPressMenu.y - 90),
+            zIndex: 240,
+            pointerEvents: "auto",
           }}
-          onClose={() => { setShowEmojiPicker(false); setEmojiPickerFor(null); }}
-        />
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          {/* quick reactions bar */}
+          <div style={{ display: "flex", gap: 8, padding: 8, background: isDark ? "#111" : "#fff", borderRadius: 999, boxShadow: "0 8px 30px rgba(0,0,0,0.15)" }}>
+            {EMOJIS.slice(0, 6).map(em => (
+              <button key={em} onClick={() => toggleReaction(longPressMenu.msg.id, em)} style={{ fontSize: 20, width: 40, height: 40, borderRadius: 999, border: "none", background: "transparent", cursor: "pointer" }}>
+                {em}
+              </button>
+            ))}
+            <button onClick={() => { setShowFullEmojiPicker(true); }} style={{ fontSize: 18, width: 40, height: 40, borderRadius: 999, border: "none", background: "transparent", cursor: "pointer" }}>＋</button>
+          </div>
+
+          {/* small action grid below */}
+          <div style={{ marginTop: 8, background: isDark ? "#111" : "#fff", borderRadius: 10, padding: 8, boxShadow: "0 8px 30px rgba(0,0,0,0.12)", display: "flex", gap: 8, alignItems: "center" }}>
+            <button onClick={() => copyMessage(longPressMenu.msg)} style={{ border: "none", background: "transparent", cursor: "pointer" }}>📋</button>
+            <button onClick={() => startEdit(longPressMenu.msg)} style={{ border: "none", background: "transparent", cursor: "pointer" }} disabled={longPressMenu.msg.sender !== myUid}>✏️</button>
+            <button onClick={() => deleteMessage(longPressMenu.msg.id)} style={{ border: "none", background: "transparent", cursor: "pointer" }} disabled={longPressMenu.msg.sender !== myUid}>🗑️</button>
+            <button onClick={() => replyMessage(longPressMenu.msg)} style={{ border: "none", background: "transparent", cursor: "pointer" }}>💬</button>
+            <button onClick={() => forwardMessage(longPressMenu.msg)} style={{ border: "none", background: "transparent", cursor: "pointer" }}>📤</button>
+            <button onClick={() => pinMessage(longPressMenu.msg)} style={{ border: "none", background: "transparent", cursor: "pointer" }}>📌</button>
+            <button onClick={() => { setLongPressMenu(null); setShowFullEmojiPicker(false); }} style={{ border: "none", background: "transparent", cursor: "pointer" }}>✖</button>
+          </div>
+        </div>
+      )}
+
+      {/* FULL EMOJI PICKER */}
+      {showFullEmojiPicker && (
+        <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, top: 0, zIndex: 300, background: "rgba(0,0,0,0.4)" }} onMouseDown={() => { setShowFullEmojiPicker(false); setLongPressMenu(null); }}>
+          <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", bottom: 60, background: isDark ? "#111" : "#fff", padding: 12, borderRadius: 12, boxShadow: "0 12px 40px rgba(0,0,0,0.3)" }} onMouseDown={(e) => e.stopPropagation()}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 36px)", gap: 8 }}>
+              {EMOJIS.concat(["❤️", "👍", "😂", "🤩", "😅", "🔥", "😮", "😢"]).map(e => (
+                <button key={e + Math.random()} onClick={() => { if (longPressMenu) toggleReaction(longPressMenu.msg.id, e); setShowFullEmojiPicker(false); }} style={{ width: 36, height: 36, borderRadius: 8, border: "none", background: "transparent", cursor: "pointer", fontSize: 18 }}>{e}</button>
+              ))}
+            </div>
+            <div style={{ marginTop: 8, textAlign: "right" }}>
+              <button onClick={() => setShowFullEmojiPicker(false)} style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: "#ddd", cursor: "pointer" }}>Close</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
