@@ -1,18 +1,18 @@
 import React, { useEffect, useState, useRef, useContext } from "react";
-import { useParams } from "react-router-dom";
 import {
   doc,
   getDoc,
+  updateDoc,
   addDoc,
   collection,
   query,
   orderBy,
   onSnapshot,
   serverTimestamp,
-  updateDoc,
 } from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
-
+import { ThemeContext } from "../context/ThemeContext";
+import EmojiPicker from "emoji-picker-react";
 import MessageBubble from "./MessageBubble";
 import MessageActionsMenu from "./MessageActionsMenu";
 import ReactionBar from "./ReactionBar";
@@ -20,135 +20,184 @@ import FullScreenPreview from "./FullScreenPreview";
 import ReplyPreview from "./ReplyPreview";
 import HeaderActionsBar from "./HeaderActionsBar";
 import TypingIndicator from "./TypingIndicator";
-import EmojiMessageInput from "./EmojiMessageInput";
+import { FiSend, FiPaperclip, FiSmile } from "react-icons/fi";
+import { motion } from "framer-motion";
 
 export default function ChatConversationPage() {
-  const { chatId } = useParams();
+  const { theme } = useContext(ThemeContext);
   const [messages, setMessages] = useState([]);
-  const [replyTo, setReplyTo] = useState(null);
-  const [fullPreview, setFullPreview] = useState(null);
-  const [typing, setTyping] = useState(false);
-  const [userData, setUserData] = useState(null);
-  const [showScrollBtn, setShowScrollBtn] = useState(false);
-  const scrollRef = useRef(null);
+  const [input, setInput] = useState("");
+  const [showEmoji, setShowEmoji] = useState(false);
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [selectedMessage, setSelectedMessage] = useState(null);
+  const [fullscreenMedia, setFullscreenMedia] = useState(null);
+  const [typingUsers, setTypingUsers] = useState({});
+  const typingTimeoutRef = useRef(null);
 
-  // 🧩 Fetch chat messages in real-time
+  const chatId = window.location.pathname.split("/").pop();
+  const currentUser = auth.currentUser;
+  const chatRef = doc(db, "chats", chatId);
+  const messagesRef = collection(chatRef, "messages");
+  const bottomRef = useRef(null);
+
+  // 🔹 Fetch messages in realtime
   useEffect(() => {
-    if (!chatId) return;
-    const messagesRef = collection(db, "chats", chatId, "messages");
-    const q = query(messagesRef, orderBy("createdAt", "asc"));
+    const q = query(messagesRef, orderBy("timestamp", "asc"));
     const unsub = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setMessages(data);
+      const msgs = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      setMessages(msgs);
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     });
     return () => unsub();
   }, [chatId]);
 
-  // 🧠 Load chat user data (for header)
+  // 🔹 Typing indicator (Firestore-based)
   useEffect(() => {
-    const loadUserData = async () => {
-      const chatDoc = await getDoc(doc(db, "chats", chatId));
-      if (chatDoc.exists()) {
-        const users = chatDoc.data().users || [];
-        const other = users.find((u) => u.uid !== auth.currentUser.uid);
-        setUserData(other || null);
+    const unsub = onSnapshot(chatRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data.typing) setTypingUsers(data.typing);
       }
-    };
-    loadUserData();
+    });
+    return () => unsub();
   }, [chatId]);
 
-  // 📩 Send new message
-  const handleSendMessage = async (text) => {
-    if (!text.trim()) return;
-    const messageRef = collection(db, "chats", chatId, "messages");
-    await addDoc(messageRef, {
-      text,
-      senderId: auth.currentUser.uid,
-      createdAt: serverTimestamp(),
-      replyTo: replyTo ? replyTo.id : null,
-      reactions: [],
+  const handleTyping = async (e) => {
+    setInput(e.target.value);
+    await updateDoc(chatRef, { [`typing.${currentUser.uid}`]: true });
+
+    clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(async () => {
+      await updateDoc(chatRef, { [`typing.${currentUser.uid}`]: false });
+    }, 2000);
+  };
+
+  const handleSend = async (e) => {
+    e.preventDefault();
+    if (!input.trim()) return;
+
+    await addDoc(messagesRef, {
+      text: input,
+      senderId: currentUser.uid,
+      type: "text",
+      timestamp: serverTimestamp(),
+      replyTo: replyingTo ? replyingTo.id : null,
     });
-    setReplyTo(null);
-    scrollToBottom();
+
+    setInput("");
+    setReplyingTo(null);
+    setShowEmoji(false);
+    await updateDoc(chatRef, { [`typing.${currentUser.uid}`]: false });
   };
 
-  // 🧹 Scroll behavior
-  const scrollToBottom = () => {
-    scrollRef.current?.scrollTo({
-      top: scrollRef.current.scrollHeight,
-      behavior: "smooth",
-    });
+  const handleEmojiClick = (emoji) => {
+    setInput((prev) => prev + emoji.emoji);
   };
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  // 👀 Show scroll down button
-  const handleScroll = (e) => {
-    const bottom =
-      e.target.scrollHeight - e.target.scrollTop === e.target.clientHeight;
-    setShowScrollBtn(!bottom);
-  };
-
-  // 💬 Typing simulation
-  useEffect(() => {
-    const typingTimeout = setTimeout(() => setTyping(false), 2000);
-    return () => clearTimeout(typingTimeout);
-  }, [typing]);
+  const someoneElseTyping = Object.entries(typingUsers).some(
+    ([uid, isTyping]) => uid !== currentUser.uid && isTyping
+  );
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50 dark:bg-gray-900">
-      {/* 🧠 Header with user info + actions */}
-      <HeaderActionsBar user={userData} />
-
-      {/* 💬 Messages list */}
-      <div
-        ref={scrollRef}
-        onScroll={handleScroll}
-        className="flex-1 overflow-y-auto p-4 space-y-2"
-      >
-        {messages.map((msg, index) => (
-          <div key={msg.id} className="relative">
-            <MessageBubble
-              message={msg}
-              isOwn={msg.senderId === auth.currentUser.uid}
-              onReply={() => setReplyTo(msg)}
-              onMediaClick={(mediaUrl) => setFullPreview(mediaUrl)}
-            />
-            <ReactionBar message={msg} chatId={chatId} />
-            <MessageActionsMenu message={msg} chatId={chatId} />
+    <div
+      className={`flex flex-col h-screen ${
+        theme === "dark" ? "bg-gray-900 text-white" : "bg-gray-50 text-gray-900"
+      }`}
+    >
+      {/* Header / Action bar */}
+      {selectedMessage ? (
+        <HeaderActionsBar
+          selectedMessage={selectedMessage}
+          onClose={() => setSelectedMessage(null)}
+        />
+      ) : (
+        <div className="flex items-center gap-3 px-4 py-3 border-b dark:border-gray-700">
+          <button onClick={() => window.history.back()} className="text-xl">
+            ←
+          </button>
+          <div>
+            <h2 className="font-semibold text-base">Kude</h2>
+            <p className="text-xs text-gray-400">
+              {someoneElseTyping ? "Typing..." : "Online"}
+            </p>
           </div>
-        ))}
-        {typing && <TypingIndicator />}
-      </div>
-
-      {/* 💡 Scroll to bottom button */}
-      {showScrollBtn && (
-        <button
-          onClick={scrollToBottom}
-          className="absolute bottom-20 right-5 bg-blue-500 text-white rounded-full p-3 shadow-lg"
-        >
-          ↓
-        </button>
+          <div className="ml-auto flex gap-4 text-xl">
+            <button onClick={() => (window.location.href = "/voice-call")}>
+              📞
+            </button>
+            <button onClick={() => (window.location.href = "/video-call")}>
+              🎥
+            </button>
+          </div>
+        </div>
       )}
 
-      {/* 💬 Reply preview */}
-      {replyTo && (
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
+        {messages.map((msg) => (
+          <div key={msg.id}>
+            <MessageBubble
+              message={msg}
+              isOwn={msg.senderId === currentUser.uid}
+              onLongPress={() => setSelectedMessage(msg)}
+              onMediaClick={setFullscreenMedia}
+              onReplyClick={(m) => setReplyingTo(m)}
+            />
+            <ReactionBar message={msg} />
+          </div>
+        ))}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Typing Indicator */}
+      {someoneElseTyping && <TypingIndicator />}
+
+      {/* Reply Preview */}
+      {replyingTo && (
         <ReplyPreview
-          message={replyTo}
-          onCancel={() => setReplyTo(null)}
+          replyingTo={replyingTo}
+          onCancel={() => setReplyingTo(null)}
         />
       )}
 
-      {/* ✏️ Input bar (with emoji + send) */}
-      <EmojiMessageInput onSend={handleSendMessage} />
+      {/* Input Area */}
+      <form
+        onSubmit={handleSend}
+        className="p-3 border-t dark:border-gray-700 flex items-center gap-3"
+      >
+        <button type="button" onClick={() => setShowEmoji(!showEmoji)}>
+          <FiSmile className="text-xl" />
+        </button>
+        <button type="button" className="text-xl">
+          <FiPaperclip />
+        </button>
+        <input
+          value={input}
+          onChange={handleTyping}
+          placeholder="Message..."
+          className="flex-1 bg-transparent outline-none text-sm"
+        />
+        <button type="submit" className="text-blue-500">
+          <FiSend className="text-xl" />
+        </button>
+      </form>
 
-      {/* 🖼️ Full-screen preview */}
-      {fullPreview && (
+      {/* Emoji Picker */}
+      {showEmoji && (
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="absolute bottom-20 left-2"
+        >
+          <EmojiPicker onEmojiClick={handleEmojiClick} theme={theme} />
+        </motion.div>
+      )}
+
+      {/* Fullscreen Media Preview */}
+      {fullscreenMedia && (
         <FullScreenPreview
-          mediaUrl={fullPreview}
-          onClose={() => setFullPreview(null)}
+          media={fullscreenMedia}
+          onClose={() => setFullscreenMedia(null)}
         />
       )}
     </div>
