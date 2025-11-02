@@ -1,7 +1,8 @@
-// src/components/ChatConversationPage.jsx
-import React, { useState, useEffect, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import React, { useEffect, useRef, useState } from "react";
+import { useParams } from "react-router-dom";
 import {
+  doc,
+  getDoc,
   collection,
   addDoc,
   query,
@@ -9,147 +10,175 @@ import {
   onSnapshot,
   serverTimestamp,
   updateDoc,
-  doc,
 } from "firebase/firestore";
-import { auth, db } from "../firebaseConfig";
-import EmojiPicker from "emoji-picker-react";
-import { FiSend, FiPlus, FiSmile } from "react-icons/fi";
+import { db, auth, storage } from "../firebaseConfig";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { motion } from "framer-motion";
 
-// ✅ Split components
 import MessageBubble from "./MessageBubble";
 import MessageActionsMenu from "./MessageActionsMenu";
-import ReactionBar from "./ReactionBar";
 import FullScreenPreview from "./FullScreenPreview";
-import ReplyPreview from "./ReplyPreview";
 import HeaderActionsBar from "./HeaderActionsBar";
 import TypingIndicator from "./TypingIndicator";
+import EmojiPicker from "emoji-picker-react";
 
 export default function ChatConversationPage() {
   const { chatId } = useParams();
-  const navigate = useNavigate();
   const [messages, setMessages] = useState([]);
-  const [newMessage, setNewMessage] = useState("");
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const [isTyping, setIsTyping] = useState(false);
-  const [replyTo, setReplyTo] = useState(null);
+  const [message, setMessage] = useState("");
+  const [selectedMedia, setSelectedMedia] = useState(null);
+  const [emojiOpen, setEmojiOpen] = useState(false);
   const [fullPreview, setFullPreview] = useState(null);
-  const messagesEndRef = useRef(null);
+  const [userData, setUserData] = useState(null);
+  const scrollRef = useRef();
 
-  // 🔥 Fetch messages in real time
+  const currentUser = auth.currentUser;
+
+  // Fetch user info
   useEffect(() => {
-    const q = query(
-      collection(db, "chats", chatId, "messages"),
-      orderBy("timestamp", "asc")
-    );
-    const unsub = onSnapshot(q, (snapshot) => {
-      const msgs = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-      setMessages(msgs);
+    const fetchUser = async () => {
+      const chatRef = doc(db, "chats", chatId);
+      const chatSnap = await getDoc(chatRef);
+      if (chatSnap.exists()) {
+        const data = chatSnap.data();
+        const partnerId = data.participants.find((id) => id !== currentUser.uid);
+        const partnerRef = doc(db, "users", partnerId);
+        const partnerSnap = await getDoc(partnerRef);
+        setUserData(partnerSnap.data());
+      }
+    };
+    fetchUser();
+  }, [chatId, currentUser]);
+
+  // Listen for messages in real-time
+  useEffect(() => {
+    const msgsRef = collection(db, "chats", chatId, "messages");
+    const q = query(msgsRef, orderBy("createdAt", "asc"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setMessages(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+      setTimeout(() => {
+        scrollRef.current?.scrollIntoView({ behavior: "smooth" });
+      }, 100);
     });
-    return () => unsub();
+    return () => unsubscribe();
   }, [chatId]);
 
-  // 🔥 Auto-scroll
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  // ✉️ Send text message
+  // Send message (text or media)
   const sendMessage = async () => {
-    if (!newMessage.trim()) return;
-    const msg = {
-      text: newMessage.trim(),
-      senderId: auth.currentUser.uid,
-      type: "text",
-      timestamp: serverTimestamp(),
-      ...(replyTo && { replyTo }),
-    };
-    await addDoc(collection(db, "chats", chatId, "messages"), msg);
-    setNewMessage("");
-    setReplyTo(null);
-    setShowEmojiPicker(false);
-  };
+    if (!message && !selectedMedia) return;
 
-  // 😎 Typing indicator simulation
-  const handleTyping = (e) => {
-    setNewMessage(e.target.value);
-    setIsTyping(true);
-    setTimeout(() => setIsTyping(false), 1500);
-  };
+    let mediaURL = null;
+    let mediaType = null;
 
-  // 😀 Emoji add
-  const onEmojiClick = (emojiObject) => {
-    setNewMessage((prev) => prev + emojiObject.emoji);
+    if (selectedMedia) {
+      const fileRef = ref(storage, `chatMedia/${chatId}/${Date.now()}_${selectedMedia.name}`);
+      await uploadBytes(fileRef, selectedMedia);
+      mediaURL = await getDownloadURL(fileRef);
+      mediaType = selectedMedia.type.startsWith("image")
+        ? "image"
+        : selectedMedia.type.startsWith("video")
+        ? "video"
+        : "file";
+    }
+
+    await addDoc(collection(db, "chats", chatId, "messages"), {
+      text: message,
+      mediaURL,
+      mediaType,
+      senderId: currentUser.uid,
+      createdAt: serverTimestamp(),
+    });
+
+    setMessage("");
+    setSelectedMedia(null);
   };
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50 dark:bg-gray-900">
-      {/* HEADER */}
-      <HeaderActionsBar
-        name="Kude"
-        status="Online"
-        onBack={() => navigate("/chat")}
-        onVoiceCall={() => navigate("/voicecall")}
-        onVideoCall={() => navigate("/videocall")}
-      />
+    <div className="flex flex-col h-screen bg-gray-100 dark:bg-gray-900">
+      {/* 🔝 Header (always pinned) */}
+      <div className="sticky top-0 z-50">
+        <HeaderActionsBar
+          user={userData}
+          onVoiceCall={() => console.log("Voice call")}
+          onVideoCall={() => console.log("Video call")}
+        />
+      </div>
 
-      {/* MESSAGES AREA */}
+      {/* 💬 Scrollable message list */}
       <div className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
         {messages.map((msg) => (
-          <div key={msg.id}>
-            <MessageBubble
-              message={msg}
-              onReply={() => setReplyTo(msg)}
-              onPreview={(media) => setFullPreview(media)}
-            />
-            <ReactionBar messageId={msg.id} />
-          </div>
+          <MessageBubble
+            key={msg.id}
+            message={msg}
+            currentUser={currentUser}
+            onMediaClick={setFullPreview}
+          />
         ))}
-        {isTyping && <TypingIndicator />}
-        <div ref={messagesEndRef} />
+        <div ref={scrollRef} />
+        <TypingIndicator />
       </div>
 
-      {/* REPLY PREVIEW */}
-      {replyTo && (
-        <ReplyPreview
-          replyTo={replyTo}
-          onCancel={() => setReplyTo(null)}
-        />
-      )}
-
-      {/* INPUT BAR */}
-      <div className="p-2 border-t border-gray-200 dark:border-gray-700 flex items-center gap-2 bg-white dark:bg-gray-800">
-        <button
-          onClick={() => setShowEmojiPicker((prev) => !prev)}
-          className="p-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-200"
-        >
-          <FiSmile size={22} />
-        </button>
-
-        <input
-          value={newMessage}
-          onChange={handleTyping}
-          placeholder="Message..."
-          className="flex-1 px-4 py-2 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 outline-none"
-        />
-
-        <motion.button
-          whileTap={{ scale: 0.9 }}
-          onClick={sendMessage}
-          className="p-2 bg-blue-500 text-white rounded-full hover:bg-blue-600"
-        >
-          <FiSend size={20} />
-        </motion.button>
-      </div>
-
-      {/* EMOJI PICKER */}
-      {showEmojiPicker && (
-        <div className="absolute bottom-16 left-2 z-50">
-          <EmojiPicker onEmojiClick={onEmojiClick} theme="dark" />
+      {/* 📎 Media preview */}
+      {selectedMedia && (
+        <div className="flex items-center justify-between bg-gray-200 dark:bg-gray-800 px-3 py-2">
+          <span className="text-sm truncate">{selectedMedia.name}</span>
+          <button
+            className="text-red-500"
+            onClick={() => setSelectedMedia(null)}
+          >
+            ✖
+          </button>
         </div>
       )}
 
-      {/* FULL SCREEN PREVIEW */}
+      {/* 📝 Input bar pinned bottom */}
+      <div className="sticky bottom-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 z-50 px-3 py-2">
+        <div className="flex items-center gap-2">
+          <button
+            className="text-gray-500"
+            onClick={() => setEmojiOpen((prev) => !prev)}
+          >
+            😊
+          </button>
+          <input
+            type="file"
+            accept="image/*,video/*,audio/*,application/pdf,.doc,.docx"
+            onChange={(e) => setSelectedMedia(e.target.files[0])}
+            className="hidden"
+            id="fileInput"
+          />
+          <label htmlFor="fileInput" className="cursor-pointer text-gray-500">
+            📎
+          </label>
+          <input
+            type="text"
+            placeholder="Message..."
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            className="flex-1 bg-transparent border-none focus:ring-0 text-gray-900 dark:text-white"
+          />
+          <button
+            onClick={sendMessage}
+            className="text-sky-500 font-semibold hover:text-sky-600"
+          >
+            ➤
+          </button>
+        </div>
+
+        {/* Emoji Picker */}
+        {emojiOpen && (
+          <div className="absolute bottom-16 left-3 z-50 bg-white shadow-lg rounded-lg">
+            <EmojiPicker
+              onEmojiClick={(e) => setMessage((prev) => prev + e.emoji)}
+              theme="auto"
+              width={300}
+              height={400}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* 🖼 Full-screen media preview */}
       {fullPreview && (
         <FullScreenPreview media={fullPreview} onClose={() => setFullPreview(null)} />
       )}
