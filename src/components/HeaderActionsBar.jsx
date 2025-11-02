@@ -1,95 +1,67 @@
-// src/components/HeaderActionsBar.jsx
 import React from "react";
-import {
-  ArrowLeft,
-  Copy,
-  Edit2,
-  Trash2,
-  MessageSquare,
-  Share2,
-  Pin,
-  X,
-} from "lucide-react";
+import { FiArrowLeft, FiPhone, FiVideo, FiMoreVertical } from "react-icons/fi";
+import { motion } from "framer-motion";
 
 export default function HeaderActionsBar({
-  selectedCount,
-  onCancel,
-  onCopy,
-  onEdit,
-  onDelete,
-  onReply,
-  onForward,
-  onPin,
+  name,
+  status,
+  onBack,
+  onVoiceCall,
+  onVideoCall,
 }) {
   return (
-    <div className="flex items-center justify-between bg-blue-600 text-white px-4 py-2 shadow-md transition-all duration-200">
+    <motion.div
+      initial={{ y: -30, opacity: 0 }}
+      animate={{ y: 0, opacity: 1 }}
+      transition={{ duration: 0.3 }}
+      className="flex items-center justify-between px-3 py-2 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm"
+    >
+      {/* ← Back + Avatar + Name */}
       <div className="flex items-center gap-3">
         <button
-          onClick={onCancel}
-          className="hover:bg-blue-700 p-1 rounded-full transition-colors"
+          onClick={onBack}
+          className="text-gray-600 dark:text-gray-300 hover:text-blue-500"
         >
-          <ArrowLeft size={22} />
+          <FiArrowLeft size={22} />
         </button>
-        <p className="font-medium text-sm">{selectedCount} selected</p>
+
+        <div className="flex items-center gap-2">
+          <img
+            src="https://ui-avatars.com/api/?name=Kude&background=random"
+            alt="avatar"
+            className="w-9 h-9 rounded-full"
+          />
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
+              {name}
+            </h2>
+            <p className="text-xs text-green-600 dark:text-green-400">
+              {status}
+            </p>
+          </div>
+        </div>
       </div>
 
-      <div className="flex items-center gap-3">
+      {/* 📞 🎥 ⋮ */}
+      <div className="flex items-center gap-3 text-gray-600 dark:text-gray-300">
         <button
-          onClick={onCopy}
-          className="hover:bg-blue-700 p-1 rounded-full transition-colors"
-          title="Copy"
+          onClick={onVoiceCall}
+          className="hover:text-blue-500 transition"
         >
-          <Copy size={20} />
+          <FiPhone size={20} />
         </button>
 
         <button
-          onClick={onEdit}
-          className="hover:bg-blue-700 p-1 rounded-full transition-colors"
-          title="Edit"
+          onClick={onVideoCall}
+          className="hover:text-blue-500 transition"
         >
-          <Edit2 size={20} />
+          <FiVideo size={20} />
         </button>
 
-        <button
-          onClick={onDelete}
-          className="hover:bg-blue-700 p-1 rounded-full transition-colors"
-          title="Delete"
-        >
-          <Trash2 size={20} />
-        </button>
-
-        <button
-          onClick={onReply}
-          className="hover:bg-blue-700 p-1 rounded-full transition-colors"
-          title="Reply"
-        >
-          <MessageSquare size={20} />
-        </button>
-
-        <button
-          onClick={onForward}
-          className="hover:bg-blue-700 p-1 rounded-full transition-colors"
-          title="Forward"
-        >
-          <Share2 size={20} />
-        </button>
-
-        <button
-          onClick={onPin}
-          className="hover:bg-blue-700 p-1 rounded-full transition-colors"
-          title="Pin"
-        >
-          <Pin size={20} />
-        </button>
-
-        <button
-          onClick={onCancel}
-          className="hover:bg-blue-700 p-1 rounded-full transition-colors"
-          title="Close"
-        >
-          <X size={20} />
+        <button className="hover:text-blue-500 transition">
+          <FiMoreVertical size={20} />
         </button>
       </div>
-    </div>
+    </motion.div>
   );
 }
