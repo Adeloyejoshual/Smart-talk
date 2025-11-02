@@ -1,7 +1,7 @@
 // src/components/MessageActionsMenu.jsx
 import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { FiCopy, FiEdit, FiTrash2, FiMessageCircle, FiShare2, FiX, FiThumbtack } from "react-icons/fi";
+import { FiCopy, FiEdit, FiTrash2, FiMessageCircle, FiShare2, FiX, FiMapPin } from "react-icons/fi";
 
 export default function MessageActionsMenu({
   visible,
