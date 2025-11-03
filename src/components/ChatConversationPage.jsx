@@ -1,7 +1,14 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp } from "firebase/firestore";
-import { db, auth } from "../../firebaseConfig";
+import {
+  collection,
+  query,
+  orderBy,
+  onSnapshot,
+  addDoc,
+  serverTimestamp,
+} from "firebase/firestore";
+import { db, auth } from "../firebaseConfig";
 
 import HeaderActionsBar from "./HeaderActionsBar";
 import MessageBubble from "./MessageBubble";
@@ -17,21 +24,25 @@ export default function ChatConversationPage() {
   const [showEmoji, setShowEmoji] = useState(false);
   const messagesEndRef = useRef(null);
 
-  // Fetch messages live
+  // 🔹 Fetch messages in real-time
   useEffect(() => {
     if (!chatId) return;
-    const q = query(collection(db, "chats", chatId, "messages"), orderBy("timestamp"));
+    const q = query(
+      collection(db, "chats", chatId, "messages"),
+      orderBy("timestamp")
+    );
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setMessages(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
     });
     return () => unsubscribe();
   }, [chatId]);
 
-  // Auto scroll down when new message arrives
+  // 🔹 Scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // 🔹 Send message
   const handleSend = async () => {
     if (!messageText.trim()) return;
     await addDoc(collection(db, "chats", chatId, "messages"), {
@@ -42,13 +53,14 @@ export default function ChatConversationPage() {
     setMessageText("");
   };
 
+  // 🔹 Handle emoji select
   const handleEmojiSelect = (emojiData) => {
     setMessageText((prev) => prev + emojiData.emoji);
   };
 
   return (
     <div className="flex flex-col h-screen bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-900 dark:to-gray-800">
-      {/* Header pinned to top */}
+      {/* 🧭 Header pinned to top */}
       <div className="sticky top-0 z-50 bg-white dark:bg-gray-900 shadow-sm">
         <HeaderActionsBar
           contactName="Kude"
@@ -59,7 +71,7 @@ export default function ChatConversationPage() {
         />
       </div>
 
-      {/* Scrollable chat area */}
+      {/* 💬 Scrollable chat area */}
       <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700">
         {messages.map((msg) => (
           <MessageBubble key={msg.id} message={msg} />
@@ -70,7 +82,7 @@ export default function ChatConversationPage() {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input bar pinned to bottom */}
+      {/* ✍️ Input bar pinned to bottom */}
       <div className="sticky bottom-0 z-50 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 px-3 py-2 flex items-center gap-2">
         <button
           onClick={() => setShowEmoji(!showEmoji)}
