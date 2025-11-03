@@ -1,47 +1,61 @@
 import React from "react";
-import { useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
 import { FiArrowLeft, FiPhone, FiVideo } from "react-icons/fi";
 
-export default function HeaderActionsBar({ user, onVoiceCall, onVideoCall }) {
-  const navigate = useNavigate();
-
+export default function HeaderActionsBar({
+  contactName = "Unknown",
+  contactStatus = "Online",
+  onBack,
+  onCall,
+  onVideo,
+}) {
   return (
-    <div className="flex items-center justify-between px-3 py-2 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm">
+    <motion.div
+      className="flex items-center justify-between px-3 py-2 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800"
+      initial={{ opacity: 0, y: -15 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25 }}
+    >
       {/* ← Back + Avatar + Name */}
       <div className="flex items-center gap-3">
         <button
-          onClick={() => navigate(-1)}
-          className="text-gray-700 dark:text-gray-200 text-xl"
+          onClick={onBack}
+          className="text-gray-600 dark:text-gray-300 hover:text-blue-500"
         >
-          <FiArrowLeft />
+          <FiArrowLeft size={22} />
         </button>
 
-        <div className="flex items-center gap-2">
-          <img
-            src={user?.photoURL || "/default-avatar.png"}
-            alt="Profile"
-            className="w-10 h-10 rounded-full object-cover"
-          />
-          <div>
-            <h2 className="font-semibold text-gray-900 dark:text-gray-100">
-              {user?.name || "User"}
-            </h2>
-            <p className="text-xs text-green-500">
-              {user?.isOnline ? "Online" : "Offline"}
-            </p>
-          </div>
+        {/* Avatar */}
+        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white font-bold shadow-sm">
+          {contactName[0]?.toUpperCase()}
+        </div>
+
+        {/* Name + Status */}
+        <div className="flex flex-col leading-tight">
+          <span className="text-gray-900 dark:text-white font-semibold text-[15px]">
+            {contactName}
+          </span>
+          <span className="text-gray-500 dark:text-gray-400 text-sm">
+            {contactStatus}
+          </span>
         </div>
       </div>
 
-      {/* 📞 🎥 Buttons */}
-      <div className="flex items-center gap-4 text-sky-500 text-xl">
-        <button onClick={onVoiceCall}>
-          <FiPhone />
+      {/* 📞 🎥 Icons */}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={onCall}
+          className="text-gray-600 dark:text-gray-300 hover:text-blue-500"
+        >
+          <FiPhone size={20} />
         </button>
-        <button onClick={onVideoCall}>
-          <FiVideo />
+        <button
+          onClick={onVideo}
+          className="text-gray-600 dark:text-gray-300 hover:text-blue-500"
+        >
+          <FiVideo size={22} />
         </button>
       </div>
-    </div>
+    </motion.div>
   );
 }
