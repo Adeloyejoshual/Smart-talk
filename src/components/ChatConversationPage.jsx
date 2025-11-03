@@ -1,117 +1,133 @@
-import React, { useEffect, useState, useRef } from "react";
+// src/components/ChatConversationPage.jsx
+import React, { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { db, auth } from "../firebaseConfig";
 import {
   collection,
   query,
   orderBy,
   onSnapshot,
+  doc,
+  getDoc,
   addDoc,
   serverTimestamp,
 } from "firebase/firestore";
-import { db, auth } from "../firebaseConfig";
-
-import HeaderActionsBar from "./HeaderActionsBar";
-import MessageBubble from "./MessageBubble";
-import TypingIndicator from "./TypingIndicator";
-import EmojiPicker from "emoji-picker-react";
+import { formatDate } from "../utils/formatDate";
 
 export default function ChatConversationPage() {
   const { chatId } = useParams();
-  const navigate = useNavigate();
   const [messages, setMessages] = useState([]);
-  const [messageText, setMessageText] = useState("");
-  const [isTyping, setIsTyping] = useState(false);
-  const [showEmoji, setShowEmoji] = useState(false);
-  const messagesEndRef = useRef(null);
+  const [chatUser, setChatUser] = useState(null);
+  const [newMessage, setNewMessage] = useState("");
+  const navigate = useNavigate();
+  const bottomRef = useRef(null);
 
-  // 🔹 Fetch messages in real-time
+  // Fetch messages
   useEffect(() => {
-    if (!chatId) return;
-    const q = query(
-      collection(db, "chats", chatId, "messages"),
-      orderBy("timestamp")
-    );
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setMessages(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+    const msgRef = collection(db, "chats", chatId, "messages");
+    const q = query(msgRef, orderBy("timestamp", "asc"));
+
+    const unsubscribe = onSnapshot(q, (snap) => {
+      setMessages(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
     });
-    return () => unsubscribe();
+
+    return unsubscribe;
   }, [chatId]);
 
-  // 🔹 Scroll to bottom when messages change
+  // Fetch user info
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    const fetchUser = async () => {
+      const chatRef = doc(db, "chats", chatId);
+      const chatSnap = await getDoc(chatRef);
+      if (chatSnap.exists()) {
+        const data = chatSnap.data();
+        const userId = data.users.find((u) => u !== auth.currentUser.uid);
+        const userRef = doc(db, "users", userId);
+        const userSnap = await getDoc(userRef);
+        if (userSnap.exists()) setChatUser(userSnap.data());
+      }
+    };
+    fetchUser();
+  }, [chatId]);
 
-  // 🔹 Send message
-  const handleSend = async () => {
-    if (!messageText.trim()) return;
-    await addDoc(collection(db, "chats", chatId, "messages"), {
-      text: messageText,
+  // Send message
+  const sendMessage = async (e) => {
+    e.preventDefault();
+    if (!newMessage.trim()) return;
+
+    const msgRef = collection(db, "chats", chatId, "messages");
+    await addDoc(msgRef, {
+      text: newMessage,
       senderId: auth.currentUser.uid,
       timestamp: serverTimestamp(),
     });
-    setMessageText("");
-  };
 
-  // 🔹 Handle emoji select
-  const handleEmojiSelect = (emojiData) => {
-    setMessageText((prev) => prev + emojiData.emoji);
+    setNewMessage("");
   };
 
   return (
-    <div className="flex flex-col h-screen bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-900 dark:to-gray-800">
-      {/* 🧭 Header pinned to top */}
-      <div className="sticky top-0 z-50 bg-white dark:bg-gray-900 shadow-sm">
-        <HeaderActionsBar
-          contactName="Kude"
-          contactStatus="Online"
-          onBack={() => navigate("/chat")}
-          onCall={() => console.log("Voice call")}
-          onVideo={() => console.log("Video call")}
-        />
+    <div className="flex flex-col h-screen bg-gray-100">
+      {/* 🧠 Header */}
+      <div className="flex items-center justify-between bg-white p-3 border-b border-gray-200 fixed top-0 left-0 right-0 z-10 shadow-sm">
+        <button onClick={() => navigate("/chat")} className="text-gray-600 font-bold text-xl">←</button>
+        <div className="flex flex-col items-center flex-1">
+          <p className="font-semibold">{chatUser?.name || "Loading..."}</p>
+          <p className="text-xs text-gray-500">
+            {chatUser?.isOnline ? "Online" : `last seen ${formatDate(chatUser?.lastSeen)}`}
+          </p>
+        </div>
+        <div className="flex gap-3">
+          <button>📞</button>
+          <button>🎥</button>
+        </div>
       </div>
 
-      {/* 💬 Scrollable chat area */}
-      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700">
-        {messages.map((msg) => (
-          <MessageBubble key={msg.id} message={msg} />
-        ))}
-
-        {isTyping && <TypingIndicator />}
-
-        <div ref={messagesEndRef} />
+      {/* 💬 Message area */}
+      <div className="flex-1 overflow-y-auto pt-[65px] pb-[70px] px-3 space-y-2">
+        {messages.map((msg) => {
+          const isMine = msg.senderId === auth.currentUser.uid;
+          return (
+            <div
+              key={msg.id}
+              className={`flex ${isMine ? "justify-end" : "justify-start"}`}
+            >
+              <div
+                className={`max-w-[75%] px-3 py-2 rounded-2xl shadow-sm ${
+                  isMine
+                    ? "bg-blue-500 text-white rounded-br-none"
+                    : "bg-white text-gray-800 rounded-bl-none"
+                }`}
+              >
+                <p className="text-sm break-words">{msg.text}</p>
+                <div className="text-[10px] text-gray-300 text-right mt-1">
+                  {formatDate(msg.timestamp)}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        <div ref={bottomRef} />
       </div>
 
-      {/* ✍️ Input bar pinned to bottom */}
-      <div className="sticky bottom-0 z-50 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 px-3 py-2 flex items-center gap-2">
-        <button
-          onClick={() => setShowEmoji(!showEmoji)}
-          className="text-gray-500 hover:text-yellow-500"
-        >
-          😀
-        </button>
-
-        {showEmoji && (
-          <div className="absolute bottom-16 left-3 z-50">
-            <EmojiPicker onEmojiClick={handleEmojiSelect} theme="dark" />
-          </div>
-        )}
-
+      {/* ✍️ Input box */}
+      <form
+        onSubmit={sendMessage}
+        className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-2 flex items-center gap-2"
+      >
         <input
-          type="text"
-          value={messageText}
-          onChange={(e) => setMessageText(e.target.value)}
+          value={newMessage}
+          onChange={(e) => setNewMessage(e.target.value)}
           placeholder="Message..."
-          className="flex-1 bg-transparent outline-none px-2 text-gray-900 dark:text-gray-100 placeholder-gray-400"
+          className="flex-1 border border-gray-300 rounded-full px-4 py-2 focus:outline-none focus:ring-1 focus:ring-blue-400"
         />
-
         <button
-          onClick={handleSend}
-          className="text-blue-500 font-semibold hover:text-blue-600"
+          type="submit"
+          className="bg-blue-500 text-white px-4 py-2 rounded-full"
         >
-          Send
+          ➤
         </button>
-      </div>
+      </form>
     </div>
   );
 }
