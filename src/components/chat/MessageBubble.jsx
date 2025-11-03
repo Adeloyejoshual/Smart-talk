@@ -1,144 +1,58 @@
-import React, { useState, useEffect } from "react";
-import { FaPlay, FaPause, FaFileAlt } from "react-icons/fa";
-import { FiCheck, FiCheckCircle } from "react-icons/fi";
+// src/components/chat/MessageBubble.jsx
+import React from "react";
+import { motion } from "framer-motion";
+import { format } from "date-fns";
 
-export default function MessageBubble({
-  message,
-  isOwn,
-  onLongPress,
-  onReply,
-}) {
-  const [pressTimer, setPressTimer] = useState(null);
-  const [audio, setAudio] = useState(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-
-  // 🎧 Handle audio play/pause
-  useEffect(() => {
-    if (message.type === "audio") {
-      const a = new Audio(message.content);
-      setAudio(a);
-      return () => a.pause();
-    }
-  }, [message]);
-
-  const handlePlay = () => {
-    if (audio) {
-      if (isPlaying) {
-        audio.pause();
-      } else {
-        audio.play();
-      }
-      setIsPlaying(!isPlaying);
-    }
-  };
-
-  // ⏱️ Long press detection
-  const handleTouchStart = () => {
-    const timer = setTimeout(() => onLongPress(message), 400);
-    setPressTimer(timer);
-  };
-
-  const handleTouchEnd = () => {
-    if (pressTimer) clearTimeout(pressTimer);
-  };
-
-  // 🕒 Timestamp formatting
-  const formatTime = (ts) => {
-    if (!ts?.seconds) return "";
-    const date = new Date(ts.seconds * 1000);
-    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  };
-
+export default function MessageBubble({ message, isOwn }) {
   return (
-    <div
-      onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
-      onMouseDown={handleTouchStart}
-      onMouseUp={handleTouchEnd}
-      onMouseLeave={handleTouchEnd}
-      className={`flex ${isOwn ? "justify-end" : "justify-start"} w-full`}
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className={`flex flex-col ${
+        isOwn ? "items-end" : "items-start"
+      } mb-3 px-2`}
     >
       <div
-        className={`relative max-w-[80%] p-2 rounded-2xl shadow-md ${
+        className={`relative rounded-2xl px-4 py-2 max-w-[75%] ${
           isOwn
-            ? "bg-sky-500 text-white rounded-br-none"
-            : "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-bl-none"
+            ? "bg-blue-600 text-white rounded-br-none"
+            : "bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-bl-none"
         }`}
       >
-        {/* 💬 Reply preview */}
-        {message.replyTo && (
-          <div
-            className={`text-xs italic mb-1 border-l-2 pl-2 ${
-              isOwn ? "border-white" : "border-sky-400"
+        {/* 📨 Forwarded label */}
+        {message.forwarded && (
+          <p
+            className={`text-xs mb-1 font-medium ${
+              isOwn ? "text-blue-100" : "text-gray-500"
             }`}
           >
-            Replying to: {message.replyTo.slice(0, 25)}...
-          </div>
+            Forwarded
+          </p>
         )}
 
-        {/* 📄 Message types */}
-        {message.type === "text" && <p>{message.content}</p>}
+        {/* 📝 Message text */}
+        {message.text && <p className="whitespace-pre-wrap">{message.text}</p>}
 
-        {message.type === "image" && (
+        {/* 🖼️ Image or video preview */}
+        {message.imageUrl && (
           <img
-            src={message.content}
-            alt="image"
-            className="rounded-xl max-h-60 object-cover cursor-pointer mt-1"
-            onClick={() => window.open(message.content, "_blank")}
+            src={message.imageUrl}
+            alt="Media"
+            className="rounded-lg mt-2 max-h-60 object-cover"
           />
         )}
 
-        {message.type === "video" && (
-          <video
-            src={message.content}
-            controls
-            className="rounded-xl max-h-64 mt-1"
-          />
-        )}
-
-        {message.type === "audio" && (
-          <button
-            onClick={handlePlay}
-            className="flex items-center gap-2 bg-white/10 rounded-lg p-2"
-          >
-            {isPlaying ? (
-              <FaPause className="text-lg" />
-            ) : (
-              <FaPlay className="text-lg" />
-            )}
-            <span className="text-sm">Audio</span>
-          </button>
-        )}
-
-        {message.type === "file" && (
-          <a
-            href={message.content}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 p-2 bg-white/10 rounded-lg"
-          >
-            <FaFileAlt />
-            <span className="truncate text-sm">{message.fileName}</span>
-          </a>
-        )}
-
-        {/* ✏️ Edited label */}
-        {message.isEdited && (
-          <span className="text-[10px] opacity-70 ml-1">(edited)</span>
-        )}
-
-        {/* 🕒 Time + tick */}
-        <div
-          className={`text-[10px] mt-1 flex items-center justify-end ${
-            isOwn ? "text-white/80" : "text-gray-400"
+        {/* ⏰ Timestamp */}
+        <span
+          className={`absolute bottom-1 right-3 text-[10px] ${
+            isOwn ? "text-blue-100" : "text-gray-500"
           }`}
         >
-          {formatTime(message.createdAt)}
-          {isOwn && (
-            <FiCheckCircle className="ml-1 text-xs text-white/70 dark:text-sky-400" />
-          )}
-        </div>
+          {message.timestamp
+            ? format(message.timestamp.toDate(), "h:mm a")
+            : ""}
+        </span>
       </div>
-    </div>
+    </motion.div>
   );
 }
