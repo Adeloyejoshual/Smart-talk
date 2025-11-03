@@ -1,110 +1,135 @@
 // src/components/Chat/ForwardPage.jsx
 import React, { useEffect, useState } from "react";
-import { collection, getDocs, addDoc, serverTimestamp } from "firebase/firestore";
+import { useLocation, useNavigate } from "react-router-dom";
+import { collection, query, where, getDocs, addDoc, serverTimestamp } from "firebase/firestore";
 import { db, auth } from "../../firebaseConfig";
-import { useNavigate, useParams } from "react-router-dom";
-import { motion } from "framer-motion";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Send } from "lucide-react";
 
 export default function ForwardPage() {
-  const { messageId } = useParams();
   const navigate = useNavigate();
-  const [messageData, setMessageData] = useState(null);
-  const [users, setUsers] = useState([]);
+  const location = useLocation();
+  const messageData = location.state?.messageData;
 
-  // 🧩 Load all users
+  const [chats, setChats] = useState([]);
+  const [selectedChats, setSelectedChats] = useState([]);
+  const [sending, setSending] = useState(false);
+
+  // Fetch user's chat list
   useEffect(() => {
-    const fetchUsers = async () => {
-      const querySnapshot = await getDocs(collection(db, "users"));
-      const userList = [];
-      querySnapshot.forEach((doc) => {
-        if (doc.id !== auth.currentUser?.uid) {
-          userList.push({ id: doc.id, ...doc.data() });
-        }
-      });
-      setUsers(userList);
+    const fetchChats = async () => {
+      try {
+        const q = query(
+          collection(db, "chats"),
+          where("participants", "array-contains", auth.currentUser.uid)
+        );
+        const snapshot = await getDocs(q);
+        const chatList = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+        setChats(chatList);
+      } catch (err) {
+        console.error("Error fetching chats:", err);
+      }
     };
-    fetchUsers();
+
+    fetchChats();
   }, []);
 
-  // 🧩 Load forwarded message details (optional)
-  useEffect(() => {
-    // You could fetch from Firestore if you want full content
-    setMessageData({
-      id: messageId,
-      text: "Sample forwarded message",
-      type: "text",
-    });
-  }, [messageId]);
+  const handleSelectChat = (chatId) => {
+    setSelectedChats((prev) =>
+      prev.includes(chatId)
+        ? prev.filter((id) => id !== chatId)
+        : [...prev, chatId]
+    );
+  };
 
-  const handleForward = async (recipientId) => {
-    if (!messageData) return;
+  const handleForward = async () => {
+    if (!messageData || selectedChats.length === 0) return;
+    setSending(true);
 
-    const chatId =
-      [auth.currentUser?.uid, recipientId].sort().join("_"); // shared chat room
+    try {
+      await Promise.all(
+        selectedChats.map(async (chatId) => {
+          await addDoc(collection(db, "chats", chatId, "messages"), {
+            text: messageData.text || "",
+            imageUrl: messageData.imageUrl || null,
+            senderId: auth.currentUser.uid,
+            forwarded: true,
+            originalSender: messageData.senderId,
+            timestamp: serverTimestamp(),
+          });
 
-    await addDoc(collection(db, "chats", chatId, "messages"), {
-      senderId: auth.currentUser?.uid,
-      text: messageData.text,
-      type: messageData.type,
-      isForwarded: true,
-      createdAt: serverTimestamp(),
-    });
+          await addDoc(collection(db, "chats", chatId, "recentMessages"), {
+            text: messageData.text || "Forwarded message",
+            senderId: auth.currentUser.uid,
+            timestamp: serverTimestamp(),
+          });
+        })
+      );
 
-    navigate(`/chat/${chatId}`);
+      navigate(-1); // go back after sending
+    } catch (err) {
+      console.error("Error forwarding message:", err);
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
-    <div className="h-screen flex flex-col bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+    <div className="flex flex-col h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
       {/* Header */}
-      <div className="flex items-center px-4 py-3 bg-sky-700 text-white shadow-md">
-        <button onClick={() => navigate(-1)} className="mr-3">
-          <ArrowLeft size={24} />
-        </button>
-        <h2 className="text-lg font-semibold">Forward Message</h2>
+      <div className="flex items-center justify-between px-4 py-3 border-b dark:border-gray-700 bg-white dark:bg-gray-800 sticky top-0 z-10">
+        <div className="flex items-center gap-3">
+          <button onClick={() => navigate(-1)}>
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div>
+            <h1 className="font-semibold text-lg">Forward Message</h1>
+            <p className="text-sm text-gray-500">
+              {messageData?.text || "Media message"}
+            </p>
+          </div>
+        </div>
+        {selectedChats.length > 0 && (
+          <button
+            onClick={handleForward}
+            disabled={sending}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-full ${
+              sending
+                ? "bg-gray-400"
+                : "bg-blue-600 hover:bg-blue-700 text-white"
+            } transition`}
+          >
+            <Send className="w-4 h-4" />
+            {sending ? "Sending..." : "Send"}
+          </button>
+        )}
       </div>
 
-      {/* Forward Preview */}
-      {messageData && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="m-4 p-3 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700"
-        >
-          <p className="text-sm text-gray-700 dark:text-gray-200">
-            {messageData.text}
-          </p>
-          <span className="text-xs text-gray-400 mt-1 block">Forwarding...</span>
-        </motion.div>
-      )}
-
-      {/* Users List */}
-      <div className="flex-1 overflow-y-auto px-4 pb-6">
-        <h3 className="text-sm font-semibold text-gray-500 mb-2">
-          Send to:
-        </h3>
-        <div className="space-y-3">
-          {users.map((u) => (
-            <motion.button
-              whileTap={{ scale: 0.98 }}
-              key={u.id}
-              onClick={() => handleForward(u.id)}
-              className="flex items-center gap-3 w-full bg-white dark:bg-gray-800 rounded-xl p-3 hover:bg-sky-100 dark:hover:bg-sky-900 transition"
-            >
-              <img
-                src={u.photoURL || "/default-avatar.png"}
-                alt={u.name}
-                className="w-10 h-10 rounded-full object-cover"
-              />
-              <div className="flex-1 text-left">
-                <p className="font-medium text-gray-800 dark:text-gray-100">
-                  {u.name}
-                </p>
-                <p className="text-xs text-gray-500">{u.email}</p>
-              </div>
-            </motion.button>
-          ))}
-        </div>
+      {/* Chat List */}
+      <div className="flex-1 overflow-y-auto p-2">
+        {chats.map((chat) => (
+          <div
+            key={chat.id}
+            onClick={() => handleSelectChat(chat.id)}
+            className={`flex items-center justify-between p-3 rounded-xl cursor-pointer ${
+              selectedChats.includes(chat.id)
+                ? "bg-blue-100 dark:bg-blue-800"
+                : "hover:bg-gray-200 dark:hover:bg-gray-700"
+            } transition`}
+          >
+            <div>
+              <h2 className="font-medium">{chat.chatName || "Unnamed Chat"}</h2>
+              <p className="text-sm text-gray-500">
+                {chat.lastMessage || "No messages yet"}
+              </p>
+            </div>
+            {selectedChats.includes(chat.id) && (
+              <div className="w-3 h-3 rounded-full bg-blue-600"></div>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );
