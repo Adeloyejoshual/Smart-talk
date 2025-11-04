@@ -2,8 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "./context/ThemeContext";
-import { auth, db } from "./firebaseConfig";
-import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { auth, setUserPresence } from "./firebaseConfig";
 
 import HomePage from "./components/HomePage";
 import ChatPage from "./components/ChatPage";
@@ -19,42 +18,23 @@ export default function App() {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(async (u) => {
+    const unsubscribe = auth.onAuthStateChanged((u) => {
       setUser(u);
       setTimeout(() => setCheckingAuth(false), 800);
 
       if (u) {
-        const userRef = doc(db, "users", u.uid);
-
-        const setOnline = async () =>
-          await updateDoc(userRef, {
-            isOnline: true,
-            lastSeen: serverTimestamp(),
-          });
-
-        const setOffline = async () =>
-          await updateDoc(userRef, {
-            isOnline: false,
-            lastSeen: serverTimestamp(),
-          });
-
-        await setOnline();
-
-        window.addEventListener("beforeunload", setOffline);
-        const interval = setInterval(setOnline, 30000);
-
-        return () => {
-          setOffline();
-          clearInterval(interval);
-          window.removeEventListener("beforeunload", setOffline);
-        };
+        // Automatically handle online/offline + lastSeen
+        const cleanupPresence = setUserPresence(u.uid);
+        return () => cleanupPresence && cleanupPresence();
       }
     });
 
     return () => unsubscribe();
   }, []);
 
-  // 🟢 Step 1: Show SmartTalk splash while checking auth
+  /* -----------------------------
+     🟢 Splash Screen while loading
+  ------------------------------ */
   if (checkingAuth) {
     return (
       <div
@@ -65,7 +45,6 @@ export default function App() {
           alignItems: "center",
           background: "#000",
           flexDirection: "column",
-          gap: "10px",
           color: "#fff",
         }}
       >
@@ -115,7 +94,9 @@ export default function App() {
     );
   }
 
-  // 🟢 Step 2: Go straight to chat if logged in, else to login
+  /* -----------------------------
+     🟢 Routes
+  ------------------------------ */
   return (
     <ThemeProvider>
       <Router>
