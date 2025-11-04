@@ -18,7 +18,9 @@ import {
 } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
-// 🔥 Firebase Config (use your .env values)
+/* ---------------------------------
+ 🔥 Firebase Config (.env values)
+---------------------------------- */
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -28,27 +30,27 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-// 🚀 Initialize Firebase
+/* ---------------------------------
+ 🚀 Initialize Firebase
+---------------------------------- */
 const app = initializeApp(firebaseConfig);
-
-// 📦 Firebase Services
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
 
-/* --------------------------
- 🧍 User Auth Helpers
---------------------------- */
+/* ---------------------------------
+ 👤 User Authentication Helpers
+---------------------------------- */
 
-// 🆕 Register new user with name, email, and password
+// 🆕 Register New User
 export const registerUser = async (name, email, password) => {
   const userCredential = await createUserWithEmailAndPassword(auth, email, password);
   const user = userCredential.user;
 
-  // Update Auth profile
+  // Update Firebase Auth profile
   await updateProfile(user, { displayName: name });
 
-  // Create Firestore user document
+  // Create Firestore user profile
   await setDoc(doc(db, "users", user.uid), {
     uid: user.uid,
     displayName: name,
@@ -62,21 +64,35 @@ export const registerUser = async (name, email, password) => {
   return user;
 };
 
-// 🔑 Login existing user
+// 🔑 Login User
 export const loginUser = async (email, password) => {
   const userCredential = await signInWithEmailAndPassword(auth, email, password);
   const user = userCredential.user;
 
-  // Update online status
-  await updateDoc(doc(db, "users", user.uid), {
-    isOnline: true,
-    lastSeen: serverTimestamp(),
-  });
+  // Ensure user document exists
+  const userRef = doc(db, "users", user.uid);
+  const snap = await getDoc(userRef);
+  if (!snap.exists()) {
+    await setDoc(userRef, {
+      uid: user.uid,
+      displayName: user.displayName || "New User",
+      email: user.email,
+      photoURL: user.photoURL || null,
+      isOnline: true,
+      lastSeen: serverTimestamp(),
+      createdAt: serverTimestamp(),
+    });
+  } else {
+    await updateDoc(userRef, {
+      isOnline: true,
+      lastSeen: serverTimestamp(),
+    });
+  }
 
   return user;
 };
 
-// 🚪 Logout and set offline
+// 🚪 Logout
 export const logout = async () => {
   const user = auth.currentUser;
   if (user) {
@@ -88,18 +104,57 @@ export const logout = async () => {
   await signOut(auth);
 };
 
-// 👀 Listen for auth changes (real-time user state)
+// 👀 Auth State Listener (real-time)
 export const onUserStateChange = (callback) => {
   return onAuthStateChanged(auth, async (user) => {
     if (user) {
       const userRef = doc(db, "users", user.uid);
       const userSnap = await getDoc(userRef);
-      if (userSnap.exists()) callback({ ...userSnap.data(), id: userSnap.id });
-      else callback(null);
+
+      if (userSnap.exists()) {
+        callback({ ...userSnap.data(), id: userSnap.id });
+      } else {
+        callback(null);
+      }
     } else {
       callback(null);
     }
   });
+};
+
+/* ---------------------------------
+ 🌍 Auto Online/Offline Sync
+---------------------------------- */
+export const setUserPresence = (uid) => {
+  const userRef = doc(db, "users", uid);
+  const goOnline = async () => {
+    await updateDoc(userRef, {
+      isOnline: true,
+      lastSeen: serverTimestamp(),
+    });
+  };
+  const goOffline = async () => {
+    await updateDoc(userRef, {
+      isOnline: false,
+      lastSeen: serverTimestamp(),
+    });
+  };
+
+  // Update on tab open/close
+  goOnline();
+  window.addEventListener("beforeunload", goOffline);
+  window.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") goOffline();
+    else goOnline();
+  });
+
+  // Heartbeat to refresh timestamp
+  const interval = setInterval(goOnline, 30000);
+
+  return () => {
+    clearInterval(interval);
+    window.removeEventListener("beforeunload", goOffline);
+  };
 };
 
 export { app };
