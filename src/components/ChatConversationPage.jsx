@@ -28,12 +28,14 @@ import { auth, db, storage } from "../firebaseConfig";
 import { ThemeContext } from "../context/ThemeContext";
 
 /**
- * ChatConversationPage.jsx
- * - Full chat view with uploads/downloads and now:
- * - Long-press to open WhatsApp-style reaction bar (6 emojis + +)
- * - Reaction stored in Firestore under `reactions.{uid}`
- * - Action row on long-press: Copy, Edit (mine), Delete, Reply, Forward, Pin, Close
- * - Multi-select: repeated long-press toggles message selection; top bar shows count + quick actions
+ * ChatConversationPage.jsx (single-file)
+ * - Professional mobile-first chat conversation screen
+ * - ReactionBar (5 visible emojis + + to open full picker)
+ * - Full emoji picker modal (overlay)
+ * - Sticky header (shows online / typing / lastSeen) and sticky input
+ * - Message grouping by day
+ *
+ * NOTE: This file keeps your existing Firestore structure and helpers.
  */
 
 // ---------- helpers ----------
@@ -51,8 +53,14 @@ const dayLabel = (ts) => {
   if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: d.getFullYear() !== now.getFullYear() ? "numeric" : undefined });
 };
-const DEFAULT_REACTIONS = ["❤️","😂","😮","😢","👍","👎"];
-const EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "👏", "🔥", "😅"];
+
+// default reaction set shown inline (5 visible)
+const INLINE_REACTIONS = ["❤️", "😂", "👍", "😮", "😢"];
+// extended emoji set for full picker
+const EXTENDED_EMOJIS = [
+  "❤️","😂","👍","😮","😢","👎","👏","🔥","😅","🤩","😍",
+  "😎","🙂","🙃","😉","🤔","🤨","🤗","🤯","🥳","🙏","💪"
+];
 
 // ---------- component ----------
 export default function ChatConversationPage() {
@@ -65,7 +73,7 @@ export default function ChatConversationPage() {
   const [friendInfo, setFriendInfo] = useState(null);
 
   const [messages, setMessages] = useState([]);
-  const [limitCount, setLimitCount] = useState(50);
+  const [limitCount] = useState(50);
 
   // UI states
   const [selectedFiles, setSelectedFiles] = useState([]);
@@ -80,9 +88,9 @@ export default function ChatConversationPage() {
   const [friendTyping, setFriendTyping] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [reportText, setReportText] = useState("");
-  const [selectedMessageId, setSelectedMessageId] = useState(null); // single-message UI anchor
-  const [selectedMessageIds, setSelectedMessageIds] = useState([]); // multi-select array
-  const [reactionFor, setReactionFor] = useState(null); // message id that shows reaction bar
+  const [selectedMessageId, setSelectedMessageId] = useState(null);
+  const [selectedMessageIds, setSelectedMessageIds] = useState([]);
+  const [reactionFor, setReactionFor] = useState(null); // which message shows ReactionBar
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [emojiPickerFor, setEmojiPickerFor] = useState(null);
 
@@ -128,7 +136,7 @@ export default function ChatConversationPage() {
     return () => { unsubFriend && unsubFriend(); unsubChat && unsubChat(); };
   }, [chatId, myUid, navigate]);
 
-  // ---------- messages realtime (paginated) ----------
+  // ---------- messages realtime ----------
   useEffect(() => {
     if (!chatId) return;
     const q = query(collection(db, "chats", chatId, "messages"), orderBy("createdAt", "desc"), fsLimit(limitCount));
@@ -136,7 +144,7 @@ export default function ChatConversationPage() {
       const docs = snap.docs.map(d => ({ id: d.id, ...d.data() })).reverse();
       setMessages(docs);
 
-      // mark delivered for incoming messages if needed
+      // mark delivered for incoming messages
       docs.forEach(m => {
         if (m.sender !== myUid && m.status === "sent") {
           const mRef = doc(db, "chats", chatId, "messages", m.id);
@@ -144,10 +152,9 @@ export default function ChatConversationPage() {
         }
       });
 
-      // for any message that has fileURL but not downloaded locally, start the auto-download
+      // schedule downloads
       docs.forEach(m => {
         if ((m.type === "image" || m.type === "file" || m.type === "audio") && m.fileURL) {
-          // if not present in downloadMap, start download
           setDownloadMap(prev => {
             if (prev[m.id] && (prev[m.id].status === "done" || prev[m.id].status === "downloading")) return prev;
             return { ...prev, [m.id]: { status: "queued", progress: 0, blobUrl: null } };
@@ -162,7 +169,7 @@ export default function ChatConversationPage() {
     return () => unsub();
   }, [chatId, limitCount, myUid]);
 
-  // ---------- watch downloadMap to start downloads ----------
+  // ---------- download watcher ----------
   useEffect(() => {
     Object.entries(downloadMap).forEach(([msgId, info]) => {
       if (info.status === "queued") {
@@ -191,11 +198,10 @@ export default function ChatConversationPage() {
 
   const scrollToBottom = (smooth = true) => endRef.current?.scrollIntoView({ behavior: smooth ? "smooth" : "auto" });
 
-  // ---------- ATTACHMENTS & UPLOAD FLOW ----------
+  // ---------- files upload ----------
   const onFilesSelected = (e) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
-    // create local preview URLs
     const newPreviews = files.map(f => f.type.startsWith("image/") ? URL.createObjectURL(f) : null);
     setSelectedFiles(prev => [...prev, ...files]);
     setPreviews(prev => [...prev, ...newPreviews]);
@@ -247,7 +253,7 @@ export default function ChatConversationPage() {
     }
   };
 
-  // ---------- RECEIVER: download ----------
+  // ---------- download ----------
   const startDownloadForMessage = async (messageId) => {
     try {
       const mRef = doc(db, "chats", chatId, "messages", messageId);
@@ -371,7 +377,6 @@ export default function ChatConversationPage() {
     if (!window.confirm("Delete message?")) return;
     try {
       await deleteDoc(doc(db, "chats", chatId, "messages", messageId));
-      // clear selection if necessary
       setSelectedMessageIds(prev => prev.filter(id => id !== messageId));
       setSelectedMessageId(null);
     } catch (err) {
@@ -417,7 +422,6 @@ export default function ChatConversationPage() {
         // set reaction
         await updateDoc(mRef, { [`reactions.${myUid}`]: emoji });
       }
-      // close reaction UI for this message
       setReactionFor(null);
       setSelectedMessageId(null);
     } catch (err) {
@@ -431,7 +435,6 @@ export default function ChatConversationPage() {
       const txt = m.type === "text" ? (m.text || "") : (m.fileName || "");
       await navigator.clipboard.writeText(txt);
       alert("Copied to clipboard");
-      // close UI
       setReactionFor(null);
     } catch (err) {
       console.error("copy failed", err);
@@ -460,7 +463,6 @@ export default function ChatConversationPage() {
   };
 
   const forwardMessage = (m) => {
-    // placeholder: navigate to a Forward screen; you should implement actual forward flow
     navigate(`/forward/${m.id}`, { state: { message: m } });
     setReactionFor(null);
     setSelectedMessageId(null);
@@ -492,7 +494,118 @@ export default function ChatConversationPage() {
     setSelectedMessageId(null);
   };
 
-  // ---------- helper UI renderers ----------
+  // ---------- small UI components (inline) ----------
+
+  // ReactionBar: shows 5 inline reactions and a plus button
+  const ReactionBar = ({ onPick, onMore }) => {
+    return (
+      <div
+        style={{
+          display: "flex",
+          gap: 10,
+          padding: 8,
+          borderRadius: 24,
+          background: isDark ? "#0f0f10" : "#fff",
+          boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+          alignItems: "center",
+        }}
+        role="toolbar"
+        aria-label="Reactions"
+      >
+        {INLINE_REACTIONS.map((r) => (
+          <button
+            key={r}
+            onClick={() => onPick(r)}
+            style={{
+              fontSize: 20,
+              width: 40,
+              height: 40,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: 12,
+              border: "none",
+              background: "transparent",
+              cursor: "pointer",
+            }}
+            aria-label={`React ${r}`}
+          >
+            {r}
+          </button>
+        ))}
+
+        <button
+          onClick={onMore}
+          style={{
+            fontSize: 18,
+            width: 40,
+            height: 40,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 12,
+            border: "none",
+            background: isDark ? "#1b1b1b" : "#f3f4f6",
+            cursor: "pointer",
+          }}
+          aria-label="More reactions"
+          title="More"
+        >
+          ＋
+        </button>
+      </div>
+    );
+  };
+
+  // AllEmojiPicker: modal overlay (grid) for full emoji selection
+  const AllEmojiPicker = ({ onPick, onClose }) => {
+    return (
+      <div style={{
+        position: "fixed", left: 0, right: 0, bottom: 0, top: 0,
+        background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "flex-end",
+        zIndex: 800
+      }}>
+        <div style={{
+          width: "100%", maxHeight: "60vh", borderTopLeftRadius: 14, borderTopRightRadius: 14,
+          background: isDark ? "#111" : "#fff", padding: 12, boxShadow: "0 -8px 30px rgba(0,0,0,0.3)", overflowY: "auto"
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <div style={{ fontWeight: 700 }}>Reactions</div>
+            <button onClick={onClose} style={{ border: "none", background: "transparent", cursor: "pointer", fontSize: 18 }}>✕</button>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 8 }}>
+            {EXTENDED_EMOJIS.map(e => (
+              <button key={e} onClick={() => { onPick(e); onClose(); }} style={{
+                padding: 12, fontSize: 20, borderRadius: 8, border: "none", background: "transparent", cursor: "pointer"
+              }}>
+                {e}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ marginTop: 10, textAlign: "right" }}>
+            <button onClick={onClose} style={{ padding: "8px 12px", borderRadius: 8, border: "none", background: "#ddd" }}>Close</button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Spinner small
+  function Spinner({ percent = 0 }) {
+    return (
+      <div style={{ width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <svg viewBox="0 0 36 36" style={{ width: 36, height: 36 }}>
+          <path d="M18 2.0845a15.9155 15.9155 0 1 0 0 31.831A15.9155 15.9155 0 1 0 18 2.0845" fill="none" stroke="#eee" strokeWidth="2" />
+          <path d="M18 2.0845a15.9155 15.9155 0 1 0 0 31.831" fill="none" stroke="#34B7F1" strokeWidth="2" strokeDasharray={`${percent},100`} strokeLinecap="round" />
+        </svg>
+        <div style={{ position: "absolute", fontSize: 10, color: "#fff", fontWeight: 700 }}>{percent}%</div>
+      </div>
+    );
+  }
+
+  // ---------- Message bubble ----------
   const MessageBubble = ({ m }) => {
     const mine = m.sender === myUid;
     const replySnippet = m.replyTo ? (m.replyTo.text || (m.replyTo.fileName || "media")) : null;
@@ -500,25 +613,21 @@ export default function ChatConversationPage() {
     const downloadInfo = downloadMap[m.id];
     const selected = selectedMessageIds.includes(m.id);
 
-    // long-press detection
+    // long-press detection for mobile / mouse
     const longPressRef = useRef(null);
     const onPointerDown = (e) => {
       e.preventDefault && e.preventDefault();
       longPressRef.current = setTimeout(() => {
-        // if nothing selected, set single selection and open actions
-        // toggle selection if already selected -> multi-select behavior
         toggleSelectMessage(m.id);
         setSelectedMessageId(m.id);
-        setReactionFor(m.id); // show reactions/action row
+        setReactionFor(m.id);
       }, 450);
     };
-    const onPointerUp = (e) => {
-      clearTimeout(longPressRef.current);
-    };
+    const onPointerUp = () => clearTimeout(longPressRef.current);
     const onPointerCancel = () => clearTimeout(longPressRef.current);
 
     return (
-      <div style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start", marginBottom: 12, paddingLeft: 6, paddingRight: 6 }}>
+      <div style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start", marginBottom: 12, paddingLeft: 8, paddingRight: 8 }}>
         <div
           onMouseDown={onPointerDown}
           onMouseUp={onPointerUp}
@@ -527,35 +636,29 @@ export default function ChatConversationPage() {
           onTouchEnd={onPointerUp}
           onTouchCancel={onPointerCancel}
           style={{
-            background: selected ? (isDark ? "#264653" : "#e6f0ff") : (mine ? (isDark ? "#0b84ff" : "#007bff") : (isDark ? "#222" : "#eee")),
+            background: selected ? (isDark ? "#263238" : "#e6f0ff") : (mine ? (isDark ? "#0b84ff" : "#007bff") : (isDark ? "#1b1b1b" : "#f1f3f5")),
             color: mine ? "#fff" : (isDark ? "#fff" : "#000"),
             padding: "10px 12px",
-            borderRadius: 14,
+            borderRadius: 16,
             maxWidth: "78%",
             wordBreak: "break-word",
             position: "relative",
             border: selected ? `2px solid ${isDark ? "#9ad3ff" : "#34B7F1"}` : "none",
-            cursor: "pointer"
+            cursor: "pointer",
           }}
         >
-          {/* reply preview */}
           {replySnippet && (
             <div style={{ marginBottom: 6, padding: "6px 8px", borderRadius: 8, background: isDark ? "#0f0f0f" : "#fff", color: isDark ? "#ddd" : "#333", fontSize: 12 }}>
               <span style={{ display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 220 }}>{replySnippet}</span>
             </div>
           )}
 
-          {/* content */}
-          {m.type === "text" && <div>{m.text}{m.edited ? " · edited" : ""}</div>}
+          {m.type === "text" && <div style={{ lineHeight: 1.35 }}>{m.text}{m.edited ? " · edited" : ""}</div>}
 
           {["image", "file", "audio", "video"].includes(m.type) && (
             <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 8 }}>
               {m.type === "image" ? (
-                <img
-                  src={displayUrl || m.fileURL || (m.previewUrl || "")}
-                  alt={m.fileName || "image"}
-                  style={{ width: 220, height: "auto", borderRadius: 8, filter: (downloadInfo && downloadInfo.status === "downloading") || (m.status === "uploading") ? "blur(6px)" : "none", transition: "filter .2s" }}
-                />
+                <img src={displayUrl || m.fileURL || (m.previewUrl || "")} alt={m.fileName || "image"} style={{ width: 220, height: "auto", borderRadius: 12, filter: (downloadInfo && downloadInfo.status === "downloading") || (m.status === "uploading") ? "blur(6px)" : "none", transition: "filter .2s" }} />
               ) : m.type === "video" ? (
                 <video controls src={displayUrl || m.fileURL} style={{ width: 220, borderRadius: 8 }} />
               ) : m.type === "audio" ? (
@@ -589,7 +692,7 @@ export default function ChatConversationPage() {
           )}
 
           {/* timestamp / status */}
-          <div style={{ fontSize: 11, textAlign: "right", marginTop: 6, opacity: 0.9 }}>
+          <div style={{ fontSize: 11, textAlign: "right", marginTop: 8, opacity: 0.9 }}>
             <span>{fmtTime(m.createdAt)}</span>
             {mine && <span style={{ marginLeft: 8 }}>{m.status === "uploading" ? "⌛" : m.status === "sent" ? "✔" : m.status === "delivered" ? "✔✔" : m.status === "seen" ? "✔✔" : ""}</span>}
           </div>
@@ -600,23 +703,20 @@ export default function ChatConversationPage() {
               {Object.values(m.reactions).slice(0, 3).join(" ")}
             </div>
           )}
-
         </div>
 
-        {/* reaction/action overlay for this message */}
+        {/* reaction/action overlay for this message (phone-friendly) */}
         {reactionFor === m.id && (
           <div style={{ position: "relative", width: "100%", display: "flex", justifyContent: mine ? "flex-end" : "flex-start", marginTop: 6 }}>
-            <div style={{ position: "absolute", top: -60, transform: "translateY(-100%)", left: mine ? "auto" : 0, right: mine ? 0 : "auto", display: "flex", flexDirection: "column", alignItems: mine ? "flex-end" : "flex-start" }}>
-              {/* reaction bar */}
-              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: 8, borderRadius: 20, background: isDark ? "#111" : "#fff", boxShadow: "0 6px 20px rgba(0,0,0,0.12)" }}>
-                {DEFAULT_REACTIONS.map(r => (
-                  <button key={r} onClick={() => applyReaction(m.id, r)} style={{ border: "none", background: "transparent", fontSize: 22, cursor: "pointer" }}>{r}</button>
-                ))}
-                <button onClick={() => { setShowEmojiPicker(true); setEmojiPickerFor(m.id); }} style={{ border: "none", background: "transparent", fontSize: 20, cursor: "pointer" }}>＋</button>
-              </div>
+            <div style={{ position: "absolute", top: -72, transform: "translateY(-100%)", left: mine ? "auto" : 8, right: mine ? 8 : "auto", display: "flex", flexDirection: "column", alignItems: mine ? "flex-end" : "flex-start", gap: 8 }}>
+              {/* ReactionBar (inline small set) */}
+              <ReactionBar
+                onPick={(r) => applyReaction(m.id, r)}
+                onMore={() => { setEmojiPickerFor(m.id); setShowEmojiPicker(true); }}
+              />
 
               {/* action row */}
-              <div style={{ display: "flex", gap: 8, marginTop: 8, background: isDark ? "#111" : "#fff", padding: 6, borderRadius: 10, boxShadow: "0 6px 20px rgba(0,0,0,0.08)" }}>
+              <div style={{ display: "flex", gap: 10, marginTop: 2, background: isDark ? "#0f0f0f" : "#fff", padding: 8, borderRadius: 12, boxShadow: "0 6px 20px rgba(0,0,0,0.08)" }}>
                 <button title="Copy" onClick={() => copyMessageText(m)} style={{ border: "none", background: "transparent", cursor: "pointer" }}>📋</button>
                 {mine && <button title="Edit" onClick={() => editMessage(m)} style={{ border: "none", background: "transparent", cursor: "pointer" }}>✏️</button>}
                 <button title="Delete" onClick={() => deleteMessage(m.id)} style={{ border: "none", background: "transparent", cursor: "pointer" }}>🗑️</button>
@@ -642,45 +742,14 @@ export default function ChatConversationPage() {
     grouped.push(m);
   });
 
-  // ---------- spinner ----------
-  function Spinner({ percent = 0 }) {
-    return (
-      <div style={{ width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <svg viewBox="0 0 36 36" style={{ width: 36, height: 36 }}>
-          <path d="M18 2.0845a15.9155 15.9155 0 1 0 0 31.831A15.9155 15.9155 0 1 0 18 2.0845" fill="none" stroke="#eee" strokeWidth="2" />
-          <path d="M18 2.0845a15.9155 15.9155 0 1 0 0 31.831" fill="none" stroke="#34B7F1" strokeWidth="2" strokeDasharray={`${percent},100`} strokeLinecap="round" />
-        </svg>
-        <div style={{ position: "absolute", fontSize: 10, color: "#fff", fontWeight: 700 }}>{percent}%</div>
-      </div>
-    );
-  }
-
-  // ---------- Emoji picker (simple built-in) ----------
-  const AllEmojiPicker = ({ onPick, onClose }) => {
-    // Small curated set to avoid massive list — replace with full picker if desired
-    const more = ["😀","😃","😄","😁","😆","😅","🤣","😊","🙂","🙃","😉","😍","🤩","😘","😎","🤔","🤨","😐","🤗","😇","🤯","😴","🤤","😪","🤒","🤕","🤢","🤮","🤧","🥳","🥺","🤝","👏","🙌","👍","👎","👊","✊","✌️","🤞","🤟","🤘","👋","👌","🙏","💪","🫶"];
-    return (
-      <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, top: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300 }}>
-        <div style={{ background: isDark ? "#222" : "#fff", padding: 12, borderRadius: 12, maxWidth: 540, width: "95%", boxShadow: "0 10px 40px rgba(0,0,0,0.4)" }}>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {more.map(e => <button key={e} onClick={() => { onPick(e); onClose(); }} style={{ fontSize: 22, padding: 8, borderRadius: 8, cursor: "pointer", border: "none", background: "transparent" }}>{e}</button>)}
-          </div>
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
-            <button onClick={onClose} style={{ padding: "8px 12px", borderRadius: 8, border: "none", cursor: "pointer", background: "#ddd" }}>Close</button>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  // ---------- top multi-select bar ----------
+  // ---------- multi-select top bar ----------
   const MultiSelectBar = () => {
     if (selectedMessageIds.length === 0) return null;
     return (
-      <div style={{ position: "fixed", top: 10, left: 0, right: 0, display: "flex", justifyContent: "center", zIndex: 400 }}>
-        <div style={{ background: isDark ? "#222" : "#fff", padding: 8, borderRadius: 10, display: "flex", gap: 10, alignItems: "center", boxShadow: "0 6px 20px rgba(0,0,0,0.12)" }}>
+      <div style={{ position: "fixed", top: 12, left: 12, right: 12, display: "flex", justifyContent: "center", zIndex: 900 }}>
+        <div style={{ background: isDark ? "#111" : "#fff", padding: 8, borderRadius: 12, display: "flex", gap: 12, alignItems: "center", boxShadow: "0 6px 20px rgba(0,0,0,0.12)" }}>
           <div style={{ fontWeight: 700 }}>{selectedMessageIds.length} selected</div>
-          <button onClick={() => { /* forward multiple */ navigate(`/forward/multiple`, { state: { ids: selectedMessageIds } }); }} style={{ border: "none", background: "transparent", cursor: "pointer" }}>📤 Forward</button>
+          <button onClick={() => navigate(`/forward/multiple`, { state: { ids: selectedMessageIds } })} style={{ border: "none", background: "transparent", cursor: "pointer" }}>📤 Forward</button>
           <button onClick={() => clearSelection()} style={{ border: "none", background: "transparent", cursor: "pointer" }}>❌ Clear</button>
         </div>
       </div>
@@ -690,55 +759,58 @@ export default function ChatConversationPage() {
   // ---------- UI ----------
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: wallpaper ? `url(${wallpaper}) center/cover no-repeat` : (isDark ? "#070707" : "#f5f5f5"), color: isDark ? "#fff" : "#000" }}>
-      {/* Multi-select top bar */}
       <MultiSelectBar />
 
-      {/* header */}
-      <div style={{ display: "flex", alignItems: "center", padding: 12, borderBottom: "1px solid #ccc", position: "sticky", top: 0, background: isDark ? "#111" : "#fff", zIndex: 30 }}>
+      {/* Header (sticky) */}
+      <header style={{ display: "flex", alignItems: "center", padding: 12, borderBottom: "1px solid rgba(0,0,0,0.06)", position: "sticky", top: 0, background: isDark ? "#0b0b0b" : "#fff", zIndex: 80 }}>
         <button onClick={() => navigate("/chat")} style={{ fontSize: 20, background: "transparent", border: "none", cursor: "pointer", marginRight: 10 }}>←</button>
-        <img src={friendInfo?.photoURL || "/default-avatar.png"} alt="avatar" style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover", marginRight: 12, cursor: "pointer" }} onClick={() => friendInfo && navigate(`/user-profile/${friendInfo.id}`)} />
-        <div>
-          <div style={{ fontWeight: 700 }}>{friendInfo?.displayName || chatInfo?.name || "Friend"}</div>
-          <div style={{ fontSize: 12, color: isDark ? "#bbb" : "#666" }}>{friendTyping ? "typing..." : (friendInfo?.isOnline ? "Online" : (friendInfo?.lastSeen ? (() => {
-            const ls = friendInfo.lastSeen;
-            if (!ls) return "Offline";
-            const ld = ls.toDate ? ls.toDate() : new Date(ls);
-            const diffMin = Math.floor((Date.now() - ld.getTime()) / 60000);
-            if (diffMin < 1) return "just now";
-            if (diffMin < 60) return `${diffMin}m ago`;
-            if (diffMin < 1440) return ld.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-            const yesterday = new Date(); yesterday.setDate(new Date().getDate() - 1);
-            if (ld.toDateString() === yesterday.toDateString()) return `Yesterday`;
-            return ld.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-          })() : "Offline"))}</div>
+        <img src={friendInfo?.photoURL || "/default-avatar.png"} alt="avatar" style={{ width: 48, height: 48, borderRadius: "50%", objectFit: "cover", marginRight: 12, cursor: "pointer" }} onClick={() => friendInfo && navigate(`/user-profile/${friendInfo.id}`)} />
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 16, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{friendInfo?.displayName || chatInfo?.name || "Friend"}</div>
+          <div style={{ fontSize: 12, color: isDark ? "#bbb" : "#666" }}>
+            {friendTyping ? "typing..." : (friendInfo?.isOnline ? "Online" : (friendInfo?.lastSeen ? (() => {
+              const ls = friendInfo.lastSeen;
+              if (!ls) return "Offline";
+              const ld = ls.toDate ? ls.toDate() : new Date(ls);
+              const diffMin = Math.floor((Date.now() - ld.getTime()) / 60000);
+              if (diffMin < 1) return "just now";
+              if (diffMin < 60) return `${diffMin}m ago`;
+              if (diffMin < 1440) return ld.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+              const yesterday = new Date(); yesterday.setDate(new Date().getDate() - 1);
+              if (ld.toDateString() === yesterday.toDateString()) return `Yesterday`;
+              return ld.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+            })() : "Offline"))}
+          </div>
         </div>
 
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
           <button onClick={() => navigate(`/voice-call/${chatId}`)} style={{ fontSize: 18, background: "transparent", border: "none", cursor: "pointer" }}>📞</button>
           <button onClick={() => navigate(`/video-call/${chatId}`)} style={{ fontSize: 18, background: "transparent", border: "none", cursor: "pointer" }}>🎥</button>
 
           <div style={{ position: "relative" }}>
             <button onClick={() => setMenuOpen(s => !s)} style={{ fontSize: 18, background: "transparent", border: "none", cursor: "pointer" }}>⋮</button>
             {menuOpen && (
-              <div style={{ position: "absolute", right: 0, top: 28, background: isDark ? "#222" : "#fff", border: "1px solid #ccc", borderRadius: 8, boxShadow: "0 6px 20px rgba(0,0,0,0.12)", zIndex: 50 }}>
-                <button onClick={() => { setMenuOpen(false); navigate(`/user-profile/${friendInfo?.id}`); }} style={{ display: "block", padding: "8px 14px", width: 220, textAlign: "left", background: "transparent", border: "none", cursor: "pointer" }}>View Profile</button>
-                <button onClick={() => { clearChat(); setMenuOpen(false); }} style={{ display: "block", padding: "8px 14px", width: 220, textAlign: "left", background: "transparent", border: "none", cursor: "pointer" }}>Clear Chat</button>
-                <button onClick={toggleBlock} style={{ display: "block", padding: "8px 14px", width: 220, textAlign: "left", background: "transparent", border: "none", cursor: "pointer" }}>{blocked ? "Unblock" : "Block"}</button>
-                <button onClick={() => { setReportOpen(true); setMenuOpen(false); }} style={{ display: "block", padding: "8px 14px", width: 220, textAlign: "left", background: "transparent", border: "none", cursor: "pointer" }}>Report</button>
+              <div style={{ position: "absolute", right: 0, top: 36, background: isDark ? "#111" : "#fff", border: "1px solid rgba(0,0,0,0.06)", borderRadius: 10, boxShadow: "0 8px 30px rgba(0,0,0,0.12)", zIndex: 200 }}>
+                <button onClick={() => { setMenuOpen(false); navigate(`/user-profile/${friendInfo?.id}`); }} style={{ display: "block", padding: "10px 14px", width: 220, textAlign: "left", background: "transparent", border: "none", cursor: "pointer" }}>View Profile</button>
+                <button onClick={() => { clearChat(); setMenuOpen(false); }} style={{ display: "block", padding: "10px 14px", width: 220, textAlign: "left", background: "transparent", border: "none", cursor: "pointer" }}>Clear Chat</button>
+                <button onClick={toggleBlock} style={{ display: "block", padding: "10px 14px", width: 220, textAlign: "left", background: "transparent", border: "none", cursor: "pointer" }}>{blocked ? "Unblock" : "Block"}</button>
+                <button onClick={() => { setReportOpen(true); setMenuOpen(false); }} style={{ display: "block", padding: "10px 14px", width: 220, textAlign: "left", background: "transparent", border: "none", cursor: "pointer" }}>Report</button>
               </div>
             )}
           </div>
         </div>
-      </div>
+      </header>
 
-      {/* messages */}
-      <div ref={messagesRef} style={{ flex: 1, overflowY: "auto", padding: 12 }}>
-        {grouped.map(g => {
-          if (g.type === "day") return <div key={g.id} style={{ textAlign: "center", margin: "12px 0", color: "#888", fontSize: 12 }}>{g.label}</div>;
-          return <MessageBubble key={g.id} m={g} />;
+      {/* messages area */}
+      <main ref={messagesRef} style={{ flex: 1, overflowY: "auto", padding: 12 }}>
+        {grouped.map(item => {
+          if (item.type === "day") {
+            return <div key={item.id} style={{ textAlign: "center", margin: "14px 0", color: "#8a8a8a", fontSize: 12 }}>{item.label}</div>;
+          }
+          return <MessageBubble key={item.id} m={item} />;
         })}
 
-        {/* local uploads */}
+        {/* local uploads (in-progress) */}
         {localUploads.map(u => (
           <div key={u.id} style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
             <div style={{ background: isDark ? "#0b84ff" : "#007bff", color: "#fff", padding: 10, borderRadius: 14, maxWidth: "78%", position: "relative" }}>
@@ -755,9 +827,9 @@ export default function ChatConversationPage() {
         ))}
 
         <div ref={endRef} />
-      </div>
+      </main>
 
-      {/* down arrow */}
+      {/* scroll-to-latest */}
       <button
         onClick={() => scrollToBottom(true)}
         style={{
@@ -765,7 +837,7 @@ export default function ChatConversationPage() {
           left: "50%",
           transform: "translateX(-50%)",
           bottom: 120,
-          zIndex: 60,
+          zIndex: 70,
           background: "#007bff",
           color: "#fff",
           border: "none",
@@ -783,9 +855,9 @@ export default function ChatConversationPage() {
         ↓
       </button>
 
-      {/* previews */}
+      {/* previews bar */}
       {previews.length > 0 && (
-        <div style={{ display: "flex", gap: 8, padding: 8, overflowX: "auto", alignItems: "center", borderTop: "1px solid #ddd", background: isDark ? "#0b0b0b" : "#fff" }}>
+        <div style={{ display: "flex", gap: 8, padding: 8, overflowX: "auto", alignItems: "center", borderTop: "1px solid rgba(0,0,0,0.06)", background: isDark ? "#0b0b0b" : "#fff" }}>
           {previews.map((p, idx) => (
             <div key={idx} style={{ position: "relative" }}>
               {p ? <img src={p} alt="preview" style={{ width: 80, height: 80, objectFit: "cover", borderRadius: 8 }} /> : <div style={{ width: 80, height: 80, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 8, background: "#eee" }}>{selectedFiles[idx]?.name}</div>}
@@ -800,12 +872,12 @@ export default function ChatConversationPage() {
         </div>
       )}
 
-      {/* pinned input */}
-      <div style={{ position: "sticky", bottom: 0, background: isDark ? "#0b0b0b" : "#fff", padding: 10, borderTop: "1px solid #ccc", display: "flex", alignItems: "center", gap: 8, zIndex: 50 }}>
+      {/* message input (sticky) */}
+      <div style={{ position: "sticky", bottom: 0, background: isDark ? "#0b0b0b" : "#fff", padding: 10, borderTop: "1px solid rgba(0,0,0,0.06)", display: "flex", alignItems: "center", gap: 8, zIndex: 90 }}>
         <div style={{ position: "relative" }}>
           <button onClick={() => setShowAttach(s => !s)} style={{ width: 44, height: 44, borderRadius: 12, fontSize: 20, background: "#f0f0f0", border: "none", cursor: "pointer" }}>＋</button>
           {showAttach && (
-            <div style={{ position: "absolute", bottom: 56, left: 0, background: isDark ? "#222" : "#fff", border: "1px solid #ccc", borderRadius: 10, padding: 8, display: "flex", gap: 8 }}>
+            <div style={{ position: "absolute", bottom: 56, left: 0, background: isDark ? "#111" : "#fff", border: "1px solid rgba(0,0,0,0.06)", borderRadius: 10, padding: 8, display: "flex", gap: 8 }}>
               <label style={{ cursor: "pointer" }}>
                 📷
                 <input type="file" accept="image/*" multiple onChange={(e) => { onFilesSelected(e); setShowAttach(false); }} style={{ display: "none" }} />
@@ -831,16 +903,16 @@ export default function ChatConversationPage() {
             </div>
           )}
 
-          <input type="text" placeholder={blocked ? "You blocked this user — unblock to send" : "Type a message..."} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleSendText(); }} disabled={blocked} style={{ padding: "10px 12px", borderRadius: 20, border: "1px solid #ccc", outline: "none", background: isDark ? "#111" : "#fff", color: isDark ? "#fff" : "#000" }} />
+          <input type="text" placeholder={blocked ? "You blocked this user — unblock to send" : "Type a message..."} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleSendText(); }} disabled={blocked} style={{ padding: "10px 12px", borderRadius: 24, border: "1px solid rgba(0,0,0,0.06)", outline: "none", background: isDark ? "#111" : "#fff", color: isDark ? "#fff" : "#000" }} />
         </div>
 
-        <button onClick={handleSendText} disabled={blocked || (!text.trim() && localUploads.length === 0 && selectedFiles.length === 0)} style={{ background: "#34B7F1", color: "#fff", border: "none", borderRadius: 16, padding: "8px 12px", cursor: "pointer" }}>Send</button>
+        <button onClick={handleSendText} disabled={blocked || (!text.trim() && localUploads.length === 0 && selectedFiles.length === 0)} style={{ background: "#34B7F1", color: "#fff", border: "none", borderRadius: 16, padding: "10px 14px", cursor: "pointer" }}>Send</button>
       </div>
 
       {/* report modal */}
       {reportOpen && (
-        <div style={{ position: "fixed", right: 16, top: 80, zIndex: 120, width: 320 }}>
-          <div style={{ background: isDark ? "#222" : "#fff", border: "1px solid #ccc", borderRadius: 8, padding: 12 }}>
+        <div style={{ position: "fixed", right: 16, top: 80, zIndex: 950, width: 320 }}>
+          <div style={{ background: isDark ? "#111" : "#fff", border: "1px solid rgba(0,0,0,0.06)", borderRadius: 8, padding: 12 }}>
             <h4 style={{ margin: "0 0 8px 0" }}>Report user</h4>
             <textarea value={reportText} onChange={(e) => setReportText(e.target.value)} placeholder="Describe the issue..." style={{ width: "100%", minHeight: 80, borderRadius: 6, padding: 8 }} />
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 8 }}>
@@ -854,10 +926,7 @@ export default function ChatConversationPage() {
       {/* emoji picker modal */}
       {showEmojiPicker && emojiPickerFor && (
         <AllEmojiPicker
-          onPick={async (e) => {
-            // apply chosen emoji to the correct message
-            await applyReaction(emojiPickerFor, e);
-          }}
+          onPick={async (e) => { await applyReaction(emojiPickerFor, e); }}
           onClose={() => { setShowEmojiPicker(false); setEmojiPickerFor(null); }}
         />
       )}
