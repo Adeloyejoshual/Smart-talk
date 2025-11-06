@@ -1,42 +1,55 @@
 // src/components/Chat/AllEmojiPicker.jsx
 import React from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
 
-export default function AllEmojiPicker({ onSelect, onClose }) {
-  const emojis = [
-    "😀","😁","😂","🤣","😃","😄","😅","😆","😉","😊","😍","😘","😜","🤩","😎",
-    "😢","😭","😡","😱","😮","😇","😴","🤔","🤭","😬","👍","👎","👏","🙌","🙏",
-    "❤️","💔","🔥","🌹","🎉","💯","💀","🤙","💪","😺","😻","😹","😼","🙈","🙉","🙊"
-  ];
+const allEmojis = [
+  "❤️", "😂", "👍", "😢", "🔥", "😎", "😍", "😡", "👏", "🙌",
+  "🤔", "😴", "🥰", "🎉", "🤯", "😱", "💯", "🤩", "😭", "🙏",
+];
 
+export default function AllEmojiPicker({ show, onSelect, onClose }) {
   return (
-    <motion.div
-      initial={{ scale: 0.9, opacity: 0 }}
-      animate={{ scale: 1, opacity: 1 }}
-      exit={{ scale: 0.9, opacity: 0 }}
-      transition={{ duration: 0.15 }}
-      className="relative w-72 max-h-64 overflow-y-auto bg-white dark:bg-gray-800 shadow-lg rounded-2xl p-3 grid grid-cols-8 gap-2"
-    >
-      {/* Close button */}
-      <button
-        onClick={onClose}
-        className="absolute -top-2 -right-2 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-200 rounded-full p-1 shadow-md hover:scale-105 transition-transform"
-      >
-        <X size={14} />
-      </button>
-
-      {/* Emojis */}
-      {emojis.map((emoji, index) => (
-        <motion.button
-          key={index}
-          whileTap={{ scale: 0.8 }}
-          className="text-xl hover:scale-110 transition-transform"
-          onClick={() => onSelect(emoji)}
+    <AnimatePresence>
+      {show && (
+        <motion.div
+          initial={{ y: "100%" }}
+          animate={{ y: 0 }}
+          exit={{ y: "100%" }}
+          transition={{ type: "spring", stiffness: 150, damping: 22 }}
+          className="fixed bottom-0 left-0 w-full h-[45vh] bg-white dark:bg-gray-900 rounded-t-3xl shadow-2xl p-4 z-50 flex flex-col"
         >
-          {emoji}
-        </motion.button>
-      ))}
-    </motion.div>
+          {/* Header */}
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-gray-800 dark:text-gray-200 font-semibold text-lg">
+              Pick Reaction
+            </h3>
+            <button
+              onClick={onClose}
+              className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
+            >
+              <X size={20} className="text-gray-600 dark:text-gray-300" />
+            </button>
+          </div>
+
+          {/* Emoji Grid */}
+          <div className="grid grid-cols-7 gap-3 overflow-y-auto scrollbar-hide">
+            {allEmojis.map((emoji, index) => (
+              <motion.button
+                key={index}
+                onClick={() => {
+                  onSelect(emoji);
+                  onClose();
+                }}
+                whileTap={{ scale: 0.85 }}
+                className="text-2xl p-1 hover:scale-125 transition-transform"
+              >
+                {emoji}
+              </motion.button>
+            ))}
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
