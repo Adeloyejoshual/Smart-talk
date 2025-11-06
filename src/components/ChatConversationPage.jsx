@@ -1,158 +1,126 @@
-// src/components/ChatConversationPage.jsx
-import React, { useEffect, useState, useRef, useContext } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import {
-  doc,
-  getDoc,
-  collection,
-  addDoc,
-  query,
-  orderBy,
-  limit as fsLimit,
-  onSnapshot,
-  updateDoc,
-  serverTimestamp
-} from "firebase/firestore";
-import { auth, db } from "../firebaseConfig";
-import { ThemeContext } from "../context/ThemeContext";
+import React, { useEffect, useState, useRef } from "react";
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, updateDoc, doc } from "firebase/firestore";
+import { db, storage } from "../firebaseConfig";
+import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 
-import MessageBubble from "./MessageBubble";
-import ReactionBar from "./ReactionBar";
-import AllEmojiPicker from "./AllEmojiPicker";
-import MultiSelectBar from "./MultiSelectBar";
-import Spinner from "./Spinner";
+import MessageBubble from "./Chat/MessageBubble";
+import ReactionBar from "./Chat/ReactionBar";
+import AllEmojiPicker from "./Chat/AllEmojiPicker";
+import MultiSelectBar from "./Chat/MultiSelectBar";
+import Spinner from "./Chat/Spinner";
+import FileUploadButton from "./Chat/FileUploadButton";
 
-import { uploadFileToS3 } from "../awsS3"; // your S3 upload function
-
-export const INLINE_REACTIONS = ["❤️", "😂", "👍", "😮", "😢"];
-export const EXTENDED_EMOJIS = [
-  "❤️","😂","👍","😮","😢","👎","👏","🔥","😅","🤩",
-  "😍","😎","🙂","🙃","😉","🤔","🤨","🤗","🤯","🥳","🙏","💪"
-];
-
-// Helper
-export const fmtTime = ts => ts?.toDate ? ts.toDate().toLocaleTimeString([], { hour:"numeric", minute:"2-digit" }) : "";
-export const dayLabel = ts => {
-  if (!ts) return "";
-  const d = ts.toDate ? ts.toDate() : new Date(ts);
-  const now = new Date();
-  const yesterday = new Date(); yesterday.setDate(now.getDate()-1);
-  if (d.toDateString() === now.toDateString()) return "Today";
-  if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
-  return d.toLocaleDateString();
-};
-
-export default function ChatConversationPage() {
-  const { chatId } = useParams();
-  const navigate = useNavigate();
-  const { theme, wallpaper } = useContext(ThemeContext);
-  const isDark = theme === "dark";
-  const myUid = auth.currentUser?.uid;
-
-  const [chatInfo, setChatInfo] = useState(null);
-  const [friendInfo, setFriendInfo] = useState(null);
+export default function ChatConversationPage({ chatId, user, chatName }) {
   const [messages, setMessages] = useState([]);
-  const [text, setText] = useState("");
-  const [selectedFiles, setSelectedFiles] = useState([]);
-  const [previews, setPreviews] = useState([]);
-  const [localUploads, setLocalUploads] = useState([]);
+  const [selectedMessageIds, setSelectedMessageIds] = useState([]);
+  const [loading, setLoading] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [inputValue, setInputValue] = useState("");
 
-  const messagesRef = useRef(null);
-  const endRef = useRef(null);
+  const messagesEndRef = useRef(null);
 
-  // Load chat & friend
+  const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+
   useEffect(() => {
-    if (!chatId) return;
-    const chatRef = doc(db, "chats", chatId);
-    let unsubFriend=null, unsubChat=null;
-
-    (async () => {
-      const snap = await getDoc(chatRef);
-      if (!snap.exists()) { alert("Chat not found"); navigate("/chat"); return; }
-      const data = snap.data();
-      setChatInfo({ id: snap.id, ...data });
-
-      const friendId = data.participants?.find(p => p!==myUid);
-      if (friendId) {
-        const friendRef = doc(db, "users", friendId);
-        unsubFriend = onSnapshot(friendRef, fsnap => fsnap.exists() && setFriendInfo({id: fsnap.id,...fsnap.data()}));
-      }
-      unsubChat = onSnapshot(chatRef, csnap => csnap.exists() && setChatInfo(prev=>({...prev,...csnap.data()})));
-    })();
-
-    return ()=>{ unsubFriend && unsubFriend(); unsubChat && unsubChat(); }
-  }, [chatId, myUid, navigate]);
-
-  // Load messages
-  useEffect(() => {
-    if (!chatId) return;
-    const q = query(collection(db, "chats", chatId, "messages"), orderBy("createdAt","desc"), fsLimit(50));
-    const unsub = onSnapshot(q, snap => {
-      const docs = snap.docs.map(d=>({id:d.id,...d.data()})).reverse();
-      setMessages(docs);
-      setTimeout(()=>endRef.current?.scrollIntoView({behavior:"auto"}),50);
+    const q = query(collection(db, "chats", chatId, "messages"), orderBy("timestamp"));
+    const unsubscribe = onSnapshot(q, snapshot => {
+      setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      scrollToBottom();
     });
-    return ()=>unsub();
+    return unsubscribe;
   }, [chatId]);
 
   const sendMessage = async () => {
-    if (!text.trim() && !selectedFiles.length) return;
-    // Send text
-    if (text.trim()) {
-      await addDoc(collection(db,"chats",chatId,"messages"),{
-        sender: myUid,
-        text,
-        createdAt: serverTimestamp(),
-        type:"text",
-        status:"sent"
+    if (!inputValue.trim()) return;
+    await addDoc(collection(db, "chats", chatId, "messages"), {
+      text: inputValue,
+      userId: user.uid,
+      timestamp: serverTimestamp(),
+      reactions: []
+    });
+    setInputValue("");
+  };
+
+  const addReaction = async (messageId, emoji) => {
+    const msgRef = doc(db, "chats", chatId, "messages", messageId);
+    const message = messages.find(m => m.id === messageId);
+    const existing = message.reactions.find(r => r.emoji === emoji);
+    const newReactions = existing
+      ? message.reactions.map(r => r.emoji === emoji ? { ...r, count: r.count + 1 } : r)
+      : [...message.reactions, { emoji, count: 1 }];
+    await updateDoc(msgRef, { reactions: newReactions });
+  };
+
+  const uploadFile = async (file) => {
+    setLoading(true);
+    const storageRef = ref(storage, `chats/${chatId}/${Date.now()}_${file.name}`);
+    const uploadTask = uploadBytesResumable(storageRef, file);
+
+    uploadTask.on("state_changed", null, console.error, async () => {
+      const url = await getDownloadURL(uploadTask.snapshot.ref);
+      await addDoc(collection(db, "chats", chatId, "messages"), {
+        text: "",
+        file: url,
+        fileName: file.name,
+        userId: user.uid,
+        timestamp: serverTimestamp(),
+        reactions: []
       });
-      setText("");
-    }
-    // Send files
-    for (const file of selectedFiles) {
-      const placeholder = await addDoc(collection(db,"chats",chatId,"messages"),{
-        sender: myUid,
-        text:"",
-        type: file.type.startsWith("image/") ? "image":"file",
-        fileName:file.name,
-        status:"uploading",
-        createdAt: serverTimestamp()
-      });
-      const url = await uploadFileToS3(file, chatId);
-      await updateDoc(doc(db,"chats",chatId,"messages",placeholder.id),{
-        fileURL: url,
-        status:"sent"
-      });
-    }
-    setSelectedFiles([]); setPreviews([]);
-    endRef.current?.scrollIntoView({behavior:"smooth"});
+      setLoading(false);
+      scrollToBottom();
+    });
   };
 
   return (
-    <div className={`chat-page ${isDark?"dark":"light"}`} style={{background:`url(${wallpaper}) center/cover no-repeat`}}>
-      <div className="messages" ref={messagesRef} style={{overflowY:"auto", flexGrow:1}}>
-        {messages.map(msg=>(
-          <MessageBubble key={msg.id} msg={msg} myUid={myUid}/>
-        ))}
-        {localUploads.map(u=>(
-          <MessageBubble key={u.id} msg={{...u,status:"uploading"}} myUid={myUid}/>
-        ))}
-        <div ref={endRef}/>
+    <div className="flex flex-col h-screen">
+      {/* Header */}
+      <div className="flex items-center justify-between p-4 bg-white border-b sticky top-0 z-10 shadow">
+        <h2 className="font-semibold">{chatName}</h2>
+        <div className="flex gap-4">
+          <button className="text-blue-600 font-bold">📞</button>
+          <button className="text-blue-600 font-bold">🎥</button>
+        </div>
       </div>
 
-      {showEmojiPicker && <AllEmojiPicker onSelect={e=>setText(t=>t+e)} onClose={()=>setShowEmojiPicker(false)}/>}
+      {/* Multi-select bar */}
+      {selectedMessageIds.length > 0 && <MultiSelectBar selectedMessageIds={selectedMessageIds} />}
 
-      <div className="input-bar">
-        <button onClick={()=>setShowEmojiPicker(prev=>!prev)}>😊</button>
-        <input type="text" value={text} onChange={e=>setText(e.target.value)} placeholder="Type a message"/>
-        <input type="file" multiple onChange={e=>{
-          const files = Array.from(e.target.files);
-          setSelectedFiles(prev=>[...prev,...files]);
-          setPreviews(prev=>[...prev,...files.map(f=>f.type.startsWith("image/")?URL.createObjectURL(f):null)]);
-        }}/>
-        <button onClick={sendMessage}>Send</button>
+      {/* Messages */}
+      <div className="flex-1 overflow-auto p-2 bg-gray-50">
+        {messages.map(msg => (
+          <MessageBubble
+            key={msg.id}
+            message={msg}
+            isOwn={msg.userId === user.uid}
+            isSelected={selectedMessageIds.includes(msg.id)}
+            onSelect={() => setSelectedMessageIds(prev =>
+              prev.includes(msg.id) ? prev.filter(id => id !== msg.id) : [...prev, msg.id]
+            )}
+            onReact={emoji => addReaction(msg.id, emoji)}
+          />
+        ))}
+        <div ref={messagesEndRef} />
       </div>
+
+      {/* Input bar */}
+      <div className="flex items-center p-2 border-t bg-white sticky bottom-0 z-10">
+        <FileUploadButton onUpload={uploadFile} />
+        <input
+          type="text"
+          value={inputValue}
+          onChange={e => setInputValue(e.target.value)}
+          placeholder="Type a message..."
+          className="flex-1 mx-2 p-2 border rounded"
+          onKeyDown={e => e.key === "Enter" && sendMessage()}
+        />
+        <button onClick={() => setShowEmojiPicker(prev => !prev)} className="text-xl">😊</button>
+      </div>
+
+      {showEmojiPicker && selectedMessageIds.length > 0 && (
+        <AllEmojiPicker onSelect={emoji => addReaction(selectedMessageIds[0], emoji)} />
+      )}
+
+      {loading && <Spinner />}
     </div>
   );
 }
