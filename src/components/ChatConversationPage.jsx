@@ -19,26 +19,10 @@ import {
   deleteDoc,
   deleteField,
 } from "firebase/firestore";
-import {
-  ref as storageRef,
-  uploadBytesResumable,
-  getDownloadURL,
-} from "firebase/storage";
-import { auth, db, storage } from "../firebaseConfig";
+import { auth, db } from "../firebaseConfig";
 import { ThemeContext } from "../context/ThemeContext";
+import { uploadFileToS3 } from "../awsS3"; // AWS S3 upload utility
 
-/**
- * ChatConversationPage.jsx (single-file)
- * - Professional mobile-first chat conversation screen
- * - ReactionBar (5 visible emojis + + to open full picker)
- * - Full emoji picker modal (overlay)
- * - Sticky header (shows online / typing / lastSeen) and sticky input
- * - Message grouping by day
- *
- * NOTE: This file keeps your existing Firestore structure and helpers.
- */
-
-// ---------- helpers ----------
 const fmtTime = (ts) => {
   if (!ts) return "";
   const d = ts.toDate ? ts.toDate() : new Date(ts);
@@ -54,15 +38,9 @@ const dayLabel = (ts) => {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: d.getFullYear() !== now.getFullYear() ? "numeric" : undefined });
 };
 
-// default reaction set shown inline (5 visible)
 const INLINE_REACTIONS = ["❤️", "😂", "👍", "😮", "😢"];
-// extended emoji set for full picker
-const EXTENDED_EMOJIS = [
-  "❤️","😂","👍","😮","😢","👎","👏","🔥","😅","🤩","😍",
-  "😎","🙂","🙃","😉","🤔","🤨","🤗","🤯","🥳","🙏","💪"
-];
+const EXTENDED_EMOJIS = ["❤️","😂","👍","😮","😢","👎","👏","🔥","😅","🤩","😍","😎","🙂","🙃","😉","🤔","🤨","🤗","🤯","🥳","🙏","💪"];
 
-// ---------- component ----------
 export default function ChatConversationPage() {
   const { chatId } = useParams();
   const navigate = useNavigate();
@@ -71,11 +49,9 @@ export default function ChatConversationPage() {
 
   const [chatInfo, setChatInfo] = useState(null);
   const [friendInfo, setFriendInfo] = useState(null);
-
   const [messages, setMessages] = useState([]);
   const [limitCount] = useState(50);
 
-  // UI states
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [previews, setPreviews] = useState([]);
   const [localUploads, setLocalUploads] = useState([]);
@@ -90,23 +66,21 @@ export default function ChatConversationPage() {
   const [reportText, setReportText] = useState("");
   const [selectedMessageId, setSelectedMessageId] = useState(null);
   const [selectedMessageIds, setSelectedMessageIds] = useState([]);
-  const [reactionFor, setReactionFor] = useState(null); // which message shows ReactionBar
+  const [reactionFor, setReactionFor] = useState(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [emojiPickerFor, setEmojiPickerFor] = useState(null);
 
   const messagesRef = useRef(null);
   const endRef = useRef(null);
   const myUid = auth.currentUser?.uid;
-
   const [isAtBottom, setIsAtBottom] = useState(true);
 
-  // ---------- load chat + friend ----------
+  // Load chat and friend info with realtime updates
   useEffect(() => {
     if (!chatId) return;
     const chatRef = doc(db, "chats", chatId);
     let unsubFriend = null;
     let unsubChat = null;
-
     (async () => {
       const snap = await getDoc(chatRef);
       if (!snap.exists()) { alert("Chat not found"); navigate("/chat"); return; }
@@ -132,11 +106,10 @@ export default function ChatConversationPage() {
         }
       });
     })();
-
     return () => { unsubFriend && unsubFriend(); unsubChat && unsubChat(); };
   }, [chatId, myUid, navigate]);
 
-  // ---------- messages realtime ----------
+  // Realtime messages listener
   useEffect(() => {
     if (!chatId) return;
     const q = query(collection(db, "chats", chatId, "messages"), orderBy("createdAt", "desc"), fsLimit(limitCount));
@@ -144,32 +117,28 @@ export default function ChatConversationPage() {
       const docs = snap.docs.map(d => ({ id: d.id, ...d.data() })).reverse();
       setMessages(docs);
 
-      // mark delivered for incoming messages
       docs.forEach(m => {
         if (m.sender !== myUid && m.status === "sent") {
           const mRef = doc(db, "chats", chatId, "messages", m.id);
-          updateDoc(mRef, { status: "delivered" }).catch(()=>{});
+          updateDoc(mRef, { status: "delivered" }).catch(() => {});
         }
       });
 
-      // schedule downloads
       docs.forEach(m => {
         if ((m.type === "image" || m.type === "file" || m.type === "audio") && m.fileURL) {
           setDownloadMap(prev => {
-            if (prev[m.id] && (prev[m.id].status === "done" || prev[m.id].status === "downloading")) return prev;
+            if (prev[m.id]?.status === "done" || prev[m.id]?.status === "downloading") return prev;
             return { ...prev, [m.id]: { status: "queued", progress: 0, blobUrl: null } };
           });
         }
       });
 
-      // scroll to bottom on initial load
-      setTimeout(()=> { endRef.current?.scrollIntoView({ behavior: "auto" }); setIsAtBottom(true); }, 50);
+      setTimeout(() => { endRef.current?.scrollIntoView({ behavior: "auto" }); setIsAtBottom(true); }, 50);
     });
-
     return () => unsub();
   }, [chatId, limitCount, myUid]);
 
-  // ---------- download watcher ----------
+  // Download watcher
   useEffect(() => {
     Object.entries(downloadMap).forEach(([msgId, info]) => {
       if (info.status === "queued") {
@@ -180,10 +149,9 @@ export default function ChatConversationPage() {
         });
       }
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [downloadMap]);
 
-  // ---------- scroll handler ----------
+  // Scroll handler
   useEffect(() => {
     const el = messagesRef.current;
     if (!el) return;
@@ -198,7 +166,7 @@ export default function ChatConversationPage() {
 
   const scrollToBottom = (smooth = true) => endRef.current?.scrollIntoView({ behavior: smooth ? "smooth" : "auto" });
 
-  // ---------- files upload ----------
+  // Files selected for upload
   const onFilesSelected = (e) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
@@ -207,10 +175,12 @@ export default function ChatConversationPage() {
     setPreviews(prev => [...prev, ...newPreviews]);
   };
 
+  // Upload queued files to AWS S3
   const sendQueuedFiles = async () => {
     if (!selectedFiles.length) return;
     const filesToSend = [...selectedFiles];
-    setSelectedFiles([]); setPreviews([]);
+    setSelectedFiles([]);
+    setPreviews([]);
 
     for (const file of filesToSend) {
       try {
@@ -227,33 +197,23 @@ export default function ChatConversationPage() {
 
         setLocalUploads(prev => [...prev, { id: docRef.id, fileName: file.name, progress: 0, type: placeholder.type, previewUrl: URL.createObjectURL(file) }]);
 
-        const sRef = storageRef(storage, `chatFiles/${chatId}/${Date.now()}_${file.name}`);
-        const task = uploadBytesResumable(sRef, file);
-
-        task.on("state_changed",
-          (snap) => {
-            const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
-            setLocalUploads(prev => prev.map(l => l.id === docRef.id ? { ...l, progress: pct } : l));
-          },
-          (err) => {
-            console.error("upload error", err);
-            updateDoc(docRef, { status: "failed" }).catch(()=>{});
-            setLocalUploads(prev => prev.map(l => l.id === docRef.id ? { ...l, status: "failed" } : l));
-          },
-          async () => {
-            const url = await getDownloadURL(task.snapshot.ref);
-            await updateDoc(docRef, { fileURL: url, status: "sent", sentAt: serverTimestamp() }).catch(()=>{});
-            setLocalUploads(prev => prev.filter(l => l.id !== docRef.id));
-            setTimeout(()=>scrollToBottom(true), 120);
-          }
-        );
+        try {
+          const url = await uploadFileToS3(file, chatId);
+          await updateDoc(docRef, { fileURL: url, status: "sent", sentAt: serverTimestamp() });
+          setLocalUploads(prev => prev.filter(l => l.id !== docRef.id));
+          setTimeout(() => scrollToBottom(true), 120);
+        } catch (err) {
+          console.error("AWS S3 upload failed", err);
+          await updateDoc(docRef, { status: "failed" });
+          setLocalUploads(prev => prev.map(l => l.id === docRef.id ? { ...l, status: "failed" } : l));
+        }
       } catch (err) {
         console.error("send queued file failed", err);
       }
     }
   };
 
-  // ---------- download ----------
+  // Download file content
   const startDownloadForMessage = async (messageId) => {
     try {
       const mRef = doc(db, "chats", chatId, "messages", messageId);
@@ -284,7 +244,7 @@ export default function ChatConversationPage() {
           const pct = Math.round((received / total) * 100);
           setDownloadMap(prev => ({ ...prev, [messageId]: { ...prev[messageId], status: "downloading", progress: pct } }));
         } else {
-          setDownloadMap(prev => ({ ...prev, [messageId]: { ...prev[messageId], status: "downloading", progress: Math.min(99, (prev[messageId]?.progress||0) + 5) } }));
+          setDownloadMap(prev => ({ ...prev, [messageId]: { ...prev[messageId], status: "downloading", progress: Math.min(99, (prev[messageId]?.progress || 0) + 5) } }));
         }
       }
       const blob = new Blob(chunks);
@@ -293,7 +253,7 @@ export default function ChatConversationPage() {
     } catch (err) {
       console.error("download failed", err);
       setDownloadMap(prev => ({ ...prev, [messageId]: { ...prev[messageId], status: "failed", progress: 0 } }));
-      setTimeout(() => setDownloadMap(prev => ({ ...prev, [messageId]: { ...(prev[messageId]||{}), status: "queued" } })), 10000);
+      setTimeout(() => setDownloadMap(prev => ({ ...prev, [messageId]: { ...(prev[messageId] || {}), status: "queued" } })), 10000);
     }
   };
 
@@ -306,7 +266,7 @@ export default function ChatConversationPage() {
     return null;
   };
 
-  // ---------- send text ----------
+  // Send text message
   const handleSendText = async () => {
     if (!text.trim()) return;
     if (blocked) { alert("You blocked this user — unblock to send."); return; }
@@ -333,7 +293,7 @@ export default function ChatConversationPage() {
     }
   };
 
-  // ---------- block/unblock ----------
+  // Toggle block/unblock
   const toggleBlock = async () => {
     if (!chatInfo) return;
     const chatRef = doc(db, "chats", chatId);
@@ -352,7 +312,7 @@ export default function ChatConversationPage() {
     }
   };
 
-  // ---------- report ----------
+  // Submit report
   const submitReport = async () => {
     if (!reportText.trim()) { alert("Please write report details."); return; }
     try {
@@ -372,7 +332,7 @@ export default function ChatConversationPage() {
     }
   };
 
-  // ---------- delete message ----------
+  // Delete message
   const deleteMessage = async (messageId) => {
     if (!window.confirm("Delete message?")) return;
     try {
@@ -385,7 +345,7 @@ export default function ChatConversationPage() {
     }
   };
 
-  // ---------- clear chat ----------
+  // Clear chat
   const clearChat = async () => {
     if (!window.confirm("Clear all messages in this chat? This will delete messages permanently.")) return;
     try {
@@ -405,6 +365,139 @@ export default function ChatConversationPage() {
       alert("Failed to clear chat");
     }
   };
+
+  // Apply or remove reaction emoji
+  const applyReaction = async (messageId, emoji) => {
+    try {
+      const mRef = doc(db, "chats", chatId, "messages", messageId);
+      const snap = await getDoc(mRef);
+      if (!snap.exists()) return;
+      const cur = snap.data() || {};
+      const existing = cur?.reactions?.[myUid];
+
+      if (existing === emoji) {
+        await updateDoc(mRef, { [`reactions.${myUid}`]: deleteField() });
+      } else {
+        await updateDoc(mRef, { [`reactions.${myUid}`]: emoji });
+      }
+      setReactionFor(null);
+      setSelectedMessageId(null);
+    } catch (err) {
+      console.error("reaction", err);
+    }
+  };
+
+  // Copy message text
+  const copyMessageText = async (m) => {
+    try {
+      const txt = m.type === "text" ? (m.text || "") : (m.fileName || "");
+      await navigator.clipboard.writeText(txt);
+      alert("Copied to clipboard");
+      setReactionFor(null);
+    } catch (err) {
+      console.error("copy failed", err);
+      alert("Copy failed");
+    }
+  };
+
+  // Edit own message
+  const editMessage = async (m) => {
+    if (m.sender !== myUid) return alert("You can only edit your messages.");
+    const newText = window.prompt("Edit message", m.text || "");
+    if (newText == null) return;
+    try {
+      const mRef = doc(db, "chats", chatId, "messages", m.id);
+      await updateDoc(mRef, { text: newText, edited: true });
+      setReactionFor(null);
+    } catch (err) {
+      console.error("edit failed", err);
+      alert("Edit failed");
+    }
+  };
+
+  // Reply to message
+  const replyToMessage = (m) => {
+    setReplyTo(m);
+    setSelectedMessageId(null);
+    setReactionFor(null);
+  };
+
+  // Forward message
+  const forwardMessage = (m) => {
+    navigate(`/forward/${m.id}`, { state: { message: m } });
+    setReactionFor(null);
+    setSelectedMessageId(null);
+  };
+
+  // Pin message
+  const pinMessage = async (m) => {
+    try {
+      const chatRef = doc(db, "chats", chatId);
+      await updateDoc(chatRef, { pinnedMessageId: m.id, pinnedMessageText: m.text || m.fileName || "" });
+      alert("Message pinned");
+      setReactionFor(null);
+      setSelectedMessageId(null);
+    } catch (err) {
+      console.error("pin failed", err);
+      alert("Pin failed");
+    }
+  };
+
+  // Toggle message selection
+  const toggleSelectMessage = (id) => {
+    setSelectedMessageIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  // Clear selection
+  const clearSelection = () => {
+    setSelectedMessageIds([]);
+    setSelectedMessageId(null);
+  };
+
+  // Reaction bar component
+  const ReactionBar = ({ onPick, onMore }) => (
+    <div style={{ display: "flex", gap: 10, padding: 8, borderRadius: 24, background: isDark ? "#0f0f10" : "#fff", boxShadow: "0 8px 24px rgba(0,0,0,0.12)", alignItems: "center" }} role="toolbar" aria-label="Reactions">
+      {INLINE_REACTIONS.map(r => (
+        <button key={r} onClick={() => onPick(r)} style={{ fontSize: 20, width: 40, height: 40, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 12, border:"none", background: "transparent", cursor: "pointer" }} aria-label={`React ${r}`}>{r}</button>
+      ))}
+      <button onClick={onMore} style={{ fontSize: 18, width: 40, height: 40, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 12, border:"none", background: isDark ? "#1b1b1b" : "#f3f4f6", cursor: "pointer" }} aria-label="More reactions" title="More">＋</button>
+    </div>
+  );
+
+  // Full emoji picker modal
+  const AllEmojiPicker = ({ onPick, onClose }) => (
+    <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, top: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "flex-end", zIndex: 800 }}>
+      <div style={{ width: "100%", maxHeight: "60vh", borderTopLeftRadius: 14, borderTopRightRadius: 14, background: isDark ? "#111" : "#fff", padding: 12, boxShadow: "0 -8px 30px rgba(0,0,0,0.3)", overflowY: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <div style={{ fontWeight: 700 }}>Reactions</div>
+          <button onClick={onClose} style={{ border: "none", background: "transparent", cursor: "pointer", fontSize: 18 }}>✕</button>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 8 }}>
+          {EXTENDED_EMOJIS.map(e => (
+            <button key={e} onClick={() => { onPick(e); onClose(); }} style={{ padding: 12, fontSize: 20, borderRadius: 8, border: "none", background: "transparent", cursor: "pointer" }}>{e}</button>
+          ))}
+        </div>
+        <div style={{ marginTop: 10, textAlign: "right" }}>
+          <button onClick={onClose} style={{ padding: "8px 12px", borderRadius: 8, border: "none", background: "#ddd" }}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // Spinner component
+  function Spinner({ percent = 0 }) {
+    return (
+      <div style={{ width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", position: 'relative' }}>
+        <svg viewBox="0 0 36 36" style={{ width: 36, height: 36 }}>
+          <path d="M18 2.0845a15.9155 15.9155 0 1 0 0 31.831A15.9155 15.9155 0 1 0 18 2.0845" fill="none" stroke="#eee" strokeWidth="2" />
+          <path d="M18 2.0845a15.9155 15.9155 0 1 0 0 31.831" fill="none" stroke="#34B7F1" strokeWidth="2" strokeDasharray={`${percent},100`} strokeLinecap="round" />
+        </svg>
+        <div style={{ position: "absolute", fontSize: 10, color: "#fff", fontWeight: 700 }}>{percent}%</div>
+      </div>
+    );
+  }
+
+  
 
   // ---------- reactions stored in Firestore ----------
   const applyReaction = async (messageId, emoji) => {
