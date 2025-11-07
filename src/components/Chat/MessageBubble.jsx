@@ -1,8 +1,10 @@
 // src/components/Chat/MessageBubble.jsx
 import React, { useState } from "react";
+import { db } from "../../firebaseConfig";
+import { doc, updateDoc } from "firebase/firestore";
 import ReactionBar from "./ReactionBar";
 
-export default function MessageBubble({ msg, isOwn }) {
+export default function MessageBubble({ msg, isOwn, chatId }) {
   const [showReactions, setShowReactions] = useState(false);
 
   const time =
@@ -10,6 +12,16 @@ export default function MessageBubble({ msg, isOwn }) {
       hour: "2-digit",
       minute: "2-digit",
     }) || "";
+
+  const handleReaction = async (emoji) => {
+    try {
+      const msgRef = doc(db, "chats", chatId, "messages", msg.id);
+      await updateDoc(msgRef, { reaction: emoji });
+      setShowReactions(false);
+    } catch (err) {
+      console.error("❌ Error reacting:", err);
+    }
+  };
 
   return (
     <div
@@ -59,20 +71,14 @@ export default function MessageBubble({ msg, isOwn }) {
         </div>
       )}
 
-      {/* Emoji Picker (ReactionBar) */}
+      {/* Emoji Picker */}
       {showReactions && (
         <div
-          className={`absolute ${
+          className={`absolute z-10 ${
             isOwn ? "right-0" : "left-0"
           } -top-10`}
         >
-          <ReactionBar
-            onSelect={(emoji) => {
-              console.log("Reacted with:", emoji);
-              // You’ll later add Firestore update here
-              setShowReactions(false);
-            }}
-          />
+          <ReactionBar onSelect={handleReaction} />
         </div>
       )}
     </div>
