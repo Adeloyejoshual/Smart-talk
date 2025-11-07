@@ -1,7 +1,7 @@
 // src/awsS3.js
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 
-// ✅ AWS S3 client
+// 🔐 AWS S3 client
 export const s3Client = new S3Client({
   region: import.meta.env.VITE_AWS_REGION,
   credentials: {
@@ -10,22 +10,23 @@ export const s3Client = new S3Client({
   },
 });
 
-// ✅ Upload file with "progress" callback
-export async function uploadFileWithProgress(file, chatId, onProgress) {
-  const fileName = `${chatId}/${Date.now()}_${file.name}`;
+// 📤 Upload file with progress callback
+export const uploadFileWithProgress = async (file, folder = "", setProgress) => {
+  const fileName = `${folder}/${Date.now()}_${file.name}`;
 
-  const command = new PutObjectCommand({
-    Bucket: import.meta.env.VITE_AWS_BUCKET_NAME,
+  const uploadParams = {
+    Bucket: import.meta.env.VITE_AWS_BUCKET,
     Key: fileName,
     Body: file,
     ContentType: file.type,
-    ACL: "public-read", // make public or use pre-signed URLs if needed
-  });
+  };
 
-  // Simulated progress (v3 browser SDK doesn’t support native progress)
-  onProgress?.(0.3);
-  await s3Client.send(command);
-  onProgress?.(1);
+  // 👀 AWS SDK v3 does not support progress natively for PutObjectCommand,
+  // so we can simulate progress for UX purposes
+  if (setProgress) setProgress(0);
+  await s3Client.send(new PutObjectCommand(uploadParams));
+  if (setProgress) setProgress(1);
 
-  return `https://${import.meta.env.VITE_AWS_BUCKET_NAME}.s3.${import.meta.env.VITE_AWS_REGION}.amazonaws.com/${fileName}`;
-}
+  // Return the object URL
+  return `https://${import.meta.env.VITE_AWS_BUCKET}.s3.${import.meta.env.VITE_AWS_REGION}.amazonaws.com/${fileName}`;
+};
