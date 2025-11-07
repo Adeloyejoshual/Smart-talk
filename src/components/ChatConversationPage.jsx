@@ -27,75 +27,80 @@ export default function ChatConversationPage() {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const bottomRef = useRef(null);
 
-  // Load messages
+  // ✅ Load chat messages in real time
   useEffect(() => {
+    if (!chatId) return;
     const msgRef = collection(db, "chats", chatId, "messages");
     const q = query(msgRef, orderBy("timestamp", "asc"));
+
     const unsub = onSnapshot(q, (snapshot) => {
       setMessages(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
     });
+
     return () => unsub();
   }, [chatId]);
 
-  // Send text message
+  // ✅ Handle selecting files (preview)
+  const handleSelectFiles = (files) => {
+    if (!files || files.length === 0) return;
+    const fileArray = Array.from(files);
+    setSelectedFiles((prev) => [...prev, ...fileArray]);
+  };
+
+  // ✅ Remove preview before sending
+  const removeSelectedFile = (index) => {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  // ✅ Handle sending messages + files
   const sendMessage = async (e) => {
     e.preventDefault();
     const trimmed = newMsg.trim();
+
+    // If no message and no file, do nothing
     if (!trimmed && selectedFiles.length === 0) return;
 
-    // Send files first
-    if (selectedFiles.length > 0) {
-      await handleFileUpload(selectedFiles);
-      setSelectedFiles([]);
-    }
-
-    if (trimmed) {
-      await addDoc(collection(db, "chats", chatId, "messages"), {
-        text: trimmed,
-        senderId: auth.currentUser.uid,
-        type: "text",
-        timestamp: serverTimestamp(),
-      });
-    }
-
-    setNewMsg("");
-  };
-
-  // Handle multi-file uploads
-  const handleFileUpload = async (files) => {
-    setUploading(true);
     try {
-      for (const file of files) {
-        const url = await uploadFileWithProgress(file, chatId, setProgress);
+      // Upload all selected files
+      if (selectedFiles.length > 0) {
+        setUploading(true);
+
+        for (const file of selectedFiles) {
+          const url = await uploadFileWithProgress(file, chatId, setProgress);
+
+          await addDoc(collection(db, "chats", chatId, "messages"), {
+            senderId: auth.currentUser?.uid,
+            type: file.type.startsWith("image/")
+              ? "image"
+              : file.type.startsWith("video/")
+              ? "video"
+              : "file",
+            fileName: file.name,
+            fileUrl: url,
+            timestamp: serverTimestamp(),
+          });
+        }
+
+        setSelectedFiles([]);
+        setUploading(false);
+        setProgress(0);
+      }
+
+      // Send text message
+      if (trimmed) {
         await addDoc(collection(db, "chats", chatId, "messages"), {
-          senderId: auth.currentUser.uid,
-          type: file.type.startsWith("image/")
-            ? "image"
-            : file.type.startsWith("video/")
-            ? "video"
-            : "file",
-          fileName: file.name,
-          fileUrl: url,
+          text: trimmed,
+          senderId: auth.currentUser?.uid,
+          type: "text",
           timestamp: serverTimestamp(),
         });
+        setNewMsg("");
       }
     } catch (err) {
-      console.error("Upload error:", err);
-    } finally {
+      console.error("Error sending message:", err);
       setUploading(false);
-      setProgress(0);
     }
-  };
-
-  // Handle file selection
-  const handleSelectFiles = (files) => {
-    setSelectedFiles((prev) => [...prev, ...files]);
-  };
-
-  // Remove a single selected file
-  const removeSelectedFile = (index) => {
-    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
   return (
@@ -104,12 +109,10 @@ export default function ChatConversationPage() {
         theme === "dark" ? "bg-gray-900 text-white" : "bg-gray-50"
       }`}
     >
-      {/* Chat messages */}
+      {/* 🟢 Messages List */}
       <div className="flex-1 overflow-y-auto px-3 py-4 space-y-2">
         {messages.length === 0 && (
-          <div className="text-center text-gray-400 mt-20">
-            No messages yet
-          </div>
+          <div className="text-center text-gray-400 mt-20">No messages yet</div>
         )}
 
         {messages.map((msg) => (
@@ -117,14 +120,14 @@ export default function ChatConversationPage() {
             key={msg.id}
             msg={msg}
             chatId={chatId}
-            isOwn={msg.senderId === auth.currentUser.uid}
+            isOwn={msg.senderId === auth.currentUser?.uid}
           />
         ))}
 
         <div ref={bottomRef}></div>
       </div>
 
-      {/* File preview grid */}
+      {/* 🟢 Preview selected files */}
       {selectedFiles.length > 0 && (
         <div className="p-3 bg-gray-100 dark:bg-gray-800 border-t dark:border-gray-700">
           <div className="flex flex-wrap gap-3">
@@ -136,7 +139,7 @@ export default function ChatConversationPage() {
                 {file.type.startsWith("image/") ? (
                   <img
                     src={URL.createObjectURL(file)}
-                    alt={file.name}
+                    alt="preview"
                     className="object-cover w-full h-full"
                   />
                 ) : file.type.startsWith("video/") ? (
@@ -149,7 +152,6 @@ export default function ChatConversationPage() {
                     {file.name}
                   </div>
                 )}
-
                 <button
                   type="button"
                   onClick={() => removeSelectedFile(idx)}
@@ -163,14 +165,14 @@ export default function ChatConversationPage() {
         </div>
       )}
 
-      {/* Uploading progress */}
+      {/* 🟢 Upload progress bar */}
       {uploading && (
         <div className="p-3 flex items-center gap-3 bg-gray-200 dark:bg-gray-800 text-sm">
           <Spinner /> Uploading... {Math.round(progress * 100)}%
         </div>
       )}
 
-      {/* Input bar */}
+      {/* 🟢 Input area */}
       <form
         onSubmit={sendMessage}
         className="flex items-center gap-2 p-3 border-t dark:border-gray-700 bg-white dark:bg-gray-800"
