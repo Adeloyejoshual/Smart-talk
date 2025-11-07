@@ -1,4 +1,4 @@
-// src/components/Chat/ChatConversationPage.jsx
+// src/components/ChatConversationPage.jsx
 import React, { useState, useEffect, useRef, useContext } from "react";
 import { useParams } from "react-router-dom";
 import {
@@ -19,7 +19,6 @@ import { ThemeContext } from "../context/ThemeContext";
 export default function ChatConversationPage() {
   const { chatId } = useParams();
   const { theme } = useContext(ThemeContext);
-
   const [messages, setMessages] = useState([]);
   const [newMsg, setNewMsg] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -28,10 +27,8 @@ export default function ChatConversationPage() {
 
   // Load messages in real-time
   useEffect(() => {
-    const q = query(
-      collection(db, "chats", chatId, "messages"),
-      orderBy("timestamp", "asc")
-    );
+    const msgRef = collection(db, "chats", chatId, "messages");
+    const q = query(msgRef, orderBy("timestamp", "asc"));
 
     const unsub = onSnapshot(q, (snapshot) => {
       setMessages(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
@@ -47,31 +44,25 @@ export default function ChatConversationPage() {
     const trimmed = newMsg.trim();
     if (!trimmed) return;
 
-    try {
-      await addDoc(collection(db, "chats", chatId, "messages"), {
-        text: trimmed,
-        senderId: auth.currentUser.uid,
-        type: "text",
-        timestamp: serverTimestamp(),
-      });
-      setNewMsg("");
-      scrollToBottom();
-    } catch (err) {
-      console.error("❌ Error sending message:", err);
-    }
+    await addDoc(collection(db, "chats", chatId, "messages"), {
+      text: trimmed,
+      senderId: auth.currentUser.uid,
+      type: "text",
+      timestamp: serverTimestamp(),
+    });
+
+    setNewMsg("");
   };
 
-  // Upload and send file message
+  // Upload file to AWS S3
   const handleFileUpload = async (file) => {
     try {
       setUploading(true);
-      setProgress(0);
-
       const url = await uploadFileWithProgress(file, chatId, setProgress);
 
       await addDoc(collection(db, "chats", chatId, "messages"), {
         senderId: auth.currentUser.uid,
-        type: file.type.startsWith("image/") ? "image" : "file",
+        type: "file",
         fileName: file.name,
         fileUrl: url,
         timestamp: serverTimestamp(),
@@ -79,21 +70,19 @@ export default function ChatConversationPage() {
 
       setUploading(false);
       setProgress(0);
-      scrollToBottom();
     } catch (err) {
-      console.error("❌ File upload failed:", err);
+      console.error("Upload failed:", err);
       setUploading(false);
       setProgress(0);
-      alert("File upload failed. Please try again.");
     }
   };
 
-  const scrollToBottom = () => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
   return (
-    <div className={`flex flex-col h-screen ${theme === "dark" ? "bg-gray-900 text-white" : "bg-gray-50"}`}>
+    <div
+      className={`flex flex-col h-screen ${
+        theme === "dark" ? "bg-gray-900 text-white" : "bg-gray-50"
+      }`}
+    >
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-3 py-4 space-y-2">
         {messages.length === 0 && (
@@ -115,7 +104,7 @@ export default function ChatConversationPage() {
       {/* Upload progress */}
       {uploading && (
         <div className="p-3 flex items-center gap-3 bg-gray-200 dark:bg-gray-800 text-sm">
-          <Spinner /> Uploading {Math.round(progress * 100)}%
+          <Spinner /> Uploading... {Math.round(progress * 100)}%
         </div>
       )}
 
