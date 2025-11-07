@@ -1,3 +1,4 @@
+// src/components/Chat/ChatConversationPage.jsx
 import React, { useState, useEffect, useRef, useContext } from "react";
 import { useParams } from "react-router-dom";
 import {
@@ -8,12 +9,12 @@ import {
   onSnapshot,
   serverTimestamp,
 } from "firebase/firestore";
-import { db, auth } from "../../firebaseConfig";
-import MessageBubble from "./MessageBubble";
-import FileUploadButton from "./FileUploadButton";
-import { uploadFileWithProgress } from "../../awsS3";
-import { ThemeContext } from "../../context/ThemeContext";
-import Spinner from "./Spinner";
+import { db, auth } from "../firebaseConfig";
+import MessageBubble from "./Chat/MessageBubble";
+import FileUploadButton from "./Chat/FileUploadButton";
+import Spinner from "./Chat/Spinner";
+import { uploadFileWithProgress } from "../awsS3";
+import { ThemeContext } from "../context/ThemeContext";
 
 export default function ChatConversationPage() {
   const { chatId } = useParams();
@@ -23,10 +24,9 @@ export default function ChatConversationPage() {
   const [newMsg, setNewMsg] = useState("");
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
-
   const bottomRef = useRef(null);
 
-  // 📡 Load messages in real-time
+  // Load messages in real-time
   useEffect(() => {
     const q = query(
       collection(db, "chats", chatId, "messages"),
@@ -41,30 +41,37 @@ export default function ChatConversationPage() {
     return () => unsub();
   }, [chatId]);
 
-  // ✉️ Send text message
+  // Send text message
   const sendMessage = async (e) => {
     e.preventDefault();
     const trimmed = newMsg.trim();
     if (!trimmed) return;
 
-    await addDoc(collection(db, "chats", chatId, "messages"), {
-      text: trimmed,
-      senderId: auth.currentUser.uid,
-      type: "text",
-      timestamp: serverTimestamp(),
-    });
-    setNewMsg("");
+    try {
+      await addDoc(collection(db, "chats", chatId, "messages"), {
+        text: trimmed,
+        senderId: auth.currentUser.uid,
+        type: "text",
+        timestamp: serverTimestamp(),
+      });
+      setNewMsg("");
+      scrollToBottom();
+    } catch (err) {
+      console.error("❌ Error sending message:", err);
+    }
   };
 
-  // 📎 Upload and send file
+  // Upload and send file message
   const handleFileUpload = async (file) => {
     try {
       setUploading(true);
+      setProgress(0);
+
       const url = await uploadFileWithProgress(file, chatId, setProgress);
 
       await addDoc(collection(db, "chats", chatId, "messages"), {
         senderId: auth.currentUser.uid,
-        type: "file",
+        type: file.type.startsWith("image/") ? "image" : "file",
         fileName: file.name,
         fileUrl: url,
         timestamp: serverTimestamp(),
@@ -72,18 +79,26 @@ export default function ChatConversationPage() {
 
       setUploading(false);
       setProgress(0);
+      scrollToBottom();
     } catch (err) {
-      console.error("Upload error:", err);
+      console.error("❌ File upload failed:", err);
       setUploading(false);
       setProgress(0);
+      alert("File upload failed. Please try again.");
     }
+  };
+
+  const scrollToBottom = () => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
   return (
     <div className={`flex flex-col h-screen ${theme === "dark" ? "bg-gray-900 text-white" : "bg-gray-50"}`}>
-      {/* Chat messages */}
+      {/* Messages */}
       <div className="flex-1 overflow-y-auto px-3 py-4 space-y-2">
-        {messages.length === 0 && <div className="text-center text-gray-400 mt-20">No messages yet</div>}
+        {messages.length === 0 && (
+          <div className="text-center text-gray-400 mt-20">No messages yet</div>
+        )}
 
         {messages.map((msg) => (
           <MessageBubble
@@ -100,7 +115,7 @@ export default function ChatConversationPage() {
       {/* Upload progress */}
       {uploading && (
         <div className="p-3 flex items-center gap-3 bg-gray-200 dark:bg-gray-800 text-sm">
-          <Spinner /> Uploading... {Math.round(progress * 100)}%
+          <Spinner /> Uploading {Math.round(progress * 100)}%
         </div>
       )}
 
@@ -117,7 +132,10 @@ export default function ChatConversationPage() {
           value={newMsg}
           onChange={(e) => setNewMsg(e.target.value)}
         />
-        <button type="submit" className="bg-blue-500 hover:bg-blue-600 text-white rounded-full px-4 py-2 text-sm">
+        <button
+          type="submit"
+          className="bg-blue-500 hover:bg-blue-600 text-white rounded-full px-4 py-2 text-sm"
+        >
           Send
         </button>
       </form>
