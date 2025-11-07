@@ -1,7 +1,7 @@
 // src/awsS3.js
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 
-// Create S3 client
+// ✅ AWS S3 client
 export const s3Client = new S3Client({
   region: import.meta.env.VITE_AWS_REGION,
   credentials: {
@@ -10,7 +10,7 @@ export const s3Client = new S3Client({
   },
 });
 
-// Upload file with optional progress callback
+// ✅ Upload file with "progress" callback
 export async function uploadFileWithProgress(file, chatId, onProgress) {
   const fileName = `${chatId}/${Date.now()}_${file.name}`;
 
@@ -19,11 +19,11 @@ export async function uploadFileWithProgress(file, chatId, onProgress) {
     Key: fileName,
     Body: file,
     ContentType: file.type,
-    ACL: "public-read", // optional: makes the file publicly readable
+    ACL: "public-read", // make public or use pre-signed URLs if needed
   });
 
-  // Fake progress for frontend (AWS SDK v3 in browser doesn't support upload progress natively)
-  onProgress?.(0.5);
+  // Simulated progress (v3 browser SDK doesn’t support native progress)
+  onProgress?.(0.3);
   await s3Client.send(command);
   onProgress?.(1);
 
