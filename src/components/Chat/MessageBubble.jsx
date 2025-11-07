@@ -1,86 +1,89 @@
 // src/components/Chat/MessageBubble.jsx
-import React, { useState } from "react";
-import { db } from "../../firebaseConfig";
-import { doc, updateDoc } from "firebase/firestore";
-import ReactionBar from "./ReactionBar";
+import React from "react";
+import { motion } from "framer-motion";
+import { FileText, Download } from "lucide-react";
 
-export default function MessageBubble({ msg, isOwn, chatId }) {
-  const [showReactions, setShowReactions] = useState(false);
+export default function MessageBubble({ msg, isOwn, onMediaClick }) {
+  const isImage = msg.fileType?.startsWith("image/");
+  const isVideo = msg.fileType?.startsWith("video/");
+  const isFile = msg.type === "file" && !isImage && !isVideo;
 
-  const time =
-    msg.timestamp?.toDate?.().toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    }) || "";
-
-  const handleReaction = async (emoji) => {
-    try {
-      const msgRef = doc(db, "chats", chatId, "messages", msg.id);
-      await updateDoc(msgRef, { reaction: emoji });
-      setShowReactions(false);
-    } catch (err) {
-      console.error("❌ Error reacting:", err);
+  // Handle file click (for image/video preview)
+  const handleClick = () => {
+    if (isImage || isVideo) {
+      onMediaClick([{ url: msg.fileUrl, type: msg.fileType }]);
     }
   };
 
   return (
     <div
-      className={`flex flex-col ${
-        isOwn ? "items-end" : "items-start"
-      } mb-3 relative`}
+      className={`flex ${isOwn ? "justify-end" : "justify-start"} w-full`}
     >
-      {/* Message bubble */}
-      <div
-        className={`max-w-[80%] px-4 py-2 rounded-2xl text-sm shadow-sm relative cursor-pointer ${
+      <motion.div
+        className={`relative max-w-[75%] md:max-w-[65%] p-3 rounded-2xl shadow-sm text-sm ${
           isOwn
-            ? "bg-blue-500 text-white rounded-tr-none"
-            : "bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-tl-none"
+            ? "bg-blue-500 text-white rounded-br-none"
+            : "bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded-bl-none"
         }`}
-        onClick={() => setShowReactions(!showReactions)}
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.2 }}
       >
-        {msg.type === "file" ? (
+        {/* TEXT MESSAGE */}
+        {msg.type === "text" && (
+          <p className="whitespace-pre-wrap break-words">{msg.text}</p>
+        )}
+
+        {/* IMAGE MESSAGE */}
+        {isImage && (
+          <img
+            src={msg.fileUrl}
+            alt={msg.fileName}
+            onClick={handleClick}
+            className="rounded-lg mt-1 cursor-pointer max-h-64 object-cover"
+          />
+        )}
+
+        {/* VIDEO MESSAGE */}
+        {isVideo && (
+          <video
+            controls
+            onClick={handleClick}
+            className="rounded-lg mt-1 cursor-pointer max-h-64"
+          >
+            <source src={msg.fileUrl} type={msg.fileType} />
+            Your browser does not support video playback.
+          </video>
+        )}
+
+        {/* FILE MESSAGE (non-image/video) */}
+        {isFile && (
           <a
             href={msg.fileUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="underline break-words"
+            className="flex items-center gap-2 mt-1 p-2 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600"
           >
-            📎 {msg.fileName || "Attachment"}
+            <FileText className="w-5 h-5" />
+            <div className="flex-1 text-xs break-all">{msg.fileName}</div>
+            <Download className="w-4 h-4 opacity-75" />
           </a>
-        ) : (
-          <span className="whitespace-pre-wrap break-words">{msg.text}</span>
         )}
 
-        <span
-          className={`text-[10px] mt-1 block ${
-            isOwn ? "text-blue-100" : "text-gray-500"
-          }`}
-        >
-          {time}
-        </span>
-      </div>
-
-      {/* Reaction bubble */}
-      {msg.reaction && (
-        <div
-          className={`mt-1 text-lg ${
-            isOwn ? "mr-2" : "ml-2"
-          } select-none`}
-        >
-          {msg.reaction}
-        </div>
-      )}
-
-      {/* Emoji Picker */}
-      {showReactions && (
-        <div
-          className={`absolute z-10 ${
-            isOwn ? "right-0" : "left-0"
-          } -top-10`}
-        >
-          <ReactionBar onSelect={handleReaction} />
-        </div>
-      )}
+        {/* TIMESTAMP */}
+        {msg.timestamp && (
+          <div
+            className={`text-[10px] mt-1 text-right ${
+              isOwn ? "text-blue-100" : "text-gray-400 dark:text-gray-400"
+            }`}
+          >
+            {new Date(msg.timestamp?.toDate?.() || Date.now()).toLocaleTimeString(
+              [],
+              { hour: "2-digit", minute: "2-digit" }
+            )}
+          </div>
+        )}
+      </motion.div>
     </div>
   );
 }
