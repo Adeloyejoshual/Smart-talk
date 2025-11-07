@@ -1,33 +1,41 @@
 // src/components/Chat/ReactionBar.jsx
-import React from "react";
-import { Plus } from "lucide-react";
-import { motion } from "framer-motion";
+import React, { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 
-const quickReactions = ["❤️", "😂", "👍", "😢", "🔥"];
+const defaultReactions = ["❤️", "😂", "👍", "🔥", "😮"];
 
-export default function ReactionBar({ onSelect, onOpenAll }) {
+export default function ReactionBar({ onSelect }) {
+  const [expanded, setExpanded] = useState(false);
+
   return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.8 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.8 }}
-      className="flex items-center bg-white dark:bg-gray-800 shadow-md rounded-full px-2 py-1"
-    >
-      {quickReactions.map((emoji) => (
-        <button
-          key={emoji}
-          onClick={() => onSelect(emoji)}
-          className="text-xl mx-1 hover:scale-125 transition-transform"
-        >
-          {emoji}
-        </button>
-      ))}
-      <button
-        onClick={onOpenAll}
-        className="ml-1 p-1 bg-gray-100 dark:bg-gray-700 rounded-full hover:scale-110 transition-transform"
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.8, y: 10 }}
+        transition={{ type: "spring", stiffness: 300, damping: 20 }}
+        className="flex items-center gap-1 bg-white dark:bg-gray-800 shadow-lg px-2 py-1 rounded-full border border-gray-200 dark:border-gray-700"
       >
-        <Plus size={16} className="text-gray-700 dark:text-gray-300" />
-      </button>
-    </motion.div>
+        {defaultReactions.slice(0, expanded ? defaultReactions.length : 5).map(
+          (emoji, i) => (
+            <motion.button
+              key={i}
+              whileTap={{ scale: 0.8 }}
+              className="text-lg hover:scale-125 transition-transform"
+              onClick={() => onSelect(emoji)}
+            >
+              {emoji}
+            </motion.button>
+          )
+        )}
+
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="text-gray-400 hover:text-gray-600 text-sm ml-1"
+        >
+          {expanded ? "−" : "＋"}
+        </button>
+      </motion.div>
+    </AnimatePresence>
   );
 }
