@@ -1,51 +1,72 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useContext } from "react";
 import { useParams } from "react-router-dom";
-import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp } from "firebase/firestore";
-import { db, auth } from "../firebaseConfig";
-import FileUploadButton from "./Chat/FileUploadButton";
-import { uploadFileWithProgress } from "../awsS3";
+import {
+  collection,
+  addDoc,
+  query,
+  orderBy,
+  onSnapshot,
+  serverTimestamp,
+} from "firebase/firestore";
+import { db, auth } from "../../firebaseConfig";
+import MessageBubble from "./MessageBubble";
+import FileUploadButton from "./FileUploadButton";
+import { uploadFileWithProgress } from "../../awsS3";
+import { ThemeContext } from "../../context/ThemeContext";
+import Spinner from "./Spinner";
 
 export default function ChatConversationPage() {
   const { chatId } = useParams();
+  const { theme } = useContext(ThemeContext);
+
   const [messages, setMessages] = useState([]);
   const [newMsg, setNewMsg] = useState("");
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
-  const bottomRef = useRef();
 
-  // Load messages
+  const bottomRef = useRef(null);
+
+  // 📡 Load messages in real-time
   useEffect(() => {
-    const msgRef = collection(db, "chats", chatId, "messages");
-    const q = query(msgRef, orderBy("timestamp", "asc"));
-    const unsub = onSnapshot(q, snapshot => {
-      setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    const q = query(
+      collection(db, "chats", chatId, "messages"),
+      orderBy("timestamp", "asc")
+    );
+
+    const unsub = onSnapshot(q, (snapshot) => {
+      setMessages(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     });
+
     return () => unsub();
   }, [chatId]);
 
-  const sendMessage = async e => {
+  // ✉️ Send text message
+  const sendMessage = async (e) => {
     e.preventDefault();
-    if (!newMsg.trim()) return;
+    const trimmed = newMsg.trim();
+    if (!trimmed) return;
+
     await addDoc(collection(db, "chats", chatId, "messages"), {
-      text: newMsg,
-      type: "text",
+      text: trimmed,
       senderId: auth.currentUser.uid,
+      type: "text",
       timestamp: serverTimestamp(),
     });
     setNewMsg("");
   };
 
+  // 📎 Upload and send file
   const handleFileUpload = async (file) => {
     try {
       setUploading(true);
       const url = await uploadFileWithProgress(file, chatId, setProgress);
 
       await addDoc(collection(db, "chats", chatId, "messages"), {
+        senderId: auth.currentUser.uid,
+        type: "file",
         fileName: file.name,
         fileUrl: url,
-        type: "file",
-        senderId: auth.currentUser.uid,
         timestamp: serverTimestamp(),
       });
 
@@ -54,36 +75,51 @@ export default function ChatConversationPage() {
     } catch (err) {
       console.error("Upload error:", err);
       setUploading(false);
+      setProgress(0);
     }
   };
 
   return (
-    <div className="flex flex-col h-screen">
-      <div className="flex-1 overflow-y-auto p-3 space-y-2">
-        {messages.map(msg => (
-          <div key={msg.id}>
-            {msg.type === "text" ? (
-              <div>{msg.text}</div>
-            ) : (
-              <a href={msg.fileUrl} target="_blank">{msg.fileName}</a>
-            )}
-          </div>
+    <div className={`flex flex-col h-screen ${theme === "dark" ? "bg-gray-900 text-white" : "bg-gray-50"}`}>
+      {/* Chat messages */}
+      <div className="flex-1 overflow-y-auto px-3 py-4 space-y-2">
+        {messages.length === 0 && <div className="text-center text-gray-400 mt-20">No messages yet</div>}
+
+        {messages.map((msg) => (
+          <MessageBubble
+            key={msg.id}
+            msg={msg}
+            chatId={chatId}
+            isOwn={msg.senderId === auth.currentUser.uid}
+          />
         ))}
+
         <div ref={bottomRef}></div>
       </div>
 
-      {uploading && <div className="p-2">Uploading... {Math.round(progress * 100)}%</div>}
+      {/* Upload progress */}
+      {uploading && (
+        <div className="p-3 flex items-center gap-3 bg-gray-200 dark:bg-gray-800 text-sm">
+          <Spinner /> Uploading... {Math.round(progress * 100)}%
+        </div>
+      )}
 
-      <form onSubmit={sendMessage} className="flex items-center gap-2 p-3 border-t">
+      {/* Input bar */}
+      <form
+        onSubmit={sendMessage}
+        className="flex items-center gap-2 p-3 border-t dark:border-gray-700 bg-white dark:bg-gray-800"
+      >
         <FileUploadButton onFileSelect={handleFileUpload} />
         <input
           type="text"
           placeholder="Type a message..."
-          className="flex-1 rounded-full px-4 py-2 border"
+          className="flex-1 rounded-full px-4 py-2 bg-gray-100 dark:bg-gray-700 focus:outline-none text-sm"
           value={newMsg}
-          onChange={e => setNewMsg(e.target.value)}
+          onChange={(e) => setNewMsg(e.target.value)}
         />
-        <button type="submit" className="px-4 py-2 bg-blue-500 text-white rounded-full">Send</button>
+        <button type="submit" className="bg-blue-500 hover:bg-blue-600 text-white rounded-full px-4 py-2 text-sm">
+          Send
+        </button>
       </form>
     </div>
   );
