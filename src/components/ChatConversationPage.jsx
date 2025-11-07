@@ -27,7 +27,7 @@ export default function ChatConversationPage() {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const bottomRef = useRef(null);
 
-  // ✅ Load chat messages in real time
+  // 🟢 Load messages in real-time
   useEffect(() => {
     if (!chatId) return;
     const msgRef = collection(db, "chats", chatId, "messages");
@@ -41,28 +41,26 @@ export default function ChatConversationPage() {
     return () => unsub();
   }, [chatId]);
 
-  // ✅ Handle selecting files (preview)
+  // 🟢 Handle file select
   const handleSelectFiles = (files) => {
-    if (!files || files.length === 0) return;
+    if (!files?.length) return;
     const fileArray = Array.from(files);
     setSelectedFiles((prev) => [...prev, ...fileArray]);
   };
 
-  // ✅ Remove preview before sending
+  // 🟢 Remove preview
   const removeSelectedFile = (index) => {
     setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
-  // ✅ Handle sending messages + files
+  // 🟢 Send text + files
   const sendMessage = async (e) => {
     e.preventDefault();
     const trimmed = newMsg.trim();
 
-    // If no message and no file, do nothing
     if (!trimmed && selectedFiles.length === 0) return;
 
     try {
-      // Upload all selected files
       if (selectedFiles.length > 0) {
         setUploading(true);
 
@@ -87,7 +85,6 @@ export default function ChatConversationPage() {
         setProgress(0);
       }
 
-      // Send text message
       if (trimmed) {
         await addDoc(collection(db, "chats", chatId, "messages"), {
           text: trimmed,
@@ -109,7 +106,7 @@ export default function ChatConversationPage() {
         theme === "dark" ? "bg-gray-900 text-white" : "bg-gray-50"
       }`}
     >
-      {/* 🟢 Messages List */}
+      {/* 💬 Chat messages */}
       <div className="flex-1 overflow-y-auto px-3 py-4 space-y-2">
         {messages.length === 0 && (
           <div className="text-center text-gray-400 mt-20">No messages yet</div>
@@ -127,57 +124,59 @@ export default function ChatConversationPage() {
         <div ref={bottomRef}></div>
       </div>
 
-      {/* 🟢 Preview selected files */}
+      {/* 📎 File preview (compact, small icons above input) */}
       {selectedFiles.length > 0 && (
-        <div className="p-3 bg-gray-100 dark:bg-gray-800 border-t dark:border-gray-700">
-          <div className="flex flex-wrap gap-3">
-            {selectedFiles.map((file, idx) => (
-              <div
-                key={idx}
-                className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-300 dark:border-gray-600"
+        <div className="px-3 pb-2 flex gap-2 overflow-x-auto border-t dark:border-gray-700 bg-white dark:bg-gray-800">
+          {selectedFiles.map((file, idx) => (
+            <div
+              key={idx}
+              className="relative flex-shrink-0 w-14 h-14 rounded-lg overflow-hidden border border-gray-300 dark:border-gray-600"
+            >
+              {file.type.startsWith("image/") ? (
+                <img
+                  src={URL.createObjectURL(file)}
+                  alt="preview"
+                  className="object-cover w-full h-full"
+                />
+              ) : file.type.startsWith("video/") ? (
+                <video
+                  src={URL.createObjectURL(file)}
+                  className="object-cover w-full h-full"
+                  muted
+                />
+              ) : (
+                <div className="flex items-center justify-center text-[10px] p-1 text-center text-gray-600 dark:text-gray-300">
+                  {file.name.length > 12
+                    ? file.name.slice(0, 9) + "..."
+                    : file.name}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => removeSelectedFile(idx)}
+                className="absolute top-0 right-0 bg-black bg-opacity-60 text-white rounded-full p-[2px]"
               >
-                {file.type.startsWith("image/") ? (
-                  <img
-                    src={URL.createObjectURL(file)}
-                    alt="preview"
-                    className="object-cover w-full h-full"
-                  />
-                ) : file.type.startsWith("video/") ? (
-                  <video
-                    src={URL.createObjectURL(file)}
-                    className="object-cover w-full h-full"
-                  />
-                ) : (
-                  <div className="flex items-center justify-center w-full h-full text-xs text-gray-600 dark:text-gray-300">
-                    {file.name}
-                  </div>
-                )}
-                <button
-                  type="button"
-                  onClick={() => removeSelectedFile(idx)}
-                  className="absolute top-1 right-1 bg-black bg-opacity-60 text-white rounded-full p-1"
-                >
-                  <X size={12} />
-                </button>
-              </div>
-            ))}
-          </div>
+                <X size={10} />
+              </button>
+            </div>
+          ))}
         </div>
       )}
 
-      {/* 🟢 Upload progress bar */}
+      {/* 📤 Upload status */}
       {uploading && (
         <div className="p-3 flex items-center gap-3 bg-gray-200 dark:bg-gray-800 text-sm">
           <Spinner /> Uploading... {Math.round(progress * 100)}%
         </div>
       )}
 
-      {/* 🟢 Input area */}
+      {/* ✏️ Input area */}
       <form
         onSubmit={sendMessage}
         className="flex items-center gap-2 p-3 border-t dark:border-gray-700 bg-white dark:bg-gray-800"
       >
         <FileUploadButton onFileSelect={handleSelectFiles} />
+
         <input
           type="text"
           placeholder="Type a message..."
@@ -185,6 +184,7 @@ export default function ChatConversationPage() {
           value={newMsg}
           onChange={(e) => setNewMsg(e.target.value)}
         />
+
         <button
           type="submit"
           className="bg-blue-500 hover:bg-blue-600 text-white rounded-full px-4 py-2 text-sm"
