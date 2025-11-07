@@ -1,59 +1,80 @@
 // src/components/Chat/MessageBubble.jsx
 import React, { useState } from "react";
 import ReactionBar from "./ReactionBar";
-import AllEmojiPicker from "./AllEmojiPicker";
-import { motion, AnimatePresence } from "framer-motion";
 
-export default function MessageBubble({ message, isOwn, onReact }) {
+export default function MessageBubble({ msg, isOwn }) {
   const [showReactions, setShowReactions] = useState(false);
-  const [showAllEmojis, setShowAllEmojis] = useState(false);
 
-  const handleReaction = (emoji) => {
-    onReact(message.id, emoji);
-    setShowReactions(false);
-  };
+  const time =
+    msg.timestamp?.toDate?.().toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    }) || "";
 
   return (
-    <div className={`flex ${isOwn ? "justify-end" : "justify-start"} relative`}>
-      <motion.div
-        onClick={() => setShowReactions((prev) => !prev)}
-        className={`relative p-3 rounded-2xl max-w-[75%] ${
+    <div
+      className={`flex flex-col ${
+        isOwn ? "items-end" : "items-start"
+      } mb-3 relative`}
+    >
+      {/* Message bubble */}
+      <div
+        className={`max-w-[80%] px-4 py-2 rounded-2xl text-sm shadow-sm relative cursor-pointer ${
           isOwn
-            ? "bg-blue-600 text-white rounded-br-none"
-            : "bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded-bl-none"
+            ? "bg-blue-500 text-white rounded-tr-none"
+            : "bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-tl-none"
         }`}
+        onClick={() => setShowReactions(!showReactions)}
       >
-        <p className="text-sm leading-snug">{message.text}</p>
-
-        {/* Show user's reaction */}
-        {message.reaction && (
-          <span className="absolute -bottom-4 right-2 text-lg">
-            {message.reaction}
-          </span>
+        {msg.type === "file" ? (
+          <a
+            href={msg.fileUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline break-words"
+          >
+            📎 {msg.fileName || "Attachment"}
+          </a>
+        ) : (
+          <span className="whitespace-pre-wrap break-words">{msg.text}</span>
         )}
-      </motion.div>
 
-      {/* Reaction Bar (Quick 5) */}
-      <AnimatePresence>
-        {showReactions && (
-          <div className="absolute -top-10 z-40">
-            <ReactionBar
-              onSelect={handleReaction}
-              onOpenAll={() => {
-                setShowAllEmojis(true);
-                setShowReactions(false);
-              }}
-            />
-          </div>
-        )}
-      </AnimatePresence>
+        <span
+          className={`text-[10px] mt-1 block ${
+            isOwn ? "text-blue-100" : "text-gray-500"
+          }`}
+        >
+          {time}
+        </span>
+      </div>
 
-      {/* Full Emoji Picker */}
-      <AllEmojiPicker
-        show={showAllEmojis}
-        onSelect={handleReaction}
-        onClose={() => setShowAllEmojis(false)}
-      />
+      {/* Reaction bubble */}
+      {msg.reaction && (
+        <div
+          className={`mt-1 text-lg ${
+            isOwn ? "mr-2" : "ml-2"
+          } select-none`}
+        >
+          {msg.reaction}
+        </div>
+      )}
+
+      {/* Emoji Picker (ReactionBar) */}
+      {showReactions && (
+        <div
+          className={`absolute ${
+            isOwn ? "right-0" : "left-0"
+          } -top-10`}
+        >
+          <ReactionBar
+            onSelect={(emoji) => {
+              console.log("Reacted with:", emoji);
+              // You’ll later add Firestore update here
+              setShowReactions(false);
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }
