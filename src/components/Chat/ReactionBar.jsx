@@ -2,7 +2,7 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
-const defaultReactions = ["❤️", "😂", "👍", "🔥", "😮"];
+const defaultReactions = ["❤️", "😂", "👍", "🔥", "😮", "😢", "👏", "💀", "😍"];
 
 export default function ReactionBar({ onSelect }) {
   const [expanded, setExpanded] = useState(false);
@@ -16,8 +16,9 @@ export default function ReactionBar({ onSelect }) {
         transition={{ type: "spring", stiffness: 300, damping: 20 }}
         className="flex items-center gap-1 bg-white dark:bg-gray-800 shadow-lg px-2 py-1 rounded-full border border-gray-200 dark:border-gray-700"
       >
-        {defaultReactions.slice(0, expanded ? defaultReactions.length : 5).map(
-          (emoji, i) => (
+        {defaultReactions
+          .slice(0, expanded ? defaultReactions.length : 5)
+          .map((emoji, i) => (
             <motion.button
               key={i}
               whileTap={{ scale: 0.8 }}
@@ -26,8 +27,7 @@ export default function ReactionBar({ onSelect }) {
             >
               {emoji}
             </motion.button>
-          )
-        )}
+          ))}
 
         <button
           onClick={() => setExpanded(!expanded)}
