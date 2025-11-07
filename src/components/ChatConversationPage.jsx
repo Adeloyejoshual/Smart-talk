@@ -34,8 +34,9 @@ export default function ChatConversationPage() {
     const q = query(msgRef, orderBy("timestamp", "asc"));
 
     const unsub = onSnapshot(q, (snapshot) => {
-      setMessages(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+      const msgs = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      setMessages(msgs);
+      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 150);
     });
 
     return () => unsub();
@@ -44,23 +45,23 @@ export default function ChatConversationPage() {
   // 🟢 Handle file select
   const handleSelectFiles = (files) => {
     if (!files?.length) return;
-    const fileArray = Array.from(files);
-    setSelectedFiles((prev) => [...prev, ...fileArray]);
+    setSelectedFiles((prev) => [...prev, ...Array.from(files)]);
   };
 
-  // 🟢 Remove preview
+  // 🟢 Remove a selected file preview
   const removeSelectedFile = (index) => {
     setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
-  // 🟢 Send text + files
-  const sendMessage = async (e) => {
-    e.preventDefault();
+  // 🟢 Send message (text + attachments)
+  const handleSendMessage = async () => {
     const trimmed = newMsg.trim();
 
+    // Nothing to send
     if (!trimmed && selectedFiles.length === 0) return;
 
     try {
+      // 1️⃣ Upload any selected files first
       if (selectedFiles.length > 0) {
         setUploading(true);
 
@@ -85,6 +86,7 @@ export default function ChatConversationPage() {
         setProgress(0);
       }
 
+      // 2️⃣ Send text message
       if (trimmed) {
         await addDoc(collection(db, "chats", chatId, "messages"), {
           text: trimmed,
@@ -94,6 +96,9 @@ export default function ChatConversationPage() {
         });
         setNewMsg("");
       }
+
+      // 3️⃣ Scroll down after sending
+      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
     } catch (err) {
       console.error("Error sending message:", err);
       setUploading(false);
@@ -106,7 +111,7 @@ export default function ChatConversationPage() {
         theme === "dark" ? "bg-gray-900 text-white" : "bg-gray-50"
       }`}
     >
-      {/* 💬 Chat messages */}
+      {/* 💬 Messages */}
       <div className="flex-1 overflow-y-auto px-3 py-4 space-y-2">
         {messages.length === 0 && (
           <div className="text-center text-gray-400 mt-20">No messages yet</div>
@@ -124,13 +129,13 @@ export default function ChatConversationPage() {
         <div ref={bottomRef}></div>
       </div>
 
-      {/* 📎 File preview (compact, small icons above input) */}
+      {/* 📎 File Previews */}
       {selectedFiles.length > 0 && (
-        <div className="px-3 pb-2 flex gap-2 overflow-x-auto border-t dark:border-gray-700 bg-white dark:bg-gray-800">
+        <div className="px-3 py-2 flex gap-2 overflow-x-auto border-t dark:border-gray-700 bg-white dark:bg-gray-800">
           {selectedFiles.map((file, idx) => (
             <div
               key={idx}
-              className="relative flex-shrink-0 w-14 h-14 rounded-lg overflow-hidden border border-gray-300 dark:border-gray-600"
+              className="relative w-14 h-14 rounded-lg overflow-hidden border border-gray-300 dark:border-gray-600 flex-shrink-0"
             >
               {file.type.startsWith("image/") ? (
                 <img
@@ -145,7 +150,7 @@ export default function ChatConversationPage() {
                   muted
                 />
               ) : (
-                <div className="flex items-center justify-center text-[10px] p-1 text-center text-gray-600 dark:text-gray-300">
+                <div className="flex items-center justify-center h-full text-[10px] text-gray-600 dark:text-gray-300 px-1 text-center">
                   {file.name.length > 12
                     ? file.name.slice(0, 9) + "..."
                     : file.name}
@@ -163,18 +168,15 @@ export default function ChatConversationPage() {
         </div>
       )}
 
-      {/* 📤 Upload status */}
+      {/* ⏳ Upload Progress */}
       {uploading && (
         <div className="p-3 flex items-center gap-3 bg-gray-200 dark:bg-gray-800 text-sm">
           <Spinner /> Uploading... {Math.round(progress * 100)}%
         </div>
       )}
 
-      {/* ✏️ Input area */}
-      <form
-        onSubmit={sendMessage}
-        className="flex items-center gap-2 p-3 border-t dark:border-gray-700 bg-white dark:bg-gray-800"
-      >
+      {/* ✏️ Input Bar */}
+      <div className="flex items-center gap-2 p-3 border-t dark:border-gray-700 bg-white dark:bg-gray-800">
         <FileUploadButton onFileSelect={handleSelectFiles} />
 
         <input
@@ -186,12 +188,12 @@ export default function ChatConversationPage() {
         />
 
         <button
-          type="submit"
+          onClick={handleSendMessage}
           className="bg-blue-500 hover:bg-blue-600 text-white rounded-full px-4 py-2 text-sm"
         >
           Send
         </button>
-      </form>
+      </div>
     </div>
   );
 }
