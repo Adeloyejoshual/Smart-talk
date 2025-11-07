@@ -13,6 +13,7 @@ import { db, auth } from "../firebaseConfig";
 import MessageBubble from "./Chat/MessageBubble";
 import FileUploadButton from "./Chat/FileUploadButton";
 import Spinner from "./Chat/Spinner";
+import FullScreenPreview from "./Chat/FullScreenPreview";
 import { uploadFileWithProgress } from "../awsS3";
 import { ThemeContext } from "../context/ThemeContext";
 
@@ -23,6 +24,8 @@ export default function ChatConversationPage() {
   const [newMsg, setNewMsg] = useState("");
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [previewFiles, setPreviewFiles] = useState([]);
+  const [activePreviewIndex, setActivePreviewIndex] = useState(0);
   const bottomRef = useRef(null);
 
   // Load messages in real-time
@@ -65,6 +68,7 @@ export default function ChatConversationPage() {
         type: "file",
         fileName: file.name,
         fileUrl: url,
+        fileType: file.type,
         timestamp: serverTimestamp(),
       });
 
@@ -77,6 +81,12 @@ export default function ChatConversationPage() {
     }
   };
 
+  // Handle image/video preview
+  const handleMediaClick = (files, index = 0) => {
+    setPreviewFiles(files);
+    setActivePreviewIndex(index);
+  };
+
   return (
     <div
       className={`flex flex-col h-screen ${
@@ -86,7 +96,9 @@ export default function ChatConversationPage() {
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-3 py-4 space-y-2">
         {messages.length === 0 && (
-          <div className="text-center text-gray-400 mt-20">No messages yet</div>
+          <div className="text-center text-gray-400 mt-20">
+            No messages yet
+          </div>
         )}
 
         {messages.map((msg) => (
@@ -95,6 +107,7 @@ export default function ChatConversationPage() {
             msg={msg}
             chatId={chatId}
             isOwn={msg.senderId === auth.currentUser.uid}
+            onMediaClick={handleMediaClick}
           />
         ))}
 
@@ -128,6 +141,25 @@ export default function ChatConversationPage() {
           Send
         </button>
       </form>
+
+      {/* Fullscreen Preview */}
+      {previewFiles.length > 0 && (
+        <FullScreenPreview
+          files={previewFiles}
+          activeIndex={activePreviewIndex}
+          onClose={() => setPreviewFiles([])}
+          onPrev={() =>
+            setActivePreviewIndex((i) =>
+              i > 0 ? i - 1 : previewFiles.length - 1
+            )
+          }
+          onNext={() =>
+            setActivePreviewIndex((i) =>
+              i < previewFiles.length - 1 ? i + 1 : 0
+            )
+          }
+        />
+      )}
     </div>
   );
 }
