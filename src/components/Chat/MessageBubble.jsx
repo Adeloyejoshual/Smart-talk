@@ -1,18 +1,11 @@
-// src/components/Chat/MessageBubble.jsx
 import React from "react";
 import { motion } from "framer-motion";
 import { FileText, Download } from "lucide-react";
 
-export default function MessageBubble({ msg, isOwn, onMediaClick }) {
-  const isImage = msg.fileType?.startsWith("image/");
-  const isVideo = msg.fileType?.startsWith("video/");
-  const isFile = msg.type === "file" && !isImage && !isVideo;
-
-  const handleClick = () => {
-    if (onMediaClick && (isImage || isVideo)) {
-      onMediaClick([{ url: msg.fileUrl, type: msg.fileType }]);
-    }
-  };
+export default function MessageBubble({ msg, isOwn }) {
+  const isImage = msg.type === "image";
+  const isVideo = msg.type === "video";
+  const isFile = msg.type === "file";
 
   return (
     <div className={`flex ${isOwn ? "justify-end" : "justify-start"} w-full`}>
@@ -27,43 +20,40 @@ export default function MessageBubble({ msg, isOwn, onMediaClick }) {
         transition={{ duration: 0.2 }}
       >
         {/* TEXT MESSAGE */}
-        {msg.type === "text" && msg.text && (
+        {msg.type === "text" && (
           <p className="whitespace-pre-wrap break-words">{msg.text}</p>
         )}
 
         {/* IMAGE MESSAGE */}
-        {isImage && msg.fileUrl && (
+        {isImage && (
           <img
             src={msg.fileUrl}
-            alt={msg.fileName || "Image"}
-            onClick={handleClick}
-            loading="lazy"
-            className="rounded-lg mt-2 cursor-pointer max-h-64 object-cover border border-gray-300 dark:border-gray-600"
+            alt={msg.fileName}
+            className="rounded-lg mt-1 cursor-pointer max-h-64 object-cover"
           />
         )}
 
         {/* VIDEO MESSAGE */}
-        {isVideo && msg.fileUrl && (
+        {isVideo && (
           <video
             controls
-            className="rounded-lg mt-2 max-h-64 border border-gray-300 dark:border-gray-600"
+            className="rounded-lg mt-1 cursor-pointer max-h-64"
           >
             <source src={msg.fileUrl} type={msg.fileType} />
-            Your browser does not support video playback.
           </video>
         )}
 
-        {/* OTHER FILE MESSAGE */}
-        {isFile && msg.fileUrl && (
+        {/* FILE MESSAGE */}
+        {isFile && (
           <a
             href={msg.fileUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2 mt-2 p-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white/20 hover:bg-gray-100 dark:hover:bg-gray-600 transition"
+            className="flex items-center gap-2 mt-1 p-2 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600"
           >
-            <FileText className="w-5 h-5 shrink-0" />
-            <div className="flex-1 text-xs truncate">{msg.fileName}</div>
-            <Download className="w-4 h-4 opacity-75 shrink-0" />
+            <FileText className="w-5 h-5" />
+            <div className="flex-1 text-xs break-all">{msg.fileName}</div>
+            <Download className="w-4 h-4 opacity-75" />
           </a>
         )}
 
@@ -75,7 +65,7 @@ export default function MessageBubble({ msg, isOwn, onMediaClick }) {
             }`}
           >
             {new Date(
-              msg.timestamp?.toDate?.() || msg.timestamp
+              msg.timestamp?.toDate?.() || Date.now()
             ).toLocaleTimeString([], {
               hour: "2-digit",
               minute: "2-digit",
