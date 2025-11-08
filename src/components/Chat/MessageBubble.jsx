@@ -19,12 +19,10 @@ export default function MessageBubble({ msg, isOwn }) {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.2 }}
       >
-        {/* TEXT MESSAGE */}
         {msg.type === "text" && (
           <p className="whitespace-pre-wrap break-words">{msg.text}</p>
         )}
 
-        {/* IMAGE MESSAGE */}
         {isImage && (
           <img
             src={msg.fileUrl}
@@ -33,17 +31,12 @@ export default function MessageBubble({ msg, isOwn }) {
           />
         )}
 
-        {/* VIDEO MESSAGE */}
         {isVideo && (
-          <video
-            controls
-            className="rounded-lg mt-1 cursor-pointer max-h-64"
-          >
+          <video controls className="rounded-lg mt-1 max-h-64">
             <source src={msg.fileUrl} type={msg.fileType} />
           </video>
         )}
 
-        {/* FILE MESSAGE */}
         {isFile && (
           <a
             href={msg.fileUrl}
@@ -57,7 +50,6 @@ export default function MessageBubble({ msg, isOwn }) {
           </a>
         )}
 
-        {/* TIMESTAMP */}
         {msg.timestamp && (
           <div
             className={`text-[10px] mt-1 text-right ${
@@ -66,10 +58,7 @@ export default function MessageBubble({ msg, isOwn }) {
           >
             {new Date(
               msg.timestamp?.toDate?.() || Date.now()
-            ).toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
+            ).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
           </div>
         )}
       </motion.div>
