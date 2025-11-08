@@ -15,7 +15,6 @@ import FileUploadButton from "./Chat/FileUploadButton";
 import Spinner from "./Chat/Spinner";
 import { uploadFileWithProgress } from "../awsS3";
 import { ThemeContext } from "../context/ThemeContext";
-import { motion, AnimatePresence } from "framer-motion";
 
 export default function ChatConversationPage() {
   const { chatId } = useParams();
@@ -24,77 +23,73 @@ export default function ChatConversationPage() {
   const [newMsg, setNewMsg] = useState("");
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [previewFiles, setPreviewFiles] = useState([]);
+  const [selectedFiles, setSelectedFiles] = useState([]); // 👈 store files before upload
   const bottomRef = useRef(null);
 
-  // 🔹 Load messages in real-time
+  // Load messages in real-time
   useEffect(() => {
     const msgRef = collection(db, "chats", chatId, "messages");
     const q = query(msgRef, orderBy("timestamp", "asc"));
 
     const unsub = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      setMessages(data);
-      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 150);
+      setMessages(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     });
 
     return () => unsub();
   }, [chatId]);
 
-  // 🔹 Send text and/or files
+  // Send text or file message
   const sendMessage = async (e) => {
     e.preventDefault();
-    if (!newMsg.trim() && previewFiles.length === 0) return;
 
-    // ✉️ Send text first
-    if (newMsg.trim()) {
-      await addDoc(collection(db, "chats", chatId, "messages"), {
-        text: newMsg.trim(),
-        senderId: auth.currentUser.uid,
-        type: "text",
-        timestamp: serverTimestamp(),
-      });
-      setNewMsg("");
+    // if user has selected files
+    if (selectedFiles.length > 0) {
+      await handleFileUpload(selectedFiles);
+      setSelectedFiles([]);
+      return;
     }
 
-    // 📸 Send each file
-    if (previewFiles.length > 0) {
+    const trimmed = newMsg.trim();
+    if (!trimmed) return;
+
+    await addDoc(collection(db, "chats", chatId, "messages"), {
+      text: trimmed,
+      senderId: auth.currentUser.uid,
+      type: "text",
+      timestamp: serverTimestamp(),
+    });
+
+    setNewMsg("");
+  };
+
+  // Upload file(s) to AWS S3
+  const handleFileUpload = async (files) => {
+    try {
       setUploading(true);
-
-      for (const file of previewFiles) {
-        try {
-          const url = await uploadFileWithProgress(file, chatId, setProgress);
-
-          await addDoc(collection(db, "chats", chatId, "messages"), {
-            senderId: auth.currentUser.uid,
-            type: file.type.startsWith("image/")
-              ? "image"
-              : file.type.startsWith("video/")
-              ? "video"
-              : "file",
-            fileName: file.name,
-            fileUrl: url,
-            fileType: file.type,
-            timestamp: serverTimestamp(),
-          });
-        } catch (err) {
-          console.error("File upload failed:", err);
-        }
+      for (const file of files) {
+        const url = await uploadFileWithProgress(file, chatId, setProgress);
+        await addDoc(collection(db, "chats", chatId, "messages"), {
+          senderId: auth.currentUser.uid,
+          type: "file",
+          fileName: file.name,
+          fileUrl: url,
+          fileType: file.type,
+          timestamp: serverTimestamp(),
+        });
       }
-
       setUploading(false);
       setProgress(0);
-      setPreviewFiles([]);
+    } catch (err) {
+      console.error("Upload failed:", err);
+      setUploading(false);
+      setProgress(0);
     }
   };
 
-  // 🔹 Handle file select
+  // When user selects files (show preview)
   const handleFileSelect = (files) => {
-    const arr = Array.from(files);
-    setPreviewFiles(arr);
+    setSelectedFiles(Array.from(files));
   };
 
   return (
@@ -106,7 +101,9 @@ export default function ChatConversationPage() {
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-3 py-4 space-y-2">
         {messages.length === 0 && (
-          <div className="text-center text-gray-400 mt-20">No messages yet</div>
+          <div className="text-center text-gray-400 mt-20">
+            No messages yet
+          </div>
         )}
 
         {messages.map((msg) => (
@@ -121,56 +118,43 @@ export default function ChatConversationPage() {
         <div ref={bottomRef}></div>
       </div>
 
-      {/* Animated File Preview */}
-      <AnimatePresence>
-        {previewFiles.length > 0 && (
-          <motion.div
-            initial={{ y: 80, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 80, opacity: 0 }}
-            transition={{ type: "spring", stiffness: 160, damping: 20 }}
-            className="flex gap-2 p-2 border-t dark:border-gray-700 bg-gray-100 dark:bg-gray-800 overflow-x-auto shadow-inner"
-          >
-            {previewFiles.map((file, i) => (
+      {/* Uploading status */}
+      {uploading && (
+        <div className="p-3 flex items-center gap-3 bg-gray-200 dark:bg-gray-800 text-sm">
+          <Spinner /> Uploading... {Math.round(progress * 100)}%
+        </div>
+      )}
+
+      {/* Selected file preview */}
+      {selectedFiles.length > 0 && (
+        <div className="px-3 py-2 border-t dark:border-gray-700 flex gap-2 overflow-x-auto bg-gray-100 dark:bg-gray-800">
+          {selectedFiles.map((file, i) => {
+            const isImage = file.type.startsWith("image/");
+            const isVideo = file.type.startsWith("video/");
+            return (
               <div
                 key={i}
-                className="relative w-16 h-16 rounded-lg overflow-hidden border border-gray-300 dark:border-gray-600 flex items-center justify-center"
+                className="relative flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden"
               >
-                {file.type.startsWith("image/") ? (
+                {isImage ? (
                   <img
                     src={URL.createObjectURL(file)}
                     alt={file.name}
                     className="object-cover w-full h-full"
                   />
-                ) : file.type.startsWith("video/") ? (
+                ) : isVideo ? (
                   <video
                     src={URL.createObjectURL(file)}
                     className="object-cover w-full h-full"
-                    muted
                   />
                 ) : (
-                  <div className="text-xs text-center p-1 truncate w-full">
-                    {file.name.split(".").pop()}
+                  <div className="bg-gray-300 dark:bg-gray-700 flex items-center justify-center w-full h-full text-xs text-gray-700 dark:text-gray-200">
+                    {file.name.split(".").pop().toUpperCase()}
                   </div>
                 )}
-                <button
-                  onClick={() =>
-                    setPreviewFiles(previewFiles.filter((_, idx) => idx !== i))
-                  }
-                  className="absolute top-0 right-0 bg-black/70 text-white text-xs px-1 rounded-bl"
-                >
-                  ✕
-                </button>
               </div>
-            ))}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Upload progress */}
-      {uploading && (
-        <div className="p-3 flex items-center gap-3 bg-gray-200 dark:bg-gray-800 text-sm">
-          <Spinner /> Uploading... {Math.round(progress * 100)}%
+            );
+          })}
         </div>
       )}
 
@@ -182,19 +166,19 @@ export default function ChatConversationPage() {
         <FileUploadButton onFileSelect={handleFileSelect} />
         <input
           type="text"
-          placeholder="Type a message..."
+          placeholder={
+            selectedFiles.length > 0
+              ? "Press Send to upload file(s)"
+              : "Type a message..."
+          }
           className="flex-1 rounded-full px-4 py-2 bg-gray-100 dark:bg-gray-700 focus:outline-none text-sm"
           value={newMsg}
           onChange={(e) => setNewMsg(e.target.value)}
+          disabled={selectedFiles.length > 0}
         />
         <button
           type="submit"
-          className={`rounded-full px-4 py-2 text-sm text-white transition ${
-            newMsg.trim() || previewFiles.length
-              ? "bg-blue-500 hover:bg-blue-600"
-              : "bg-gray-400 cursor-not-allowed"
-          }`}
-          disabled={!newMsg.trim() && previewFiles.length === 0}
+          className="bg-blue-500 hover:bg-blue-600 text-white rounded-full px-4 py-2 text-sm"
         >
           Send
         </button>
