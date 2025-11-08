@@ -1,6 +1,4 @@
-// src/components/ChatConversationPage.jsx
-import React, { useState, useEffect, useRef, useContext } from "react";
-import { useParams } from "react-router-dom";
+import React, { useState, useEffect, useRef } from "react";
 import {
   collection,
   addDoc,
@@ -9,180 +7,115 @@ import {
   onSnapshot,
   serverTimestamp,
 } from "firebase/firestore";
-import { db, auth } from "../firebaseConfig";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { db, storage, auth } from "../firebaseConfig";
 import MessageBubble from "./Chat/MessageBubble";
 import FileUploadButton from "./Chat/FileUploadButton";
-import Spinner from "./Chat/Spinner";
-import { uploadFileWithProgress } from "../awsS3";
-import { ThemeContext } from "../context/ThemeContext";
+import { Send } from "lucide-react";
 
-export default function ChatConversationPage() {
-  const { chatId } = useParams();
-  const { theme } = useContext(ThemeContext);
+export default function ChatConversationPage({ chatId }) {
   const [messages, setMessages] = useState([]);
-  const [newMsg, setNewMsg] = useState("");
+  const [input, setInput] = useState("");
   const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [selectedFiles, setSelectedFiles] = useState([]); // 👈 store files before upload
-  const bottomRef = useRef(null);
+  const messagesEndRef = useRef(null);
 
-  // Load messages in real-time
+  // 🔹 Load messages in real time
   useEffect(() => {
-    const msgRef = collection(db, "chats", chatId, "messages");
-    const q = query(msgRef, orderBy("timestamp", "asc"));
-
+    if (!chatId) return;
+    const q = query(
+      collection(db, "chats", chatId, "messages"),
+      orderBy("timestamp", "asc")
+    );
     const unsub = onSnapshot(q, (snapshot) => {
-      setMessages(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      const msgs = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setMessages(msgs);
     });
-
     return () => unsub();
   }, [chatId]);
 
-  // Send text or file message
-  const sendMessage = async (e) => {
-    e.preventDefault();
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
-    // if user has selected files
-    if (selectedFiles.length > 0) {
-      await handleFileUpload(selectedFiles);
-      setSelectedFiles([]);
-      return;
-    }
-
-    const trimmed = newMsg.trim();
-    if (!trimmed) return;
+  // 🔹 Send text message
+  const sendMessage = async () => {
+    if (!input.trim() || !chatId) return;
 
     await addDoc(collection(db, "chats", chatId, "messages"), {
-      text: trimmed,
+      text: input.trim(),
       senderId: auth.currentUser.uid,
       type: "text",
       timestamp: serverTimestamp(),
     });
 
-    setNewMsg("");
+    setInput("");
   };
 
-  // Upload file(s) to AWS S3
+  // 🔹 Handle file uploads
   const handleFileUpload = async (files) => {
-    try {
-      setUploading(true);
-      for (const file of files) {
-        const url = await uploadFileWithProgress(file, chatId, setProgress);
-        await addDoc(collection(db, "chats", chatId, "messages"), {
-          senderId: auth.currentUser.uid,
-          type: "file",
-          fileName: file.name,
-          fileUrl: url,
-          fileType: file.type,
-          timestamp: serverTimestamp(),
-        });
-      }
-      setUploading(false);
-      setProgress(0);
-    } catch (err) {
-      console.error("Upload failed:", err);
-      setUploading(false);
-      setProgress(0);
-    }
-  };
+    if (!files || !chatId) return;
+    setUploading(true);
 
-  // When user selects files (show preview)
-  const handleFileSelect = (files) => {
-    setSelectedFiles(Array.from(files));
+    for (const file of files) {
+      const fileRef = ref(storage, `chats/${chatId}/${file.name}`);
+      await uploadBytes(fileRef, file);
+      const url = await getDownloadURL(fileRef);
+
+      // ✅ Detect file type correctly
+      let messageType = "file";
+      if (file.type.startsWith("image/")) messageType = "image";
+      else if (file.type.startsWith("video/")) messageType = "video";
+
+      await addDoc(collection(db, "chats", chatId, "messages"), {
+        senderId: auth.currentUser.uid,
+        type: messageType,
+        fileName: file.name,
+        fileUrl: url,
+        fileType: file.type,
+        timestamp: serverTimestamp(),
+      });
+    }
+
+    setUploading(false);
   };
 
   return (
-    <div
-      className={`flex flex-col h-screen ${
-        theme === "dark" ? "bg-gray-900 text-white" : "bg-gray-50"
-      }`}
-    >
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-3 py-4 space-y-2">
-        {messages.length === 0 && (
-          <div className="text-center text-gray-400 mt-20">
-            No messages yet
-          </div>
-        )}
-
+    <div className="flex flex-col h-full">
+      {/* Messages Area */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-gray-50 dark:bg-gray-900">
         {messages.map((msg) => (
           <MessageBubble
             key={msg.id}
             msg={msg}
-            chatId={chatId}
             isOwn={msg.senderId === auth.currentUser.uid}
           />
         ))}
-
-        <div ref={bottomRef}></div>
+        <div ref={messagesEndRef} />
       </div>
 
-      {/* Uploading status */}
-      {uploading && (
-        <div className="p-3 flex items-center gap-3 bg-gray-200 dark:bg-gray-800 text-sm">
-          <Spinner /> Uploading... {Math.round(progress * 100)}%
-        </div>
-      )}
-
-      {/* Selected file preview */}
-      {selectedFiles.length > 0 && (
-        <div className="px-3 py-2 border-t dark:border-gray-700 flex gap-2 overflow-x-auto bg-gray-100 dark:bg-gray-800">
-          {selectedFiles.map((file, i) => {
-            const isImage = file.type.startsWith("image/");
-            const isVideo = file.type.startsWith("video/");
-            return (
-              <div
-                key={i}
-                className="relative flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden"
-              >
-                {isImage ? (
-                  <img
-                    src={URL.createObjectURL(file)}
-                    alt={file.name}
-                    className="object-cover w-full h-full"
-                  />
-                ) : isVideo ? (
-                  <video
-                    src={URL.createObjectURL(file)}
-                    className="object-cover w-full h-full"
-                  />
-                ) : (
-                  <div className="bg-gray-300 dark:bg-gray-700 flex items-center justify-center w-full h-full text-xs text-gray-700 dark:text-gray-200">
-                    {file.name.split(".").pop().toUpperCase()}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Input bar */}
-      <form
-        onSubmit={sendMessage}
-        className="flex items-center gap-2 p-3 border-t dark:border-gray-700 bg-white dark:bg-gray-800"
-      >
-        <FileUploadButton onFileSelect={handleFileSelect} />
+      {/* Input Area */}
+      <div className="p-3 border-t border-gray-200 dark:border-gray-700 flex items-center gap-2 bg-white dark:bg-gray-800">
+        <FileUploadButton onFileSelect={handleFileUpload} />
         <input
           type="text"
-          placeholder={
-            selectedFiles.length > 0
-              ? "Press Send to upload file(s)"
-              : "Type a message..."
-          }
-          className="flex-1 rounded-full px-4 py-2 bg-gray-100 dark:bg-gray-700 focus:outline-none text-sm"
-          value={newMsg}
-          onChange={(e) => setNewMsg(e.target.value)}
-          disabled={selectedFiles.length > 0}
+          placeholder={uploading ? "Uploading..." : "Type a message"}
+          value={input}
+          disabled={uploading}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+          className="flex-1 p-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-transparent outline-none"
         />
         <button
-          type="submit"
-          className="bg-blue-500 hover:bg-blue-600 text-white rounded-full px-4 py-2 text-sm"
+          onClick={sendMessage}
+          disabled={!input.trim() || uploading}
+          className="p-2 rounded-full bg-blue-500 text-white disabled:opacity-50"
         >
-          Send
+          <Send size={18} />
         </button>
-      </form>
+      </div>
     </div>
   );
 }
