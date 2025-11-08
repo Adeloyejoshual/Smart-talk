@@ -27,25 +27,29 @@ export default function ChatConversationPage() {
   const [previewFiles, setPreviewFiles] = useState([]);
   const bottomRef = useRef(null);
 
-  // Load messages
+  // 🔹 Load messages in real-time
   useEffect(() => {
     const msgRef = collection(db, "chats", chatId, "messages");
     const q = query(msgRef, orderBy("timestamp", "asc"));
 
     const unsub = onSnapshot(q, (snapshot) => {
-      setMessages(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      const data = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setMessages(data);
+      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 150);
     });
 
     return () => unsub();
   }, [chatId]);
 
-  // Send text and files
+  // 🔹 Send text and/or files
   const sendMessage = async (e) => {
     e.preventDefault();
     if (!newMsg.trim() && previewFiles.length === 0) return;
 
-    // Send text
+    // ✉️ Send text first
     if (newMsg.trim()) {
       await addDoc(collection(db, "chats", chatId, "messages"), {
         text: newMsg.trim(),
@@ -56,31 +60,38 @@ export default function ChatConversationPage() {
       setNewMsg("");
     }
 
-    // Send files
+    // 📸 Send each file
     if (previewFiles.length > 0) {
       setUploading(true);
+
       for (const file of previewFiles) {
         try {
           const url = await uploadFileWithProgress(file, chatId, setProgress);
+
           await addDoc(collection(db, "chats", chatId, "messages"), {
             senderId: auth.currentUser.uid,
-            type: "file",
+            type: file.type.startsWith("image/")
+              ? "image"
+              : file.type.startsWith("video/")
+              ? "video"
+              : "file",
             fileName: file.name,
             fileUrl: url,
             fileType: file.type,
             timestamp: serverTimestamp(),
           });
         } catch (err) {
-          console.error("Upload failed:", err);
+          console.error("File upload failed:", err);
         }
       }
-      setPreviewFiles([]);
+
       setUploading(false);
       setProgress(0);
+      setPreviewFiles([]);
     }
   };
 
-  // Handle file select
+  // 🔹 Handle file select
   const handleFileSelect = (files) => {
     const arr = Array.from(files);
     setPreviewFiles(arr);
@@ -110,20 +121,20 @@ export default function ChatConversationPage() {
         <div ref={bottomRef}></div>
       </div>
 
-      {/* Animated Preview Bar */}
+      {/* Animated File Preview */}
       <AnimatePresence>
         {previewFiles.length > 0 && (
           <motion.div
             initial={{ y: 80, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 80, opacity: 0 }}
-            transition={{ type: "spring", stiffness: 160, damping: 18 }}
+            transition={{ type: "spring", stiffness: 160, damping: 20 }}
             className="flex gap-2 p-2 border-t dark:border-gray-700 bg-gray-100 dark:bg-gray-800 overflow-x-auto shadow-inner"
           >
             {previewFiles.map((file, i) => (
               <div
                 key={i}
-                className="relative w-16 h-16 rounded-lg overflow-hidden border border-gray-300 dark:border-gray-600"
+                className="relative w-16 h-16 rounded-lg overflow-hidden border border-gray-300 dark:border-gray-600 flex items-center justify-center"
               >
                 {file.type.startsWith("image/") ? (
                   <img
@@ -131,16 +142,20 @@ export default function ChatConversationPage() {
                     alt={file.name}
                     className="object-cover w-full h-full"
                   />
+                ) : file.type.startsWith("video/") ? (
+                  <video
+                    src={URL.createObjectURL(file)}
+                    className="object-cover w-full h-full"
+                    muted
+                  />
                 ) : (
-                  <div className="flex items-center justify-center w-full h-full bg-gray-200 dark:bg-gray-700 text-xs text-center p-1">
+                  <div className="text-xs text-center p-1 truncate w-full">
                     {file.name.split(".").pop()}
                   </div>
                 )}
                 <button
                   onClick={() =>
-                    setPreviewFiles(
-                      previewFiles.filter((_, index) => index !== i)
-                    )
+                    setPreviewFiles(previewFiles.filter((_, idx) => idx !== i))
                   }
                   className="absolute top-0 right-0 bg-black/70 text-white text-xs px-1 rounded-bl"
                 >
