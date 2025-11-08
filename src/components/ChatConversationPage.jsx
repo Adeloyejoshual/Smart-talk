@@ -7,7 +7,7 @@ import {
   onSnapshot,
   serverTimestamp,
 } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { db, storage, auth } from "../firebaseConfig";
 import MessageBubble from "./Chat/MessageBubble";
 import FileUploadButton from "./Chat/FileUploadButton";
@@ -36,6 +36,7 @@ export default function ChatConversationPage({ chatId }) {
     return () => unsub();
   }, [chatId]);
 
+  // 🔹 Auto-scroll down when new messages come
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -43,60 +44,72 @@ export default function ChatConversationPage({ chatId }) {
   // 🔹 Send text message
   const sendMessage = async () => {
     if (!input.trim() || !chatId) return;
-
-    await addDoc(collection(db, "chats", chatId, "messages"), {
-      text: input.trim(),
-      senderId: auth.currentUser.uid,
-      type: "text",
-      timestamp: serverTimestamp(),
-    });
-
-    setInput("");
+    try {
+      await addDoc(collection(db, "chats", chatId, "messages"), {
+        text: input.trim(),
+        senderId: auth.currentUser?.uid || "unknown",
+        type: "text",
+        timestamp: serverTimestamp(),
+      });
+      setInput("");
+    } catch (err) {
+      console.error("Error sending message:", err);
+    }
   };
 
-  // 🔹 Handle file uploads
+  // 🔹 Upload and send files
   const handleFileUpload = async (files) => {
-    if (!files || !chatId) return;
+    if (!files?.length || !chatId) return;
     setUploading(true);
 
     for (const file of files) {
-      const fileRef = ref(storage, `chats/${chatId}/${file.name}`);
-      await uploadBytes(fileRef, file);
-      const url = await getDownloadURL(fileRef);
+      const filePath = `chats/${chatId}/${Date.now()}_${file.name}`;
+      const fileRef = ref(storage, filePath);
+      const uploadTask = uploadBytesResumable(fileRef, file);
 
-      // ✅ Detect file type correctly
-      let messageType = "file";
-      if (file.type.startsWith("image/")) messageType = "image";
-      else if (file.type.startsWith("video/")) messageType = "video";
+      uploadTask.on(
+        "state_changed",
+        null,
+        (error) => {
+          console.error("Upload failed:", error);
+          setUploading(false);
+        },
+        async () => {
+          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+          let messageType = "file";
+          if (file.type.startsWith("image/")) messageType = "image";
+          else if (file.type.startsWith("video/")) messageType = "video";
 
-      await addDoc(collection(db, "chats", chatId, "messages"), {
-        senderId: auth.currentUser.uid,
-        type: messageType,
-        fileName: file.name,
-        fileUrl: url,
-        fileType: file.type,
-        timestamp: serverTimestamp(),
-      });
+          await addDoc(collection(db, "chats", chatId, "messages"), {
+            senderId: auth.currentUser?.uid || "unknown",
+            type: messageType,
+            fileName: file.name,
+            fileUrl: downloadURL,
+            fileType: file.type,
+            timestamp: serverTimestamp(),
+          });
+
+          setUploading(false);
+        }
+      );
     }
-
-    setUploading(false);
   };
 
   return (
     <div className="flex flex-col h-full">
-      {/* Messages Area */}
+      {/* Messages area */}
       <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-gray-50 dark:bg-gray-900">
         {messages.map((msg) => (
           <MessageBubble
             key={msg.id}
             msg={msg}
-            isOwn={msg.senderId === auth.currentUser.uid}
+            isOwn={msg.senderId === auth.currentUser?.uid}
           />
         ))}
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input Area */}
+      {/* Input bar */}
       <div className="p-3 border-t border-gray-200 dark:border-gray-700 flex items-center gap-2 bg-white dark:bg-gray-800">
         <FileUploadButton onFileSelect={handleFileUpload} />
         <input
