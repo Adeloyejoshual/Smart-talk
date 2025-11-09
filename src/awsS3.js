@@ -1,5 +1,4 @@
-import { S3Client } from "@aws-sdk/client-s3";
-import { Upload } from "@aws-sdk/lib-storage";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 
 export const s3Client = new S3Client({
   region: process.env.REACT_APP_AWS_REGION,
@@ -9,25 +8,22 @@ export const s3Client = new S3Client({
   },
 });
 
+// Upload file (simple version)
 export const uploadFileWithProgress = async (file, chatId, onProgress) => {
   const fileName = `${chatId}/${Date.now()}_${file.name}`;
-  const upload = new Upload({
-    client: s3Client,
-    params: {
-      Bucket: process.env.REACT_APP_AWS_BUCKET_NAME,
-      Key: fileName,
-      Body: file,
-      ContentType: file.type,
-    },
-    leavePartsOnError: false,
-  });
 
-  upload.on("httpUploadProgress", (progress) => {
-    if (onProgress && progress.total) {
-      onProgress(progress.loaded / progress.total);
-    }
-  });
+  const params = {
+    Bucket: process.env.REACT_APP_AWS_BUCKET_NAME,
+    Key: fileName,
+    Body: file,
+    ContentType: file.type,
+  };
 
-  await upload.done();
+  // We can’t track progress with this simple client directly,
+  // so call onProgress(1) when complete.
+  await s3Client.send(new PutObjectCommand(params));
+
+  if (onProgress) onProgress(1);
+
   return `https://${process.env.REACT_APP_AWS_BUCKET_NAME}.s3.${process.env.REACT_APP_AWS_REGION}.amazonaws.com/${fileName}`;
 };
