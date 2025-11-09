@@ -1,32 +1,33 @@
-// src/awsS3.js
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client } from "@aws-sdk/client-s3";
+import { Upload } from "@aws-sdk/lib-storage";
 
-// 🔐 AWS S3 client
 export const s3Client = new S3Client({
-  region: import.meta.env.VITE_AWS_REGION,
+  region: process.env.REACT_APP_AWS_REGION,
   credentials: {
-    accessKeyId: import.meta.env.VITE_AWS_ACCESS_KEY_ID,
-    secretAccessKey: import.meta.env.VITE_AWS_SECRET_ACCESS_KEY,
+    accessKeyId: process.env.REACT_APP_AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.REACT_APP_AWS_SECRET_ACCESS_KEY,
   },
 });
 
-// 📤 Upload file with progress callback
-export const uploadFileWithProgress = async (file, folder = "", setProgress) => {
-  const fileName = `${folder}/${Date.now()}_${file.name}`;
+export const uploadFileWithProgress = async (file, chatId, onProgress) => {
+  const fileName = `${chatId}/${Date.now()}_${file.name}`;
+  const upload = new Upload({
+    client: s3Client,
+    params: {
+      Bucket: process.env.REACT_APP_AWS_BUCKET_NAME,
+      Key: fileName,
+      Body: file,
+      ContentType: file.type,
+    },
+    leavePartsOnError: false,
+  });
 
-  const uploadParams = {
-    Bucket: import.meta.env.VITE_AWS_BUCKET,
-    Key: fileName,
-    Body: file,
-    ContentType: file.type,
-  };
+  upload.on("httpUploadProgress", (progress) => {
+    if (onProgress && progress.total) {
+      onProgress(progress.loaded / progress.total);
+    }
+  });
 
-  // 👀 AWS SDK v3 does not support progress natively for PutObjectCommand,
-  // so we can simulate progress for UX purposes
-  if (setProgress) setProgress(0);
-  await s3Client.send(new PutObjectCommand(uploadParams));
-  if (setProgress) setProgress(1);
-
-  // Return the object URL
-  return `https://${import.meta.env.VITE_AWS_BUCKET}.s3.${import.meta.env.VITE_AWS_REGION}.amazonaws.com/${fileName}`;
+  await upload.done();
+  return `https://${process.env.REACT_APP_AWS_BUCKET_NAME}.s3.${process.env.REACT_APP_AWS_REGION}.amazonaws.com/${fileName}`;
 };
