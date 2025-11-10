@@ -1,4 +1,3 @@
-// src/components/ChatConversationPage.jsx
 import React, { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import {
@@ -9,15 +8,11 @@ import {
   onSnapshot,
   serverTimestamp,
 } from "firebase/firestore";
-import {
-  ref as storageRef,
-  uploadBytesResumable,
-  getDownloadURL,
-} from "firebase/storage";
-import { db, storage, auth } from "../firebaseConfig";
+import { db, auth } from "../firebaseConfig";
 import MessageBubble from "./Chat/MessageBubble";
 import FileUploadButton from "./Chat/FileUploadButton";
 import Spinner from "./Chat/Spinner";
+import { uploadToFirebase } from "../uploadToFirebase"; // ✅ new helper
 
 export default function ChatConversationPage() {
   const { chatId } = useParams();
@@ -29,13 +24,10 @@ export default function ChatConversationPage() {
   const [progress, setProgress] = useState(0);
   const endRef = useRef(null);
 
-  /* -------------------- 🔄 Real-time Messages -------------------- */
+  // 🔹 Listen to messages in real-time
   useEffect(() => {
     if (!chatId) return;
-    const q = query(
-      collection(db, "chats", chatId, "messages"),
-      orderBy("timestamp", "asc")
-    );
+    const q = query(collection(db, "chats", chatId, "messages"), orderBy("timestamp", "asc"));
     const unsub = onSnapshot(q, (snap) => {
       const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       setMessages(docs);
@@ -43,12 +35,12 @@ export default function ChatConversationPage() {
     return () => unsub();
   }, [chatId]);
 
-  /* -------------------- 📜 Auto-scroll -------------------- */
+  // 🔹 Auto-scroll when new message arrives
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  /* -------------------- 📂 Handle File Selection -------------------- */
+  // 🔹 Handle file selection
   const handleFilesSelected = (files) => {
     const arr = Array.from(files || []);
     const newPreviews = arr.map((f) => ({
@@ -61,40 +53,18 @@ export default function ChatConversationPage() {
     setPreviews((prev) => [...prev, ...newPreviews]);
   };
 
+  // 🔹 Remove preview
   const removePreview = (idx) => {
     setSelectedFiles((prev) => prev.filter((_, i) => i !== idx));
     setPreviews((prev) => prev.filter((_, i) => i !== idx));
   };
 
-  /* -------------------- ☁️ Upload File -------------------- */
+  // 🔹 Upload one file
   const uploadSingle = async (file, onProgress) => {
-    const path = `chats/${chatId}/${Date.now()}_${file.name}`;
-    const sRef = storageRef(storage, path);
-    const task = uploadBytesResumable(sRef, file);
-
-    return await new Promise((resolve, reject) => {
-      task.on(
-        "state_changed",
-        (snapshot) => {
-          const p = snapshot.totalBytes
-            ? snapshot.bytesTransferred / snapshot.totalBytes
-            : 0;
-          onProgress && onProgress(p);
-        },
-        (err) => reject(err),
-        async () => {
-          try {
-            const url = await getDownloadURL(task.snapshot.ref);
-            resolve(url);
-          } catch (e) {
-            reject(e);
-          }
-        }
-      );
-    });
+    return await uploadToFirebase(file, chatId, onProgress);
   };
 
-  /* -------------------- 📤 Send Message -------------------- */
+  // 🔹 Send text and/or media
   const handleSend = async (e) => {
     e?.preventDefault?.();
     if (!chatId) return;
@@ -104,7 +74,7 @@ export default function ChatConversationPage() {
     try {
       setUploading(true);
 
-      // Send text message
+      // 1️⃣ Send text message
       if (input.trim()) {
         await addDoc(collection(db, "chats", chatId, "messages"), {
           senderId: auth.currentUser?.uid || null,
@@ -115,12 +85,11 @@ export default function ChatConversationPage() {
         setInput("");
       }
 
-      // Upload files one by one
+      // 2️⃣ Upload media sequentially
       for (let i = 0; i < selectedFiles.length; i++) {
         const file = selectedFiles[i];
         setProgress(0);
         const url = await uploadSingle(file, (p) => setProgress(p));
-
         let msgType = "file";
         if (file.type.startsWith("image/")) msgType = "image";
         else if (file.type.startsWith("video/")) msgType = "video";
@@ -135,57 +104,30 @@ export default function ChatConversationPage() {
         });
       }
 
-      // cleanup
-      previews.forEach((p) => p.url && URL.revokeObjectURL(p.url));
+      // ✅ Clear previews
       setSelectedFiles([]);
+      previews.forEach((p) => p.url && URL.revokeObjectURL(p.url));
       setPreviews([]);
       setProgress(0);
     } catch (err) {
-      console.error("send error", err);
+      console.error("Send error:", err);
       alert("Failed to send. Try again.");
     } finally {
       setUploading(false);
     }
   };
 
-  /* -------------------- 🧱 UI Layout -------------------- */
   return (
     <div className="flex flex-col h-screen bg-white dark:bg-gray-900">
-      {/* Chat Header */}
-      <div className="flex items-center justify-between px-4 py-2 border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
-        <div className="flex items-center gap-3">
-          <img
-            src="/default-avatar.png"
-            alt="user"
-            className="w-8 h-8 rounded-full object-cover"
-          />
-          <div>
-            <p className="font-medium text-sm text-gray-800 dark:text-gray-200">
-              Chat Room
-            </p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">Online</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Messages */}
+      {/* 🔹 Messages area */}
       <div className="flex-1 overflow-auto p-3">
-        {messages.length === 0 && (
-          <div className="text-center text-gray-400 mt-10">
-            No messages yet. Say hi 👋
-          </div>
-        )}
         {messages.map((m) => (
-          <MessageBubble
-            key={m.id}
-            msg={m}
-            isOwn={m.senderId === auth.currentUser?.uid}
-          />
+          <MessageBubble key={m.id} msg={m} isOwn={m.senderId === auth.currentUser?.uid} />
         ))}
         <div ref={endRef} />
       </div>
 
-      {/* File Previews */}
+      {/* 🔹 File previews */}
       {previews.length > 0 && (
         <div className="p-2 border-t bg-gray-50 dark:bg-gray-800 flex gap-2 items-center overflow-x-auto">
           {previews.map((p, idx) => (
@@ -212,14 +154,14 @@ export default function ChatConversationPage() {
         </div>
       )}
 
-      {/* Upload Progress */}
+      {/* 🔹 Upload progress */}
       {uploading && (
         <div className="p-2 text-xs text-center bg-gray-100 dark:bg-gray-800">
           Uploading {Math.round(progress * 100)}%
         </div>
       )}
 
-      {/* Message Input */}
+      {/* 🔹 Composer */}
       <form
         onSubmit={handleSend}
         className="p-3 border-t bg-white dark:bg-gray-800 flex items-center gap-2"
