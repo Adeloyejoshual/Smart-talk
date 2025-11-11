@@ -22,11 +22,7 @@ export default function ChatConversationPage() {
   const [progress, setProgress] = useState(0);
   const endRef = useRef(null);
 
-  const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
-  const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
-  const CLOUDINARY_URL = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/upload`;
-
-  // 🟢 Load messages in real-time
+  // 🔄 Load messages in real time
   useEffect(() => {
     if (!chatId) return;
     const q = query(collection(db, "chats", chatId, "messages"), orderBy("timestamp", "asc"));
@@ -37,56 +33,86 @@ export default function ChatConversationPage() {
     return () => unsub();
   }, [chatId]);
 
-  // Auto-scroll to bottom
+  // 📜 Scroll to bottom when messages change
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // 🟢 Handle file select
+  // 🖼️ Handle selected files (image or video)
   const handleFilesSelected = (files) => {
     const arr = Array.from(files || []);
-    const newPreviews = arr.map((f) => ({
-      url: f.type.startsWith("image/") ? URL.createObjectURL(f) : null,
-      type: f.type,
-      name: f.name,
-      file: f,
-    }));
+    const newPreviews = arr.map((f) => {
+      const type = f.type;
+      let previewUrl = null;
+
+      // Create preview for both images and videos
+      if (type.startsWith("image/") || type.startsWith("video/")) {
+        previewUrl = URL.createObjectURL(f);
+      }
+
+      return {
+        url: previewUrl,
+        type,
+        name: f.name,
+        file: f,
+      };
+    });
+
     setSelectedFiles((prev) => [...prev, ...arr]);
     setPreviews((prev) => [...prev, ...newPreviews]);
   };
 
-  // 🟢 Remove preview
+  // ❌ Remove a preview before upload
   const removePreview = (idx) => {
     setSelectedFiles((prev) => prev.filter((_, i) => i !== idx));
     setPreviews((prev) => prev.filter((_, i) => i !== idx));
   };
 
-  // 🟢 Upload to Cloudinary
-  const uploadToCloudinary = async (file) => {
+  // ☁️ Upload to Cloudinary
+  const uploadToCloudinary = async (file, onProgress) => {
+    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+    const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+    const url = `https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`;
+
     const formData = new FormData();
     formData.append("file", file);
-    formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+    formData.append("upload_preset", uploadPreset);
 
-    const res = await fetch(CLOUDINARY_URL, {
-      method: "POST",
-      body: formData,
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", url);
+
+      xhr.upload.addEventListener("progress", (e) => {
+        if (e.lengthComputable) {
+          const percent = e.loaded / e.total;
+          onProgress && onProgress(percent);
+        }
+      });
+
+      xhr.onload = () => {
+        if (xhr.status === 200) {
+          const res = JSON.parse(xhr.responseText);
+          resolve(res.secure_url);
+        } else {
+          reject(new Error("Cloudinary upload failed"));
+        }
+      };
+
+      xhr.onerror = () => reject(new Error("Upload error"));
+      xhr.send(formData);
     });
-
-    if (!res.ok) throw new Error("Cloudinary upload failed");
-    const data = await res.json();
-    return data.secure_url;
   };
 
-  // 🟢 Handle send
+  // 📤 Send message
   const handleSend = async (e) => {
     e?.preventDefault?.();
-    if (!chatId || (!input.trim() && selectedFiles.length === 0)) return;
+    if (!chatId) return;
+    if (!input.trim() && selectedFiles.length === 0) return;
 
     try {
       setUploading(true);
-      setProgress(0);
 
-      // Send text message
+      // ✉️ Send text message
       if (input.trim()) {
         await addDoc(collection(db, "chats", chatId, "messages"), {
           senderId: auth.currentUser?.uid || null,
@@ -97,12 +123,12 @@ export default function ChatConversationPage() {
         setInput("");
       }
 
-      // Send files (Cloudinary)
+      // 📁 Upload and send files
       for (let i = 0; i < selectedFiles.length; i++) {
         const file = selectedFiles[i];
-        setProgress(((i + 1) / selectedFiles.length) * 100);
+        setProgress(0);
+        const url = await uploadToCloudinary(file, (p) => setProgress(p));
 
-        const url = await uploadToCloudinary(file);
         let msgType = "file";
         if (file.type.startsWith("image/")) msgType = "image";
         else if (file.type.startsWith("video/")) msgType = "video";
@@ -117,13 +143,14 @@ export default function ChatConversationPage() {
         });
       }
 
+      // Reset after send
       setSelectedFiles([]);
       previews.forEach((p) => p.url && URL.revokeObjectURL(p.url));
       setPreviews([]);
       setProgress(0);
     } catch (err) {
-      console.error("❌ Send failed:", err);
-      alert("Failed to send message or file.");
+      console.error("send error", err);
+      alert("Upload failed — check Cloudinary config or network.");
     } finally {
       setUploading(false);
     }
@@ -131,7 +158,7 @@ export default function ChatConversationPage() {
 
   return (
     <div className="flex flex-col h-screen bg-white dark:bg-gray-900">
-      {/* 🟢 Messages */}
+      {/* 🗨️ Chat messages */}
       <div className="flex-1 overflow-auto p-3">
         {messages.map((m) => (
           <MessageBubble key={m.id} msg={m} isOwn={m.senderId === auth.currentUser?.uid} />
@@ -139,15 +166,17 @@ export default function ChatConversationPage() {
         <div ref={endRef} />
       </div>
 
-      {/* 🟢 File Previews */}
+      {/* 📸 File previews */}
       {previews.length > 0 && (
         <div className="p-2 border-t bg-gray-50 dark:bg-gray-800 flex gap-2 items-center overflow-x-auto">
           {previews.map((p, idx) => (
-            <div key={idx} className="relative w-20 h-20 flex-shrink-0">
-              {p.url ? (
-                <img src={p.url} alt={p.name} className="w-full h-full object-cover rounded" />
+            <div key={idx} className="relative w-24 h-24 flex-shrink-0 rounded-lg overflow-hidden">
+              {p.type.startsWith("image/") ? (
+                <img src={p.url} alt={p.name} className="w-full h-full object-cover" />
+              ) : p.type.startsWith("video/") ? (
+                <video src={p.url} className="w-full h-full object-cover" muted />
               ) : (
-                <div className="w-full h-full flex items-center justify-center rounded bg-gray-100 dark:bg-gray-700 text-xs p-1">
+                <div className="w-full h-full flex items-center justify-center text-xs bg-gray-100 dark:bg-gray-700">
                   {p.name}
                 </div>
               )}
@@ -162,14 +191,14 @@ export default function ChatConversationPage() {
         </div>
       )}
 
-      {/* 🟢 Uploading Progress */}
+      {/* ⏳ Upload progress */}
       {uploading && (
         <div className="p-2 text-xs text-center bg-gray-100 dark:bg-gray-800">
-          Uploading {Math.round(progress)}%
+          Uploading {Math.round(progress * 100)}%
         </div>
       )}
 
-      {/* 🟢 Composer */}
+      {/* ✍️ Input bar */}
       <form
         onSubmit={handleSend}
         className="p-3 border-t bg-white dark:bg-gray-800 flex items-center gap-2"
