@@ -1,82 +1,55 @@
-import React, { useEffect, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
-import {
-  collection,
-  addDoc,
-  query,
-  orderBy,
-  onSnapshot,
-  serverTimestamp,
-} from "firebase/firestore";
-import { db, auth } from "../firebaseConfig";
-import MessageBubble from "./Chat/MessageBubble";
-import FileUploadButton from "./Chat/FileUploadButton";
+import React, { useState, useEffect, useRef } from "react";
+import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp } from "firebase/firestore";
+import { db, auth } from "@/firebase";
+import { Send, Paperclip, File, Music, Loader2 } from "lucide-react";
 
-export default function ChatConversationPage() {
-  const { chatId } = useParams();
+export default function ChatConversationPage({ chatId }) {
   const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState("");
-  const [selectedFiles, setSelectedFiles] = useState([]);
-  const [previews, setPreviews] = useState([]);
+  const [newMessage, setNewMessage] = useState("");
   const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const endRef = useRef(null);
+  const [preview, setPreview] = useState(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const fileInputRef = useRef();
 
-  // 🔄 Load messages in real time
+  // 🔥 Fetch messages live from Firestore
   useEffect(() => {
     if (!chatId) return;
-    const q = query(collection(db, "chats", chatId, "messages"), orderBy("timestamp", "asc"));
-    const unsub = onSnapshot(q, (snap) => {
-      const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setMessages(docs);
+    const messagesRef = collection(db, "chats", chatId, "messages");
+    const q = query(messagesRef, orderBy("createdAt", "asc"));
+    const unsub = onSnapshot(q, (snapshot) => {
+      const msgs = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      setMessages(msgs);
     });
     return () => unsub();
   }, [chatId]);
 
-  // 📜 Scroll to bottom when messages change
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  // 🖼️ Handle file selection
+  const handleFileSelect = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
 
-  // 🖼️ Handle selected files (image or video)
-  const handleFilesSelected = (files) => {
-    const arr = Array.from(files || []);
-    const newPreviews = arr.map((f) => {
-      const type = f.type;
-      let previewUrl = null;
+    setPreview(URL.createObjectURL(file));
+    setUploading(true);
+    setUploadProgress(0);
 
-      // Create preview for both images and videos
-      if (type.startsWith("image/") || type.startsWith("video/")) {
-        previewUrl = URL.createObjectURL(f);
-      }
-
-      return {
-        url: previewUrl,
-        type,
-        name: f.name,
-        file: f,
-      };
-    });
-
-    setSelectedFiles((prev) => [...prev, ...arr]);
-    setPreviews((prev) => [...prev, ...newPreviews]);
+    try {
+      const uploadedUrl = await uploadToCloudinary(file);
+      const type = detectFileType(file);
+      setPreview(null);
+      await sendMessage(uploadedUrl, type);
+    } catch (err) {
+      console.error("❌ Upload failed:", err);
+      alert("Upload failed - check Cloudinary config or network.");
+    } finally {
+      setUploading(false);
+    }
   };
 
-  // ❌ Remove a preview before upload
-  const removePreview = (idx) => {
-    setSelectedFiles((prev) => prev.filter((_, i) => i !== idx));
-    setPreviews((prev) => prev.filter((_, i) => i !== idx));
-  };
-
-  // ☁️ Upload to Cloudinary
-  const uploadToCloudinary = async (file, onProgress) => {
+  // ☁️ Upload file to Cloudinary
+  const uploadToCloudinary = async (file) => {
     const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
     const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
-    const url = `https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`;
-
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("upload_preset", uploadPreset);
+    const url = `https://api.cloudinary.com/v1_1/${cloudName}/upload`;
 
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
@@ -84,141 +57,147 @@ export default function ChatConversationPage() {
 
       xhr.upload.addEventListener("progress", (e) => {
         if (e.lengthComputable) {
-          const percent = e.loaded / e.total;
-          onProgress && onProgress(percent);
+          const percent = Math.round((e.loaded * 100) / e.total);
+          setUploadProgress(percent);
         }
       });
 
       xhr.onload = () => {
         if (xhr.status === 200) {
-          const res = JSON.parse(xhr.responseText);
-          resolve(res.secure_url);
-        } else {
-          reject(new Error("Cloudinary upload failed"));
-        }
+          const response = JSON.parse(xhr.responseText);
+          resolve(response.secure_url);
+        } else reject(new Error("Cloudinary upload failed"));
       };
 
-      xhr.onerror = () => reject(new Error("Upload error"));
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("upload_preset", uploadPreset);
       xhr.send(formData);
     });
   };
 
-  // 📤 Send message
-  const handleSend = async (e) => {
-    e?.preventDefault?.();
-    if (!chatId) return;
-    if (!input.trim() && selectedFiles.length === 0) return;
+  // 📁 Detect file type (image, video, pdf, audio, etc.)
+  const detectFileType = (file) => {
+    const type = file.type;
+    if (type.startsWith("image/")) return "image";
+    if (type.startsWith("video/")) return "video";
+    if (type === "application/pdf") return "pdf";
+    if (type.startsWith("audio/")) return "audio";
+    return "file";
+  };
 
-    try {
-      setUploading(true);
+  // ✉️ Send message (text or media)
+  const sendMessage = async (content, type = "text") => {
+    if (!chatId || !auth.currentUser) return;
+    if (type === "text" && !content.trim()) return;
 
-      // ✉️ Send text message
-      if (input.trim()) {
-        await addDoc(collection(db, "chats", chatId, "messages"), {
-          senderId: auth.currentUser?.uid || null,
-          type: "text",
-          text: input.trim(),
-          timestamp: serverTimestamp(),
-        });
-        setInput("");
+    const messagesRef = collection(db, "chats", chatId, "messages");
+    await addDoc(messagesRef, {
+      text: type === "text" ? content : "",
+      mediaUrl: type !== "text" ? content : "",
+      mediaType: type,
+      senderId: auth.currentUser.uid,
+      createdAt: serverTimestamp(),
+    });
+    setNewMessage("");
+  };
+
+  const handleSend = () => sendMessage(newMessage, "text");
+
+  // 💬 Render message content dynamically
+  const renderMessageContent = (msg) => {
+    if (msg.mediaUrl) {
+      switch (msg.mediaType) {
+        case "image":
+          return <img src={msg.mediaUrl} alt="sent" className="rounded-lg max-h-60" />;
+        case "video":
+          return <video controls src={msg.mediaUrl} className="rounded-lg max-h-60" />;
+        case "pdf":
+          return (
+            <a
+              href={msg.mediaUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center text-red-500 underline"
+            >
+              <File className="mr-2 text-red-500" /> View PDF
+            </a>
+          );
+        case "audio":
+          return (
+            <div className="flex items-center space-x-2">
+              <Music className="text-blue-500" />
+              <audio controls src={msg.mediaUrl} className="w-40" />
+            </div>
+          );
+        default:
+          return (
+            <a
+              href={msg.mediaUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center text-blue-500 underline"
+            >
+              <File className="mr-2 text-blue-500" /> Download File
+            </a>
+          );
       }
-
-      // 📁 Upload and send files
-      for (let i = 0; i < selectedFiles.length; i++) {
-        const file = selectedFiles[i];
-        setProgress(0);
-        const url = await uploadToCloudinary(file, (p) => setProgress(p));
-
-        let msgType = "file";
-        if (file.type.startsWith("image/")) msgType = "image";
-        else if (file.type.startsWith("video/")) msgType = "video";
-
-        await addDoc(collection(db, "chats", chatId, "messages"), {
-          senderId: auth.currentUser?.uid || null,
-          type: msgType,
-          fileUrl: url,
-          fileName: file.name,
-          fileType: file.type,
-          timestamp: serverTimestamp(),
-        });
-      }
-
-      // Reset after send
-      setSelectedFiles([]);
-      previews.forEach((p) => p.url && URL.revokeObjectURL(p.url));
-      setPreviews([]);
-      setProgress(0);
-    } catch (err) {
-      console.error("send error", err);
-      alert("Upload failed — check Cloudinary config or network.");
-    } finally {
-      setUploading(false);
     }
+    return <p className="text-gray-800 dark:text-gray-100">{msg.text}</p>;
   };
 
   return (
-    <div className="flex flex-col h-screen bg-white dark:bg-gray-900">
-      {/* 🗨️ Chat messages */}
-      <div className="flex-1 overflow-auto p-3">
-        {messages.map((m) => (
-          <MessageBubble key={m.id} msg={m} isOwn={m.senderId === auth.currentUser?.uid} />
+    <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-900">
+      {/* Chat messages */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-2">
+        {messages.map((msg) => (
+          <div
+            key={msg.id}
+            className={`flex ${msg.senderId === auth.currentUser?.uid ? "justify-end" : "justify-start"}`}
+          >
+            <div className="max-w-[75%] p-2 rounded-2xl bg-white dark:bg-gray-800 shadow">
+              {renderMessageContent(msg)}
+            </div>
+          </div>
         ))}
-        <div ref={endRef} />
+
+        {/* Upload preview */}
+        {preview && (
+          <div className="flex justify-end mt-2">
+            <div className="p-2 bg-blue-50 dark:bg-gray-800 rounded-xl">
+              <img src={preview} alt="preview" className="w-24 h-24 object-cover rounded-lg" />
+              {uploading && (
+                <p className="text-xs text-blue-500 flex items-center mt-1">
+                  <Loader2 className="animate-spin mr-1" size={14} />
+                  Uploading {uploadProgress}%...
+                </p>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* 📸 File previews */}
-      {previews.length > 0 && (
-        <div className="p-2 border-t bg-gray-50 dark:bg-gray-800 flex gap-2 items-center overflow-x-auto">
-          {previews.map((p, idx) => (
-            <div key={idx} className="relative w-24 h-24 flex-shrink-0 rounded-lg overflow-hidden">
-              {p.type.startsWith("image/") ? (
-                <img src={p.url} alt={p.name} className="w-full h-full object-cover" />
-              ) : p.type.startsWith("video/") ? (
-                <video src={p.url} className="w-full h-full object-cover" muted />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-xs bg-gray-100 dark:bg-gray-700">
-                  {p.name}
-                </div>
-              )}
-              <button
-                onClick={() => removePreview(idx)}
-                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 text-xs"
-              >
-                ×
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* ⏳ Upload progress */}
-      {uploading && (
-        <div className="p-2 text-xs text-center bg-gray-100 dark:bg-gray-800">
-          Uploading {Math.round(progress * 100)}%
-        </div>
-      )}
-
-      {/* ✍️ Input bar */}
-      <form
-        onSubmit={handleSend}
-        className="p-3 border-t bg-white dark:bg-gray-800 flex items-center gap-2"
-      >
-        <FileUploadButton onFileSelect={handleFilesSelected} />
+      {/* Input area */}
+      <div className="flex items-center p-3 border-t bg-white dark:bg-gray-800">
+        <label className="cursor-pointer mr-3">
+          <Paperclip size={22} className="text-gray-500" />
+          <input type="file" hidden ref={fileInputRef} onChange={handleFileSelect} />
+        </label>
         <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder={uploading ? "Uploading..." : "Type a message"}
-          className="flex-1 px-4 py-2 rounded-full bg-gray-100 dark:bg-gray-700 text-sm outline-none"
-          disabled={uploading}
+          type="text"
+          value={newMessage}
+          onChange={(e) => setNewMessage(e.target.value)}
+          placeholder="Type a message..."
+          className="flex-1 px-3 py-2 rounded-full bg-gray-100 dark:bg-gray-700 focus:outline-none"
         />
         <button
-          type="submit"
-          disabled={uploading || (!input.trim() && selectedFiles.length === 0)}
-          className="bg-blue-500 text-white px-4 py-2 rounded-full disabled:opacity-50"
+          onClick={handleSend}
+          className="ml-3 p-2 bg-blue-500 hover:bg-blue-600 rounded-full text-white disabled:bg-gray-400"
+          disabled={!newMessage.trim()}
         >
-          Send
+          <Send size={18} />
         </button>
-      </form>
+      </div>
     </div>
   );
 }
