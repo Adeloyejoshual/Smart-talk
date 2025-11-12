@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp } from "firebase/firestore";
-import { db, auth } from "@/firebase";
+import { db, auth, storage } from "../firebaseConfig";
 import { Send, Paperclip, File, Music, Loader2 } from "lucide-react";
 
 export default function ChatConversationPage({ chatId }) {
