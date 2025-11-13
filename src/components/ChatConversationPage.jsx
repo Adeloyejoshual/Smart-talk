@@ -1,219 +1,80 @@
-import React, { useEffect, useState, useRef } from "react";
+
+// src/components/ChatConversationPage.jsx
+import React, { useEffect, useRef, useState } from "react";
+import { useParams } from "react-router-dom";
 import {
-  doc,
-  getDoc,
-  onSnapshot,
   collection,
   addDoc,
-  orderBy,
   query,
+  orderBy,
+  onSnapshot,
   serverTimestamp,
-  updateDoc,
 } from "firebase/firestore";
-import { db, auth, storage } from "../firebaseConfig";
-import { useParams, useNavigate } from "react-router-dom";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { auth, db } from "../firebaseConfig";
+import ChatHeader from "./Chat/ChatHeader";
+import MessageBubble from "./Chat/MessageBubble";
+import ChatInput from "./Chat/ChatInput";
 
 export default function ChatConversationPage() {
   const { chatId } = useParams();
-  const navigate = useNavigate();
-  const [chat, setChat] = useState(null);
   const [messages, setMessages] = useState([]);
-  const [friend, setFriend] = useState(null);
-  const [text, setText] = useState("");
-  const [sending, setSending] = useState(false);
-  const [preview, setPreview] = useState(null);
-  const [file, setFile] = useState(null);
-  const bottomRef = useRef();
+  const messagesEndRef = useRef(null);
 
-  const user = auth.currentUser;
-
-  // 🧩 Fetch chat & friend info
-  useEffect(() => {
-    if (!chatId || !user) return;
-
-    const unsubChat = onSnapshot(doc(db, "chats", chatId), (snap) => {
-      if (snap.exists()) {
-        const chatData = snap.data();
-        setChat(chatData);
-        const friendId = chatData.participants.find((id) => id !== user.uid);
-        if (friendId) {
-          const friendRef = doc(db, "users", friendId);
-          onSnapshot(friendRef, (fSnap) => {
-            if (fSnap.exists()) setFriend({ id: fSnap.id, ...fSnap.data() });
-          });
-        }
-      }
-    });
-
-    return () => unsubChat();
-  }, [chatId, user]);
-
-  // 💬 Listen for messages realtime
+  // 🔁 Listen to messages in real-time
   useEffect(() => {
     if (!chatId) return;
 
     const q = query(
       collection(db, "chats", chatId, "messages"),
-      orderBy("createdAt", "asc")
+      orderBy("timestamp", "asc")
     );
 
-    const unsub = onSnapshot(q, (snapshot) => {
-      const msgs = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-      setMessages(msgs);
-
-      // scroll to bottom
-      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
-
-      // mark seen
-      msgs.forEach(async (msg) => {
-        if (msg.receiverId === user.uid && msg.status !== "seen") {
-          await updateDoc(doc(db, "chats", chatId, "messages", msg.id), {
-            status: "seen",
-          });
-        }
-      });
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setMessages(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
     });
 
-    return () => unsub();
-  }, [chatId, user]);
+    return unsubscribe;
+  }, [chatId]);
 
-  // ✉️ Send text or image
-  const sendMessage = async () => {
-    if (!text.trim() && !file) return;
-    setSending(true);
-    try {
-      let imageUrl = null;
+  // 🧭 Auto-scroll to bottom
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
-      if (file) {
-        const imgRef = ref(storage, `chatImages/${chatId}/${Date.now()}-${file.name}`);
-        await uploadBytes(imgRef, file);
-        imageUrl = await getDownloadURL(imgRef);
-      }
+  // ✉️ Send message
+  const handleSendMessage = async (text, fileURL) => {
+    if (!text && !fileURL) return;
 
-      const msg = {
-        text,
-        imageUrl,
-        senderId: user.uid,
-        receiverId: chat.participants.find((id) => id !== user.uid),
-        createdAt: serverTimestamp(),
-        status: "sent",
-        type: imageUrl ? "image" : "text",
-      };
-
-      await addDoc(collection(db, "chats", chatId, "messages"), msg);
-      await updateDoc(doc(db, "chats", chatId), {
-        lastMessage: imageUrl ? "📷 Photo" : text,
-        lastMessageAt: serverTimestamp(),
-      });
-
-      setText("");
-      setPreview(null);
-      setFile(null);
-    } catch (e) {
-      console.error("Send message error:", e);
-    }
-    setSending(false);
-  };
-
-  // 📸 Handle file input + preview
-  const handleFileChange = (e) => {
-    const f = e.target.files[0];
-    if (f) {
-      setFile(f);
-      setPreview(URL.createObjectURL(f));
-    }
-  };
-
-  const cancelPreview = () => {
-    setPreview(null);
-    setFile(null);
-  };
-
-  // 🕒 Format time
-  const formatTime = (timestamp) => {
-    if (!timestamp) return "";
-    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    await addDoc(collection(db, "chats", chatId, "messages"), {
+      senderId: auth.currentUser.uid,
+      text: text || "",
+      fileURL: fileURL || null,
+      timestamp: serverTimestamp(),
+    });
   };
 
   return (
-    <div className="chat-page" style={styles.page}>
-      {/* Header pinned */}
-      <div style={styles.header}>
-        <button onClick={() => navigate(-1)} style={styles.backBtn}>←</button>
-        <img
-          src={friend?.photoURL || "https://via.placeholder.com/40"}
-          alt="profile"
-          style={styles.avatar}
-        />
-        <div>
-          <div style={{ fontWeight: 600 }}>{friend?.displayName || "Chat"}</div>
-          <small style={{ color: "#b3e0d2" }}>
-            {friend?.isOnline ? "Online" : "Last seen recently"}
-          </small>
-        </div>
+    <div className="flex flex-col h-screen bg-gray-50 dark:bg-gray-900">
+      {/* 🧭 Header pinned to top */}
+      <div className="sticky top-0 z-20 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
+        <ChatHeader chatId={chatId} />
       </div>
 
-      {/* Message list (scrollable middle) */}
-      <div style={styles.messages}>
+      {/* 💬 Messages scrollable area */}
+      <div className="flex-1 overflow-y-auto px-4 py-2 space-y-3 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700">
         {messages.map((msg) => (
-          <div
-            key={msg.id}
-            style={{
-              ...styles.messageBubble,
-              alignSelf: msg.senderId === user.uid ? "flex-end" : "flex-start",
-              background: msg.senderId === user.uid ? "#DCF8C6" : "#fff",
-            }}
-          >
-            {msg.imageUrl && (
-              <img
-                src={msg.imageUrl}
-                alt="img"
-                style={{ width: "100%", borderRadius: "10px", marginBottom: msg.text ? 6 : 0 }}
-              />
-            )}
-            {msg.text && <p style={{ margin: 0 }}>{msg.text}</p>}
-            <small style={styles.time}>
-              {formatTime(msg.createdAt)}{" "}
-              {msg.senderId === user.uid &&
-                (msg.status === "seen" ? "✓✓" : msg.status === "delivered" ? "✓✓" : "✓")}
-            </small>
-          </div>
+          <MessageBubble key={msg.id} message={msg} />
         ))}
-        <div ref={bottomRef}></div>
+        <div ref={messagesEndRef} />
       </div>
 
-      {/* Image preview box */}
-      {preview && (
-        <div style={styles.previewBox}>
-          <img src={preview} alt="preview" style={styles.previewImg} />
-          <button onClick={cancelPreview} style={styles.cancelBtn}>✖</button>
-        </div>
-      )}
-
-      {/* Input pinned bottom */}
-      <div style={styles.inputBar}>
-        <label style={styles.attachLabel}>
-          📎
-          <input type="file" accept="image/*" hidden onChange={handleFileChange} />
-        </label>
-        <input
-          type="text"
-          placeholder="Type a message"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-          style={styles.input}
-        />
-        <button onClick={sendMessage} disabled={sending} style={styles.sendBtn}>
-          {sending ? "..." : "➤"}
-        </button>
+      {/* 📤 Input pinned bottom */}
+      <div className="sticky bottom-0 z-20 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700">
+        <ChatInput onSendMessage={handleSendMessage} />
       </div>
     </div>
   );
 }
-
 // 🧱 Styles
 const styles = {
   page: {
