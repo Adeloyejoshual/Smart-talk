@@ -14,10 +14,13 @@ export default function ChatHeader({ chatId }) {
     const unsubChat = onSnapshot(doc(db, "chats", chatId), (snap) => {
       const chatData = snap.data();
       if (!chatData) return;
+
       setChatInfo(chatData);
 
-      // Find friend ID (the other participant)
-      const otherId = chatData.participants.find((id) => id !== auth.currentUser.uid);
+      // Identify the other participant
+      const otherId = chatData.participants.find(
+        (id) => id !== auth.currentUser.uid
+      );
 
       if (otherId) {
         const unsubUser = onSnapshot(doc(db, "users", otherId), (userSnap) => {
@@ -38,7 +41,10 @@ export default function ChatHeader({ chatId }) {
     : "—";
 
   return (
-    <div className="sticky top-0 bg-white dark:bg-gray-800 border-b dark:border-gray-700 flex items-center justify-between px-3 py-2 shadow-sm z-10">
+    <div className="fixed top-0 left-0 right-0 bg-white dark:bg-gray-800 border-b dark:border-gray-700 
+      flex items-center justify-between px-3 py-2 shadow-sm z-50">
+
+      {/* Left section */}
       <div className="flex items-center space-x-2">
         <button
           onClick={() => navigate(-1)}
@@ -56,7 +62,8 @@ export default function ChatHeader({ chatId }) {
           <p className="font-semibold text-gray-900 dark:text-gray-100">
             {friend?.displayName || "User"}
           </p>
-          <p className="text-xs text-gray-500">
+
+          <p className="text-xs text-gray-500 dark:text-gray-400">
             {friend?.online
               ? "Online"
               : friend?.lastSeen
@@ -66,6 +73,7 @@ export default function ChatHeader({ chatId }) {
         </div>
       </div>
 
+      {/* Right section */}
       <div className="flex space-x-2">
         <button className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700">
           <Video className="w-5 h-5 text-gray-700 dark:text-gray-300" />
