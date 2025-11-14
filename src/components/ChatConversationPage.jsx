@@ -3,29 +3,51 @@ import React, { useEffect, useState, useRef, useContext } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   collection,
+  addDoc,
   query,
   orderBy,
   onSnapshot,
-  addDoc,
   serverTimestamp,
+  updateDoc,
   doc,
   getDoc,
-  updateDoc,
+  arrayUnion,
+  deleteDoc,
+  limit as fsLimit,
 } from "firebase/firestore";
-import { auth, db } from "../firebaseConfig";
+import { db, auth } from "../firebaseConfig";
 import { ThemeContext } from "../context/ThemeContext";
 
 /**
- * ChatConversationPage
- * - Cloudinary uploads driven by env vars:
- *    VITE_CLOUDINARY_CLOUD_NAME
- *    VITE_CLOUDINARY_UPLOAD_PRESET
+ * ChatConversationPage.jsx (complete)
  *
- * - Firestore message shape:
- *    { sender, text, mediaUrl, mediaType, createdAt, status }
+ * - Firebase v9 modular imports
+ * - Unsigned Cloudinary uploads (images/videos/audio/files)
+ * - Multiple file preview + send (➤ sends all previews as messages)
+ * - Preview cancel '×' per item and global cancel (×)
+ * - Upload progress badge inside placeholder bubble
+ * - Reactions (inline set + extended picker)
+ * - Forward navigates to /forward/:messageId with state
+ * - Header displays friend's name, photo, online/lastSeen
+ * - Voice note: press & hold to record, release to send
+ * - Redirect to /voice-call/:chatId and /video-call/:chatId
  *
- * - Option A storage structure (messages under chats/{chatId}/messages)
+ * Required env:
+ * VITE_CLOUDINARY_CLOUD_NAME
+ * VITE_CLOUDINARY_UPLOAD_PRESET
  */
+
+const INLINE_REACTIONS = ["❤️", "😂", "👍", "😮", "😢"];
+const EXTENDED_EMOJIS = [
+  "❤️","😂","👍","😮","😢","👎","👏","🔥","😅","🤩","😍",
+  "😎","🙂","🙃","😉","🤔","🤨","🤗","🤯","🥳","🙏","💪"
+];
+
+const fmtTime = (ts) => {
+  if (!ts) return "";
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+};
 
 export default function ChatConversationPage() {
   const { chatId } = useParams();
@@ -33,434 +55,520 @@ export default function ChatConversationPage() {
   const { theme, wallpaper } = useContext(ThemeContext);
   const isDark = theme === "dark";
 
+  const [messages, setMessages] = useState([]);
+  const [loadingMsgs, setLoadingMsgs] = useState(true);
+  const [text, setText] = useState("");
+  const [selectedFiles, setSelectedFiles] = useState([]); // File[]
+  const [previews, setPreviews] = useState([]); // { url,type,name,file }
+  const [uploadingIds, setUploadingIds] = useState({}); // messageId -> pct
+  const [replyTo, setReplyTo] = useState(null);
+  const [menuOpenFor, setMenuOpenFor] = useState(null);
+  const [reactionFor, setReactionFor] = useState(null);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [emojiPickerFor, setEmojiPickerFor] = useState(null);
+  const [selectedMessageIds, setSelectedMessageIds] = useState([]);
+  const [recording, setRecording] = useState(false);
+  const [recorderAvailable, setRecorderAvailable] = useState(false);
+  const recorderRef = useRef(null);
+  const recorderChunksRef = useRef([]);
+
+  const myUid = auth.currentUser?.uid;
+  const endRef = useRef(null);
+
+  // friend info (header)
   const [chatInfo, setChatInfo] = useState(null);
   const [friendInfo, setFriendInfo] = useState(null);
-  const [messages, setMessages] = useState([]);
-  const [text, setText] = useState("");
-  const [selectedFile, setSelectedFile] = useState(null); // File object
-  const [previewUrl, setPreviewUrl] = useState(null); // objectURL for preview
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploading, setUploading] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingTime, setRecordingTime] = useState(0);
-  const [friendTyping, setFriendTyping] = useState(false);
 
-  const messagesRef = useRef(null);
-  const endRef = useRef(null);
-  const recRef = useRef(null); // MediaRecorder instance
-  const recChunksRef = useRef([]);
-  const recTimerRef = useRef(null);
-
-  const me = auth.currentUser;
-
-  // ---------- load chat info and friend ----------
-  useEffect(() => {
-    if (!chatId) return;
-
-    const chatRef = doc(db, "chats", chatId);
-    let unsubChat = null;
-    let unsubFriend = null;
-
-    (async () => {
-      const snap = await getDoc(chatRef);
-      if (!snap.exists()) {
-        alert("Chat not found");
-        navigate("/chat");
-        return;
-      }
-      setChatInfo({ id: snap.id, ...snap.data() });
-
-      // infer friend id for 1:1
-      const participants = snap.data().participants || [];
-      const friendId = participants.find((p) => p !== me?.uid);
-      if (friendId) {
-        const friendRef = doc(db, "users", friendId);
-        unsubFriend = onSnapshot(friendRef, (fsnap) => {
-          if (fsnap.exists()) {
-            setFriendInfo({ id: fsnap.id, ...fsnap.data() });
-            // typing state is optional: expects users/{uid}.typing.{chatId} = true
-            setFriendTyping(Boolean(fsnap.data()?.typing?.[chatId]));
+  // ---------------- Cloudinary unsigned upload ----------------
+  const uploadToCloudinary = (file, onProgress) => {
+    return new Promise((resolve, reject) => {
+      try {
+        const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+        const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+        if (!cloudName || !uploadPreset) return reject(new Error("Cloudinary env not set"));
+        // 'auto' endpoint handles images/video/audio/raw
+        const url = `https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`;
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", url);
+        xhr.upload.addEventListener("progress", (e) => {
+          if (e.lengthComputable && onProgress) {
+            const pct = Math.round((e.loaded * 100) / e.total);
+            onProgress(pct);
           }
         });
-      }
-
-      unsubChat = onSnapshot(chatRef, (cSnap) => {
-        if (cSnap.exists()) {
-          setChatInfo((prev) => ({ ...(prev || {}), ...cSnap.data() }));
-        }
-      });
-    })();
-
-    return () => {
-      unsubChat && unsubChat();
-      unsubFriend && unsubFriend();
-    };
-  }, [chatId, me, navigate]);
-
-  // ---------- messages realtime ----------
-  useEffect(() => {
-    if (!chatId) return;
-    const q = query(collection(db, "chats", chatId, "messages"), orderBy("createdAt", "asc"));
-    const unsub = onSnapshot(q, (snap) => {
-      const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setMessages(docs);
-      // mark delivered for incoming messages that are "sent"
-      docs.forEach((m) => {
-        if (m.sender !== me?.uid && m.status === "sent") {
-          const mRef = doc(db, "chats", chatId, "messages", m.id);
-          updateDoc(mRef, { status: "delivered" }).catch(() => {});
-        }
-      });
-      // scroll to bottom
-      setTimeout(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
-    });
-    return () => unsub();
-  }, [chatId, me]);
-
-  // ---------- helpers ----------
-  const fmtTime = (ts) => {
-    if (!ts) return "";
-    const d = ts.toDate ? ts.toDate() : new Date(ts);
-    return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  };
-
-  // Cloudinary upload (unsigned)
-  const uploadToCloudinary = (file, onProgress) => {
-    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
-    const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
-    if (!cloudName || !uploadPreset) {
-      return Promise.reject(new Error("Cloudinary environment variables missing"));
-    }
-    const url = `https://api.cloudinary.com/v1_1/${cloudName}/upload`;
-
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open("POST", url);
-      xhr.upload.addEventListener("progress", (e) => {
-        if (e.lengthComputable && onProgress) {
-          const pct = Math.round((e.loaded * 100) / e.total);
-          onProgress(pct);
-        }
-      });
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const resp = JSON.parse(xhr.responseText);
-            resolve(resp.secure_url || resp.url);
-          } catch (err) {
-            reject(err);
-          }
-        } else {
-          reject(new Error("Cloudinary upload failed: " + xhr.status));
-        }
-      };
-      xhr.onerror = () => reject(new Error("Cloudinary upload network error"));
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("upload_preset", uploadPreset);
-      xhr.send(fd);
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            const res = JSON.parse(xhr.responseText);
+            resolve(res.secure_url || res.url);
+          } else reject(new Error("Cloudinary upload failed: " + xhr.status));
+        };
+        xhr.onerror = () => reject(new Error("Network error"));
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("upload_preset", uploadPreset);
+        xhr.send(fd);
+      } catch (err) { reject(err); }
     });
   };
 
-  // detect file type string for message (image, video, audio, file)
-  const detectMediaType = (file) => {
-    const type = file.type || "";
-    if (type.startsWith("image/")) return "image";
-    if (type.startsWith("video/")) return "video";
-    if (type.startsWith("audio/")) return "audio";
+  // ---------------- utility ----------------
+  const detectFileType = (file) => {
+    const t = file.type || "";
+    if (t.startsWith("image/")) return "image";
+    if (t.startsWith("video/")) return "video";
+    if (t.startsWith("audio/")) return "audio";
+    if (t === "application/pdf") return "pdf";
     return "file";
   };
 
-  // send message to Firestore
-  const sendMessageToFirestore = async ({ text = "", mediaUrl = "", mediaType = "text" }) => {
-    if (!chatId || !me) return;
-    const payload = {
-      sender: me.uid,
-      text: text || "",
-      mediaUrl: mediaUrl || "",
-      mediaType: mediaType || (mediaUrl ? "file" : "text"),
-      createdAt: serverTimestamp(),
-      status: "sent",
-    };
-    try {
-      const ref = await addDoc(collection(db, "chats", chatId, "messages"), payload);
-      // update chat's lastMessage/lastMessageAt for ordering
-      const chatRef = doc(db, "chats", chatId);
-      await updateDoc(chatRef, {
-        lastMessage: text || (mediaType === "image" ? "📷 Photo" : (mediaType === "audio" ? "🎤 Voice note" : "Attachment")),
-        lastMessageAt: serverTimestamp(),
-      }).catch(()=>{});
-      return ref;
-    } catch (err) {
-      console.error("sendMessageToFirestore error", err);
-      throw err;
-    }
-  };
-
-  // ---------- file pick handler ----------
-  const onPickFile = (ev) => {
-    const f = ev.target.files && ev.target.files[0];
-    if (!f) return;
-    setSelectedFile(f);
-    // preview for images only (other files show filename)
-    if (f.type.startsWith("image/")) {
-      const obj = URL.createObjectURL(f);
-      setPreviewUrl(obj);
-    } else {
-      setPreviewUrl(null);
-    }
-  };
-
-  // remove preview / cancel selected file
-  const clearSelectedFile = () => {
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setSelectedFile(null);
-    setPreviewUrl(null);
-    setUploadProgress(0);
-  };
-
-  // upload selected file then send message
-  const uploadAndSendFile = async () => {
-    if (!selectedFile) return;
-    setUploading(true);
-    setUploadProgress(0);
-    try {
-      const url = await uploadToCloudinary(selectedFile, (pct) => {
-        setUploadProgress(pct);
-      });
-      await sendMessageToFirestore({ mediaUrl: url, mediaType: detectMediaType(selectedFile) });
-      clearSelectedFile();
-    } catch (err) {
-      console.error("uploadAndSendFile", err);
-      alert("Upload failed - check Cloudinary config or network.");
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  // ---------- text send ----------
-  const handleSendText = async () => {
-    if (!text.trim()) return;
-    const t = text.trim();
-    setText("");
-    try {
-      await sendMessageToFirestore({ text: t, mediaUrl: "", mediaType: "text" });
-    } catch (err) {
-      alert("Failed to send message");
-    }
-  };
-
-  // ---------- voice recording (hold to record) ----------
+  // ---------------- load chat meta + friend ----------------
   useEffect(() => {
-    // clean up on unmount
-    return () => {
-      if (recRef.current && recRef.current.state === "recording") {
-        recRef.current.stop();
-      }
-      if (recTimerRef.current) clearInterval(recTimerRef.current);
+    if (!chatId) return;
+    const load = async () => {
+      try {
+        const cRef = doc(db, "chats", chatId);
+        const cSnap = await getDoc(cRef);
+        if (cSnap.exists()) {
+          const data = cSnap.data();
+          setChatInfo({ id: cSnap.id, ...data });
+          const friendId = data.participants?.find(p => p !== myUid);
+          if (friendId) {
+            const fRef = doc(db, "users", friendId);
+            const fSnap = await getDoc(fRef);
+            if (fSnap.exists()) setFriendInfo({ id: fSnap.id, ...fSnap.data() });
+          }
+        }
+      } catch (e) { console.error(e); }
     };
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId]);
+
+  // ---------------- messages realtime ----------------
+  useEffect(() => {
+    if (!chatId) return;
+    setLoadingMsgs(true);
+    const msgsRef = collection(db, "chats", chatId, "messages");
+    const q = query(msgsRef, orderBy("createdAt", "asc"), fsLimit(1000));
+    const unsub = onSnapshot(q, (snap) => {
+      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      // hide messages deleted for this user
+      const filtered = docs.filter(m => !(m.deletedFor && m.deletedFor.includes(myUid)));
+      setMessages(filtered);
+
+      // auto mark delivered for incoming 'sent'
+      filtered.forEach(async (m) => {
+        if (m.senderId !== myUid && m.status === "sent") {
+          try { await updateDoc(doc(db, "chats", chatId, "messages", m.id), { status: "delivered" }); } catch(e){ /* ignore */ }
+        }
+      });
+
+      setLoadingMsgs(false);
+      setTimeout(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), 80);
+    });
+
+    return () => unsub();
+  }, [chatId, myUid]);
+
+  // ---------------- mark seen on visibility ----------------
+  useEffect(() => {
+    const onVis = async () => {
+      if (document.visibilityState !== "visible") return;
+      const lastIncoming = [...messages].slice().reverse().find(m => m.senderId !== myUid);
+      if (lastIncoming && lastIncoming.status !== "seen") {
+        try { await updateDoc(doc(db, "chats", chatId, "messages", lastIncoming.id), { status: "seen" }); } catch(e){}
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+    onVis();
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [messages, chatId, myUid]);
+
+  // ---------------- file select & preview (multiple) ----------------
+  const onFilesSelected = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    const newPreviews = files.map(f => ({
+      url: f.type.startsWith("image/") || f.type.startsWith("video/") ? URL.createObjectURL(f) : null,
+      type: detectFileType(f),
+      name: f.name,
+      file: f
+    }));
+    setSelectedFiles(s => [...s, ...files]);
+    setPreviews(p => [...p, ...newPreviews]);
+    // keep focus on input / don't auto-send — user will press ➤ to send
+  };
+
+  // ---------------- send behavior (➤) ----------------
+  const sendTextMessage = async () => {
+    // If there are previews/files, send them first (each becomes one message)
+    if (selectedFiles.length > 0) {
+      const filesToSend = [...selectedFiles];
+      // clear UI immediately so user can continue typing
+      setSelectedFiles([]);
+      setPreviews([]);
+
+      for (const file of filesToSend) {
+        const placeholder = {
+          senderId: myUid,
+          text: "",
+          mediaUrl: "",
+          mediaType: detectFileType(file),
+          fileName: file.name,
+          createdAt: serverTimestamp(),
+          status: "uploading",
+          reactions: {},
+        };
+        const mRef = await addDoc(collection(db, "chats", chatId, "messages"), placeholder);
+        const messageId = mRef.id;
+        setUploadingIds(prev => ({ ...prev, [messageId]: 0 }));
+
+        try {
+          const url = await uploadToCloudinary(file, (pct) => setUploadingIds(prev => ({ ...prev, [messageId]: pct })));
+          await updateDoc(doc(db, "chats", chatId, "messages", messageId), { mediaUrl: url, status: "sent", sentAt: serverTimestamp() });
+          // small delay so user can see 100% briefly
+          setTimeout(() => setUploadingIds(prev => { const c = { ...prev }; delete c[messageId]; return c; }), 400);
+        } catch (err) {
+          console.error("upload failed", err);
+          await updateDoc(doc(db, "chats", chatId, "messages", messageId), { status: "failed" }).catch(()=>{});
+          setUploadingIds(prev => { const c = { ...prev }; delete c[messageId]; return c; });
+        }
+      }
+      return;
+    }
+
+    // If no files but text exists, send text
+    if (text.trim()) {
+      const payload = {
+        senderId: myUid,
+        text: text.trim(),
+        mediaUrl: "",
+        mediaType: null,
+        createdAt: serverTimestamp(),
+        status: "sent",
+        reactions: {},
+      };
+      if (replyTo) {
+        payload.replyTo = { id: replyTo.id, text: replyTo.text || (replyTo.mediaType || "media"), senderId: replyTo.senderId };
+        setReplyTo(null);
+      }
+      await addDoc(collection(db, "chats", chatId, "messages"), payload);
+      setText("");
+      setTimeout(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), 80);
+    }
+  };
+
+  // ---------------- retry (note: original file not stored server-side) ----------------
+  const retryUpload = async (messageId) => {
+    alert("To retry, re-select the file in the picker and send again.");
+  };
+
+  // ---------------- reactions ----------------
+  const applyReaction = async (messageId, emoji) => {
+    try {
+      const mRef = doc(db, "chats", chatId, "messages", messageId);
+      const snap = await getDoc(mRef);
+      if (!snap.exists()) return;
+      const data = snap.data() || {};
+      const existing = data.reactions?.[myUid];
+      if (existing === emoji) {
+        // set to null (keeps field present as null)
+        await updateDoc(mRef, { [`reactions.${myUid}`]: null });
+      } else {
+        await updateDoc(mRef, { [`reactions.${myUid}`]: emoji });
+      }
+      setReactionFor(null);
+    } catch (e) { console.error(e); }
+  };
+
+  // ---------------- message actions ----------------
+  const copyMessageText = async (m) => {
+    try { await navigator.clipboard.writeText(m.text || m.mediaUrl || ""); alert("Copied"); setMenuOpenFor(null); } catch (e) { alert("Copy failed"); }
+  };
+  const editMessage = async (m) => {
+    if (m.senderId !== myUid) return alert("You can only edit your messages.");
+    const newText = window.prompt("Edit message", m.text || "");
+    if (newText == null) return;
+    try { await updateDoc(doc(db, "chats", chatId, "messages", m.id), { text: newText, edited: true }); setMenuOpenFor(null); } catch(e){ alert("Edit failed"); }
+  };
+  const deleteMessageForMe = async (messageId) => { try { await updateDoc(doc(db, "chats", chatId, "messages", messageId), { deletedFor: arrayUnion(myUid) }); setMenuOpenFor(null); } catch(e){ alert("Delete failed"); } };
+  const deleteMessageForEveryone = async (messageId) => { if (!window.confirm("Delete for everyone?")) return; try { await deleteDoc(doc(db, "chats", chatId, "messages", messageId)); setMenuOpenFor(null); } catch(e){ alert("Delete failed"); } };
+  const forwardMessage = (m) => navigate(`/forward/${m.id}`, { state: { message: m } });
+  const pinMessage = async (m) => { try { await updateDoc(doc(db, "chats", chatId), { pinnedMessageId: m.id, pinnedMessageText: m.text || (m.mediaType || "") }); setMenuOpenFor(null); alert("Pinned"); } catch(e){ alert("Pin failed"); } };
+
+  const replyToMessage = (m) => { setReplyTo(m); setMenuOpenFor(null); };
+  const jumpToMessage = (id) => {
+    const el = document.getElementById(`msg-${id}`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.style.boxShadow = "0 0 0 3px rgba(50,115,220,0.18)";
+      setTimeout(() => (el.style.boxShadow = "none"), 1200);
+    }
+  };
+
+  // ---------------- long-press placeholder (desktop uses right-click/context) ----------------
+  // (Mobile handled by touch start/stop events on recorder button)
+
+  // ---------------- voice recording (hold-to-record) ----------------
+  useEffect(() => {
+    setRecorderAvailable(!!(navigator.mediaDevices && window.MediaRecorder));
   }, []);
 
   const startRecording = async () => {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      alert("Recording not supported in this browser.");
-      return;
-    }
+    if (!recorderAvailable) return alert("Recording not supported in this browser");
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mimeType = "audio/webm";
-      const recorder = new MediaRecorder(stream, { mimeType });
-      recRef.current = recorder;
-      recChunksRef.current = [];
-
-      recorder.ondataavailable = (ev) => {
-        if (ev.data && ev.data.size > 0) recChunksRef.current.push(ev.data);
-      };
-
-      recorder.onstart = () => {
-        setIsRecording(true);
-        setRecordingTime(0);
-        recTimerRef.current = setInterval(() => {
-          setRecordingTime((t) => t + 1);
-        }, 1000);
-      };
-
-      recorder.onstop = async () => {
-        clearInterval(recTimerRef.current);
-        setIsRecording(false);
-        const blob = new Blob(recChunksRef.current, { type: mimeType });
-        // upload blob to Cloudinary
-        setUploading(true);
-        setUploadProgress(0);
+      const mr = new MediaRecorder(stream);
+      recorderChunksRef.current = [];
+      mr.ondataavailable = (e) => { if (e.data.size) recorderChunksRef.current.push(e.data); };
+      mr.onstop = async () => {
+        const blob = new Blob(recorderChunksRef.current, { type: 'audio/webm' });
+        const placeholder = { senderId: myUid, text: '', mediaUrl: '', mediaType: 'audio', createdAt: serverTimestamp(), status: 'uploading', reactions: {} };
+        const mRef = await addDoc(collection(db, 'chats', chatId, 'messages'), placeholder);
+        const messageId = mRef.id;
+        setUploadingIds(prev => ({ ...prev, [messageId]: 0 }));
         try {
-          const file = new File([blob], `voice_${Date.now()}.webm`, { type: mimeType });
-          const url = await uploadToCloudinary(file, (pct) => setUploadProgress(pct));
-          await sendMessageToFirestore({ mediaUrl: url, mediaType: "audio", text: "" });
+          const url = await uploadToCloudinary(blob, (pct) => setUploadingIds(prev => ({ ...prev, [messageId]: pct })));
+          await updateDoc(doc(db, 'chats', chatId, 'messages', messageId), { mediaUrl: url, status: 'sent', sentAt: serverTimestamp() });
+          setTimeout(() => setUploadingIds(prev => { const c = {...prev}; delete c[messageId]; return c; }), 300);
         } catch (err) {
-          console.error("voice upload failed", err);
-          alert("Voice upload failed");
-        } finally {
-          setUploading(false);
-          setUploadProgress(0);
-          setRecordingTime(0);
+          console.error(err);
+          await updateDoc(doc(db, 'chats', chatId, 'messages', messageId), { status: 'failed' }).catch(()=>{});
+          setUploadingIds(prev => { const c = {...prev}; delete c[messageId]; return c; });
         }
-        // stop tracks
-        stream.getTracks().forEach((t) => t.stop());
       };
-
-      recorder.start();
-    } catch (err) {
-      console.error("startRecording error", err);
-      alert("Unable to record audio. Check permissions.");
+      mr.start();
+      recorderRef.current = mr;
+      setRecording(true);
+    } catch (e) {
+      console.error("startRecording", e);
+      alert("Could not start recording");
     }
   };
 
   const stopRecording = () => {
     try {
-      if (recRef.current && recRef.current.state === "recording") recRef.current.stop();
-    } catch (err) {
-      console.error("stopRecording", err);
-    }
+      recorderRef.current?.stop();
+      recorderRef.current?.stream?.getTracks().forEach(t => t.stop());
+    } catch (e) { console.error(e); }
+    setRecording(false);
   };
 
-  // ---------- input interactions (hold-to-record) ----------
-  // For mobile/desktop: start on pointerdown/touchstart, stop on pointerup/touchend
-  const onMicPointerDown = (e) => {
-    e.preventDefault();
-    startRecording();
-  };
-  const onMicPointerUp = (e) => {
-    e.preventDefault();
-    stopRecording();
+  // ---------------- UI helpers ----------------
+  const renderStatusTick = (m) => {
+    if (m.senderId !== myUid) return null;
+    if (m.status === 'uploading') return '⌛';
+    if (m.status === 'sent') return '✔';
+    if (m.status === 'delivered') return '✔✔';
+    if (m.status === 'seen') return <span style={{color: '#2b9f4a'}}>✔✔</span>;
+    return null;
   };
 
-  // ---------- UI helpers ----------
-  const renderMessage = (m) => {
+  const renderMessageContent = (m) => {
     if (m.mediaUrl) {
-      if (m.mediaType === "image") {
-        return <img src={m.mediaUrl} alt="img" style={{ maxWidth: "320px", borderRadius: 12 }} />;
+      switch (m.mediaType) {
+        case 'image': return <img src={m.mediaUrl} alt={m.fileName || 'image'} style={{ maxWidth: 320, borderRadius: 12, display: 'block' }} />;
+        case 'video': return <video controls src={m.mediaUrl} style={{ maxWidth: 320, borderRadius: 12 }} />;
+        case 'audio': return <audio controls src={m.mediaUrl} style={{ width: 280 }} />;
+        case 'pdf':
+        case 'file': return <a href={m.mediaUrl} target="_blank" rel="noreferrer">{m.fileName || 'Download'}</a>;
+        default: return <a href={m.mediaUrl} target="_blank" rel="noreferrer">Open</a>;
       }
-      if (m.mediaType === "video") {
-        return <video controls src={m.mediaUrl} style={{ maxWidth: "320px", borderRadius: 12 }} />;
-      }
-      if (m.mediaType === "audio") {
-        return <audio controls src={m.mediaUrl} style={{ width: 220 }} />;
-      }
-      return (
-        <a href={m.mediaUrl} target="_blank" rel="noreferrer" style={{ color: isDark ? "#9ad3ff" : "#007bff" }}>
-          Download attachment
-        </a>
-      );
     }
-    return <div style={{ whiteSpace: "pre-wrap" }}>{m.text}</div>;
+    return <div style={{ whiteSpace: 'pre-wrap' }}>{m.text}</div>;
   };
 
-  // ---------- JSX ----------
+  // keyboard send
+  const onKeyDown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendTextMessage(); } };
+
+  // ---------------- render ----------------
   return (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: wallpaper ? `url(${wallpaper}) center/cover no-repeat` : (isDark ? "#070707" : "#f5f5f5"), color: isDark ? "#fff" : "#000" }}>
-      {/* Header (sticky) */}
-      <header style={{ position: "sticky", top: 0, zIndex: 50, display: "flex", alignItems: "center", gap: 12, padding: 12, background: isDark ? "#0b0b0b" : "#fff", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
-        <button onClick={() => navigate("/chat")} style={{ fontSize: 20, background: "transparent", border: "none", cursor: "pointer" }}>←</button>
-        <img src={friendInfo?.photoURL || "/default-avatar.png"} alt="avatar" style={{ width: 48, height: 48, borderRadius: "50%", objectFit: "cover" }} />
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: wallpaper ? `url(${wallpaper}) center/cover no-repeat` : (isDark ? '#070707' : '#f5f5f5'), color: isDark ? '#fff' : '#000' }}>
+      {/* Header */}
+      <header style={{ position: 'sticky', top: 0, zIndex: 80, display: 'flex', alignItems: 'center', gap: 10, padding: 12, background: isDark ? '#0b0b0b' : '#fff', borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
+        <button onClick={() => navigate('/chat')} style={{ fontSize: 20, background: 'transparent', border: 'none', cursor: 'pointer' }}>←</button>
+        <img src={friendInfo?.photoURL || '/default-avatar.png'} alt="avatar" style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover' }} />
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: 16, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{friendInfo?.displayName || chatInfo?.name || "Friend"}</div>
-          <div style={{ fontSize: 12, color: isDark ? "#bbb" : "#666" }}>
-            {friendTyping ? "typing..." : (friendInfo?.isOnline ? "Online" : (friendInfo?.lastSeen ? (() => {
-              const ls = friendInfo.lastSeen;
-              if (!ls) return "Offline";
-              const ld = ls.toDate ? ls.toDate() : new Date(ls);
-              const diffMin = Math.floor((Date.now() - ld.getTime()) / 60000);
-              if (diffMin < 1) return "just now";
-              if (diffMin < 60) return `${diffMin}m ago`;
-              if (diffMin < 1440) return ld.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-              const yesterday = new Date(); yesterday.setDate(new Date().getDate() - 1);
-              if (ld.toDateString() === yesterday.toDateString()) return `Yesterday`;
-              return ld.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-            })() : "Offline"))}
+          <div style={{ fontWeight: 700, fontSize: 16 }}>{friendInfo?.displayName || chatInfo?.name || 'Chat'}</div>
+          <div style={{ fontSize: 12, color: isDark ? '#bbb' : '#666' }}>
+            {friendInfo?.isOnline ? 'Online' : (friendInfo?.lastSeen ? (() => { try { const ld = friendInfo.lastSeen.toDate ? friendInfo.lastSeen.toDate() : new Date(friendInfo.lastSeen); return ld.toLocaleString(); } catch { return 'Offline'; } })() : 'Offline')}
           </div>
+        </div>
+
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+          <button onClick={() => navigate(`/voice-call/${chatId}`)} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}>📞</button>
+          <button onClick={() => navigate(`/video-call/${chatId}`)} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}>🎥</button>
+          <button onClick={() => navigate(`/chat-settings/${chatId}`)} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}>⋮</button>
         </div>
       </header>
 
-      {/* messages */}
-      <main ref={messagesRef} style={{ flex: 1, overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
-        {messages.map((m) => (
-          <div key={m.id} style={{ display: "flex", justifyContent: m.sender === me?.uid ? "flex-end" : "flex-start" }}>
-            <div style={{ background: m.sender === me?.uid ? (isDark ? "#0b84ff" : "#007bff") : (isDark ? "#1b1b1b" : "#fff"), color: m.sender === me?.uid ? "#fff" : (isDark ? "#fff" : "#000"), padding: 10, borderRadius: 14, maxWidth: "78%", boxShadow: "0 4px 12px rgba(0,0,0,0.06)" }}>
-              {renderMessage(m)}
-              <div style={{ fontSize: 11, marginTop: 8, textAlign: "right", opacity: 0.9 }}>
-                <span>{fmtTime(m.createdAt)}</span>
-                {m.sender === me?.uid && <span style={{ marginLeft: 8 }}>{m.status === "sent" ? "✔" : m.status === "delivered" ? "✔✔" : m.status === "seen" ? "✔✔" : ""}</span>}
+      {/* Messages */}
+      <main style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
+        {loadingMsgs && <div style={{ textAlign: 'center', color: '#888', marginTop: 12 }}>Loading messages…</div>}
+
+        {messages.map((m) => {
+          const mine = m.senderId === myUid;
+          return (
+            <div key={m.id} id={`msg-${m.id}`} style={{ display: 'flex', justifyContent: mine ? 'flex-end' : 'flex-start', marginBottom: 12 }}>
+              <div style={{ background: mine ? (isDark ? '#0b84ff' : '#007bff') : (isDark ? '#1b1b1b' : '#fff'), color: mine ? '#fff' : (isDark ? '#fff' : '#000'), padding: 12, borderRadius: 14, maxWidth: '78%', position: 'relative', wordBreak: 'break-word' }}>
+                {m.replyTo && (
+                  <div style={{ marginBottom: 6, padding: '6px 8px', borderRadius: 8, background: isDark ? '#0f0f0f' : '#f3f3f3', color: isDark ? '#ddd' : '#333', fontSize: 12 }}>
+                    <div style={{ fontWeight: 700, marginBottom: 2 }}>{m.replyTo.senderId === myUid ? 'You' : 'Them'}</div>
+                    <div style={{ maxHeight: 36, overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.replyTo.text}</div>
+                  </div>
+                )}
+
+                <div>{renderMessageContent(m)}</div>
+
+                {m.edited && <div style={{ fontSize: 11, opacity: 0.9 }}> · edited</div>}
+
+                {m.reactions && Object.keys(m.reactions).length > 0 && (
+                  <div style={{ position: 'absolute', bottom: -12, right: 6, background: isDark ? '#111' : '#fff', padding: '4px 8px', borderRadius: 12, fontSize: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.12)' }}>{Object.values(m.reactions).slice(0,4).join(' ')}</div>
+                )}
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: 11, opacity: 0.9 }}>
+                  <div style={{ marginLeft: 'auto' }}>{fmtTime(m.createdAt)} {renderStatusTick(m)}</div>
+                </div>
+
+                {m.status === 'uploading' && uploadingIds[m.id] !== undefined && (
+                  <div style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)' }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#eee', color: '#333', fontSize: 12 }}>{uploadingIds[m.id]}%</div>
+                  </div>
+                )}
+
+                {m.status === 'failed' && (
+                  <div style={{ marginTop: 8 }}>
+                    <button onClick={() => retryUpload(m.id)} style={{ padding: '6px 8px', borderRadius: 8, border: 'none', background: '#ffcc00', cursor: 'pointer' }}>Retry</button>
+                  </div>
+                )}
               </div>
+
+              <div style={{ marginLeft: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <button title="React" onClick={() => { setReactionFor(m.id); setMenuOpenFor(null); }} style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}>😊</button>
+                <button title="More" onClick={() => setMenuOpenFor(m.id)} style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}>⋯</button>
+              </div>
+
+              {menuOpenFor === m.id && (
+                <div style={{ position: 'absolute', transform: 'translate(-50px,-100%)', zIndex: 999, right: (m.senderId === myUid) ? 20 : 'auto', left: (m.senderId === myUid) ? 'auto' : 80 }}>
+                  <div style={{ background: isDark ? '#111' : '#fff', padding: 8, borderRadius: 10, boxShadow: '0 8px 30px rgba(0,0,0,0.14)' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <button onClick={() => replyToMessage(m)} style={menuBtnStyle}>Reply</button>
+                      <button onClick={() => copyMessageText(m)} style={menuBtnStyle}>Copy</button>
+                      {m.senderId === myUid && <button onClick={() => editMessage(m)} style={menuBtnStyle}>Edit</button>}
+                      <button onClick={() => forwardMessage(m)} style={menuBtnStyle}>Forward</button>
+                      <button onClick={() => pinMessage(m)} style={menuBtnStyle}>Pin</button>
+                      <button onClick={() => { if (confirm('Delete for everyone?')) deleteMessageForEveryone(m.id); else deleteMessageForMe(m.id); }} style={menuBtnStyle}>Delete</button>
+                      <button onClick={() => { setMenuOpenFor(null); setReactionFor(m.id); }} style={menuBtnStyle}>React</button>
+                      <button onClick={() => setMenuOpenFor(null)} style={menuBtnStyle}>Close</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {reactionFor === m.id && (
+                <div style={{ position: 'absolute', top: 'calc(100% - 12px)', transform: 'translateY(6px)', zIndex: 998 }}>
+                  <div style={{ display: 'flex', gap: 8, padding: 8, borderRadius: 20, background: isDark ? '#111' : '#fff', boxShadow: '0 6px 18px rgba(0,0,0,0.08)', alignItems: 'center' }}>
+                    {INLINE_REACTIONS.map(r => <button key={r} onClick={() => applyReaction(m.id, r)} style={{ fontSize: 18, width: 36, height: 36, borderRadius: 10, border: 'none', background: 'transparent', cursor: 'pointer' }}>{r}</button>)}
+                    <button onClick={() => { setEmojiPickerFor(m.id); setShowEmojiPicker(true); }} style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}>＋</button>
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
+
         <div ref={endRef} />
       </main>
 
-      {/* preview bar (above input) */}
-      { (previewUrl || selectedFile) && (
-        <div style={{ padding: 10, borderTop: "1px solid rgba(0,0,0,0.06)", background: isDark ? "#070707" : "#fff", display: "flex", alignItems: "center", gap: 10 }}>
-          {previewUrl ? (
-            <img src={previewUrl} alt="preview" style={{ width: 84, height: 84, objectFit: "cover", borderRadius: 8 }} />
-          ) : (
-            <div style={{ width: 84, height: 84, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", background: "#eee" }}>
-              <span style={{ fontSize: 12 }}>{selectedFile?.name || "Attachment"}</span>
+      {/* pinned reply preview */}
+      {replyTo && (
+        <div style={{ position: 'sticky', bottom: 84, left: 12, right: 12, display: 'flex', justifyContent: 'space-between', background: isDark ? '#101010' : '#fff', padding: 8, borderRadius: 8, boxShadow: '0 6px 18px rgba(0,0,0,0.08)', zIndex: 90 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div style={{ width: 4, height: 40, background: '#34B7F1', borderRadius: 4 }} />
+            <div style={{ maxWidth: '85%' }}>
+              <div style={{ fontSize: 12, color: '#888' }}>{replyTo.senderId === myUid ? 'You' : 'Them'}</div>
+              <div style={{ fontSize: 14, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{replyTo.text || (replyTo.mediaType || 'media')}</div>
             </div>
-          )}
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 600 }}>{selectedFile?.name || "Attachment selected"}</div>
-            {uploading ? (
-              <div style={{ marginTop: 6 }}>
-                <div style={{ height: 6, background: "#eee", borderRadius: 6, overflow: "hidden" }}>
-                  <div style={{ width: `${uploadProgress}%`, height: "100%", background: "#34b7f1" }} />
-                </div>
-                <div style={{ fontSize: 12, color: "#888", marginTop: 6 }}>{uploadProgress}%</div>
-              </div>
-            ) : (
-              <div style={{ marginTop: 6, display: "flex", gap: 8 }}>
-                <button onClick={uploadAndSendFile} style={{ padding: "8px 12px", background: "#34B7F1", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer" }}>Send</button>
-                <button onClick={clearSelectedFile} style={{ padding: "8px 12px", background: "#ddd", color: "#333", border: "none", borderRadius: 8, cursor: "pointer" }}>Cancel</button>
-              </div>
-            )}
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={() => { jumpToMessage(replyTo.id); setReplyTo(null); }} style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}>Go</button>
+            <button onClick={() => setReplyTo(null)} style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}>✕</button>
           </div>
         </div>
       )}
 
-      {/* input sticky */}
-      <div style={{ position: "sticky", bottom: 0, zIndex: 60, display: "flex", gap: 8, alignItems: "center", padding: 10, background: isDark ? "#0b0b0b" : "#fff", borderTop: "1px solid rgba(0,0,0,0.06)" }}>
-        {/* file picker */}
-        <label style={{ cursor: "pointer", padding: 8, borderRadius: 10, background: isDark ? "#111" : "#f3f4f6" }}>
+      {/* previews bar */}
+      {previews.length > 0 && (
+        <div style={{ display: 'flex', gap: 8, padding: 8, overflowX: 'auto', alignItems: 'center', borderTop: '1px solid rgba(0,0,0,0.06)', background: isDark ? '#0b0b0b' : '#fff' }}>
+          {previews.map((p, idx) => (
+            <div key={idx} style={{ position: 'relative' }}>
+              {p.url ? (
+                p.type === 'image' ? <img src={p.url} alt={p.name} style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 8 }} /> : p.type === 'video' ? <video src={p.url} style={{ width: 110, height: 80, objectFit: 'cover', borderRadius: 8 }} /> : <div style={{ width: 80, height: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, background: '#eee' }}>{p.name}</div>
+              ) : (
+                <div style={{ width: 80, height: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, background: '#eee' }}>{p.name}</div>
+              )}
+
+              {/* single cancel button per preview */}
+              <button onClick={() => { setSelectedFiles(s => s.filter((_,i) => i !== idx)); setPreviews(ps => ps.filter((_,i) => i !== idx)); }} style={{ position: 'absolute', top: -6, right: -6, background: '#ff4d4f', border: 'none', borderRadius: '50%', width: 22, height: 22, color: '#fff', cursor: 'pointer' }}>×</button>
+            </div>
+          ))}
+
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+            <button onClick={sendTextMessage} style={{ padding: '8px 12px', borderRadius: 8, background: '#34B7F1', color: '#fff', border: 'none', cursor: 'pointer' }}>➤</button>
+            <button onClick={() => { setSelectedFiles([]); setPreviews([]); }} style={{ padding: '8px 12px', borderRadius: 8, background: '#ddd', border: 'none', cursor: 'pointer' }}>×</button>
+          </div>
+        </div>
+      )}
+
+      {/* input area - sticky */}
+      <div style={{ position: 'sticky', bottom: 0, background: isDark ? '#0b0b0b' : '#fff', padding: 10, borderTop: '1px solid rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', gap: 8, zIndex: 90 }}>
+        {/* attach + file input */}
+        <label style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
           📎
-          <input type="file" accept="image/*,video/*,audio/*" style={{ display: "none" }} onChange={onPickFile} />
+          <input type="file" multiple style={{ display: 'none' }} onChange={onFilesSelected} />
         </label>
 
-        {/* text input */}
-        <input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (selectedFile) uploadAndSendFile(); else handleSendText(); } }}
-          placeholder="Type a message..."
-          style={{ flex: 1, padding: "10px 12px", borderRadius: 20, border: "1px solid rgba(0,0,0,0.06)", background: isDark ? "#111" : "#f7f7f7", color: isDark ? "#fff" : "#000" }}
-        />
+        {/* recorder button: hold to record */}
+        <div>
+          {recorderAvailable ? (
+            recording ? (
+              <button onMouseUp={stopRecording} onTouchEnd={stopRecording} style={recBtnStyle}>● Release to Send</button>
+            ) : (
+              <button onMouseDown={startRecording} onTouchStart={startRecording} style={recBtnStyle}>🎤 Hold to Record</button>
+            )
+          ) : <div style={{ opacity: 0.6 }}>🎤</div>}
+        </div>
 
-        {/* send / mic button */}
-        { (text.trim() || selectedFile) ? (
-          <button onClick={() => { if (selectedFile) uploadAndSendFile(); else handleSendText(); }} style={{ padding: 10, borderRadius: 12, background: "#007bff", color: "#fff", border: "none", cursor: "pointer" }}>
-            ➤
-          </button>
-        ) : (
-          <button
-            onMouseDown={onMicPointerDown}
-            onMouseUp={onMicPointerUp}
-            onTouchStart={onMicPointerDown}
-            onTouchEnd={onMicPointerUp}
-            style={{ padding: 10, borderRadius: 12, background: isRecording ? "#ff4d4f" : "#34d399", color: "#fff", border: "none", cursor: "pointer" }}
-            title="Hold to record voice note"
-          >
-            {isRecording ? `● ${recordingTime}s` : "🎤"}
-          </button>
-        )}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+          <textarea value={text} onChange={(e) => setText(e.target.value)} onKeyDown={onKeyDown} placeholder="Type a message..." style={{ width: '100%', padding: 8, borderRadius: 12, resize: 'none', minHeight: 40, background: isDark ? '#111' : '#f5f5f5', color: isDark ? '#fff' : '#000' }} />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 }}>
+            <div style={{ fontSize: 12, color: '#888' }}>{/* optional hints */}</div>
+            <div style={{ display: 'flex', gap: 8 }}>{replyTo && <div style={{ fontSize: 12, color: '#888' }}>{replyTo.senderId === myUid ? 'Replying to you' : 'Replying'}</div>}</div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={sendTextMessage} style={{ padding: 10, borderRadius: 12, background: '#34B7F1', color: '#fff', border: 'none', cursor: 'pointer' }}>➤</button>
+        </div>
       </div>
+
+      {/* emoji picker modal */}
+      {showEmojiPicker && (
+        <div style={{ position: 'fixed', left: 0, right: 0, top: 0, bottom: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'flex-end', zIndex: 999 }}>
+          <div style={{ width: '100%', maxHeight: '45vh', background: isDark ? '#0b0b0b' : '#fff', borderTopLeftRadius: 14, borderTopRightRadius: 14, padding: 12, overflowY: 'auto' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8,1fr)', gap: 8 }}>
+              {EXTENDED_EMOJIS.map(e => <button key={e} onClick={() => { applyReaction(emojiPickerFor, e); setShowEmojiPicker(false); }} style={{ padding: 10, fontSize: 20, border: 'none', background: 'transparent' }}>{e}</button>)}
+            </div>
+            <div style={{ textAlign: 'right', marginTop: 8 }}>
+              <button onClick={() => setShowEmojiPicker(false)} style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background: '#ddd' }}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+// small styles
+const menuBtnStyle = { padding: '8px 10px', borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left' };
+const recBtnStyle = { padding: '6px 10px', borderRadius: 10, border: 'none', background: '#ff6b6b', color: '#fff', cursor: 'pointer', marginRight: 6 };
