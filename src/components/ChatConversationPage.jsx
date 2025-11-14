@@ -1,89 +1,293 @@
 // src/components/ChatConversationPage.jsx
 import React, { useEffect, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
+import { auth, db } from "../firebaseConfig";
 import {
-  addDoc,
-  collection,
+  doc,
+  getDoc,
   onSnapshot,
-  orderBy,
-  query,
+  collection,
+  addDoc,
   serverTimestamp,
   updateDoc,
-  doc,
+  setDoc,
 } from "firebase/firestore";
-import { db, auth } from "../firebaseConfig";
-import ChatHeader from "./Chat/ChatHeader";
-import ChatInput from "./Chat/ChatInput";
-import MessageBubble from "./Chat/MessageBubble";
-import TypingIndicator from "./Chat/TypingIndicator";
 
 export default function ChatConversationPage() {
   const { chatId } = useParams();
+  const navigate = useNavigate();
+  const user = auth.currentUser;
+
+  const [chatUser, setChatUser] = useState(null);
   const [messages, setMessages] = useState([]);
-  const [isTyping, setIsTyping] = useState(false);
-  const bottomRef = useRef();
+  const [typing, setTyping] = useState(false);
+  const [myTyping, setMyTyping] = useState(false);
 
-  // Real-time messages
-  useEffect(() => {
-    const msgRef = collection(db, "chats", chatId, "messages");
-    const q = query(msgRef, orderBy("timestamp", "asc"));
+  const [text, setText] = useState("");
 
-    const unsub = onSnapshot(q, (snap) => {
-      const msgs = snap.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      setMessages(msgs);
+  const messagesEndRef = useRef(null);
 
-      // mark messages as read
-      msgs.forEach(async (msg) => {
-        if (!msg.readBy?.includes(auth.currentUser.uid)) {
-          await updateDoc(doc(db, "chats", chatId, "messages", msg.id), {
-            readBy: [...(msg.readBy || []), auth.currentUser.uid],
-          });
-        }
-      });
-
-      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
-    });
-
-    return unsub;
-  }, [chatId]);
-
-  // Watch typing status
-  useEffect(() => {
-    const unsub = onSnapshot(doc(db, "chats", chatId), (snap) => {
-      const typing = snap.data()?.typing || {};
-      const otherId = Object.keys(typing).find((id) => id !== auth.currentUser.uid);
-      setIsTyping(typing[otherId]);
-    });
-    return unsub;
-  }, [chatId]);
-
-  // Send message handler
-  const handleSendMessage = async (text, fileURL) => {
-    await addDoc(collection(db, "chats", chatId, "messages"), {
-      text,
-      fileURL: fileURL || null,
-      senderId: auth.currentUser.uid,
-      timestamp: serverTimestamp(),
-      readBy: [auth.currentUser.uid],
-    });
+  /* -------------------------------
+     🔥 Auto-scroll when messages update
+  -------------------------------- */
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  return (
-    <div className="flex flex-col h-screen bg-gray-50 dark:bg-gray-900">
-      <ChatHeader chatId={chatId} />
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
-      <div className="flex-1 overflow-y-auto px-3 py-2">
-        {messages.map((msg) => (
-          <MessageBubble key={msg.id} message={msg} />
-        ))}
-        {isTyping && <TypingIndicator isTyping={isTyping} />}
-        <div ref={bottomRef} />
+  /* -------------------------------
+     🔥 Load chat user info
+  -------------------------------- */
+  useEffect(() => {
+    const loadUser = async () => {
+      const chatRef = doc(db, "chats", chatId);
+      const chatSnap = await getDoc(chatRef);
+
+      if (chatSnap.exists()) {
+        const data = chatSnap.data();
+        const otherId = data.users.find((id) => id !== user.uid);
+
+        const userRef = doc(db, "users", otherId);
+        const userSnap = await getDoc(userRef);
+        setChatUser(userSnap.data());
+      }
+    };
+
+    loadUser();
+  }, [chatId]);
+
+  /* -------------------------------
+     🔥 Real-time messages listener
+  -------------------------------- */
+  useEffect(() => {
+    const msgRef = collection(db, "chats", chatId, "messages");
+
+    const unsub = onSnapshot(msgRef, (snapshot) => {
+      const msgs = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setMessages(msgs);
+    });
+
+    return () => unsub();
+  }, [chatId]);
+
+  /* -------------------------------
+     ✨ Typing Indicator System
+  -------------------------------- */
+  useEffect(() => {
+    const typingRef = doc(db, "chats", chatId, "typing", user.uid);
+
+    let timeout;
+
+    if (myTyping) {
+      setDoc(typingRef, { typing: true });
+      timeout = setTimeout(() => {
+        setDoc(typingRef, { typing: false });
+        setMyTyping(false);
+      }, 2300);
+    }
+
+    return () => {
+      clearTimeout(timeout);
+      setDoc(typingRef, { typing: false });
+    };
+  }, [myTyping]);
+
+  useEffect(() => {
+    const otherId = chatUser?.uid;
+    if (!otherId) return;
+
+    const ref = doc(db, "chats", chatId, "typing", otherId);
+
+    const unsub = onSnapshot(ref, (snap) => {
+      if (snap.exists()) setTyping(snap.data().typing);
+    });
+
+    return () => unsub();
+  }, [chatUser]);
+
+  /* -------------------------------
+     📝 Send message
+  -------------------------------- */
+  const sendMessage = async () => {
+    if (!text.trim()) return;
+
+    const msgRef = collection(db, "chats", chatId, "messages");
+    await addDoc(msgRef, {
+      text,
+      senderId: user.uid,
+      createdAt: serverTimestamp(),
+    });
+
+    setText("");
+    scrollToBottom();
+  };
+
+  /* -------------------------------
+     🎨 UI Styles
+  -------------------------------- */
+  const isDark = false; // your theme logic
+  const iconBtn = {
+    border: "none",
+    background: "transparent",
+    fontSize: "22px",
+    cursor: "pointer",
+    color: "#25D366",
+  };
+
+  /* -------------------------------
+     📱 Render UI
+  -------------------------------- */
+  return (
+    <div
+      style={{
+        height: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        background: isDark ? "#121212" : "#f5f5f5",
+      }}
+    >
+      {/* HEADER — pinned */}
+      <div
+        style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 20,
+          background: isDark ? "#1f1f1f" : "#fff",
+          padding: "12px 16px",
+          borderBottom: "1px solid #ddd",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
+      >
+        {/* Left: Back + user */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <button onClick={() => navigate("/chat")} style={iconBtn}>
+            ←
+          </button>
+
+          <img
+            src={chatUser?.photoURL || "https://via.placeholder.com/80"}
+            style={{
+              width: 45,
+              height: 45,
+              borderRadius: "50%",
+              objectFit: "cover",
+            }}
+          />
+
+          <div>
+            <strong>{chatUser?.displayName || "User"}</strong>
+            <p
+              style={{
+                fontSize: 12,
+                margin: 0,
+                color: chatUser?.isOnline ? "#25D366" : "#999",
+              }}
+            >
+              {typing
+                ? "typing..."
+                : chatUser?.isOnline
+                ? "Online"
+                : "Last seen recently"}
+            </p>
+          </div>
+        </div>
+
+        {/* Right: Call + Menu */}
+        <div style={{ display: "flex", gap: 12 }}>
+          <button style={iconBtn}>📞</button>
+          <button style={iconBtn}>🎥</button>
+          <button style={iconBtn}>⋮</button>
+        </div>
       </div>
 
-      <ChatInput chatId={chatId} onSendMessage={handleSendMessage} />
+      {/* MESSAGES — scrollable */}
+      <div
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          padding: "10px",
+          background: isDark ? "#111" : "#e9ecef",
+        }}
+      >
+        {messages.map((msg) => (
+          <div
+            key={msg.id}
+            style={{
+              display: "flex",
+              justifyContent:
+                msg.senderId === user.uid ? "flex-end" : "flex-start",
+              marginBottom: 10,
+            }}
+          >
+            <div
+              style={{
+                background:
+                  msg.senderId === user.uid
+                    ? "#25D366"
+                    : isDark
+                    ? "#333"
+                    : "#fff",
+                color: msg.senderId === user.uid ? "#fff" : "#000",
+                padding: "8px 12px",
+                borderRadius: 16,
+                maxWidth: "70%",
+              }}
+            >
+              {msg.text}
+            </div>
+          </div>
+        ))}
+
+        {/* Scroll bottom anchor */}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* INPUT — pinned */}
+      <div
+        style={{
+          padding: "10px",
+          display: "flex",
+          gap: 10,
+          background: isDark ? "#1f1f1f" : "#fff",
+          borderTop: "1px solid #ddd",
+        }}
+      >
+        <input
+          value={text}
+          onChange={(e) => {
+            setText(e.target.value);
+            setMyTyping(true);
+          }}
+          placeholder="Type a message..."
+          style={{
+            flex: 1,
+            padding: "12px",
+            borderRadius: 20,
+            border: "1px solid #ccc",
+            outline: "none",
+          }}
+        />
+
+        <button
+          onClick={sendMessage}
+          style={{
+            background: "#25D366",
+            color: "#fff",
+            border: "none",
+            borderRadius: "50%",
+            width: 45,
+            height: 45,
+            fontSize: 20,
+          }}
+        >
+          ➤
+        </button>
+      </div>
     </div>
   );
 }
