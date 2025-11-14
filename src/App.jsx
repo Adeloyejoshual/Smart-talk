@@ -13,9 +13,6 @@ import CallHistoryPage from "./components/CallHistoryPage";
 import WithdrawalPage from "./components/WithdrawalPage";
 import ProtectedRoute from "./components/ProtectedRoute";
 
-// 🟣 Added PhotoUpload
-import PhotoUpload from "./components/PhotoUpload";
-
 export default function App() {
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [user, setUser] = useState(null);
@@ -151,16 +148,6 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <WithdrawalPage />
-              </ProtectedRoute>
-            }
-          />
-
-          {/* 🟣 New route for Photo Upload */}
-          <Route
-            path="/upload"
-            element={
-              <ProtectedRoute>
-                <PhotoUpload />
               </ProtectedRoute>
             }
           />
