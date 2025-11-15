@@ -666,13 +666,29 @@ export default function ChatConversationPage() {
             </div>
           ))}
 
-          {/* send and cancel */}
-          <div style={{ marginLeft:"auto", display:"flex", gap:8 }}>
-            <button onClick={sendTextMessage} style={{ padding:"8px 12px", borderRadius:8, background:"#34B7F1", color:"#fff", border:"none", cursor:"pointer" }}>➤</button>
-            <button onClick={() => { setSelectedFiles([]); setPreviews([]); setSelectedPreviewIndex(0); }} style={{ padding:"8px 12px", borderRadius:8, background:"#ddd", border:"none", cursor:"pointer" }}>×</button>
-          </div>
-        </div>
-      )}
+          {/* pinned to input */}
+<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+  {/* This can hold previews or icons */}
+  {previews.length > 0 && (
+    <div style={{ display: "flex", gap: 8 }}>
+      {previews.map((preview, index) => (
+        <img
+          key={index}
+          src={preview}
+          alt={`preview-${index}`}
+          style={{
+            width: 40,
+            height: 40,
+            objectFit: "cover",
+            borderRadius: 8,
+            border: index === selectedPreviewIndex ? "2px solid #34B7F1" : "none",
+            cursor: "pointer",
+          }}
+          onClick={() => setSelectedPreviewIndex(index)}
+        />
+      ))}
+    </div>
+  )}
 
       {/* input area: 📎 Type a message... ➤ (press-and-hold to record when empty) */}
       <div style={{ position:"sticky", bottom:0, background:isDark ? "#0b0b0b" : "#fff", padding:10, borderTop:"1px solid rgba(0,0,0,0.06)", display:"flex", alignItems:"center", gap:8, zIndex:90 }}>
