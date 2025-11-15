@@ -666,21 +666,44 @@ export default function ChatConversationPage() {
             </div>
           ))}
 
-          {/* pinned to input */}
-<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-  {/* This can hold previews or icons */}
+          <div style={{ position: "relative", width: "100%" }}>
+  {/* Input field */}
+  <input
+    type="text"
+    value={message}
+    onChange={(e) => setMessage(e.target.value)}
+    placeholder="Type a message..."
+    style={{
+      width: "100%",
+      padding: "8px 48px 8px 12px", // right padding leaves space for previews
+      borderRadius: 8,
+      border: "1px solid #ccc",
+      outline: "none",
+    }}
+  />
+
+  {/* Pinned previews inside input area */}
   {previews.length > 0 && (
-    <div style={{ display: "flex", gap: 8 }}>
+    <div
+      style={{
+        position: "absolute",
+        right: 8,
+        top: "50%",
+        transform: "translateY(-50%)",
+        display: "flex",
+        gap: 4,
+      }}
+    >
       {previews.map((preview, index) => (
         <img
           key={index}
           src={preview}
           alt={`preview-${index}`}
           style={{
-            width: 40,
-            height: 40,
+            width: 32,
+            height: 32,
             objectFit: "cover",
-            borderRadius: 8,
+            borderRadius: 4,
             border: index === selectedPreviewIndex ? "2px solid #34B7F1" : "none",
             cursor: "pointer",
           }}
@@ -689,6 +712,7 @@ export default function ChatConversationPage() {
       ))}
     </div>
   )}
+</div>
 
       {/* input area: 📎 Type a message... ➤ (press-and-hold to record when empty) */}
       <div style={{ position:"sticky", bottom:0, background:isDark ? "#0b0b0b" : "#fff", padding:10, borderTop:"1px solid rgba(0,0,0,0.06)", display:"flex", alignItems:"center", gap:8, zIndex:90 }}>
