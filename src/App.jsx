@@ -13,6 +13,11 @@ import CallHistoryPage from "./components/CallHistoryPage";
 import WithdrawalPage from "./components/WithdrawalPage";
 import ProtectedRoute from "./components/ProtectedRoute";
 
+// NEW PAGES
+import UserProfile from "./components/UserProfile";
+import VoiceCallPage from "./components/VoiceCallPage";
+import VideoCallPage from "./components/VideoCallPage";
+
 export default function App() {
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [user, setUser] = useState(null);
@@ -23,7 +28,6 @@ export default function App() {
       setTimeout(() => setCheckingAuth(false), 800);
 
       if (u) {
-        // Automatically handle online/offline + lastSeen
         const cleanupPresence = setUserPresence(u.uid);
         return () => cleanupPresence && cleanupPresence();
       }
@@ -32,9 +36,6 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  /* -----------------------------
-     🟢 Splash Screen while loading
-  ------------------------------ */
   if (checkingAuth) {
     return (
       <div
@@ -94,9 +95,6 @@ export default function App() {
     );
   }
 
-  /* -----------------------------
-     🟢 Routes
-  ------------------------------ */
   return (
     <ThemeProvider>
       <Router>
@@ -111,6 +109,7 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+
           <Route
             path="/chat/:chatId"
             element={
@@ -119,6 +118,7 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+
           <Route
             path="/call"
             element={
@@ -127,6 +127,7 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+
           <Route
             path="/settings"
             element={
@@ -135,6 +136,7 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+
           <Route
             path="/history"
             element={
@@ -143,6 +145,7 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+
           <Route
             path="/withdrawal"
             element={
@@ -151,6 +154,41 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+
+          {/* ----------------------
+              NEW ROUTES ADDED
+          ----------------------- */}
+
+          {/* USER PROFILE */}
+          <Route
+            path="/profile/:uid"
+            element={
+              <ProtectedRoute>
+                <UserProfile />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* VOICE CALL */}
+          <Route
+            path="/voicecall/:uid"
+            element={
+              <ProtectedRoute>
+                <VoiceCallPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* VIDEO CALL */}
+          <Route
+            path="/videocall/:uid"
+            element={
+              <ProtectedRoute>
+                <VideoCallPage />
+              </ProtectedRoute>
+            }
+          />
+
         </Routes>
       </Router>
     </ThemeProvider>
