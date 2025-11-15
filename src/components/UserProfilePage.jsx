@@ -1,71 +1,157 @@
-import React, { useEffect, useState } from "react"; import { doc, getDoc, updateDoc } from "firebase/firestore"; import { auth, db } from "../firebaseConfig"; import { useParams } from "react-router-dom"; import { Button } from "@/components/ui/button"; import { Card, CardContent } from "@/components/ui/card";
+// src/components/UserProfile.jsx
+import React, { useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { doc, getDoc } from "firebase/firestore";
+import { auth, db } from "../firebaseConfig";
+import { IoArrowBack } from "react-icons/io5";
+import { FaPhoneAlt, FaVideo } from "react-icons/fa";
 
-export default function UserProfile() { const { uid } = useParams(); // UID of the profile being viewed const currentUser = auth.currentUser;
+export default function UserProfile() {
+  const navigate = useNavigate();
+  const { uid } = useParams();
 
-const [profile, setProfile] = useState(null); const [loading, setLoading] = useState(true); const [editing, setEditing] = useState(false);
+  const [userData, setUserData] = useState(null);
+  const currentUser = auth.currentUser;
 
-const [form, setForm] = useState({ displayName: "", bio: "", email: "", });
+  useEffect(() => {
+    async function loadUser() {
+      const ref = doc(db, "users", uid);
+      const snap = await getDoc(ref);
+      if (snap.exists()) setUserData(snap.data());
+    }
+    loadUser();
+  }, [uid]);
 
-useEffect(() => { const fetchProfile = async () => { try { const ref = doc(db, "users", uid); const snap = await getDoc(ref); if (snap.exists()) { const data = snap.data(); setProfile(data); setForm({ displayName: data.displayName || "", bio: data.bio || "", email: data.email || "", }); } setLoading(false); } catch (err) { console.error("Profile fetch error", err); setLoading(false); } }; fetchProfile(); }, [uid]);
+  if (!userData) return <div>Loading…</div>;
 
-const isOwner = currentUser && currentUser.uid === uid;
+  const isOwner = currentUser?.uid === uid;
 
-const handleSave = async () => { try { const ref = doc(db, "users", uid); await updateDoc(ref, { displayName: form.displayName, bio: form.bio, email: form.email, }); setEditing(false); } catch (err) { console.error("Update error", err); } };
+  return (
+    <div style={{ width: "100%", height: "100vh", background: "#fff", display: "flex", flexDirection: "column" }}>
+      
+      {/* ---------------- HEADER ---------------- */}
+      <div
+        style={{
+          width: "100%",
+          height: 60,
+          background: "#1877F2",
+          display: "flex",
+          alignItems: "center",
+          padding: "0 10px",
+          color: "#fff",
+        }}
+      >
+        {/* Back */}
+        <IoArrowBack size={28} onClick={() => navigate(-1)} style={{ cursor: "pointer" }} />
 
-if (loading) return <p className="text-center p-4">Loading...</p>;
-
-return ( <div className="profile-header" style={{ display:'flex', alignItems:'center', padding:'12px', background:'#1877F2', color:'#fff' }}> <button onClick={() => navigate(-1)} style={{ marginRight:'12px', background:'none', border:'none', color:'#fff', fontSize:'20px', cursor:'pointer' }}>←</button> <span style={{ fontSize:'18px', fontWeight:'600' }}>Profile</span> </div>
-
-<div className="w-full max-w-xl mx-auto p-4">
-  <Card className="rounded-2xl shadow-md">
-    <CardContent className="p-6 space-y-4">
-      <h2 className="text-2xl font-bold mb-2">User Profile</h2>
-
-      {/* Show profile info */}
-      {!editing ? (
-        <div className="space-y-3">
-          <p><strong>Name:</strong> {profile.displayName}</p>
-          <p><strong>Email:</strong> {profile.email}</p>
-          <p><strong>Bio:</strong> {profile.bio}</p>
+        {/* Name */}
+        <div style={{ marginLeft: 12, fontSize: 20, fontWeight: 600 }}>
+          {userData.name || "No Name"}
         </div>
-      ) : (
-        <div className="space-y-3">
-          <input
-            className="w-full border p-2 rounded"
-            value={form.displayName}
-            onChange={(e) => setForm({ ...form, displayName: e.target.value })}
-            placeholder="Name"
+
+        <div style={{ marginLeft: "auto", display: "flex", gap: 20 }}>
+          {/* VOICE CALL */}
+          <FaPhoneAlt
+            size={22}
+            style={{ cursor: "pointer" }}
+            onClick={() => navigate(`/voicecall/${uid}`)}
           />
-          <input
-            className="w-full border p-2 rounded"
-            value={form.email}
-            onChange={(e) => setForm({ ...form, email: e.target.value })}
-            placeholder="Email"
-          />
-          <textarea
-            className="w-full border p-2 rounded"
-            value={form.bio}
-            onChange={(e) => setForm({ ...form, bio: e.target.value })}
-            placeholder="Bio"
+
+          {/* VIDEO CALL */}
+          <FaVideo
+            size={22}
+            style={{ cursor: "pointer" }}
+            onClick={() => navigate(`/videocall/${uid}`)}
           />
         </div>
-      )}
+      </div>
 
-      {/* Buttons */}
-      {isOwner && (
-        <div className="flex gap-2 pt-3">
-          {!editing ? (
-            <Button onClick={() => setEditing(true)}>Edit Profile</Button>
-          ) : (
-            <>
-              <Button onClick={handleSave}>Save</Button>
-              <Button variant="secondary" onClick={() => setEditing(false)}>Cancel</Button>
-            </>
-          )}
-        </div>
-      )}
-    </CardContent>
-  </Card>
-</div>
+      {/* ---------------- CONTENT ---------------- */}
+      <div style={{ padding: 20, textAlign: "center" }}>
+        
+        {/* Profile Picture */}
+        <img
+          src={userData.photoURL || "https://via.placeholder.com/120"}
+          alt="profile"
+          style={{
+            width: 120,
+            height: 120,
+            borderRadius: "50%",
+            objectFit: "cover",
+            margin: "20px auto",
+          }}
+        />
 
-); }
+        {/* Username + Email */}
+        <h2 style={{ margin: 5 }}>{userData.name}</h2>
+        <p style={{ color: "#666", marginBottom: 10 }}>{userData.email || "No email"}</p>
+
+        {/* LAST SEEN */}
+        <p style={{ fontSize: 14, color: "#777" }}>
+          Last seen: {userData.lastSeen || "Unavailable"}
+        </p>
+
+        <hr style={{ margin: "25px 0" }} />
+
+        {/* ---------------- CALL BUTTONS ---------------- */}
+        <button
+          onClick={() => navigate(`/voicecall/${uid}`)}
+          style={{
+            width: "100%",
+            padding: 15,
+            background: "#1877F2",
+            color: "#fff",
+            borderRadius: 10,
+            border: "none",
+            fontSize: 18,
+            marginBottom: 15,
+            cursor: "pointer",
+          }}
+        >
+          📞 Voice Call
+        </button>
+
+        <button
+          onClick={() => navigate(`/videocall/${uid}`)}
+          style={{
+            width: "100%",
+            padding: 15,
+            background: "#1877F2",
+            color: "#fff",
+            borderRadius: 10,
+            border: "none",
+            fontSize: 18,
+            cursor: "pointer",
+          }}
+        >
+          🎥 Video Call
+        </button>
+
+        {/* Only the owner can edit */}
+        {!isOwner && (
+          <p style={{ marginTop: 25, color: "#777" }}>
+            You cannot edit this profile.
+          </p>
+        )}
+
+        {isOwner && (
+          <button
+            onClick={() => navigate("/settings")}
+            style={{
+              marginTop: 20,
+              width: "100%",
+              padding: 15,
+              background: "#e5e5e5",
+              borderRadius: 10,
+              border: "none",
+              fontSize: 16,
+              cursor: "pointer",
+            }}
+          >
+            Edit Profile
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
