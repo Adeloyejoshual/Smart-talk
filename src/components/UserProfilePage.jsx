@@ -1,86 +1,71 @@
-// UserProfilePage.jsx
-import React, { useEffect, useState, useContext } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { doc, getDoc, collection, query, where, getDocs, addDoc, serverTimestamp } from "firebase/firestore";
-import { db, auth } from "../firebaseConfig";
-import { ThemeContext } from "../context/ThemeContext";
+import React, { useEffect, useState } from "react"; import { doc, getDoc, updateDoc } from "firebase/firestore"; import { auth, db } from "../firebaseConfig"; import { useParams } from "react-router-dom"; import { Button } from "@/components/ui/button"; import { Card, CardContent } from "@/components/ui/card";
 
-function formatLastSeen(ts, isOnline) {
-  if (isOnline) return "Online";
-  if (!ts) return "";
-  const last = ts.toDate ? ts.toDate() : new Date(ts);
-  const now = new Date();
-  if (now.toDateString() === last.toDateString()) {
-    const mins = Math.floor((now - last) / 1000 / 60);
-    if (mins < 1) return "just now";
-    if (mins < 60) return `${mins}m ago`;
-    return `${Math.floor(mins / 60)}h ago`;
-  }
-  const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
-  if (yesterday.toDateString() === last.toDateString()) return "Yesterday";
-  return last.toLocaleDateString();
-}
+export default function UserProfile() { const { uid } = useParams(); // UID of the profile being viewed const currentUser = auth.currentUser;
 
-export default function UserProfilePage() {
-  const { userId } = useParams();
-  const navigate = useNavigate();
-  const { theme } = useContext(ThemeContext);
-  const isDark = theme === "dark";
+const [profile, setProfile] = useState(null); const [loading, setLoading] = useState(true); const [editing, setEditing] = useState(false);
 
-  const [user, setUser] = useState(null);
+const [form, setForm] = useState({ displayName: "", bio: "", email: "", });
 
-  useEffect(() => {
-    if (!userId) return;
-    const ref = doc(db, "users", userId);
-    getDoc(ref).then((snap) => { if (snap.exists()) setUser({ id: snap.id, ...snap.data() }); });
-  }, [userId]);
+useEffect(() => { const fetchProfile = async () => { try { const ref = doc(db, "users", uid); const snap = await getDoc(ref); if (snap.exists()) { const data = snap.data(); setProfile(data); setForm({ displayName: data.displayName || "", bio: data.bio || "", email: data.email || "", }); } setLoading(false); } catch (err) { console.error("Profile fetch error", err); setLoading(false); } }; fetchProfile(); }, [uid]);
 
-  const startCall = (type) => {
-    // route to call page, adjust CallPage to accept params
-    navigate(`/call?chatId=${userId}&type=${type}`);
-  };
+const isOwner = currentUser && currentUser.uid === uid;
 
-  const startChatWith = async () => {
-    if (!auth.currentUser) return;
-    const me = auth.currentUser.uid;
-    const chatsRef = collection(db, "chats");
-    const q = query(chatsRef, where("participants", "array-contains", me));
-    const snap = await getDocs(q);
-    const found = snap.docs.find((d) => d.data().participants.includes(userId));
-    if (found) navigate(`/chat/${found.id}`);
-    else {
-      const newChat = await addDoc(chatsRef, {
-        participants: [me, userId],
-        name: user?.displayName || "",
-        photoURL: user?.photoURL || "",
-        lastMessage: "",
-        lastMessageAt: serverTimestamp(),
-      });
-      navigate(`/chat/${newChat.id}`);
-    }
-  };
+const handleSave = async () => { try { const ref = doc(db, "users", uid); await updateDoc(ref, { displayName: form.displayName, bio: form.bio, email: form.email, }); setEditing(false); } catch (err) { console.error("Update error", err); } };
 
-  if (!user) return <div style={{ padding: 20 }}>Loading profile...</div>;
+if (loading) return <p className="text-center p-4">Loading...</p>;
 
-  return (
-    <div style={{ minHeight: "100vh", background: isDark ? "#121212" : "#fff", color: isDark ? "#fff" : "#000" }}>
-      <div style={{ padding: 12, display: "flex", gap: 12, alignItems: "center", borderBottom: "1px solid #ccc" }}>
-        <button onClick={() => navigate(-1)} style={{ fontSize: 18 }}>←</button>
-        <h2 style={{ margin: 0 }}>{user.displayName || "Profile"}</h2>
-      </div>
+return ( <div className="profile-header" style={{ display:'flex', alignItems:'center', padding:'12px', background:'#1877F2', color:'#fff' }}> <button onClick={() => navigate(-1)} style={{ marginRight:'12px', background:'none', border:'none', color:'#fff', fontSize:'20px', cursor:'pointer' }}>←</button> <span style={{ fontSize:'18px', fontWeight:'600' }}>Profile</span> </div>
 
-      <div style={{ padding: 20, display: "flex", flexDirection: "column", alignItems: "center" }}>
-        <img src={user.photoURL || "/default-avatar.png"} alt="profile" style={{ width: 140, height: 140, borderRadius: "50%", objectFit: "cover" }} />
-        <h3 style={{ marginTop: 12 }}>{user.displayName}</h3>
-        <p style={{ color: "#888" }}>{formatLastSeen(user.lastSeen, user.isOnline)}</p>
-        {user.email && <p style={{ color: isDark ? "#ddd" : "#444" }}>{user.email}</p>}
-        <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
-          <button onClick={startChatWith} style={{ padding: "8px 12px", borderRadius: 8, background: "#007BFF", color: "#fff", border: "none" }}>💬 Start Chat</button>
-          <button onClick={() => navigate(`/media/${userId}`)} style={{ padding: "8px 12px", borderRadius: 8 }}>🖼 View Media</button>
-          <button onClick={() => startCall("voice")} style={{ padding: "8px 12px", borderRadius: 8 }}>📞 Voice</button>
-          <button onClick={() => startCall("video")} style={{ padding: "8px 12px", borderRadius: 8 }}>🎥 Video</button>
+<div className="w-full max-w-xl mx-auto p-4">
+  <Card className="rounded-2xl shadow-md">
+    <CardContent className="p-6 space-y-4">
+      <h2 className="text-2xl font-bold mb-2">User Profile</h2>
+
+      {/* Show profile info */}
+      {!editing ? (
+        <div className="space-y-3">
+          <p><strong>Name:</strong> {profile.displayName}</p>
+          <p><strong>Email:</strong> {profile.email}</p>
+          <p><strong>Bio:</strong> {profile.bio}</p>
         </div>
-      </div>
-    </div>
-  );
-}
+      ) : (
+        <div className="space-y-3">
+          <input
+            className="w-full border p-2 rounded"
+            value={form.displayName}
+            onChange={(e) => setForm({ ...form, displayName: e.target.value })}
+            placeholder="Name"
+          />
+          <input
+            className="w-full border p-2 rounded"
+            value={form.email}
+            onChange={(e) => setForm({ ...form, email: e.target.value })}
+            placeholder="Email"
+          />
+          <textarea
+            className="w-full border p-2 rounded"
+            value={form.bio}
+            onChange={(e) => setForm({ ...form, bio: e.target.value })}
+            placeholder="Bio"
+          />
+        </div>
+      )}
+
+      {/* Buttons */}
+      {isOwner && (
+        <div className="flex gap-2 pt-3">
+          {!editing ? (
+            <Button onClick={() => setEditing(true)}>Edit Profile</Button>
+          ) : (
+            <>
+              <Button onClick={handleSave}>Save</Button>
+              <Button variant="secondary" onClick={() => setEditing(false)}>Cancel</Button>
+            </>
+          )}
+        </div>
+      )}
+    </CardContent>
+  </Card>
+</div>
+
+); }
