@@ -1,157 +1,165 @@
 // src/components/UserProfile.jsx
 import React, { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import { doc, getDoc } from "firebase/firestore";
+import { useParams, useNavigate } from "react-router-dom";
 import { auth, db } from "../firebaseConfig";
-import { IoArrowBack } from "react-icons/io5";
-import { FaPhoneAlt, FaVideo } from "react-icons/fa";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
 
 export default function UserProfile() {
+  const { uid } = useParams();          // Profile owner ID
   const navigate = useNavigate();
-  const { uid } = useParams();
-
-  const [userData, setUserData] = useState(null);
-  const currentUser = auth.currentUser;
-
-  useEffect(() => {
-    async function loadUser() {
-      const ref = doc(db, "users", uid);
-      const snap = await getDoc(ref);
-      if (snap.exists()) setUserData(snap.data());
-    }
-    loadUser();
-  }, [uid]);
-
-  if (!userData) return <div>Loading…</div>;
-
+  const currentUser = auth.currentUser; // Logged-in user
   const isOwner = currentUser?.uid === uid;
 
+  const [loading, setLoading] = useState(true);
+  const [profile, setProfile] = useState({
+    displayName: "",
+    email: "",
+    about: "",
+    photoURL: "",
+  });
+
+  const [editMode, setEditMode] = useState(false);
+
+  useEffect(() => {
+    async function loadProfile() {
+      const ref = doc(db, "users", uid);
+      const snap = await getDoc(ref);
+
+      if (snap.exists()) {
+        setProfile(snap.data());
+      }
+
+      setLoading(false);
+    }
+
+    loadProfile();
+  }, [uid]);
+
+  async function saveProfile() {
+    const ref = doc(db, "users", uid);
+    await updateDoc(ref, {
+      displayName: profile.displayName,
+      email: profile.email,
+      about: profile.about,
+    });
+    setEditMode(false);
+  }
+
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-black text-white">
+        Loading profile…
+      </div>
+    );
+  }
+
   return (
-    <div style={{ width: "100%", height: "100vh", background: "#fff", display: "flex", flexDirection: "column" }}>
-      
-      {/* ---------------- HEADER ---------------- */}
-      <div
-        style={{
-          width: "100%",
-          height: 60,
-          background: "#1877F2",
-          display: "flex",
-          alignItems: "center",
-          padding: "0 10px",
-          color: "#fff",
-        }}
-      >
-        {/* Back */}
-        <IoArrowBack size={28} onClick={() => navigate(-1)} style={{ cursor: "pointer" }} />
+    <div className="min-h-screen bg-black text-white p-4">
 
-        {/* Name */}
-        <div style={{ marginLeft: 12, fontSize: 20, fontWeight: 600 }}>
-          {userData.name || "No Name"}
-        </div>
-
-        <div style={{ marginLeft: "auto", display: "flex", gap: 20 }}>
-          {/* VOICE CALL */}
-          <FaPhoneAlt
-            size={22}
-            style={{ cursor: "pointer" }}
-            onClick={() => navigate(`/voicecall/${uid}`)}
-          />
-
-          {/* VIDEO CALL */}
-          <FaVideo
-            size={22}
-            style={{ cursor: "pointer" }}
-            onClick={() => navigate(`/videocall/${uid}`)}
-          />
-        </div>
+      {/* BACK ARROW */}
+      <div className="flex items-center gap-3 mb-6">
+        <button
+          onClick={() => navigate(-1)}
+          className="text-white text-2xl font-bold"
+        >
+          ←
+        </button>
+        <h2 className="text-xl font-semibold">Profile</h2>
       </div>
 
-      {/* ---------------- CONTENT ---------------- */}
-      <div style={{ padding: 20, textAlign: "center" }}>
-        
-        {/* Profile Picture */}
+      <div className="flex flex-col items-center">
         <img
-          src={userData.photoURL || "https://via.placeholder.com/120"}
-          alt="profile"
-          style={{
-            width: 120,
-            height: 120,
-            borderRadius: "50%",
-            objectFit: "cover",
-            margin: "20px auto",
-          }}
+          src={profile.photoURL || "https://via.placeholder.com/120"}
+          className="w-32 h-32 rounded-full object-cover border border-gray-700 mb-4"
         />
 
-        {/* Username + Email */}
-        <h2 style={{ margin: 5 }}>{userData.name}</h2>
-        <p style={{ color: "#666", marginBottom: 10 }}>{userData.email || "No email"}</p>
-
-        {/* LAST SEEN */}
-        <p style={{ fontSize: 14, color: "#777" }}>
-          Last seen: {userData.lastSeen || "Unavailable"}
-        </p>
-
-        <hr style={{ margin: "25px 0" }} />
-
-        {/* ---------------- CALL BUTTONS ---------------- */}
-        <button
-          onClick={() => navigate(`/voicecall/${uid}`)}
-          style={{
-            width: "100%",
-            padding: 15,
-            background: "#1877F2",
-            color: "#fff",
-            borderRadius: 10,
-            border: "none",
-            fontSize: 18,
-            marginBottom: 15,
-            cursor: "pointer",
-          }}
-        >
-          📞 Voice Call
-        </button>
-
-        <button
-          onClick={() => navigate(`/videocall/${uid}`)}
-          style={{
-            width: "100%",
-            padding: 15,
-            background: "#1877F2",
-            color: "#fff",
-            borderRadius: 10,
-            border: "none",
-            fontSize: 18,
-            cursor: "pointer",
-          }}
-        >
-          🎥 Video Call
-        </button>
-
-        {/* Only the owner can edit */}
-        {!isOwner && (
-          <p style={{ marginTop: 25, color: "#777" }}>
-            You cannot edit this profile.
-          </p>
-        )}
-
-        {isOwner && (
+        {/* ---------------------------
+             OWNER CAN EDIT THEIR PROFILE
+           --------------------------- */}
+        {isOwner && !editMode && (
           <button
-            onClick={() => navigate("/settings")}
-            style={{
-              marginTop: 20,
-              width: "100%",
-              padding: 15,
-              background: "#e5e5e5",
-              borderRadius: 10,
-              border: "none",
-              fontSize: 16,
-              cursor: "pointer",
-            }}
+            className="bg-blue-600 px-4 py-2 rounded-lg text-white mb-4"
+            onClick={() => setEditMode(true)}
           >
             Edit Profile
           </button>
         )}
       </div>
+
+      {/* DISPLAY MODE */}
+      {!editMode && (
+        <div className="space-y-4 mt-4">
+          <div>
+            <p className="text-gray-400">Name:</p>
+            <p className="text-lg">{profile.displayName}</p>
+          </div>
+
+          <div>
+            <p className="text-gray-400">Email:</p>
+            <p className="text-lg">{profile.email}</p>
+          </div>
+
+          <div>
+            <p className="text-gray-400">About:</p>
+            <p className="text-lg">{profile.about || "No bio added."}</p>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT MODE (ONLY OWNER) */}
+      {editMode && isOwner && (
+        <div className="space-y-4 mt-6">
+          <div>
+            <label className="text-gray-400">Name</label>
+            <input
+              type="text"
+              className="w-full p-2 rounded bg-gray-800 text-white mt-1"
+              value={profile.displayName}
+              onChange={(e) =>
+                setProfile({ ...profile, displayName: e.target.value })
+              }
+            />
+          </div>
+
+          <div>
+            <label className="text-gray-400">Email</label>
+            <input
+              type="email"
+              className="w-full p-2 rounded bg-gray-800 text-white mt-1"
+              value={profile.email}
+              onChange={(e) =>
+                setProfile({ ...profile, email: e.target.value })
+              }
+            />
+          </div>
+
+          <div>
+            <label className="text-gray-400">About</label>
+            <textarea
+              className="w-full p-2 rounded bg-gray-800 text-white mt-1"
+              rows="4"
+              value={profile.about}
+              onChange={(e) =>
+                setProfile({ ...profile, about: e.target.value })
+              }
+            />
+          </div>
+
+          <button
+            onClick={saveProfile}
+            className="w-full bg-green-600 py-2 rounded-lg text-white font-semibold"
+          >
+            Save Changes
+          </button>
+
+          <button
+            onClick={() => setEditMode(false)}
+            className="w-full bg-gray-600 py-2 rounded-lg text-white font-semibold mt-2"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
     </div>
   );
 }
