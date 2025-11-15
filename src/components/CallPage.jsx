@@ -1,259 +1,156 @@
-// src/components/CallPage.jsx
+// src/components/VoiceCallPage.jsx
 import React, { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { auth, db } from "../firebaseConfig";
-import {
-  doc,
-  setDoc,
-  deleteDoc,
-  onSnapshot,
-  serverTimestamp,
-} from "firebase/firestore";
-import { saveCallHistory } from "../utils/saveCallHistory";
+import { db, auth } from "../firebaseConfig";
+import { doc, setDoc, getDoc, updateDoc, onSnapshot, deleteDoc } from "firebase/firestore";
 
-export default function CallPage() {
-  const { id: receiverId } = useParams(); // Receiver's UID from route
+export default function VoiceCallPage() {
+  const { chatId } = useParams();
   const navigate = useNavigate();
+  const localAudioRef = useRef();
+  const remoteAudioRef = useRef();
 
-  const localVideoRef = useRef(null);
-  const remoteVideoRef = useRef(null);
   const pcRef = useRef(null);
+  const callDocRef = useRef(null);
+  const localStreamRef = useRef(null);
 
   const [callActive, setCallActive] = useState(false);
-  const [callStartTime, setCallStartTime] = useState(null);
-  const [remoteUserName, setRemoteUserName] = useState("User");
+  const [callEnded, setCallEnded] = useState(false);
+  const [error, setError] = useState(null);
 
-  // 🟢 Setup WebRTC
+  const myUid = auth.currentUser?.uid;
+
+  // RTC config with a public STUN server
+  const rtcConfig = {
+    iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+  };
+
   useEffect(() => {
-    pcRef.current = new RTCPeerConnection({
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-    });
+    if (!chatId || !myUid) return;
 
-    pcRef.current.ontrack = (event) => {
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = event.streams[0];
-      }
-    };
+    callDocRef.current = doc(db, "voiceCalls", chatId);
 
-    pcRef.current.onconnectionstatechange = () => {
-      if (pcRef.current.connectionState === "connected") {
-        console.log("✅ Call connected");
-        setCallActive(true);
-        setCallStartTime(Date.now());
+    const startCall = async () => {
+      try {
+        // Get audio stream
+        const localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        localStreamRef.current = localStream;
+        if (localAudioRef.current) {
+          localAudioRef.current.srcObject = localStream;
+        }
 
-        // ✅ Save "answered" call
-        saveCallHistory({
-          callerId: auth.currentUser.uid,
-          callerName: auth.currentUser.displayName || "You",
-          receiverId,
-          receiverName: remoteUserName,
-          status: "answered",
-          startTime: Date.now(),
+        // Create peer connection
+        const pc = new RTCPeerConnection(rtcConfig);
+        pcRef.current = pc;
+
+        // Add local tracks
+        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+        // Listen for remote track
+        pc.ontrack = (event) => {
+          if (remoteAudioRef.current) {
+            remoteAudioRef.current.srcObject = event.streams[0];
+          }
+        };
+
+        // ICE Candidate handling
+        pc.onicecandidate = async (event) => {
+          if (event.candidate) {
+            await updateDoc(callDocRef.current, {
+              [`candidates.${myUid}`]: event.candidate.toJSON(),
+            });
+          }
+        };
+
+        // Create offer for caller
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+
+        // Save offer in Firestore
+        await setDoc(callDocRef.current, {
+          offer: offer.toJSON(),
+          caller: myUid,
+          answer: null,
+          candidates: {},
+          status: "calling",
         });
-      } else if (pcRef.current.connectionState === "disconnected") {
-        endCall();
+
+        // Listen for answer
+        const unsub = onSnapshot(callDocRef.current, async (snapshot) => {
+          const data = snapshot.data();
+          if (!data) return;
+          if (data.answer && !pc.currentRemoteDescription) {
+            const answerDesc = new RTCSessionDescription(data.answer);
+            await pc.setRemoteDescription(answerDesc);
+            setCallActive(true);
+          }
+
+          // Add ICE candidates from remote peer
+          const remoteCandidates = data.candidates || {};
+          for (const [uid, candidate] of Object.entries(remoteCandidates)) {
+            if (uid !== myUid && candidate) {
+              try {
+                await pc.addIceCandidate(new RTCIceCandidate(candidate));
+              } catch {}
+            }
+          }
+
+          // Call ended detection
+          if (data.status === "ended" && !callEnded) {
+            endCallCleanup();
+          }
+        });
+
+        return () => {
+          unsub();
+          endCallCleanup();
+        };
+      } catch (e) {
+        setError("Could not start call: " + e.message);
       }
     };
 
-    return () => {
-      pcRef.current?.close();
-    };
-  }, []);
+    startCall();
 
-  // 🎥 Get local video & audio
-  useEffect(() => {
-    const getMedia = async () => {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true,
-      });
-      stream.getTracks().forEach((track) => {
-        pcRef.current.addTrack(track, stream);
-      });
-      if (localVideoRef.current) localVideoRef.current.srcObject = stream;
-    };
-    getMedia();
-  }, []);
+    // Cleanup on unmount or chatId change
+    return () => endCallCleanup();
+  }, [chatId, myUid]);
 
-  // 📞 Create an offer and send to Firestore
-  const startCall = async () => {
-    if (!receiverId) return alert("No receiver specified!");
-
-    const offer = await pcRef.current.createOffer();
-    await pcRef.current.setLocalDescription(offer);
-
-    const callRef = doc(db, "calls", receiverId);
-    await setDoc(callRef, {
-      offer,
-      callerId: auth.currentUser.uid,
-      callerName: auth.currentUser.displayName || "You",
-      receiverId,
-      createdAt: serverTimestamp(),
-    });
-
-    alert("📤 Calling...");
-
-    // 🟩 Save outgoing log
-    await saveCallHistory({
-      callerId: auth.currentUser.uid,
-      callerName: auth.currentUser.displayName || "You",
-      receiverId,
-      receiverName: remoteUserName,
-      status: "outgoing",
-      startTime: Date.now(),
-    });
-
-    // 👂 Listen for answer
-    const unsub = onSnapshot(callRef, async (snapshot) => {
-      const data = snapshot.data();
-      if (data?.answer) {
-        const answer = new RTCSessionDescription(data.answer);
-        await pcRef.current.setRemoteDescription(answer);
-        unsub();
-      }
-    });
-  };
-
-  // 📲 Answer incoming call
-  const answerCall = async (callData) => {
-    await pcRef.current.setRemoteDescription(
-      new RTCSessionDescription(callData.offer)
-    );
-    const answer = await pcRef.current.createAnswer();
-    await pcRef.current.setLocalDescription(answer);
-
-    await setDoc(doc(db, "calls", auth.currentUser.uid), {
-      ...callData,
-      answer,
-      answered: true,
-    });
-
-    alert("✅ Call connected!");
-    setCallActive(true);
-    setCallStartTime(Date.now());
-
-    // ✅ Log answered call
-    await saveCallHistory({
-      callerId: callData.callerId,
-      callerName: callData.callerName,
-      receiverId: auth.currentUser.uid,
-      receiverName: auth.currentUser.displayName || "You",
-      status: "answered",
-      startTime: Date.now(),
-    });
-  };
-
-  // 🔴 End call
-  const endCall = async () => {
-    if (pcRef.current) {
-      pcRef.current.getSenders().forEach((sender) => sender.track.stop());
-      pcRef.current.close();
-    }
-
-    const callEndTime = Date.now();
-    const duration = callStartTime
-      ? Math.floor((callEndTime - callStartTime) / 1000)
-      : 0;
-
-    // 📝 Save ended call info
-    await saveCallHistory({
-      callerId: auth.currentUser.uid,
-      callerName: auth.currentUser.displayName || "You",
-      receiverId,
-      receiverName: remoteUserName,
-      status: "ended",
-      startTime: callStartTime,
-      endTime: callEndTime,
-      duration,
-    });
-
-    // 🧹 Cleanup call doc
-    await deleteDoc(doc(db, "calls", receiverId));
+  const endCallCleanup = async () => {
+    setCallEnded(true);
     setCallActive(false);
+
+    // Stop local stream tracks
+    localStreamRef.current?.getTracks().forEach(t => t.stop());
+    localStreamRef.current = null;
+
+    // Close peer connection
+    pcRef.current?.close();
+    pcRef.current = null;
+
+    // Remove Firestore signaling doc
+    try {
+      await deleteDoc(callDocRef.current);
+    } catch {}
+
     navigate("/chat");
   };
 
   return (
-    <div style={styles.container}>
-      <h2 style={styles.header}>
-        {callActive ? "In Call with" : "Calling"} {remoteUserName}
-      </h2>
+    <div style={{ padding: 20, textAlign: "center" }}>
+      <h2>Voice Call</h2>
+      {error && <p style={{ color: "red" }}>{error}</p>}
 
-      <div style={styles.videoContainer}>
-        <video
-          ref={localVideoRef}
-          autoPlay
-          muted
-          playsInline
-          style={styles.videoLocal}
-        ></video>
-        <video
-          ref={remoteVideoRef}
-          autoPlay
-          playsInline
-          style={styles.videoRemote}
-        ></video>
-      </div>
+      <audio ref={localAudioRef} autoPlay muted controls />
+      <audio ref={remoteAudioRef} autoPlay controls />
 
-      <div style={styles.controls}>
-        {!callActive && (
-          <button style={styles.callBtn} onClick={startCall}>
-            📞 Start Call
-          </button>
-        )}
-        {callActive && (
-          <button style={styles.endBtn} onClick={endCall}>
-            ❌ End Call
-          </button>
-        )}
-      </div>
+      {!callEnded && (
+        <button onClick={endCallCleanup} style={{ marginTop: 20, padding: "10px 20px", fontSize: 16 }}>
+          End Call
+        </button>
+      )}
+
+      {callEnded && <p>Call Ended</p>}
     </div>
   );
 }
-
-// 💅 Styles
-const styles = {
-  container: {
-    textAlign: "center",
-    background: "#0d1117",
-    color: "#fff",
-    minHeight: "100vh",
-    padding: "20px",
-  },
-  header: { fontSize: "22px", marginBottom: "15px" },
-  videoContainer: {
-    display: "flex",
-    justifyContent: "center",
-    gap: "20px",
-    marginBottom: "20px",
-  },
-  videoLocal: {
-    width: "40%",
-    borderRadius: "12px",
-    border: "2px solid #444",
-  },
-  videoRemote: {
-    width: "40%",
-    borderRadius: "12px",
-    border: "2px solid #00bfa5",
-  },
-  controls: { marginTop: "20px" },
-  callBtn: {
-    background: "#00bfa5",
-    padding: "10px 25px",
-    borderRadius: "10px",
-    color: "#fff",
-    border: "none",
-    cursor: "pointer",
-    fontSize: "16px",
-  },
-  endBtn: {
-    background: "#f44336",
-    padding: "10px 25px",
-    borderRadius: "10px",
-    color: "#fff",
-    border: "none",
-    cursor: "pointer",
-    fontSize: "16px",
-  },
-};
