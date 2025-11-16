@@ -7,81 +7,71 @@ import { auth } from "../firebaseConfig";
 export default function VoiceCallPage() {
   const { uid } = useParams();
   const navigate = useNavigate();
-  const [roomName] = useState(uid || `voice-${Date.now()}`);
-  const [identity] = useState(auth.currentUser?.uid || `anon-${Math.floor(Math.random()*10000)}`);
-  const [room, setRoom] = useState(null);
-  const [connecting, setConnecting] = useState(false);
-  const remoteAudioRef = useRef();
+  const [connected, setConnected] = useState(false);
+  const roomRef = useRef(null);
+  const remoteRef = useRef(null);
 
   useEffect(() => {
-    return () => {
-      if (room) {
-        room.disconnect();
-      }
+    const identity = auth.currentUser?.uid || `anon-${Math.floor(Math.random()*10000)}`;
+    const roomName = uid || `audio-room-${Date.now()}`;
+
+    const joinAudio = async () => {
+      try {
+        const resp = await fetch(`${import.meta.env.VITE_TWILIO_TOKEN_SERVER}/token?identity=${encodeURIComponent(identity)}&room=${encodeURIComponent(roomName)}`);
+        const { token } = await resp.json();
+        const room = await Video.connect(token, { name: roomName, audio: true, video: false });
+        roomRef.current = room;
+        setConnected(true);
+
+        // attach remote audio tracks
+        const attachParticipant = (p) => {
+          p.tracks.forEach(pub => {
+            if (pub.isSubscribed && pub.track.kind === 'audio') {
+              remoteRef.current.appendChild(pub.track.attach());
+            }
+          });
+          p.on('trackSubscribed', track => { if (track.kind === 'audio') remoteRef.current.appendChild(track.attach()); });
+        };
+
+        room.participants.forEach(attachParticipant);
+        room.on('participantConnected', attachParticipant);
+        room.on('participantDisconnected', p => {
+          // remove participant audio elements
+          const el = remoteRef.current.querySelector(`[data-sid="${p.sid}"]`);
+          if (el) el.remove();
+        });
+        room.on('disconnected', () => cleanup());
+      } catch (err) { console.error(err); alert('Could not start audio call'); }
     };
-  }, [room]);
 
-  const connect = async () => {
-    setConnecting(true);
-    try {
-      const resp = await fetch(`${process.env.REACT_APP_BACKEND_URL || ""}/twilio/token`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identity, room: roomName }),
+    joinAudio();
+
+    return () => cleanup();
+  }, []);
+
+  const cleanup = () => {
+    const room = roomRef.current;
+    if (room) {
+      room.localParticipant.tracks.forEach(pub => {
+        pub.track.stop && pub.track.stop();
+        pub.track.detach && pub.track.detach().forEach(el => el.remove());
       });
-      const data = await resp.json();
-      if (!data.token) throw new Error(data.error || "No token");
-
-      const twRoom = await Video.connect(data.token, { audio: true, video: false });
-      setRoom(twRoom);
-
-      // attach participant audio to DOM
-      const attachParticipant = participant => {
-        participant.tracks.forEach(publication => {
-          if (publication.track && publication.track.kind === "audio") {
-            const el = publication.track.attach();
-            remoteAudioRef.current.appendChild(el);
-          }
-        });
-        participant.on("trackSubscribed", track => {
-          if (track.kind === "audio") remoteAudioRef.current.appendChild(track.attach());
-        });
-        participant.on("trackUnsubscribed", track => track.detach().forEach(e => e.remove()));
-      };
-
-      twRoom.participants.forEach(p => attachParticipant(p));
-      twRoom.on("participantConnected", p => attachParticipant(p));
-      twRoom.on("participantDisconnected", p => {
-        const el = document.getElementById(p.sid);
-        if (el) el.remove();
-      });
-
-    } catch (err) {
-      console.error(err);
-      alert("Could not join voice room");
-    } finally {
-      setConnecting(false);
+      room.disconnect();
+      roomRef.current = null;
     }
-  };
-
-  const end = () => {
-    if (room) room.disconnect();
+    setConnected(false);
     navigate(-1);
   };
 
   return (
     <div style={{ padding: 12 }}>
-      <header style={{ display:"flex", alignItems:"center", gap:8 }}>
-        <button onClick={() => navigate(-1)}>←</button>
-        <h3 style={{ margin:0 }}>Voice Call</h3>
-        <div style={{ marginLeft:"auto" }}>
-          {!room ? <button onClick={connect} disabled={connecting}>{connecting ? "Joining..." : "Join"}</button> : <button onClick={end}>End</button>}
-        </div>
-      </header>
-
-      <div style={{ marginTop: 16 }}>
-        <div>Remote audio</div>
-        <div ref={remoteAudioRef} />
+      <h3>Voice Call</h3>
+      <div>
+        <div>Connected: {connected ? 'Yes' : 'Connecting...'}</div>
+        <div ref={remoteRef} />
+      </div>
+      <div style={{ marginTop: 12 }}>
+        <button onClick={cleanup}>Hang Up</button>
       </div>
     </div>
   );
