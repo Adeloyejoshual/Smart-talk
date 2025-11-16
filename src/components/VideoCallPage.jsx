@@ -1,192 +1,139 @@
 // src/components/VideoCallPage.jsx
 import React, { useEffect, useRef, useState } from "react";
+import Video from "twilio-video";
 import { useParams, useNavigate } from "react-router-dom";
-import {
-  collection,
-  doc,
-  setDoc,
-  addDoc,
-  onSnapshot,
-  updateDoc,
-  getDoc,
-  serverTimestamp,
-} from "firebase/firestore";
-import { db, auth } from "../firebaseConfig";
-
-/**
- * VideoCallPage.jsx
- * - WebRTC video + audio
- * - Route: /videocall/:uid  where :uid is callee's uid
- *
- * Very similar flow to VoiceCallPage but creates <video> elements for local/remote.
- */
-
-const ICE_CONFIG = () => {
-  const iceServers = [{ urls: ["stun:stun.l.google.com:19302"] }];
-  const turnUrl = import.meta.env.VITE_TURN_URL;
-  const turnUser = import.meta.env.VITE_TURN_USERNAME;
-  const turnPass = import.meta.env.VITE_TURN_PASSWORD;
-  if (turnUrl && turnUser && turnPass) {
-    iceServers.push({
-      urls: [turnUrl],
-      username: turnUser,
-      credential: turnPass,
-    });
-  }
-  return { iceServers };
-};
+import { auth } from "../firebaseConfig"; // optional: to get current user info
 
 export default function VideoCallPage() {
-  const { uid: calleeUid } = useParams();
+  const { uid: otherUidOrRoom } = useParams(); // route: /videocall/:uid  (we'll treat param as room name)
   const navigate = useNavigate();
-  const pcRef = useRef(null);
-  const localStreamRef = useRef(null);
-  const remoteStreamRef = useRef(null);
-  const localVideoRef = useRef(null);
-  const remoteVideoRef = useRef(null);
-  const callDocRef = useRef(null);
 
-  const [callState, setCallState] = useState("starting");
-  const [muted, setMuted] = useState(false);
-  const [videoOn, setVideoOn] = useState(true);
-  const [timer, setTimer] = useState(0);
-  const intervalRef = useRef(null);
-
-  const callerUid = auth.currentUser?.uid;
-  if (!callerUid) navigate("/");
+  const [roomName, setRoomName] = useState(otherUidOrRoom || `room-${Date.now()}`);
+  const [identity, setIdentity] = useState(auth.currentUser?.uid || `anon-${Math.floor(Math.random()*10000)}`);
+  const [room, setRoom] = useState(null);
+  const [connecting, setConnecting] = useState(false);
+  const localRef = useRef();
+  const remoteRef = useRef();
 
   useEffect(() => {
-    let unsubCall = null;
-    let unsubAnswerCandidates = null;
-
-    (async () => {
-      try {
-        const localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-        localStreamRef.current = localStream;
-        localVideoRef.current.srcObject = localStream;
-
-        remoteStreamRef.current = new MediaStream();
-
-        const pc = new RTCPeerConnection(ICE_CONFIG());
-        pcRef.current = pc;
-
-        // add tracks
-        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-
-        pc.ontrack = (event) => { event.streams[0]?.getTracks().forEach(t => remoteStreamRef.current.addTrack(t)); remoteVideoRef.current.srcObject = remoteStreamRef.current; };
-
-        // create call doc
-        const callId = `${callerUid}_${calleeUid}_${Date.now()}`;
-        const callRef = doc(collection(db, "calls"), callId);
-        callDocRef.current = callRef;
-
-        await setDoc(callRef, { caller: callerUid, callee: calleeUid, createdAt: serverTimestamp(), type: "video", status: "calling" });
-
-        const offerCandidatesRef = collection(callRef, "offerCandidates");
-        const answerCandidatesRef = collection(callRef, "answerCandidates");
-
-        pc.onicecandidate = async (event) => {
-          if (event.candidate) {
-            try { await addDoc(offerCandidatesRef, JSON.parse(JSON.stringify(event.candidate))); } catch(e) { console.error(e); }
-          }
-        };
-
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-
-        await updateDoc(callRef, { offer: { type: offer.type, sdp: offer.sdp } });
-        setCallState("ringing");
-
-        unsubCall = onSnapshot(callRef, async (snap) => {
-          const data = snap.data();
-          if (!data) return;
-          if (data.answer && !pc.currentRemoteDescription) {
-            const answerDesc = new RTCSessionDescription(data.answer);
-            await pc.setRemoteDescription(answerDesc);
-            setCallState("connected");
-            intervalRef.current = setInterval(() => setTimer(t => t + 1), 1000);
-          }
-          if (data.status === "ended") {
-            setCallState("ended");
-            cleanup();
-          }
-        });
-
-        unsubAnswerCandidates = onSnapshot(answerCandidatesRef, (snap) => {
-          snap.docChanges().forEach(change => {
-            if (change.type === "added") {
-              const cand = change.doc.data();
-              pc.addIceCandidate(new RTCIceCandidate(cand)).catch(e => console.warn(e));
-            }
-          });
-        });
-
-      } catch (err) {
-        console.error(err);
-        alert("Call failed: " + err.message);
-        navigate(-1);
-      }
-    })();
-
-    const cleanup = async () => {
-      try {
-        if (intervalRef.current) clearInterval(intervalRef.current);
-        localStreamRef.current?.getTracks().forEach(t => t.stop());
-        pcRef.current?.close();
-        if (callDocRef.current) {
-          await updateDoc(callDocRef.current, { status: "ended", endedAt: serverTimestamp() }).catch(()=>{});
-        }
-      } catch(e) {}
-    };
-
+    // cleanup on unmount
     return () => {
-      if (unsubCall) unsubCall();
-      if (unsubAnswerCandidates) unsubAnswerCandidates();
-      cleanup();
+      if (room) {
+        room.localParticipant.tracks.forEach(t => t.track.stop && t.track.stop());
+        room.disconnect();
+      }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [calleeUid]);
+  }, [room]);
 
-  const hangup = async () => {
-    if (callDocRef.current) await updateDoc(callDocRef.current, { status: "ended", endedAt: serverTimestamp() }).catch(()=>{});
-    localStreamRef.current?.getTracks().forEach(t => t.stop());
-    pcRef.current?.close();
-    setCallState("ended");
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    setTimeout(() => navigate(-1), 600);
+  const attachTrack = (track, container) => {
+    container.appendChild(track.attach());
   };
 
-  const toggleMute = () => {
-    localStreamRef.current?.getAudioTracks().forEach(t => (t.enabled = !t.enabled));
-    setMuted(prev => !prev);
+  const detachParticipantTracks = (participant) => {
+    participant.tracks.forEach(publication => {
+      if (publication.track) {
+        publication.track.detach().forEach(el => el.remove());
+      }
+    });
   };
 
-  const toggleVideo = () => {
-    localStreamRef.current?.getVideoTracks().forEach(t => (t.enabled = !t.enabled));
-    setVideoOn(prev => !prev);
+  const connectToRoom = async () => {
+    setConnecting(true);
+    try {
+      // fetch token from our server
+      const resp = await fetch(`${process.env.REACT_APP_BACKEND_URL || ""}/twilio/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identity, room: roomName }),
+      });
+      const data = await resp.json();
+      if (!data.token) throw new Error(data.error || "No token received");
+
+      const twRoom = await Video.connect(data.token, { audio: true, video: { width: 640 } });
+      setRoom(twRoom);
+
+      // attach local preview
+      twRoom.localParticipant.videoTracks.forEach(pub => {
+        attachTrack(pub.track, localRef.current);
+      });
+
+      // attach already present participants
+      twRoom.participants.forEach(participant => {
+        const container = document.createElement("div");
+        container.id = participant.sid;
+        remoteRef.current.appendChild(container);
+        participant.tracks.forEach(publication => {
+          if (publication.track) attachTrack(publication.track, container);
+        });
+        participant.on("trackSubscribed", track => attachTrack(track, container));
+        participant.on("trackUnsubscribed", track => track.detach().forEach(el => el.remove()));
+      });
+
+      // listen for new participants
+      twRoom.on("participantConnected", participant => {
+        const container = document.createElement("div");
+        container.id = participant.sid;
+        remoteRef.current.appendChild(container);
+        participant.on("trackSubscribed", track => attachTrack(track, container));
+        participant.on("trackUnsubscribed", track => track.detach().forEach(el => el.remove()));
+        // attach any existing tracks
+        participant.tracks.forEach(publication => {
+          if (publication.track) attachTrack(publication.track, document.getElementById(participant.sid));
+        });
+      });
+
+      twRoom.on("participantDisconnected", participant => {
+        // remove container
+        const el = document.getElementById(participant.sid);
+        if (el) el.remove();
+      });
+
+      twRoom.on("disconnected", () => {
+        // clean local preview
+        twRoom.localParticipant.tracks.forEach(pub => {
+          if (pub.track) {
+            pub.track.detach().forEach(el => el.remove());
+            pub.track.stop && pub.track.stop();
+          }
+        });
+        setRoom(null);
+      });
+
+    } catch (err) {
+      console.error("connect error", err);
+      alert("Could not connect: " + (err.message || err));
+    } finally {
+      setConnecting(false);
+    }
   };
 
-  const formatTimer = (s) => {
-    const mm = String(Math.floor(s / 60)).padStart(2, "0");
-    const ss = String(s % 60).padStart(2, "0");
-    return `${mm}:${ss}`;
+  const leave = () => {
+    if (room) {
+      room.disconnect();
+      setRoom(null);
+    }
+    navigate(-1);
   };
 
   return (
     <div style={{ padding: 12 }}>
-      <button onClick={() => navigate(-1)} style={{ marginBottom: 12 }}>← Back</button>
-      <h3>Video Call</h3>
-      <div style={{ display: "flex", gap: 12 }}>
-        <video ref={localVideoRef} autoPlay muted playsInline style={{ width: 160, height: 120, background: "#000", borderRadius: 8 }} />
-        <video ref={remoteVideoRef} autoPlay playsInline style={{ width: 320, height: 240, background: "#000", borderRadius: 8 }} />
-      </div>
+      <header style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
+        <button onClick={() => navigate(-1)} style={{ fontSize: 18 }}>←</button>
+        <h3 style={{ margin: 0 }}>Video Call</h3>
+        <div style={{ marginLeft: "auto" }}>
+          {room ? <button onClick={leave}>End Call</button> : <button onClick={connectToRoom} disabled={connecting}>{connecting ? "Joining..." : "Join"}</button>}
+        </div>
+      </header>
 
-      <div style={{ marginTop: 12 }}>
-        <div>{callState === "ringing" ? "Ringing..." : callState === "connected" ? `Connected — ${formatTimer(timer)}` : callState}</div>
-        <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
-          <button onClick={toggleMute}>{muted ? "Unmute" : "Mute"}</button>
-          <button onClick={toggleVideo}>{videoOn ? "Stop Video" : "Start Video"}</button>
-          <button onClick={hangup} style={{ background: "#ff4d4f", color: "#fff" }}>Hang up</button>
+      <div style={{ display: "flex", gap: 12 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: 600 }}>Local</div>
+          <div ref={localRef} style={{ width: "100%", height: 240, background: "#222", borderRadius: 8, overflow: "hidden" }} />
+        </div>
+
+        <div style={{ flex: 2 }}>
+          <div style={{ fontWeight: 600 }}>Participants</div>
+          <div ref={remoteRef} style={{ display: "flex", gap: 8, flexWrap: "wrap", minHeight: 240, background: "#111", padding: 8, borderRadius: 8 }} />
         </div>
       </div>
     </div>
