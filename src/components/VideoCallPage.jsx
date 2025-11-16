@@ -2,139 +2,145 @@
 import React, { useEffect, useRef, useState } from "react";
 import Video from "twilio-video";
 import { useParams, useNavigate } from "react-router-dom";
-import { auth } from "../firebaseConfig"; // optional: to get current user info
+import { auth } from "../firebaseConfig"; // optional to get identity
 
 export default function VideoCallPage() {
-  const { uid: otherUidOrRoom } = useParams(); // route: /videocall/:uid  (we'll treat param as room name)
+  const { uid } = useParams(); // we navigate to /videocall/:uid (or pass room)
   const navigate = useNavigate();
-
-  const [roomName, setRoomName] = useState(otherUidOrRoom || `room-${Date.now()}`);
-  const [identity, setIdentity] = useState(auth.currentUser?.uid || `anon-${Math.floor(Math.random()*10000)}`);
-  const [room, setRoom] = useState(null);
-  const [connecting, setConnecting] = useState(false);
+  const [connected, setConnected] = useState(false);
+  const [roomName, setRoomName] = useState(uid || `room-${Date.now()}`);
+  const [participants, setParticipants] = useState([]);
   const localRef = useRef();
   const remoteRef = useRef();
+  const roomRef = useRef(null);
 
   useEffect(() => {
-    // cleanup on unmount
-    return () => {
-      if (room) {
-        room.localParticipant.tracks.forEach(t => t.track.stop && t.track.stop());
-        room.disconnect();
+    const identity = auth.currentUser?.uid || `anon-${Math.floor(Math.random()*1000)}`;
+
+    // fetch token from your server
+    const join = async () => {
+      try {
+        const resp = await fetch(`${import.meta.env.VITE_TWILIO_TOKEN_SERVER}/token?identity=${encodeURIComponent(identity)}&room=${encodeURIComponent(roomName)}`);
+        const data = await resp.json();
+        if (!resp.ok) {
+          console.error('Failed to get token', data);
+          alert('Could not get token for video. Check server.');
+          return;
+        }
+
+        const token = data.token;
+        const room = await Video.connect(token, { name: roomName, audio: true, video: { width: 640 } });
+        roomRef.current = room;
+        setConnected(true);
+
+        // attach local tracks
+        const localTrack = Array.from(room.localParticipant.videoTracks)[0]?.track;
+        if (localTrack && localRef.current) {
+          localRef.current.innerHTML = "";
+          localRef.current.appendChild(localTrack.attach());
+        } else {
+          // ensure we create and attach local video track
+          const localTracks = await Video.createLocalTracks({ audio: true, video: { width: 640 } });
+          const vt = localTracks.find(t => t.kind === 'video');
+          const at = localTracks.find(t => t.kind === 'audio');
+          if (vt && localRef.current) localRef.current.appendChild(vt.attach());
+        }
+
+        // existing participants
+        room.participants.forEach(p => {
+          handleParticipantConnected(p);
+          setParticipants(prev => [...prev, p]);
+        });
+
+        // new participant
+        room.on("participantConnected", p => {
+          handleParticipantConnected(p);
+          setParticipants(prev => [...prev, p]);
+        });
+
+        // participant disconnected
+        room.on("participantDisconnected", p => {
+          handleParticipantDisconnected(p);
+          setParticipants(prev => prev.filter(x => x.sid !== p.sid));
+        });
+
+        // when disconnected
+        room.on("disconnected", () => {
+          cleanupRoom();
+        });
+
+      } catch (err) {
+        console.error("join error", err);
+        alert("Failed to join room");
       }
     };
-  }, [room]);
 
-  const attachTrack = (track, container) => {
+    join();
+
+    // cleanup on unmount
+    return () => { cleanupRoom(); };
+  }, [roomName]);
+
+  const handleParticipantConnected = (participant) => {
+    const container = document.createElement("div");
+    container.id = participant.sid;
+    container.style.marginBottom = "8px";
+
+    participant.tracks.forEach(publication => {
+      if (publication.isSubscribed) attachTrack(container, publication.track);
+    });
+
+    participant.on("trackSubscribed", track => attachTrack(container, track));
+    participant.on("trackUnsubscribed", track => detachTrack(container, track));
+
+    if (remoteRef.current) remoteRef.current.appendChild(container);
+  };
+
+  const attachTrack = (container, track) => {
     container.appendChild(track.attach());
   };
 
-  const detachParticipantTracks = (participant) => {
-    participant.tracks.forEach(publication => {
-      if (publication.track) {
-        publication.track.detach().forEach(el => el.remove());
-      }
-    });
+  const detachTrack = (container, track) => {
+    try { track.detach().forEach(el => el.remove()); } catch (e) {}
   };
 
-  const connectToRoom = async () => {
-    setConnecting(true);
-    try {
-      // fetch token from our server
-      const resp = await fetch(`${process.env.REACT_APP_BACKEND_URL || ""}/twilio/token`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identity, room: roomName }),
-      });
-      const data = await resp.json();
-      if (!data.token) throw new Error(data.error || "No token received");
-
-      const twRoom = await Video.connect(data.token, { audio: true, video: { width: 640 } });
-      setRoom(twRoom);
-
-      // attach local preview
-      twRoom.localParticipant.videoTracks.forEach(pub => {
-        attachTrack(pub.track, localRef.current);
-      });
-
-      // attach already present participants
-      twRoom.participants.forEach(participant => {
-        const container = document.createElement("div");
-        container.id = participant.sid;
-        remoteRef.current.appendChild(container);
-        participant.tracks.forEach(publication => {
-          if (publication.track) attachTrack(publication.track, container);
-        });
-        participant.on("trackSubscribed", track => attachTrack(track, container));
-        participant.on("trackUnsubscribed", track => track.detach().forEach(el => el.remove()));
-      });
-
-      // listen for new participants
-      twRoom.on("participantConnected", participant => {
-        const container = document.createElement("div");
-        container.id = participant.sid;
-        remoteRef.current.appendChild(container);
-        participant.on("trackSubscribed", track => attachTrack(track, container));
-        participant.on("trackUnsubscribed", track => track.detach().forEach(el => el.remove()));
-        // attach any existing tracks
-        participant.tracks.forEach(publication => {
-          if (publication.track) attachTrack(publication.track, document.getElementById(participant.sid));
-        });
-      });
-
-      twRoom.on("participantDisconnected", participant => {
-        // remove container
-        const el = document.getElementById(participant.sid);
-        if (el) el.remove();
-      });
-
-      twRoom.on("disconnected", () => {
-        // clean local preview
-        twRoom.localParticipant.tracks.forEach(pub => {
-          if (pub.track) {
-            pub.track.detach().forEach(el => el.remove());
-            pub.track.stop && pub.track.stop();
-          }
-        });
-        setRoom(null);
-      });
-
-    } catch (err) {
-      console.error("connect error", err);
-      alert("Could not connect: " + (err.message || err));
-    } finally {
-      setConnecting(false);
-    }
+  const handleParticipantDisconnected = (participant) => {
+    const el = document.getElementById(participant.sid);
+    if (el) el.remove();
   };
 
-  const leave = () => {
+  const cleanupRoom = () => {
+    const room = roomRef.current;
     if (room) {
+      room.localParticipant.tracks.forEach(publication => {
+        try { publication.track.stop && publication.track.stop(); } catch {}
+        try { publication.track.detach && publication.track.detach().forEach(node => node.remove()); } catch {}
+      });
       room.disconnect();
-      setRoom(null);
+      roomRef.current = null;
     }
-    navigate(-1);
+    setConnected(false);
+    setParticipants([]);
+    if (localRef.current) localRef.current.innerHTML = "";
+    if (remoteRef.current) remoteRef.current.innerHTML = "";
+    navigate(-1); // go back to chat
   };
 
   return (
     <div style={{ padding: 12 }}>
-      <header style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
-        <button onClick={() => navigate(-1)} style={{ fontSize: 18 }}>←</button>
-        <h3 style={{ margin: 0 }}>Video Call</h3>
-        <div style={{ marginLeft: "auto" }}>
-          {room ? <button onClick={leave}>End Call</button> : <button onClick={connectToRoom} disabled={connecting}>{connecting ? "Joining..." : "Join"}</button>}
-        </div>
-      </header>
-
       <div style={{ display: "flex", gap: 12 }}>
         <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 600 }}>Local</div>
-          <div ref={localRef} style={{ width: "100%", height: 240, background: "#222", borderRadius: 8, overflow: "hidden" }} />
+          <h3>Local</h3>
+          <div ref={localRef} style={{ width: "100%", height: 280, background: "#000" }} />
         </div>
+        <div style={{ flex: 1 }}>
+          <h3>Remote</h3>
+          <div ref={remoteRef} style={{ width: "100%", height: 280, background: "#111", overflowY: "auto" }} />
+        </div>
+      </div>
 
-        <div style={{ flex: 2 }}>
-          <div style={{ fontWeight: 600 }}>Participants</div>
-          <div ref={remoteRef} style={{ display: "flex", gap: 8, flexWrap: "wrap", minHeight: 240, background: "#111", padding: 8, borderRadius: 8 }} />
-        </div>
+      <div style={{ marginTop: 12 }}>
+        <button onClick={cleanupRoom} style={{ padding: 8 }}>Leave</button>
       </div>
     </div>
   );
