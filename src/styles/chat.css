@@ -1,0 +1,342 @@
+/* ================================
+   GENERAL
+================================ */
+
+.chat-container {
+  height: 100vh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #f0f2f5;
+  overflow: hidden;
+  font-family: "Inter", sans-serif;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+}
+::-webkit-scrollbar-thumb {
+  background: #bbb;
+  border-radius: 30px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #999;
+}
+
+/* ================================
+   HEADER (Profile + Name + Online)
+================================ */
+
+.chat-header {
+  height: 65px;
+  background: #ffffff;
+  padding: 0 15px;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid #dadada;
+}
+
+.chat-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.chat-header-left img {
+  height: 42px;
+  width: 42px;
+  border-radius: 50%;
+}
+
+.chat-header-name {
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.chat-header-status {
+  font-size: 13px;
+  color: #4caf50;
+  margin-top: -3px;
+}
+
+/* Right icons */
+.chat-header-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.chat-header-right svg {
+  height: 23px;
+  width: 23px;
+  cursor: pointer;
+  color: #444;
+}
+
+/* ================================
+   3 DOT MENU
+================================ */
+
+.three-dot-menu {
+  position: absolute;
+  right: 10px;
+  top: 65px;
+  width: 180px;
+  background: white;
+  border-radius: 10px;
+  box-shadow: 0px 8px 18px rgba(0,0,0,0.15);
+  padding: 8px 0;
+  animation: fadeInUp 0.15s ease-out;
+  z-index: 2000;
+}
+
+.three-dot-item {
+  padding: 12px 18px;
+  cursor: pointer;
+  font-size: 15px;
+}
+
+.three-dot-item:hover {
+  background: #f5f5f5;
+}
+
+@keyframes fadeInUp {
+  0% { transform: translateY(10px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+/* ================================
+   MESSAGE AREA
+================================ */
+
+.message-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 15px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Time separators like Today, Yesterday */
+.date-separator {
+  align-self: center;
+  background: #d4d9dd;
+  padding: 2px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  margin: 10px 0;
+}
+
+/* ================================
+   MESSAGE BUBBLES
+================================ */
+
+.message-row {
+  display: flex;
+  align-items: flex-end;
+}
+
+.you {
+  justify-content: flex-end;
+}
+
+.them {
+  justify-content: flex-start;
+}
+
+.message-bubble {
+  max-width: 70%;
+  padding: 10px 14px;
+  font-size: 15px;
+  border-radius: 14px;
+  box-shadow: 0px 1px 2px rgba(0,0,0,0.15);
+  position: relative;
+  animation: fadeMessage 0.2s ease-in-out;
+  word-break: break-word;
+}
+
+@keyframes fadeMessage {
+  0% { opacity: 0; transform: scale(0.96); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.message-you {
+  background: #d2f8c5;
+  border-bottom-right-radius: 4px;
+}
+
+.message-them {
+  background: #ffffff;
+  border-bottom-left-radius: 4px;
+}
+
+/* Message Time */
+.message-time {
+  position: absolute;
+  bottom: -16px;
+  right: 2px;
+  font-size: 11px;
+  color: #666;
+}
+
+/* Double tick */
+.message-tick {
+  padding-left: 4px;
+}
+
+/* ================================
+   REACTIONS (😊 ❤️ 😂)
+================================ */
+
+.reaction-bar {
+  position: absolute;
+  top: -40px;
+  background: white;
+  padding: 6px 10px;
+  border-radius: 30px;
+  box-shadow: 0px 3px 15px rgba(0,0,0,0.2);
+  display: flex;
+  gap: 10px;
+  animation: showUp 0.15s ease;
+}
+
+@keyframes showUp {
+  0% { transform: translateY(6px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+/* ================================
+   LONG PRESS TOOLBAR
+================================ */
+
+.long-press-toolbar {
+  width: 100%;
+  height: 48px;
+  background: #ffffff;
+  border-bottom: 1px solid #ccc;
+  display: flex;
+  align-items: center;
+  padding: 0 15px;
+  gap: 20px;
+  animation: slideDown 0.15s ease;
+}
+
+@keyframes slideDown {
+  0% { transform: translateY(-8px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+.long-btn {
+  font-size: 15px;
+  cursor: pointer;
+  color: #333;
+}
+
+/* ================================
+   IMAGE PREVIEW
+================================ */
+
+.image-msg {
+  max-width: 200px;
+  border-radius: 10px;
+}
+
+.image-preview-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3000;
+}
+
+.image-preview-overlay img {
+  max-width: 88%;
+  max-height: 88%;
+  border-radius: 6px;
+}
+
+/* ================================
+   VOICE NOTE PLAYER
+================================ */
+
+.voice-note {
+  background: #fff;
+  padding: 10px 14px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 210px;
+}
+
+.audio-wave {
+  flex: 1;
+  height: 4px;
+  background: #ccc;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.audio-wave-inner {
+  height: 100%;
+  width: 0%;
+  background: #4caf50;
+  transition: width linear;
+}
+
+/* ================================
+   MESSAGE INPUT
+================================ */
+
+.input-bar {
+  height: 70px;
+  background: #ffffff;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-top: 1px solid #ddd;
+}
+
+.input-field {
+  flex: 1;
+  background: #f1f3f4;
+  border-radius: 30px;
+  padding: 12px 18px;
+  font-size: 15px;
+  outline: none;
+  border: none;
+}
+
+.send-btn {
+  height: 45px;
+  width: 45px;
+  background: #0a80ff;
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+/* Attachment icon */
+.attach-btn {
+  height: 30px;
+  width: 30px;
+  color: #444;
+  cursor: pointer;
+}
+
+/* Typing indicator */
+.typing-indicator {
+  font-size: 13px;
+  color: #4caf50;
+  margin-top: -3px;
+}
