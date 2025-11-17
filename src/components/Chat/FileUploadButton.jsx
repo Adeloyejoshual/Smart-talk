@@ -1,23 +1,20 @@
-import React from "react";
-import { Paperclip } from "lucide-react";
+// src/components/Chat/ReportPopup.jsx
 
-export default function FileUploadButton({ onFileSelect }) {
-  const handleFileChange = (e) => {
-    const files = e.target.files;
-    if (files && files.length > 0) onFileSelect(files);
-    e.target.value = ""; // reset input
-  };
+import React from "react";
+
+export default function ReportPopup({ open, onConfirm, onCancel, name }) {
+  if (!open) return null;
 
   return (
-    <label className="cursor-pointer">
-      <Paperclip className="text-gray-500 dark:text-gray-300" size={20} />
-      <input
-        type="file"
-        multiple
-        hidden
-        onChange={handleFileChange}
-        accept="image/*,video/*,.pdf,.doc,.docx,.zip,.mp3"
-      />
-    </label>
+    <div className="popup-overlay">
+      <div className="popup-box">
+        <p>Do you want to report {name}?</p>
+
+        <div className="popup-actions">
+          <button onClick={onCancel} className="cancel-btn">Cancel</button>
+          <button onClick={onConfirm} className="confirm-btn">OK</button>
+        </div>
+      </div>
+    </div>
   );
 }
