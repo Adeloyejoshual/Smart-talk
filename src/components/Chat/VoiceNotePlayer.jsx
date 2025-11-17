@@ -1,8 +1,6 @@
-// src/components/Chat/VoiceNotePlayer.jsx
 import React, { useRef, useState, useEffect } from "react";
-import { FaPlay, FaPause } from "react-icons/fa";
 
-const VoiceNotePlayer = ({ url, duration }) => {
+export default function VoiceNotePlayer({ url, duration }) {
   const audioRef = useRef(null);
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -12,11 +10,10 @@ const VoiceNotePlayer = ({ url, duration }) => {
 
     if (playing) {
       audioRef.current.pause();
-      setPlaying(false);
     } else {
       audioRef.current.play();
-      setPlaying(true);
     }
+    setPlaying(!playing);
   };
 
   useEffect(() => {
@@ -24,7 +21,8 @@ const VoiceNotePlayer = ({ url, duration }) => {
     if (!audio) return;
 
     const updateProgress = () => {
-      setProgress((audio.currentTime / audio.duration) * 100);
+      const p = (audio.currentTime / audio.duration) * 100;
+      setProgress(p);
     };
 
     audio.addEventListener("timeupdate", updateProgress);
@@ -39,26 +37,24 @@ const VoiceNotePlayer = ({ url, duration }) => {
   }, []);
 
   return (
-    <div className="flex items-center space-x-3 bg-gray-100 p-2 rounded-xl">
-      <button
-        onClick={togglePlay}
-        className="bg-blue-600 text-white p-2 rounded-full"
-      >
-        {playing ? <FaPause /> : <FaPlay />}
-      </button>
+    <div className="voice-note">
+      <audio ref={audioRef} src={url} preload="metadata" />
 
-      <div className="flex-1 bg-gray-300 h-1 rounded-full overflow-hidden">
-        <div
-          className="bg-blue-600 h-1"
-          style={{ width: `${progress}%` }}
-        ></div>
+      <div onClick={togglePlay} style={{ cursor: "pointer" }}>
+        {playing ? (
+          <span style={{ fontSize: 22 }}>⏸️</span>
+        ) : (
+          <span style={{ fontSize: 22 }}>▶️</span>
+        )}
       </div>
 
-      <audio ref={audioRef} src={url}></audio>
+      <div className="audio-wave">
+        <div className="audio-wave-inner" style={{ width: `${progress}%` }} />
+      </div>
 
-      <span className="text-xs opacity-70">{duration || "0:00"}</span>
+      <div style={{ fontSize: 12, width: 45, textAlign: "right" }}>
+        {duration || "0:05"}
+      </div>
     </div>
   );
-};
-
-export default VoiceNotePlayer;
+}
