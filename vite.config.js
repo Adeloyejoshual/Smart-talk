@@ -13,14 +13,14 @@ export default defineConfig({
     outDir: "dist",
   },
 
-  // ✅ Pre-bundle some problematic deps
+  // ✅ Pre-bundle only problematic deps
   optimizeDeps: {
-    include: ["twilio-video", "react-easy-crop"],
+    include: ["twilio-video"],
   },
 
   // ✅ Prevent SSR from breaking for certain packages
   ssr: {
-    noExternal: ["twilio-video", "react-easy-crop"],
+    noExternal: ["twilio-video"],
   },
 
   server: {
