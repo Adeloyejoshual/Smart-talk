@@ -13,14 +13,14 @@ export default defineConfig({
     outDir: "dist",
   },
 
-  // ✅ REQUIRED for Twilio-video to avoid build/runtime failures
+  // ✅ Required dependencies to pre-bundle
   optimizeDeps: {
-    include: ["twilio-video"],
+    include: ["twilio-video", "react-easy-crop"],
   },
 
-  // ✅ Prevent Vite SSR from breaking twilio-video
+  // ✅ Prevent Vite SSR from breaking these ESM packages
   ssr: {
-    noExternal: ["twilio-video"],
+    noExternal: ["twilio-video", "react-easy-crop"],
   },
 
   server: {
