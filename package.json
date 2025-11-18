@@ -19,7 +19,7 @@
     "react-firebase-hooks": "^5.1.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-easy-crop": "^5.9.0",
+    "react-easy-crop": "^5.8.6"
     "react-router-dom": "^6.26.1",
     "framer-motion": "^11.0.0",
     "react-icons": "^5.3.0",
