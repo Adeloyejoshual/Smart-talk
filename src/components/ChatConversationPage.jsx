@@ -6,10 +6,10 @@ import {
 } from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
 import { ThemeContext } from "../context/ThemeContext";
-import MessageBubble from "./MessageBubble";
-import HeaderMenu from "./HeaderMenu";
-import EmojiPicker from "./EmojiPicker";
-import PreviewStrip from "./PreviewStrip";
+import MessageBubble from "./Chat/MessageBubble";
+import HeaderMenu from "./Chat/HeaderMenu";
+import EmojiPicker from "./Chat/EmojiPicker";
+import PreviewStrip from "./Chat/PreviewStrip";
 import { fmtTime, dayLabel, detectFileType, uploadToCloudinary } from "../utils/chatHelpers";
 
 export default function ChatConversationPage() {
