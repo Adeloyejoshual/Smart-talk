@@ -9,7 +9,6 @@ import { ThemeContext } from "../context/ThemeContext";
 import MessageBubble from "./Chat/MessageBubble";
 import HeaderMenu from "./Chat/HeaderMenu";
 import EmojiPicker from "./Chat/EmojiPicker";
-import PreviewStrip from "./Chat/PreviewStrip";
 import { fmtTime, dayLabel, detectFileType, uploadToCloudinary } from "../utils/chatHelpers";
 
 export default function ChatConversationPage() {
