@@ -146,96 +146,100 @@ export default function SettingsPage() {
     alert("✅ Preferences saved successfully!");
   };
 
-  // ================= Profile picture =================
-  const handleProfileClick = () => profileInputRef.current.click();
-  const handleProfileFileChange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    setSelectedFile(file);
-    const reader = new FileReader();
-    reader.onload = (event) => setProfilePic(event.target.result);
-    reader.readAsDataURL(file);
-  };
+  // --- Profile Section (without cropping) ---
+<Section title="Profile" isDark={isDark}>
+  <div style={{ textAlign: "center" }}>
+    {/* Profile Picture */}
+    <div
+      onClick={handleProfileClick}
+      style={{
+        width: "120px",
+        height: "120px",
+        borderRadius: "50%",
+        margin: "0 auto 10px",
+        background: profilePic ? `url(${profilePic})` : "#888",
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        cursor: "pointer",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        fontSize: "36px",
+        color: "#fff",
+        fontWeight: "bold"
+      }}
+    >
+      {!profilePic && getInitials(displayName)}
+    </div>
 
-  const handleSaveProfilePicture = async () => {
-    if (!selectedFile) return;
-    try {
-      const croppedBlob = await getCroppedImg(profilePic, croppedAreaPixels);
-      const formData = new FormData();
-      formData.append("file", croppedBlob);
-      formData.append("upload_preset", process.env.REACT_APP_CLOUDINARY_PRESET);
-      const res = await fetch(`https://api.cloudinary.com/v1_1/${process.env.REACT_APP_CLOUDINARY_CLOUD}/image/upload`, { method: "POST", body: formData });
-      const data = await res.json();
-      const url = data.secure_url;
+    <input
+      type="file"
+      accept="image/*"
+      ref={profileInputRef}
+      style={{ display: "none" }}
+      onChange={(e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        setSelectedFile(file);
+        const reader = new FileReader();
+        reader.onload = (event) => setProfilePic(event.target.result);
+        reader.readAsDataURL(file);
+      }}
+    />
 
-      const userRef = doc(db, "users", user.uid);
-      await updateDoc(userRef, { profilePic: url });
-      setProfilePic(url);
-      setSelectedFile(null);
-      alert("✅ Profile picture uploaded successfully!");
-    } catch (err) {
-      console.error(err);
-      alert("❌ Failed to upload profile picture");
-    }
-  };
+    {/* Profile Info */}
+    <label>Full Name:</label>
+    <input
+      type="text"
+      value={displayName}
+      onChange={(e) => setDisplayName(e.target.value)}
+      style={selectStyle(isDark)}
+    />
+    <p><strong>Registration Name:</strong> {registrationName || "N/A"}</p>
+    <p><strong>Email:</strong> {user.email}</p>
+    <p><strong>UID:</strong> {user.uid}</p>
 
-  const handleSaveProfile = async () => {
-    if (!user) return;
-    const userRef = doc(db, "users", user.uid);
-    await updateDoc(userRef, { displayName });
-    alert("✅ Profile updated successfully!");
-  };
+    {/* Save Buttons */}
+    <div style={{ marginTop: "10px" }}>
+      <button
+        onClick={async () => {
+          if (!user) return;
+          const userRef = doc(db, "users", user.uid);
 
-  const handleLogout = async () => { await signOut(auth); navigate("/"); };
+          // Upload profile picture if selected
+          if (selectedFile) {
+            try {
+              const formData = new FormData();
+              formData.append("file", selectedFile);
+              formData.append("upload_preset", process.env.REACT_APP_CLOUDINARY_PRESET);
+              const res = await fetch(`https://api.cloudinary.com/v1_1/${process.env.REACT_APP_CLOUDINARY_CLOUD}/image/upload`, {
+                method: "POST",
+                body: formData
+              });
+              const data = await res.json();
+              const url = data.secure_url;
 
-  const getInitials = (name) => {
-    const actualName = displayName || registrationName || "??";
-    const parts = actualName.trim().split(" ");
-    return parts.length > 1
-      ? (parts[0][0] + parts[1][0]).toUpperCase()
-      : parts[0][0].toUpperCase();
-  };
+              await updateDoc(userRef, { profilePic: url });
+              setProfilePic(url);
+              setSelectedFile(null);
+              alert("✅ Profile picture uploaded successfully!");
+            } catch (err) {
+              console.error(err);
+              alert("❌ Failed to upload profile picture");
+            }
+          }
 
-  if (!user) return <p>Loading user...</p>;
-  const isDark = newTheme === "dark";
-
-  return (
-    <div style={{ padding: "20px", background: isDark ? "#1c1c1c" : "#f8f8f8", color: isDark ? "#fff" : "#000", minHeight: "100vh" }}>
-      <button onClick={() => navigate("/chat")} style={{ position: "absolute", top: "20px", left: "20px", background: isDark ? "#555" : "#e0e0e0", border: "none", borderRadius: "50%", padding: "8px", cursor: "pointer" }}>⬅</button>
-      <h2 style={{ textAlign: "center", marginBottom: "20px" }}>⚙️ Settings</h2>
-
-      {/* === Profile Section === */}
-      <Section title="Profile" isDark={isDark}>
-        <div style={{ textAlign: "center" }}>
-          <div
-            onClick={handleProfileClick}
-            style={{
-              width: "120px",
-              height: "120px",
-              borderRadius: "50%",
-              margin: "0 auto 10px",
-              background: profilePic ? `url(${profilePic})` : "#888",
-              backgroundSize: "cover",
-              backgroundPosition: "center",
-              cursor: "pointer",
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
-              fontSize: "36px",
-              color: "#fff",
-              fontWeight: "bold"
-            }}
-          >
-            {!profilePic && getInitials(displayName)}
-          </div>
-          <input type="file" accept="image/*" ref={profileInputRef} style={{ display: "none" }} onChange={handleProfileFileChange} />
-          <label>Full Name:</label>
-          <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)} style={selectStyle(isDark)} />
-          <p><strong>Registration Name:</strong> {registrationName || "N/A"}</p>
-          <p><strong>Email:</strong> {user.email}</p>
-          <p><strong>UID:</strong> {user.uid}</p>
-          <button onClick={handleSaveProfile} style={btnStyle("#007bff")}>💾 Save Profile</button>
-        </div>
+          // Update display name
+          await updateDoc(userRef, { displayName });
+          alert("✅ Profile updated successfully!");
+        }}
+        style={btnStyle("#007bff")}
+      >
+        💾 Save Profile
+      </button>
+    </div>
+  </div>
+</Section>
 
         {/* Cropper Modal */}
         {selectedFile && (
