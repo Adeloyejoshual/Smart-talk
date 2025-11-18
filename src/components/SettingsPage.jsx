@@ -15,7 +15,6 @@ import {
 import { signOut } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
 import { ThemeContext } from "../context/ThemeContext";
-import Cropper from "react-easy-crop";
 import getCroppedImg from "../utils/cropImage"; // helper
 
 export default function SettingsPage() {
