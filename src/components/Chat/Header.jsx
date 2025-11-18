@@ -1,76 +1,86 @@
 // src/components/Chat/Header.jsx
 import React from "react";
-import { MoreVertical, Phone, Video } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { ArrowLeft, Search, Phone, Video, MoreVertical } from "lucide-react";
 
-const Header = ({
-  user,
-  onMenu,
+export default function Header({
+  chatName,
+  profilePic,
+  onProfileClick,
+  onBack,
+  onSearch,
+  onMenuOpen,
   onVoiceCall,
   onVideoCall,
-}) => {
-  const navigate = useNavigate();
-
-  const openProfile = () => {
-    navigate(`/profile/${user?.uid}`);
-  };
-
+}) {
   return (
-    <div className="flex items-center justify-between p-3 bg-white shadow-md sticky top-0 z-30">
+    <div className="flex items-center justify-between p-3 bg-white dark:bg-dark-700 shadow-md sticky top-0 z-30 border-b border-gray-100 dark:border-dark-500">
 
-      {/* LEFT: Avatar + Name */}
-      <div
-        className="flex items-center gap-3 cursor-pointer"
-        onClick={openProfile}
-      >
-        {/* Profile Picture */}
-        <img
-          src={user?.photoURL || "/default-avatar.png"}
-          alt="avatar"
-          className="w-10 h-10 rounded-full object-cover"
-        />
+      {/* LEFT SIDE */}
+      <div className="flex items-center gap-3">
 
-        {/* Username + Status */}
-        <div className="flex flex-col leading-tight">
-          <span className="font-semibold text-[16px]">
-            {user?.displayName || "User"}
-          </span>
+        {/* Back */}
+        {onBack && (
+          <button
+            onClick={onBack}
+            className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-dark-600 transition"
+          >
+            <ArrowLeft size={22} />
+          </button>
+        )}
 
-          <span className="text-xs text-green-600">
-            {user?.online ? "Online" : user?.lastSeen || "Last seen recently"}
-          </span>
+        {/* Profile picture */}
+        <div
+          onClick={onProfileClick}
+          className="flex items-center gap-2 cursor-pointer"
+        >
+          <img
+            src={profilePic || "/default-avatar.png"}
+            alt="Profile"
+            className="w-10 h-10 rounded-full object-cover"
+          />
+
+          {/* Chat name */}
+          <h2 className="text-base font-semibold text-gray-800 dark:text-white">
+            {chatName || "Chat"}
+          </h2>
         </div>
       </div>
 
-      {/* RIGHT: Call buttons + menu */}
+      {/* RIGHT SIDE */}
       <div className="flex items-center gap-2">
 
         {/* Voice Call */}
         <button
           onClick={onVoiceCall}
-          className="p-2 rounded-full hover:bg-gray-100 transition"
+          className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-dark-600 transition"
         >
-          <Phone size={20} className="text-blue-600" />
+          <Phone size={20} />
         </button>
 
         {/* Video Call */}
         <button
           onClick={onVideoCall}
-          className="p-2 rounded-full hover:bg-gray-100 transition"
+          className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-dark-600 transition"
         >
-          <Video size={22} className="text-blue-600" />
+          <Video size={21} />
         </button>
 
-        {/* 3-Dot Menu */}
+        {/* Search */}
         <button
-          onClick={onMenu}
-          className="p-2 rounded-full hover:bg-gray-100 transition"
+          onClick={onSearch}
+          className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-dark-600 transition"
+        >
+          <Search size={21} />
+        </button>
+
+        {/* Menu (3 dots) */}
+        <button
+          onClick={onMenuOpen}
+          className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-dark-600 transition"
         >
           <MoreVertical size={22} />
         </button>
       </div>
     </div>
   );
-};
-
-export default Header;
+}
