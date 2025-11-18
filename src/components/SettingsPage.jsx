@@ -18,9 +18,6 @@ import { ThemeContext } from "../context/ThemeContext";
 import Cropper from "react-easy-crop";
 import getCroppedImg from "../utils/cropImage"; // helper
 
-REACT_APP_CLOUDINARY_PRESET=your_unsigned_preset
-REACT_APP_CLOUDINARY_CLOUD=your_cloud_name
-
 export default function SettingsPage() {
   const { theme, wallpaper, updateSettings } = useContext(ThemeContext);
   const [user, setUser] = useState(null);
@@ -34,6 +31,7 @@ export default function SettingsPage() {
 
   const [balance, setBalance] = useState(0);
   const [transactions, setTransactions] = useState([]);
+  const [walletHistory, setWalletHistory] = useState([]); // ✅ Mongo wallet history
   const [newTheme, setNewTheme] = useState(theme);
   const [newWallpaper, setNewWallpaper] = useState(wallpaper);
   const [checkedInToday, setCheckedInToday] = useState(false);
@@ -46,7 +44,7 @@ export default function SettingsPage() {
   const fileInputRef = useRef(null);
   const profileInputRef = useRef(null);
 
-  // Load user & preferences
+  // ================= Load User & Preferences =================
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (userAuth) => {
       if (!userAuth) return;
@@ -81,7 +79,7 @@ export default function SettingsPage() {
         }
       }
 
-      // Wallet updates
+      // ================= Wallet updates =================
       const unsubBalance = onSnapshot(userRef, (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
@@ -90,10 +88,16 @@ export default function SettingsPage() {
         }
       });
 
-      // Transactions
+      // Transactions (Firestore)
       const txRef = collection(db, "transactions");
       const txQuery = query(txRef, where("uid", "==", userAuth.uid), orderBy("createdAt", "desc"));
       const unsubTx = onSnapshot(txQuery, (snapshot) => setTransactions(snapshot.docs.map((d) => ({ id: d.id, ...d.data() }))));
+
+      // ✅ Fetch Wallet History from MongoDB
+      fetch(`${process.env.REACT_APP_BACKEND_URL || ""}/api/wallet/${userAuth.uid}`)
+        .then((res) => res.json())
+        .then((data) => setWalletHistory(data))
+        .catch((err) => console.error("Failed to fetch wallet history:", err));
 
       return () => { unsubBalance(); unsubTx(); };
     });
@@ -101,7 +105,7 @@ export default function SettingsPage() {
     return () => unsubscribe();
   }, []);
 
-  // Daily check-in
+  // ================= Daily check-in =================
   const checkLastCheckin = (lastCheckin) => {
     if (!lastCheckin) return setCheckedInToday(false);
     const lastDate = new Date(lastCheckin.seconds * 1000);
@@ -134,7 +138,7 @@ export default function SettingsPage() {
     }
   };
 
-  // Preferences
+  // ================= Preferences =================
   const handleSavePreferences = async () => {
     if (!user) return;
     const userRef = doc(db, "users", user.uid);
@@ -143,17 +147,7 @@ export default function SettingsPage() {
     alert("✅ Preferences saved successfully!");
   };
 
-  const handleWallpaperClick = () => fileInputRef.current.click();
-  const handleWallpaperChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => setNewWallpaper(event.target.result);
-      reader.readAsDataURL(file);
-    }
-  };
-
-  // Profile picture
+  // ================= Profile picture =================
   const handleProfileClick = () => profileInputRef.current.click();
   const handleProfileFileChange = (e) => {
     const file = e.target.files[0];
@@ -170,8 +164,8 @@ export default function SettingsPage() {
       const croppedBlob = await getCroppedImg(profilePic, croppedAreaPixels);
       const formData = new FormData();
       formData.append("file", croppedBlob);
-      formData.append("upload_preset", CLOUDINARY_PRESET);
-      const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`, { method: "POST", body: formData });
+      formData.append("upload_preset", process.env.REACT_APP_CLOUDINARY_PRESET);
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${process.env.REACT_APP_CLOUDINARY_CLOUD}/image/upload`, { method: "POST", body: formData });
       const data = await res.json();
       const url = data.secure_url;
 
@@ -211,7 +205,7 @@ export default function SettingsPage() {
       <button onClick={() => navigate("/chat")} style={{ position: "absolute", top: "20px", left: "20px", background: isDark ? "#555" : "#e0e0e0", border: "none", borderRadius: "50%", padding: "8px", cursor: "pointer" }}>⬅</button>
       <h2 style={{ textAlign: "center", marginBottom: "20px" }}>⚙️ Settings</h2>
 
-      {/* Profile Section */}
+      {/* === Profile Section === */}
       <Section title="Profile" isDark={isDark}>
         <div style={{ textAlign: "center" }}>
           <div
@@ -264,8 +258,29 @@ export default function SettingsPage() {
         )}
       </Section>
 
-      {/* === Add Wallet, Preferences, Theme & Wallpaper, Notifications === */}
-      {/* Reuse your previous implementation for these sections */}
+      {/* === Wallet Section === */}
+      <Section title="Wallet" isDark={isDark}>
+        <p><strong>Balance:</strong> ${balance.toFixed(2)}</p>
+        <button onClick={handleDailyCheckin} style={btnStyle("#28a745")} disabled={checkedInToday}>
+          {checkedInToday ? "Checked-in ✅" : "Daily Check-in 💰"}
+        </button>
+
+        {/* Wallet History */}
+        <div style={{ marginTop: "15px", maxHeight: "200px", overflowY: "auto", border: `1px solid ${isDark ? "#444" : "#ccc"}`, padding: "10px", borderRadius: "8px" }}>
+          {walletHistory.length === 0 ? (
+            <p>No wallet history yet.</p>
+          ) : (
+            walletHistory.map((txn) => (
+              <div key={txn._id} style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                <span>{txn.description || txn.type}</span>
+                <span style={{ color: txn.type === "credit" ? "#28a745" : "#d32f2f" }}>
+                  {txn.type === "credit" ? "+" : "-"}${txn.amount.toFixed(2)}
+                </span>
+              </div>
+            ))
+          )}
+        </div>
+      </Section>
 
       <div style={{ textAlign: "center", marginTop: "20px" }}>
         <button onClick={handleLogout} style={btnStyle("#d32f2f")}>🚪 Logout</button>
