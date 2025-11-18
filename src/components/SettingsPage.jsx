@@ -5,12 +5,8 @@ import {
   getDoc,
   setDoc,
   updateDoc,
-  onSnapshot,
-  collection,
-  query,
-  where,
-  orderBy,
   serverTimestamp,
+  onSnapshot,
 } from "firebase/firestore";
 import { signOut } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
@@ -29,6 +25,7 @@ export default function SettingsPage() {
   const [walletHistory, setWalletHistory] = useState([]);
   const [checkedInToday, setCheckedInToday] = useState(false);
 
+  // Live-editable settings
   const [newTheme, setNewTheme] = useState(theme);
   const [newWallpaper, setNewWallpaper] = useState(wallpaper);
   const [language, setLanguage] = useState("English");
@@ -38,7 +35,6 @@ export default function SettingsPage() {
 
   const navigate = useNavigate();
   const profileInputRef = useRef(null);
-  const wallpaperInputRef = useRef(null);
 
   // ================= Load User & Preferences =================
   useEffect(() => {
@@ -57,10 +53,9 @@ export default function SettingsPage() {
           profilePic: null,
           balance: 5.0,
           lastCheckin: null,
-          preferences: { theme: "light", wallpaper: null, language: "English", fontSize: "Medium", layout: "Default" },
+          preferences: { theme: "light", wallpaper: null, language: "English", fontSize: "Medium", layout: "Default", notifications: { push: true, email: true, sound: false } },
           createdAt: serverTimestamp(),
         });
-        alert("🎁 Welcome! You’ve received a $5 new user bonus!");
         setName(userAuth.displayName || "User");
         setBio("");
       } else {
@@ -76,6 +71,7 @@ export default function SettingsPage() {
           setLanguage(data.preferences.language || "English");
           setFontSize(data.preferences.fontSize || "Medium");
           setLayout(data.preferences.layout || "Default");
+          setNotifications(data.preferences.notifications || { push: true, email: true, sound: false });
         }
         checkLastCheckin(data.lastCheckin);
       }
@@ -165,10 +161,17 @@ export default function SettingsPage() {
       }
     }
 
-    await updateDoc(userRef, { name, bio, profilePic: profileUrl });
+    await updateDoc(userRef, {
+      name,
+      bio,
+      profilePic: profileUrl,
+      preferences: { theme: newTheme, wallpaper: newWallpaper, language, fontSize, layout, notifications }
+    });
+
     setProfilePic(profileUrl);
     setSelectedFile(null);
-    alert("✅ Profile updated successfully!");
+    updateSettings(newTheme, newWallpaper);
+    alert("✅ Profile & settings updated successfully!");
   };
 
   // ================= Logout =================
@@ -206,7 +209,7 @@ export default function SettingsPage() {
             <label>Bio:</label>
             <input type="text" value={bio} onChange={(e) => setBio(e.target.value)} style={selectStyle(isDark)} />
             <p><strong>Email:</strong> {email}</p>
-            <button onClick={handleSaveProfile} style={btnStyle("#007bff")}>💾 Save Profile</button>
+            <button onClick={handleSaveProfile} style={btnStyle("#007bff")}>💾 Save Profile & Settings</button>
           </div>
         </div>
       </Section>
@@ -234,14 +237,41 @@ export default function SettingsPage() {
         </div>
       </Section>
 
-      {/* === 3. Settings Section === */}
+      {/* === 3. Settings Section (Live Edit) === */}
       <Section title="Settings" isDark={isDark}>
-        {/* Theme, Wallpaper, Language, Notifications */}
-        <p><strong>Theme:</strong> {newTheme}</p>
-        <p><strong>Wallpaper:</strong> {newWallpaper ? "Custom" : "Default"}</p>
-        <p><strong>Language:</strong> {language}</p>
-        <p><strong>Font Size:</strong> {fontSize}</p>
-        <p><strong>Layout:</strong> {layout}</p>
+        <label>Theme:</label>
+        <select value={newTheme} onChange={(e) => setNewTheme(e.target.value)} style={selectStyle(isDark)}>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+
+        <label>Wallpaper URL:</label>
+        <input type="text" value={newWallpaper || ""} onChange={(e) => setNewWallpaper(e.target.value)} style={selectStyle(isDark)} />
+
+        <label>Language:</label>
+        <input type="text" value={language} onChange={(e) => setLanguage(e.target.value)} style={selectStyle(isDark)} />
+
+        <label>Font Size:</label>
+        <input type="text" value={fontSize} onChange={(e) => setFontSize(e.target.value)} style={selectStyle(isDark)} />
+
+        <label>Layout:</label>
+        <input type="text" value={layout} onChange={(e) => setLayout(e.target.value)} style={selectStyle(isDark)} />
+
+        <label>Notifications:</label>
+        <div>
+          <label>
+            <input type="checkbox" checked={notifications.push} onChange={() => setNotifications({ ...notifications, push: !notifications.push })} />
+            Push
+          </label>
+          <label style={{ marginLeft: "10px" }}>
+            <input type="checkbox" checked={notifications.email} onChange={() => setNotifications({ ...notifications, email: !notifications.email })} />
+            Email
+          </label>
+          <label style={{ marginLeft: "10px" }}>
+            <input type="checkbox" checked={notifications.sound} onChange={() => setNotifications({ ...notifications, sound: !notifications.sound })} />
+            Sound
+          </label>
+        </div>
       </Section>
 
       <div style={{ textAlign: "center", marginTop: "20px" }}>
