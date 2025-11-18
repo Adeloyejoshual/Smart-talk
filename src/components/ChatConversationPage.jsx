@@ -309,106 +309,131 @@ export default function ChatConversationPage() {
   })();
 
   // ----------------- Render -----------------
-  return (
-    <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",background:wallpaper?`url(${wallpaper}) center/cover no-repeat`:(isDark?"#070707":"#f5f5f5"),color:isDark?"#fff":"#000"}}>
-      {/* Header */}
-      <header style={{position:"sticky",top:0,zIndex:90,display:"flex",alignItems:"center",gap:12,padding:12,background:"#1877F2",color:"#fff",borderBottom:"1px solid rgba(0,0,0,0.06)"}}>
-        <button onClick={()=>navigate("/chat")} style={{fontSize:20,background:'transparent',border:'none',color:'#fff',cursor:'pointer'}}>←</button>
-        <img onClick={()=>friendInfo&&navigate(`/user-profile/${friendInfo.id}`)} src={friendInfo?.photoURL||chatInfo?.photoURL||"/default-avatar.png"} alt="avatar" style={{width:48,height:48,borderRadius:"50%",objectFit:"cover",cursor:"pointer"}}/>
-        <div style={{minWidth:0,cursor:'pointer'}} onClick={()=>friendInfo&&navigate(`/user-profile/${friendInfo.id}`)}>
-          <div style={{fontWeight:700,fontSize:16}}>{friendInfo?.displayName||chatInfo?.name||"Chat"}</div>
-          <div style={{ fontSize:12, opacity:0.8 }}>
-            {typingUsers.length > 0
-              ? typingUsers.join(", ") + " is typing..."
-              : friendInfo?.status || "Online"}
-          </div>
+return (
+  <div style={{
+    minHeight: "100vh",
+    display: "flex",
+    flexDirection: "column",
+    background: wallpaper ? `url(${wallpaper}) center/cover no-repeat` : (isDark ? "#070707" : "#f5f5f5"),
+    color: isDark ? "#fff" : "#000"
+  }}>
+    {/* Header */}
+    <header style={{
+      position: "sticky",
+      top: 0,
+      zIndex: 90,
+      display: "flex",
+      alignItems: "center",
+      gap: 12,
+      padding: 12,
+      background: "#1877F2",
+      color: "#fff",
+      borderBottom: "1px solid rgba(0,0,0,0.06)"
+    }}>
+      <button onClick={() => navigate("/chat")} style={{ fontSize: 20, background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer' }}>←</button>
+      <img onClick={() => friendInfo && navigate(`/user-profile/${friendInfo.id}`)} src={friendInfo?.photoURL || chatInfo?.photoURL || "/default-avatar.png"} alt="avatar" style={{ width: 48, height: 48, borderRadius: "50%", objectFit: "cover", cursor: "pointer" }} />
+      <div style={{ minWidth: 0, cursor: 'pointer' }} onClick={() => friendInfo && navigate(`/user-profile/${friendInfo.id}`)}>
+        <div style={{ fontWeight: 700, fontSize: 16 }}>{friendInfo?.displayName || chatInfo?.name || "Chat"}</div>
+        <div style={{ fontSize: 12, opacity: 0.8 }}>
+          {friendInfo?.isOnline ? "Online" : "Offline"}
         </div>
-        <div style={{ marginLeft: "auto", display: "flex", gap: 12 }}>
-          <button onClick={() => setHeaderMenuOpen(!headerMenuOpen)} style={{ background: "transparent", border: "none", color: "#fff", cursor: "pointer", fontSize: 20 }}>⋮</button>
-          {headerMenuOpen && (
-            <div style={{
-              position: "absolute",
-              top: 60,
-              right: 12,
-              background: isDark ? "#222" : "#fff",
-              color: isDark ? "#fff" : "#000",
-              borderRadius: 8,
-              boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-              overflow: "hidden",
-              zIndex: 100
-            }}>
-              <button style={{ padding: "8px 16px", width: "100%", textAlign: "left", background: "transparent", border: "none", cursor: "pointer" }}
-                onClick={() => alert("Block user")}>Block</button>
-              <button style={{ padding: "8px 16px", width: "100%", textAlign: "left", background: "transparent", border: "none", cursor: "pointer" }}
-                onClick={() => alert("Unblock user")}>Unblock</button>
-              <button style={{ padding: "8px 16px", width: "100%", textAlign: "left", background: "transparent", border: "none", cursor: "pointer" }}
-                onClick={() => navigate("/")}>Close Chat</button>
-            </div>
-          )}
-        </div>
-      </header>
-
-      {/* Messages Container */}
-      <div ref={messagesRefEl} style={{ flex: 1, overflowY: "auto", padding: "12px 8px" }}>
-        {loadingMsgs && <div style={{ textAlign: "center", marginTop: 24 }}>Loading messages...</div>}
-        {groupedMessages.map(item => (
-          item.type === "day" ? (
-            <div key={item.id} style={{ textAlign: "center", margin: "12px 0", color: isDark ? "#aaa" : "#555", fontSize: 12 }}>
-              {item.label}
-            </div>
-          ) : (
-            <MessageBubble key={item.id} m={item} />
-          )
-        ))}
-        <div ref={endRef} />
       </div>
 
-      {/* Reply Preview */}
-      {replyTo && (
+      {/* Voice & Video Call Buttons */}
+      <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+        <button onClick={() => navigate(`/voice-call/${chatId}`)} style={{ fontSize: 20, background: "transparent", border: "none", color: "#fff", cursor: "pointer" }}>📞</button>
+        <button onClick={() => navigate(`/video-call/${chatId}`)} style={{ fontSize: 20, background: "transparent", border: "none", color: "#fff", cursor: "pointer" }}>🎥</button>
+        <button onClick={() => setHeaderMenuOpen(!headerMenuOpen)} style={{ fontSize: 20, background: "transparent", border: "none", color: "#fff", cursor: "pointer" }}>⋮</button>
+      </div>
+
+      {headerMenuOpen && (
         <div style={{
-          padding: "8px 12px",
-          background: isDark ? "#111" : "#eaeaea",
-          display: "flex",
-          alignItems: "center",
-          borderTop: `1px solid ${isDark ? "#333" : "#ccc"}`
+          position: "absolute",
+          top: 60,
+          right: 12,
+          background: isDark ? "#222" : "#fff",
+          color: isDark ? "#fff" : "#000",
+          borderRadius: 8,
+          boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+          overflow: "hidden",
+          zIndex: 100
         }}>
-          <div style={{ flex: 1, fontSize: 12 }}>
-            Replying to {replyTo.senderId === myUid ? "You" : "Them"}: {replyTo.text || replyTo.mediaType}
-          </div>
-          <button onClick={() => setReplyTo(null)} style={{ background: "transparent", border: "none", cursor: "pointer" }}>✖</button>
+          <button style={menuBtnStyle} onClick={() => navigate(`/user-profile/${friendInfo?.id}`)}>View Profile</button>
+          <button style={menuBtnStyle} onClick={clearChat}>Clear Chat</button>
+          <button style={menuBtnStyle} onClick={toggleBlock}>{(chatInfo?.blockedBy || []).includes(myUid) ? "Unblock" : "Block"}</button>
+          <button style={menuBtnStyle} onClick={() => alert("Reported")}>Report</button>
         </div>
       )}
+    </header>
 
-      {/* Input Area */}
-      <div style={{ display: "flex", alignItems: "center", padding: 8, borderTop: `1px solid ${isDark ? "#333" : "#ccc"}`, background: isDark ? "#0a0a0a" : "#fff" }}>
-        <input
-          type="text"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Type a message..."
-          style={{
-            flex: 1,
-            padding: "8px 12px",
-            borderRadius: 20,
-            border: `1px solid ${isDark ? "#333" : "#ccc"}`,
-            background: isDark ? "#1a1a1a" : "#f5f5f5",
-            color: isDark ? "#fff" : "#000",
-            outline: "none"
-          }}
-          onKeyDown={(e) => e.key === "Enter" && sendTextMessage()}
-        />
-        <input
-          type="file"
-          multiple
-          onChange={onFilesSelected}
-          style={{ display: "none" }}
-          id="file-upload"
-        />
-        <label htmlFor="file-upload" style={{ marginLeft: 8, cursor: "pointer", fontSize: 20 }}>📎</label>
-        <button onClick={sendTextMessage} style={{ marginLeft: 8, padding: "8px 12px", borderRadius: 20, border: "none", background: "#0b84ff", color: "#fff", cursor: "pointer" }}>
-          Send
-        </button>
+    {/* Messages Container */}
+    <main ref={messagesRefEl} style={{ flex: 1, overflowY: "auto", padding: 12 }}>
+      {loadingMsgs && <div style={{ textAlign: "center", marginTop: 24 }}>Loading messages...</div>}
+      {groupedMessages.map(item => item.type === "day" ? (
+        <div key={item.id} style={{ textAlign: "center", margin: "12px 0", color: isDark ? "#aaa" : "#555", fontSize: 12 }}>
+          {item.label}
+        </div>
+      ) : (
+        <MessageBubble key={item.id} m={item} />
+      ))}
+      <div ref={endRef} />
+    </main>
+
+    {/* Reply Preview */}
+    {replyTo && (
+      <div style={{
+        padding: "8px 12px",
+        background: isDark ? "#111" : "#eaeaea",
+        display: "flex",
+        alignItems: "center",
+        borderTop: `1px solid ${isDark ? "#333" : "#ccc"}`
+      }}>
+        <div style={{ flex: 1, fontSize: 12 }}>
+          Replying to {replyTo.senderId === myUid ? "You" : "Them"}: {replyTo.text || replyTo.mediaType}
+        </div>
+        <button onClick={() => setReplyTo(null)} style={{ background: "transparent", border: "none", cursor: "pointer" }}>✖</button>
       </div>
+    )}
+
+    {/* File Preview Strip */}
+    {previews.length > 0 && (
+      <div style={{ display: "flex", gap: 8, padding: 8, overflowX: "auto", background: isDark ? "#111" : "#fff", borderTop: `1px solid ${isDark ? "#333" : "#ccc"}` }}>
+        {previews.map((p, idx) => (
+          <div key={idx} style={{ position: "relative", borderRadius: 8, border: idx === selectedPreviewIndex ? "2px solid #34B7F1" : "none" }}>
+            {p.type === "image" && <img src={p.url} alt={p.name} style={{ width: 80, height: 80, objectFit: "cover", borderRadius: 8 }} onClick={() => setSelectedPreviewIndex(idx)} />}
+            {p.type === "video" && <video src={p.url} style={{ width: 100, height: 80, objectFit: "cover", borderRadius: 8 }} onClick={() => setSelectedPreviewIndex(idx)} />}
+            {p.type === "audio" && <div style={{ width: 80, height: 80, display: "flex", alignItems: "center", justifyContent: "center", background: "#eee", borderRadius: 8 }}>{p.name}</div>}
+            <button onClick={() => {
+              setSelectedFiles(sf => sf.filter((_, i) => i !== idx));
+              setPreviews(ps => { const copy = ps.filter((_, i) => i !== idx); setSelectedPreviewIndex(Math.max(0, Math.min(selectedPreviewIndex, copy.length - 1))); return copy; });
+            }} style={{ position: "absolute", top: -6, right: -6, background: "#ff4d4f", border: "none", borderRadius: "50%", width: 22, height: 22, color: "#fff", cursor: "pointer" }}>×</button>
+          </div>
+        ))}
+      </div>
+    )}
+
+    {/* Input Area */}
+    <div style={{ display: "flex", alignItems: "center", padding: 8, borderTop: `1px solid ${isDark ? "#333" : "#ccc"}`, background: isDark ? "#0a0a0a" : "#fff" }}>
+      <label style={{ cursor: "pointer", marginRight: 8, fontSize: 20 }}>📎
+        <input type="file" multiple style={{ display: "none" }} onChange={onFilesSelected} />
+      </label>
+      <input
+        type="text"
+        value={text}
+        onChange={e => setText(e.target.value)}
+        placeholder="Type a message..."
+        style={{
+          flex: 1,
+          padding: "8px 12px",
+          borderRadius: 20,
+          border: `1px solid ${isDark ? "#333" : "#ccc"}`,
+          background: isDark ? "#1a1a1a" : "#f5f5f5",
+          color: isDark ? "#fff" : "#000",
+          outline: "none"
+        }}
+        onKeyDown={(e) => e.key === "Enter" && sendTextMessage()}
+      />
+      <button onClick={sendTextMessage} style={{ marginLeft: 8, padding: "8px 12px", borderRadius: 20, border: "none", background: "#0b84ff", color: "#fff", cursor: "pointer" }}>➤</button>
     </div>
-  );
-}
+  </div>
+);
