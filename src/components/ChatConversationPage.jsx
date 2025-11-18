@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useRef, useContext } from "react";
 import { ThemeContext } from "../context/ThemeContext";
 
-// FIREBASE — FIXED
+// FIREBASE
 import { db, storage } from "../firebaseConfig";
 import {
   collection,
@@ -13,7 +13,8 @@ import {
   doc,
   updateDoc,
   deleteDoc,
-  getDoc
+  getDoc,
+  serverTimestamp,
 } from "firebase/firestore";
 import {
   ref,
@@ -80,62 +81,70 @@ export default function ChatConversationPage({ chatId }) {
   const scrollRef = useRef();
 
   // ---------------------------------------------------------
-  // ✔ LOAD CHAT META (name + profile pic)
+  // LOAD CHAT META
   // ---------------------------------------------------------
   useEffect(() => {
-    async function loadMeta() {
+    async function load() {
       const metaRef = doc(db, "chats", chatId);
       const snap = await getDoc(metaRef);
-      if (snap.exists()) {
-        setChatMeta(snap.data());
-      }
+      if (snap.exists()) setChatMeta(snap.data());
     }
-    loadMeta();
+    if (chatId) load();
   }, [chatId]);
 
   // ---------------------------------------------------------
-  // ✔ REALTIME MESSAGES
+  // REALTIME MESSAGES
   // ---------------------------------------------------------
   useEffect(() => {
+    if (!chatId) return;
+
     const q = query(
       collection(db, "chats", chatId, "messages"),
-      orderBy("timestamp")
+      orderBy("timestamp", "asc")
     );
 
-    const unsub = onSnapshot(q, (snap) => {
-      const list = [];
-      snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
+    const unsub = onSnapshot(q, (snapshot) => {
+      let list = [];
+      snapshot.forEach((doc) => {
+        list.push({ id: doc.id, ...doc.data() });
+      });
+
       setMessages(list);
 
-      // auto scroll
+      // scroll to bottom
       setTimeout(() => {
-        scrollRef.current?.scrollTo({ top: 999999, behavior: "smooth" });
-      }, 70);
+        scrollRef.current?.scrollTo({
+          top: scrollRef.current.scrollHeight,
+          behavior: "smooth",
+        });
+      }, 80);
     });
 
     return () => unsub();
   }, [chatId]);
 
   // ---------------------------------------------------------
-  // ✔ SEND TEXT
+  // SEND TEXT
   // ---------------------------------------------------------
   const sendText = async (text) => {
+    if (!text.trim()) return;
+
     await addDoc(collection(db, "chats", chatId, "messages"), {
       text,
       type: "text",
       sender: "me",
-      timestamp: Date.now(),
+      timestamp: serverTimestamp(),
     });
   };
 
   // ---------------------------------------------------------
-  // ✔ UNIVERSAL FILE UPLOADER
+  // FILE UPLOADER
   // ---------------------------------------------------------
   const uploadFileMessage = async (file, type) => {
     const placeholder = {
       type,
       sender: "me",
-      timestamp: Date.now(),
+      timestamp: serverTimestamp(),
       uploading: true,
       progress: 0,
     };
@@ -157,7 +166,7 @@ export default function ChatConversationPage({ chatId }) {
           (snap.bytesTransferred / snap.totalBytes) * 100
         );
 
-        setUploading((prev) => ({ ...prev, [msgRef.id]: progress }));
+        setUploading((p) => ({ ...p, [msgRef.id]: progress }));
 
         updateDoc(doc(db, "chats", chatId, "messages", msgRef.id), {
           progress,
@@ -166,8 +175,8 @@ export default function ChatConversationPage({ chatId }) {
 
       (err) => {
         updateDoc(doc(db, "chats", chatId, "messages", msgRef.id), {
-          uploading: false,
           error: true,
+          uploading: false,
         });
       },
 
@@ -175,9 +184,9 @@ export default function ChatConversationPage({ chatId }) {
         const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
 
         await updateDoc(doc(db, "chats", chatId, "messages", msgRef.id), {
+          url: downloadURL,
           uploading: false,
           progress: null,
-          url: downloadURL,
         });
       }
     );
@@ -188,10 +197,10 @@ export default function ChatConversationPage({ chatId }) {
   const sendVideo = (file) => uploadFileMessage(file, "video");
 
   // ---------------------------------------------------------
-  // ✔ DELETE SELECTED MESSAGES
+  // DELETE SELECTED MESSAGES
   // ---------------------------------------------------------
   const deleteSelectedMessages = async () => {
-    for (const id of selectedMessages) {
+    for (let id of selectedMessages) {
       await deleteDoc(doc(db, "chats", chatId, "messages", id));
     }
     setSelectedMessages([]);
@@ -200,26 +209,22 @@ export default function ChatConversationPage({ chatId }) {
   };
 
   // ---------------------------------------------------------
-  // ✔ CALL HANDLERS
+  // CALL HANDLERS
   // ---------------------------------------------------------
-  const startVoiceCall = () => {
-    window.location.href = `/call/voice/${chatId}`;
-  };
-
-  const startVideoCall = () => {
-    window.location.href = `/call/video/${chatId}`;
-  };
+  const startVoiceCall = () => (window.location.href = `/call/voice/${chatId}`);
+  const startVideoCall = () => (window.location.href = `/call/video/${chatId}`);
 
   // ---------------------------------------------------------
-  // RENDER UI
+  // UI
   // ---------------------------------------------------------
   return (
     <div className={`chat-page ${theme}`}>
-
       <Header
         chatName={chatMeta?.name}
         profilePic={chatMeta?.profilePic}
-        onProfileClick={() => window.location.href = `/profile/${chatMeta?.userId}`}
+        onProfileClick={() =>
+          (window.location.href = `/profile/${chatMeta?.userId}`)
+        }
         onMenuOpen={() => setShowMenu(true)}
         onSearch={() => setShowSearch(true)}
         onVoiceCall={startVoiceCall}
@@ -287,7 +292,9 @@ export default function ChatConversationPage({ chatId }) {
       {showMute && <MutePopup onClose={() => setShowMute(false)} />}
       {showBlock && <BlockPopup onClose={() => setShowBlock(false)} />}
       {showReport && <ReportPopup onClose={() => setShowReport(false)} />}
-      {showDeleteChat && <DeletePopup onClose={() => setShowDeleteChat(false)} />}
+      {showDeleteChat && (
+        <DeletePopup onClose={() => setShowDeleteChat(false)} />
+      )}
       {showProfessional && (
         <ProfessionalPopup onClose={() => setShowProfessional(false)} />
       )}
