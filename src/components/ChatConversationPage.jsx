@@ -2,8 +2,8 @@
 import React, { useEffect, useState, useRef, useContext } from "react";
 import { ThemeContext } from "../context/ThemeContext";
 
-// FIREBASE
-import { db, storage } from "../firebase";
+// FIREBASE — FIXED
+import { db, storage } from "../firebaseConfig";
 import {
   collection,
   query,
