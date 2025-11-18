@@ -1,8 +1,8 @@
-
 // src/components/ChatConversationPage.jsx
 import React, { useEffect, useState, useRef, useContext } from "react";
 import { ThemeContext } from "../context/ThemeContext";
 
+// FIREBASE
 import { db, storage } from "../firebase";
 import {
   collection,
@@ -13,6 +13,7 @@ import {
   doc,
   updateDoc,
   deleteDoc,
+  getDoc
 } from "firebase/firestore";
 import {
   ref,
@@ -28,11 +29,7 @@ import MessageInput from "./Chat/MessageInput";
 import LongPressToolbar from "./Chat/LongPressToolbar";
 
 import ImagePreview from "./Chat/ImagePreview";
-import VoiceNotePlayer from "./Chat/VoiceNotePlayer";
-import MessageDayDivider from "./Chat/MessageDayDivider";
-
 import SearchBar from "./Chat/SearchBar";
-import SearchMessages from "./Chat/SearchMessages";
 import SearchResults from "./Chat/SearchResults";
 
 import PinBanner from "./Chat/PinBanner";
@@ -41,11 +38,10 @@ import BlockedBanner from "./Chat/BlockedBanner";
 // POPUPS
 import MutePopup from "./Chat/MutePopup";
 import BlockPopup from "./Chat/BlockPopup";
-import DeletePopup from "./Chat/DeletePopup";
 import ReportPopup from "./Chat/ReportPopup";
+import DeletePopup from "./Chat/DeletePopup";
 import ProfessionalPopup from "./Chat/ProfessionalPopup";
 import ForwardPopup from "./Chat/ForwardPopup";
-import ForwardMessagePopup from "./Chat/ForwardMessagePopup";
 import UpdatePinPopup from "./Chat/UpdatePinPopup";
 import ArchivePopup from "./Chat/ArchivePopup";
 import ArchiveConfirmation from "./Chat/ArchiveConfirmation";
@@ -56,6 +52,8 @@ export default function ChatConversationPage({ chatId }) {
   const { theme } = useContext(ThemeContext);
 
   const [messages, setMessages] = useState([]);
+  const [chatMeta, setChatMeta] = useState(null);
+
   const [selectedMessages, setSelectedMessages] = useState([]);
   const [longPressMode, setLongPressMode] = useState(false);
 
@@ -81,7 +79,23 @@ export default function ChatConversationPage({ chatId }) {
 
   const scrollRef = useRef();
 
-  // ✔ REALTIME FIREBASE MESSAGE READER
+  // ---------------------------------------------------------
+  // ✔ LOAD CHAT META (name + profile pic)
+  // ---------------------------------------------------------
+  useEffect(() => {
+    async function loadMeta() {
+      const metaRef = doc(db, "chats", chatId);
+      const snap = await getDoc(metaRef);
+      if (snap.exists()) {
+        setChatMeta(snap.data());
+      }
+    }
+    loadMeta();
+  }, [chatId]);
+
+  // ---------------------------------------------------------
+  // ✔ REALTIME MESSAGES
+  // ---------------------------------------------------------
   useEffect(() => {
     const q = query(
       collection(db, "chats", chatId, "messages"),
@@ -89,19 +103,22 @@ export default function ChatConversationPage({ chatId }) {
     );
 
     const unsub = onSnapshot(q, (snap) => {
-      const arr = [];
-      snap.forEach((d) => arr.push({ id: d.id, ...d.data() }));
-      setMessages(arr);
+      const list = [];
+      snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
+      setMessages(list);
 
+      // auto scroll
       setTimeout(() => {
         scrollRef.current?.scrollTo({ top: 999999, behavior: "smooth" });
-      }, 50);
+      }, 70);
     });
 
     return () => unsub();
   }, [chatId]);
 
-  // ✔ TEXT SENDER
+  // ---------------------------------------------------------
+  // ✔ SEND TEXT
+  // ---------------------------------------------------------
   const sendText = async (text) => {
     await addDoc(collection(db, "chats", chatId, "messages"), {
       text,
@@ -111,7 +128,9 @@ export default function ChatConversationPage({ chatId }) {
     });
   };
 
-  // ✔ UNIVERSAL UPLOADER FIX (Image / Audio / Video)
+  // ---------------------------------------------------------
+  // ✔ UNIVERSAL FILE UPLOADER
+  // ---------------------------------------------------------
   const uploadFileMessage = async (file, type) => {
     const placeholder = {
       type,
@@ -121,7 +140,6 @@ export default function ChatConversationPage({ chatId }) {
       progress: 0,
     };
 
-    // add placeholder
     const msgRef = await addDoc(
       collection(db, "chats", chatId, "messages"),
       placeholder
@@ -133,6 +151,7 @@ export default function ChatConversationPage({ chatId }) {
 
     uploadTask.on(
       "state_changed",
+
       (snap) => {
         const progress = Math.round(
           (snap.bytesTransferred / snap.totalBytes) * 100
@@ -145,7 +164,7 @@ export default function ChatConversationPage({ chatId }) {
         });
       },
 
-      (error) => {
+      (err) => {
         updateDoc(doc(db, "chats", chatId, "messages", msgRef.id), {
           uploading: false,
           error: true,
@@ -155,14 +174,11 @@ export default function ChatConversationPage({ chatId }) {
       async () => {
         const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
 
-        await updateDoc(
-          doc(db, "chats", chatId, "messages", msgRef.id),
-          {
-            uploading: false,
-            progress: null,
-            url: downloadURL,
-          }
-        );
+        await updateDoc(doc(db, "chats", chatId, "messages", msgRef.id), {
+          uploading: false,
+          progress: null,
+          url: downloadURL,
+        });
       }
     );
   };
@@ -171,7 +187,9 @@ export default function ChatConversationPage({ chatId }) {
   const sendVoice = (file) => uploadFileMessage(file, "voice");
   const sendVideo = (file) => uploadFileMessage(file, "video");
 
-  // ✔ DELETE SELECTED
+  // ---------------------------------------------------------
+  // ✔ DELETE SELECTED MESSAGES
+  // ---------------------------------------------------------
   const deleteSelectedMessages = async () => {
     for (const id of selectedMessages) {
       await deleteDoc(doc(db, "chats", chatId, "messages", id));
@@ -181,7 +199,9 @@ export default function ChatConversationPage({ chatId }) {
     setShowDeleteMessage(false);
   };
 
+  // ---------------------------------------------------------
   // ✔ CALL HANDLERS
+  // ---------------------------------------------------------
   const startVoiceCall = () => {
     window.location.href = `/call/voice/${chatId}`;
   };
@@ -190,12 +210,18 @@ export default function ChatConversationPage({ chatId }) {
     window.location.href = `/call/video/${chatId}`;
   };
 
+  // ---------------------------------------------------------
+  // RENDER UI
+  // ---------------------------------------------------------
   return (
     <div className={`chat-page ${theme}`}>
+
       <Header
-        onBack={() => window.history.back()}
+        chatName={chatMeta?.name}
+        profilePic={chatMeta?.profilePic}
+        onProfileClick={() => window.location.href = `/profile/${chatMeta?.userId}`}
+        onMenuOpen={() => setShowMenu(true)}
         onSearch={() => setShowSearch(true)}
-        onMenu={() => setShowMenu(true)}
         onVoiceCall={startVoiceCall}
         onVideoCall={startVideoCall}
       />
@@ -223,7 +249,7 @@ export default function ChatConversationPage({ chatId }) {
         />
       </div>
 
-      {longPressMode && (
+      {longPressMode ? (
         <LongPressToolbar
           count={selectedMessages.length}
           onCancel={() => {
@@ -233,9 +259,7 @@ export default function ChatConversationPage({ chatId }) {
           onDelete={() => setShowDeleteMessage(true)}
           onForward={() => setShowForwardOptions(true)}
         />
-      )}
-
-      {!longPressMode && (
+      ) : (
         <MessageInput
           onSend={sendText}
           onSendImage={sendImage}
@@ -246,6 +270,7 @@ export default function ChatConversationPage({ chatId }) {
 
       {showMenu && (
         <ThreeDotMenu
+          isOpen={showMenu}
           onClose={() => setShowMenu(false)}
           onMute={() => setShowMute(true)}
           onBlock={() => setShowBlock(true)}
