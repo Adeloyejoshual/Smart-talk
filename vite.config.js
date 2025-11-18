@@ -13,12 +13,12 @@ export default defineConfig({
     outDir: "dist",
   },
 
-  // ✅ Required dependencies to pre-bundle
+  // ✅ Pre-bundle some problematic deps
   optimizeDeps: {
     include: ["twilio-video", "react-easy-crop"],
   },
 
-  // ✅ Prevent Vite SSR from breaking these ESM packages
+  // ✅ Prevent SSR from breaking for certain packages
   ssr: {
     noExternal: ["twilio-video", "react-easy-crop"],
   },
