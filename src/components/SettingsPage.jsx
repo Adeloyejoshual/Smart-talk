@@ -16,15 +16,15 @@ import { signOut } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
 import { ThemeContext } from "../context/ThemeContext";
 import Cropper from "react-easy-crop";
-import getCroppedImg from "../utils/cropImage"; // helper function
+import getCroppedImg from "../utils/cropImage"; // helper
 
-// Cloudinary settings
-const CLOUDINARY_PRESET = "YOUR_UNSIGNED_PRESET";
-const CLOUDINARY_CLOUD = "YOUR_CLOUD_NAME";
+REACT_APP_CLOUDINARY_PRESET=your_unsigned_preset
+REACT_APP_CLOUDINARY_CLOUD=your_cloud_name
 
 export default function SettingsPage() {
   const { theme, wallpaper, updateSettings } = useContext(ThemeContext);
   const [user, setUser] = useState(null);
+  const [registrationName, setRegistrationName] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [profilePic, setProfilePic] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
@@ -46,12 +46,14 @@ export default function SettingsPage() {
   const fileInputRef = useRef(null);
   const profileInputRef = useRef(null);
 
-  // Load user data
+  // Load user & preferences
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (userAuth) => {
       if (!userAuth) return;
 
       setUser(userAuth);
+      setRegistrationName(userAuth.displayName || "");
+
       const userRef = doc(db, "users", userAuth.uid);
       const userSnap = await getDoc(userRef);
 
@@ -99,7 +101,7 @@ export default function SettingsPage() {
     return () => unsubscribe();
   }, []);
 
-  // Check daily check-in
+  // Daily check-in
   const checkLastCheckin = (lastCheckin) => {
     if (!lastCheckin) return setCheckedInToday(false);
     const lastDate = new Date(lastCheckin.seconds * 1000);
@@ -194,9 +196,11 @@ export default function SettingsPage() {
   const handleLogout = async () => { await signOut(auth); navigate("/"); };
 
   const getInitials = (name) => {
-    if (!name) return "??";
-    const parts = name.trim().split(" ");
-    return parts.length > 1 ? (parts[0][0] + parts[1][0]).toUpperCase() : parts[0][0].toUpperCase();
+    const actualName = displayName || registrationName || "??";
+    const parts = actualName.trim().split(" ");
+    return parts.length > 1
+      ? (parts[0][0] + parts[1][0]).toUpperCase()
+      : parts[0][0].toUpperCase();
   };
 
   if (!user) return <p>Loading user...</p>;
@@ -213,11 +217,20 @@ export default function SettingsPage() {
           <div
             onClick={handleProfileClick}
             style={{
-              width: "120px", height: "120px", borderRadius: "50%", margin: "0 auto 10px",
-              background: profilePic ? `url(${profilePic})` : "#888", backgroundSize: "cover",
-              backgroundPosition: "center", cursor: "pointer", border: "2px solid #555",
-              display: "flex", justifyContent: "center", alignItems: "center",
-              fontSize: "36px", color: "#fff", fontWeight: "bold"
+              width: "120px",
+              height: "120px",
+              borderRadius: "50%",
+              margin: "0 auto 10px",
+              background: profilePic ? `url(${profilePic})` : "#888",
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+              cursor: "pointer",
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              fontSize: "36px",
+              color: "#fff",
+              fontWeight: "bold"
             }}
           >
             {!profilePic && getInitials(displayName)}
@@ -225,6 +238,7 @@ export default function SettingsPage() {
           <input type="file" accept="image/*" ref={profileInputRef} style={{ display: "none" }} onChange={handleProfileFileChange} />
           <label>Full Name:</label>
           <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)} style={selectStyle(isDark)} />
+          <p><strong>Registration Name:</strong> {registrationName || "N/A"}</p>
           <p><strong>Email:</strong> {user.email}</p>
           <p><strong>UID:</strong> {user.uid}</p>
           <button onClick={handleSaveProfile} style={btnStyle("#007bff")}>💾 Save Profile</button>
@@ -250,9 +264,8 @@ export default function SettingsPage() {
         )}
       </Section>
 
-      {/* ===== Wallet, Preferences, Theme & Wallpaper, Notifications, About ===== */}
-      {/* Same as your existing implementation with btnStyle, selectStyle, previewBox */}
-      {/* ... omitted for brevity, reuse your previous code for these sections ... */}
+      {/* === Add Wallet, Preferences, Theme & Wallpaper, Notifications === */}
+      {/* Reuse your previous implementation for these sections */}
 
       <div style={{ textAlign: "center", marginTop: "20px" }}>
         <button onClick={handleLogout} style={btnStyle("#d32f2f")}>🚪 Logout</button>
@@ -274,4 +287,3 @@ function Section({ title, children, isDark }) {
 /* === Styles === */
 const btnStyle = (bg) => ({ marginRight: "8px", padding: "10px 15px", background: bg, color: "#fff", border: "none", borderRadius: "8px", cursor: "pointer", fontWeight: "bold" });
 const selectStyle = (isDark) => ({ width: "100%", padding: "8px", marginBottom: "10px", borderRadius: "6px", background: isDark ? "#222" : "#fafafa", color: isDark ? "#fff" : "#000", border: "1px solid #666" });
-const previewBox = { width: "100%", height: "150px", borderRadius: "10px", border: "2px solid #555", marginTop: "15px", display: "flex", justifyContent: "center", alignItems: "center", backgroundSize: "cover", backgroundPosition: "center" };
