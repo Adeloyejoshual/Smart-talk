@@ -20,13 +20,30 @@ import {
 import { db, auth } from "../firebaseConfig";
 import { ThemeContext } from "../context/ThemeContext";
 
-// -------------------- Helpers --------------------
+/**
+ * ChatConversationPage.jsx
+ * - Cloudinary unsigned uploads (images, video, audio, files)
+ * - Multiple preview + select one preview pinned above input
+ * - ➤ acts as Send when text/preview exists; press+hold to record voice, release to send
+ * - Voice notes are uploaded and playable
+ * - Header deep blue (#1877F2), shows name/photo and lastSeen, clicking redirects to profile
+ * - Block/unblock using chat doc's blockedBy array
+ * - Swipe-left to reply (mobile), long-press/right-click menu
+ * - Reactions + Forward
+ *
+ * Required env:
+ * VITE_CLOUDINARY_CLOUD_NAME
+ * VITE_CLOUDINARY_UPLOAD_PRESET
+ *
+ * Note: adjust styles to match your app's design system if needed.
+ */
+
+// small helpers
 const fmtTime = (ts) => {
   if (!ts) return "";
   const d = ts.toDate ? ts.toDate() : new Date(ts);
   return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 };
-
 const dayLabel = (ts) => {
   if (!ts) return "";
   const d = ts.toDate ? ts.toDate() : new Date(ts);
@@ -37,28 +54,9 @@ const dayLabel = (ts) => {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: d.getFullYear() !== now.getFullYear() ? "numeric" : undefined });
 };
 
-// -------------------- Constants --------------------
 const INLINE_REACTIONS = ["❤️", "😂", "👍", "😮", "😢"];
 const EXTENDED_EMOJIS = ["❤️","😂","👍","😮","😢","👎","👏","🔥","😅","🤩","😍","😎","🙂","🙃","😉","🤔","🤨","🤗","🤯","🥳","🙏","💪"];
-const COLORS = {
-  primary: "#34B7F1",
-  primaryDark: "#007bff",
-  headerBlue: "#1877F2",
-  lightBg: "#f5f5f5",
-  darkBg: "#0b0b0b",
-  lightText: "#000",
-  darkText: "#fff",
-  lightCard: "#fff",
-  darkCard: "#1b1b1b",
-  mutedText: "#888",
-  grayBorder: "rgba(0,0,0,0.06)",
-  edited: "#999",
-  reactionBg: "#111"
-};
-const SPACING = { xs: 4, sm: 8, md: 12, lg: 14, xl: 20, borderRadius: 12 };
-const menuBtnStyle = { padding: SPACING.sm, borderRadius: SPACING.borderRadius, border: "none", background: "transparent", cursor: "pointer", textAlign: "left", width: "100%" };
 
-// -------------------- Component --------------------
 export default function ChatConversationPage() {
   const { chatId } = useParams();
   const navigate = useNavigate();
@@ -70,18 +68,17 @@ export default function ChatConversationPage() {
   const endRef = useRef(null);
   const longPressTimer = useRef(null);
   const swipeStartX = useRef(null);
-  const recorderRef = useRef(null);
-  const recorderChunksRef = useRef([]);
 
+  // state
   const [chatInfo, setChatInfo] = useState(null);
   const [friendInfo, setFriendInfo] = useState(null);
   const [messages, setMessages] = useState([]);
   const [loadingMsgs, setLoadingMsgs] = useState(true);
   const [text, setText] = useState("");
-  const [selectedFiles, setSelectedFiles] = useState([]);
-  const [previews, setPreviews] = useState([]);
-  const [selectedPreviewIndex, setSelectedPreviewIndex] = useState(0);
-  const [uploadingIds, setUploadingIds] = useState({});
+  const [selectedFiles, setSelectedFiles] = useState([]); // File[]
+  const [previews, setPreviews] = useState([]); // { url, type, name, file }
+  const [selectedPreviewIndex, setSelectedPreviewIndex] = useState(0); // which preview pinned above input
+  const [uploadingIds, setUploadingIds] = useState({}); // messageId -> pct
   const [replyTo, setReplyTo] = useState(null);
   const [menuOpenFor, setMenuOpenFor] = useState(null);
   const [reactionFor, setReactionFor] = useState(null);
@@ -90,9 +87,43 @@ export default function ChatConversationPage() {
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [recording, setRecording] = useState(false);
   const [recorderAvailable, setRecorderAvailable] = useState(false);
+  const recorderRef = useRef(null);
+  const recorderChunksRef = useRef([]);
+
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
 
-  // -------------------- Cloudinary --------------------
+  // ---------- Cloudinary ----------
+  const uploadToCloudinary = (file, onProgress) => {
+    return new Promise((resolve, reject) => {
+      try {
+        const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+        const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+        if (!cloudName || !uploadPreset) return reject(new Error("Cloudinary env not set"));
+        const url = `https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`;
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", url);
+        xhr.upload.addEventListener("progress", (e) => {
+          if (e.lengthComputable && onProgress) {
+            onProgress(Math.round((e.loaded * 100) / e.total));
+          }
+        });
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            const res = JSON.parse(xhr.responseText);
+            resolve(res.secure_url || res.url);
+          } else reject(new Error("Cloudinary upload failed: " + xhr.status));
+        };
+        xhr.onerror = () => reject(new Error("Network error"));
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("upload_preset", uploadPreset);
+        xhr.send(fd);
+      } catch (err) {
+        reject(err);
+      }
+    });
+  };
+
   const detectFileType = (file) => {
     const t = file.type;
     if (t.startsWith("image/")) return "image";
@@ -101,25 +132,8 @@ export default function ChatConversationPage() {
     if (t === "application/pdf") return "pdf";
     return "file";
   };
-  const uploadToCloudinary = (file, onProgress) => new Promise((resolve, reject) => {
-    try {
-      const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
-      const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
-      if (!cloudName || !uploadPreset) return reject(new Error("Cloudinary env not set"));
-      const url = `https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`;
-      const xhr = new XMLHttpRequest();
-      xhr.open("POST", url);
-      xhr.upload.addEventListener("progress", e => { if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded * 100) / e.total)); });
-      xhr.onload = () => { if (xhr.status >= 200 && xhr.status < 300) resolve(JSON.parse(xhr.responseText).secure_url); else reject(new Error("Cloudinary upload failed")); };
-      xhr.onerror = () => reject(new Error("Network error"));
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("upload_preset", uploadPreset);
-      xhr.send(fd);
-    } catch (err) { reject(err); }
-  });
 
-  // -------------------- Load chat & friend --------------------
+  // ---------- load chat meta + friend ----------
   useEffect(() => {
     if (!chatId) return;
     let unsubChat = null;
@@ -130,6 +144,7 @@ export default function ChatConversationPage() {
         if (cSnap.exists()) {
           const data = cSnap.data();
           setChatInfo({ id: cSnap.id, ...data });
+          // try to load friend from participants
           const friendId = data.participants?.find(p => p !== myUid);
           if (friendId) {
             const fRef = doc(db, "users", friendId);
@@ -137,71 +152,76 @@ export default function ChatConversationPage() {
             if (fSnap.exists()) setFriendInfo({ id: fSnap.id, ...fSnap.data() });
           }
         }
-        unsubChat = onSnapshot(doc(db, "chats", chatId), s => { if (s.exists()) setChatInfo(prev => ({ ...(prev||{}), ...s.data() })); });
+        // listen for chat doc changes (blockedBy changes etc)
+        unsubChat = onSnapshot(cRef, s => {
+          if (s.exists()) setChatInfo(prev => ({ ...(prev||{}), ...s.data() }));
+        });
       } catch (e) { console.error(e); }
     };
     loadMeta();
     return () => { if (unsubChat) unsubChat(); };
   }, [chatId, myUid]);
 
-  // -------------------- Messages realtime --------------------
+  // ---------- messages realtime ----------
   useEffect(() => {
     if (!chatId) return;
     setLoadingMsgs(true);
-    const q = query(collection(db, "chats", chatId, "messages"), orderBy("createdAt", "asc"), fsLimit(2000));
-    const unsub = onSnapshot(q, snap => {
-      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(m => !(m.deletedFor?.includes(myUid)));
-      setMessages(docs);
-      docs.forEach(async m => { if (m.senderId !== myUid && m.status === "sent") await updateDoc(doc(db, "chats", chatId, "messages", m.id), { status: "delivered" }); });
+    const msgsRef = collection(db, "chats", chatId, "messages");
+    const q = query(msgsRef, orderBy("createdAt", "asc"), fsLimit(2000));
+    const unsub = onSnapshot(q, (snap) => {
+      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      // filter out messages deletedFor current user
+      const filtered = docs.filter(m => !(m.deletedFor && m.deletedFor.includes(myUid)));
+      setMessages(filtered);
+      // mark delivered for incoming messages
+      filtered.forEach(async (m) => {
+        if (m.senderId !== myUid && m.status === "sent") {
+          try {
+            await updateDoc(doc(db, "chats", chatId, "messages", m.id), { status: "delivered" });
+          } catch (e) {}
+        }
+      });
       setLoadingMsgs(false);
+      // auto-scroll if at bottom
       setTimeout(() => { if (isAtBottom) endRef.current?.scrollIntoView({ behavior: "smooth" }); }, 80);
     });
     return () => unsub();
   }, [chatId, myUid, isAtBottom]);
 
-  // -------------------- Scroll detection --------------------
+  // ---------- scrolling detection ----------
   useEffect(() => {
     const el = messagesRefEl.current;
     if (!el) return;
-    const onScroll = () => { setIsAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 80); };
+    const onScroll = () => {
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+      setIsAtBottom(atBottom);
+    };
     el.addEventListener("scroll", onScroll);
     return () => el.removeEventListener("scroll", onScroll);
   }, []);
 
   const scrollToBottom = () => { endRef.current?.scrollIntoView({ behavior: "smooth" }); setIsAtBottom(true); };
 
-  // -------------------- Mark seen --------------------
+  // ---------- mark seen when visible ----------
   useEffect(() => {
     const onVisibility = async () => {
       if (document.visibilityState !== "visible") return;
-      const lastIncoming = [...messages].reverse().find(m => m.senderId !== myUid);
-      if (lastIncoming && lastIncoming.status !== "seen") await updateDoc(doc(db, "chats", chatId, "messages", lastIncoming.id), { status: "seen" });
+      const lastIncoming = [...messages].slice().reverse().find(m => m.senderId !== myUid);
+      if (lastIncoming && lastIncoming.status !== "seen") {
+        try { await updateDoc(doc(db, "chats", chatId, "messages", lastIncoming.id), { status: "seen" }); } catch(e){}
+      }
     };
     document.addEventListener("visibilitychange", onVisibility);
     onVisibility();
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, [messages, chatId, myUid]);
 
-  // -------------------- Click outside to close menus --------------------
-  useEffect(() => {
-    const handleClickOutside = e => {
-      if (!e.target.closest(".menu") && !e.target.closest(".emoji-picker")) {
-        setMenuOpenFor(null);
-        setReactionFor(null);
-        setShowEmojiPicker(false);
-        setHeaderMenuOpen(false);
-      }
-    };
-    document.addEventListener("click", handleClickOutside);
-    return () => document.removeEventListener("click", handleClickOutside);
-  }, []);
-
-  // -------------------- File select & preview --------------------
-  const onFilesSelected = e => {
+  // ---------- file select & preview ----------
+  const onFilesSelected = (e) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
     const newPreviews = files.map(f => ({
-      url: f.type.startsWith("image/") || f.type.startsWith("video/") ? URL.createObjectURL(f) : null,
+      url: (f.type.startsWith("image/") || f.type.startsWith("video/")) ? URL.createObjectURL(f) : null,
       type: detectFileType(f),
       name: f.name,
       file: f
@@ -211,277 +231,502 @@ export default function ChatConversationPage() {
     setSelectedPreviewIndex(prev => prev >= 0 ? prev : 0);
   };
 
-  // -------------------- Send message --------------------
+  // ---------- send (➤) behaviour ----------
+  // click ➤: send text OR send selected pinned preview if previews exist (or send all previews if preference)
+  // We will send ALL selectedFiles but highlight which one is "selected" for possible UI behavior.
   const sendTextMessage = async () => {
-    if ((chatInfo?.blockedBy || []).includes(myUid)) return alert("You are blocked in this chat.");
-    
+    // block if chat blocked current user
+    const blockedBy = chatInfo?.blockedBy || [];
+    if (blockedBy && blockedBy.includes(myUid)) {
+      alert("You are blocked in this chat. You cannot send messages.");
+      return;
+    }
+
+    // files first
     if (selectedFiles.length > 0) {
       const filesToSend = [...selectedFiles];
+      // clear early to prevent duplicates from UI actions
       setSelectedFiles([]); setPreviews([]); setSelectedPreviewIndex(0);
       for (const file of filesToSend) {
+        // create placeholder message
         try {
-          const placeholder = { senderId: myUid, text: "", mediaUrl: "", mediaType: detectFileType(file), fileName: file.name, createdAt: serverTimestamp(), status: "uploading", reactions: {} };
+          const placeholder = {
+            senderId: myUid,
+            text: "",
+            mediaUrl: "",
+            mediaType: detectFileType(file),
+            fileName: file.name,
+            createdAt: serverTimestamp(),
+            status: "uploading",
+            reactions: {},
+          };
           const mRef = await addDoc(collection(db, "chats", chatId, "messages"), placeholder);
           const messageId = mRef.id;
           setUploadingIds(prev => ({ ...prev, [messageId]: 0 }));
-          const url = await uploadToCloudinary(file, pct => setUploadingIds(prev => ({ ...prev, [messageId]: pct })));
+
+          // upload
+          const url = await uploadToCloudinary(file, (pct) => setUploadingIds(prev => ({ ...prev, [messageId]: pct })));
           await updateDoc(doc(db, "chats", chatId, "messages", messageId), { mediaUrl: url, status: "sent", sentAt: serverTimestamp() });
-          setTimeout(() => setUploadingIds(prev => { const c={...prev}; delete c[messageId]; return c; }), 200);
-        } catch (err) { console.error("upload error:", err); }
+
+          // cleanup upload indicator
+          setTimeout(() => setUploadingIds(prev => { const c = {...prev}; delete c[messageId]; return c; }), 200);
+        } catch (err) {
+          console.error("upload error:", err);
+          // mark failed if possible
+          // We can't always update if message creation failed; ignore silently
+        }
       }
       return;
     }
 
+    // text message
     if (text.trim()) {
       try {
-        const payload = { senderId: myUid, text: text.trim(), mediaUrl: "", mediaType: null, createdAt: serverTimestamp(), status: "sent", reactions: {} };
-        if (replyTo) { payload.replyTo = { id: replyTo.id, text: replyTo.text || (replyTo.mediaType || "media"), senderId: replyTo.senderId }; setReplyTo(null); }
+        const payload = {
+          senderId: myUid,
+          text: text.trim(),
+          mediaUrl: "",
+          mediaType: null,
+          createdAt: serverTimestamp(),
+          status: "sent",
+          reactions: {},
+        };
+        if (replyTo) {
+          payload.replyTo = { id: replyTo.id, text: replyTo.text || (replyTo.mediaType || "media"), senderId: replyTo.senderId };
+          setReplyTo(null);
+        }
         await addDoc(collection(db, "chats", chatId, "messages"), payload);
         setText("");
-        setTimeout(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), 80);
+        setTimeout(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, 80);
       } catch (e) { console.error(e); alert("Failed to send"); }
     }
   };
 
-  // -------------------- Recording --------------------
-  useEffect(() => setRecorderAvailable(!!(navigator.mediaDevices && window.MediaRecorder)), []);
+  // ---------- press & hold ➤ to record (mobile + desktop) ----------
+  useEffect(() => { setRecorderAvailable(!!(navigator.mediaDevices && window.MediaRecorder)); }, []);
+
   const startRecording = async () => {
-    if (!recorderAvailable) return alert("Recording not supported");
+    if (!recorderAvailable) return alert("Recording not supported in this browser");
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mr = new MediaRecorder(stream);
       recorderChunksRef.current = [];
-      mr.ondataavailable = ev => { if (ev.data.size) recorderChunksRef.current.push(ev.data); };
+      mr.ondataavailable = (ev) => { if (ev.data.size) recorderChunksRef.current.push(ev.data); };
       mr.onstop = async () => {
+        // create blob
         const blob = new Blob(recorderChunksRef.current, { type: "audio/webm" });
-        const placeholder = { senderId: myUid, text: "", mediaUrl: "", mediaType: "audio", createdAt: serverTimestamp(), status: "uploading", reactions: {} };
+        // placeholder message
+        const placeholder = {
+          senderId: myUid,
+          text: "",
+          mediaUrl: "",
+          mediaType: "audio",
+          createdAt: serverTimestamp(),
+          status: "uploading",
+          reactions: {},
+        };
         try {
           const mRef = await addDoc(collection(db, "chats", chatId, "messages"), placeholder);
           const messageId = mRef.id;
           setUploadingIds(prev => ({ ...prev, [messageId]: 0 }));
-          const url = await uploadToCloudinary(blob, pct => setUploadingIds(prev => ({ ...prev, [messageId]: pct })));
+          // upload
+          const url = await uploadToCloudinary(blob, (pct) => setUploadingIds(prev => ({ ...prev, [messageId]: pct })));
           await updateDoc(doc(db, "chats", chatId, "messages", messageId), { mediaUrl: url, status: "sent", sentAt: serverTimestamp() });
-          setTimeout(() => setUploadingIds(prev => { const c={...prev}; delete c[messageId]; return c; }), 200);
-        } catch (err) { console.error("voice upload failed", err); }
+          setTimeout(() => setUploadingIds(prev => { const c = {...prev}; delete c[messageId]; return c; }), 200);
+        } catch (err) {
+          console.error("voice upload failed", err);
+        }
       };
       mr.start();
       recorderRef.current = mr;
       setRecording(true);
     } catch (err) { console.error(err); alert("Could not start recording"); }
   };
-  const stopRecording = () => { try { recorderRef.current?.stop(); recorderRef.current?.stream?.getTracks().forEach(t=>t.stop()); } catch(e){} setRecording(false); };
-  const holdStart = e => { e.preventDefault(); longPressTimer.current = setTimeout(() => startRecording(), 250); };
-  const holdEnd = e => { clearTimeout(longPressTimer.current); if (recording) stopRecording(); };
 
-  // -------------------- Message actions --------------------
+  const stopRecording = () => {
+    try {
+      recorderRef.current?.stop();
+      recorderRef.current?.stream?.getTracks().forEach(t => t.stop());
+    } catch (e) {}
+    setRecording(false);
+  };
+
+  // press & hold helpers attached to button
+  const holdStart = (e) => {
+    e.preventDefault();
+    longPressTimer.current = setTimeout(() => startRecording(), 250);
+  };
+  const holdEnd = (e) => {
+    clearTimeout(longPressTimer.current);
+    // if recorder started, stop and send
+    if (recording) stopRecording();
+  };
+
+  // ---------- message actions ----------
   const applyReaction = async (messageId, emoji) => {
     try {
       const mRef = doc(db, "chats", chatId, "messages", messageId);
       const snap = await getDoc(mRef);
       if (!snap.exists()) return;
-      const existing = snap.data().reactions?.[myUid];
-      await updateDoc(mRef, { [`reactions.${myUid}`]: existing===emoji?null:emoji });
+      const data = snap.data();
+      const existing = data.reactions?.[myUid];
+      if (existing === emoji) await updateDoc(mRef, { [`reactions.${myUid}`]: null });
+      else await updateDoc(mRef, { [`reactions.${myUid}`]: emoji });
       setReactionFor(null);
-    } catch(e){console.error(e);}
+    } catch (e) { console.error(e); }
   };
-  const copyMessageText = async m => { try { await navigator.clipboard.writeText(m.text||m.mediaUrl||""); alert("Copied"); setMenuOpenFor(null); } catch(e){alert("Copy failed");} };
-  const editMessage = async m => { if (m.senderId!==myUid) return alert("You can only edit your messages."); const newText=window.prompt("Edit message", m.text||""); if(newText==null) return; await updateDoc(doc(db, "chats", chatId, "messages", m.id), { text:newText, edited:true }); setMenuOpenFor(null); };
-  const deleteMessageForEveryone = async id => { if(!confirm("Delete for everyone?")) return; await deleteDoc(doc(db, "chats", chatId, "messages", id)); setMenuOpenFor(null); };
-  const deleteMessageForMe = async id => { await updateDoc(doc(db, "chats", chatId, "messages", id), { deletedFor: arrayUnion(myUid) }); setMenuOpenFor(null); };
-  const forwardMessage = m => navigate(`/forward/${m.id}`, { state: { message: m }});
-  const pinMessage = async m => { await updateDoc(doc(db, "chats", chatId), { pinnedMessageId: m.id, pinnedMessageText: m.text || (m.mediaType||"") }); setMenuOpenFor(null); alert("Pinned"); };
-  const replyToMessage = m => { setReplyTo(m); setMenuOpenFor(null); };
 
-  // -------------------- Header actions --------------------
-  const clearChat = async () => { if(!confirm("Clear chat?")) return; const snap=await getDocs(query(collection(db,"chats",chatId,"messages"),orderBy("createdAt","asc"))); for(const d of snap.docs) try{await deleteDoc(d.ref);}catch(e){} setHeaderMenuOpen(false); alert("Chat cleared."); };
+  const copyMessageText = async (m) => {
+    try { await navigator.clipboard.writeText(m.text || m.mediaUrl || ""); alert("Copied"); setMenuOpenFor(null); }
+    catch (e) { alert("Copy failed"); }
+  };
+
+  const editMessage = async (m) => {
+    if (m.senderId !== myUid) return alert("You can only edit your messages.");
+    const newText = window.prompt("Edit message", m.text || "");
+    if (newText == null) return;
+    await updateDoc(doc(db, "chats", chatId, "messages", m.id), { text: newText, edited: true });
+    setMenuOpenFor(null);
+  };
+
+  const deleteMessageForEveryone = async (id) => {
+    if (!confirm("Delete for everyone?")) return;
+    await deleteDoc(doc(db, "chats", chatId, "messages", id));
+    setMenuOpenFor(null);
+  };
+  const deleteMessageForMe = async (id) => {
+    await updateDoc(doc(db, "chats", chatId, "messages", id), { deletedFor: arrayUnion(myUid) });
+    setMenuOpenFor(null);
+  };
+
+  const forwardMessage = (m) => navigate(`/forward/${m.id}`, { state: { message: m }});
+  const pinMessage = async (m) => {
+    await updateDoc(doc(db, "chats", chatId), { pinnedMessageId: m.id, pinnedMessageText: m.text || (m.mediaType || "") });
+    setMenuOpenFor(null);
+    alert("Pinned");
+  };
+  const replyToMessage = (m) => { setReplyTo(m); setMenuOpenFor(null); };
+
+  // long-press mobile handlers
+  const handleMsgTouchStart = (m) => {
+    longPressTimer.current = setTimeout(() => setMenuOpenFor(m.id), 500);
+    // attach swipe start
+    swipeStartX.current = null;
+  };
+  const handleMsgTouchMove = (ev) => {
+    // capture start X only
+    if (!swipeStartX.current && ev.touches && ev.touches[0]) swipeStartX.current = ev.touches[0].clientX;
+  };
+  const handleMsgTouchEnd = (m) => {
+    clearTimeout(longPressTimer.current);
+    if (!swipeStartX.current) return;
+    const endX = event.changedTouches ? event.changedTouches[0].clientX : null;
+    if (endX == null) return;
+    const dx = swipeStartX.current - endX;
+    if (dx > 80) {
+      // swiped left enough -> reply
+      replyToMessage(m);
+    }
+    swipeStartX.current = null;
+  };
+
+  // ---------- header actions ----------
+  const clearChat = async () => {
+    if (!confirm("Clear chat? This will attempt to delete messages.")) return;
+    try {
+      // careful: delete many docs can be heavy — here we do a simple approach
+      const msgsRef = collection(db, "chats", chatId, "messages");
+      const snap = await getDocs(query(msgsRef, orderBy("createdAt", "asc")));
+      const docs = snap.docs;
+      for (const d of docs) {
+        try { await deleteDoc(d.ref); } catch (e) {}
+      }
+      setHeaderMenuOpen(false);
+      alert("Chat cleared.");
+    } catch (e) { console.error(e); alert("Failed to clear chat"); }
+  };
+
   const toggleBlock = async () => {
-    if (!chatInfo) return;
-    const chatRef = doc(db, "chats", chatId);
-    const blockedBy = chatInfo.blockedBy || [];
-    if (blockedBy.includes(myUid)) {
-      await updateDoc(chatRef, { blockedBy: arrayRemove(myUid) });
-      setChatInfo(prev => ({ ...prev, blockedBy: blockedBy.filter(id => id !== myUid) }));
-      alert("You unblocked this chat.");
-    } else {
-      await updateDoc(chatRef, { blockedBy: arrayUnion(myUid) });
-      setChatInfo(prev => ({ ...prev, blockedBy: [...blockedBy, myUid] }));
-      alert("Youblocked this chat.");
+    try {
+      const chatRef = doc(db, "chats", chatId);
+      const snap = await getDoc(chatRef);
+      if (!snap.exists()) return;
+      const data = snap.data();
+      const blockedBy = data.blockedBy || [];
+      if (blockedBy.includes(myUid)) {
+        // remove myUid
+        await updateDoc(chatRef, { blockedBy: arrayRemove(myUid) });
+      } else {
+        await updateDoc(chatRef, { blockedBy: arrayUnion(myUid) });
+      }
+      setHeaderMenuOpen(false);
+    } catch (e) { console.error(e); alert("Block toggle failed"); }
+  };
+
+  // ---------- render helpers ----------
+  const renderStatusTick = (m) => {
+    if (m.senderId !== myUid) return null;
+    if (m.status === "uploading") return "⌛";
+    if (m.status === "sent") return "✔";
+    if (m.status === "delivered") return "✔✔";
+    if (m.status === "seen") return <span style={{ color: "#2b9f4a" }}>✔✔</span>;
+    return null;
+  };
+
+  const renderMessageContent = (m) => {
+    if (m.mediaUrl) {
+      switch (m.mediaType) {
+        case "image":
+          return <img src={m.mediaUrl} alt={m.fileName || "image"} style={{ maxWidth: 360, borderRadius: 12 }} />;
+        case "video":
+          return <video controls src={m.mediaUrl} style={{ maxWidth: 360, borderRadius: 12 }} />;
+        case "audio":
+          return <audio controls src={m.mediaUrl} style={{ width: 300 }} />;
+        case "pdf":
+        case "file":
+          return <a href={m.mediaUrl} target="_blank" rel="noreferrer">{m.fileName || "Download file"}</a>;
+        default:
+          return <a href={m.mediaUrl} target="_blank" rel="noreferrer">Open media</a>;
+      }
+    }
+    return <div style={{ whiteSpace: "pre-wrap" }}>{m.text}</div>;
+  };
+
+  // ---------- format message day grouping in JSX ----------
+  const groupedMessages = (() => {
+    const out = [];
+    let lastDay = null;
+    messages.forEach(m => {
+      const label = dayLabel(m.createdAt || new Date());
+      if (label !== lastDay) { out.push({ type: "day", label, id: `day-${label}-${Math.random().toString(36).slice(2,6)}` }); lastDay = label; }
+      out.push(m);
+    });
+    return out;
+  })();
+
+  // ---------- UI ----------
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column",
+      background: wallpaper ? `url(${wallpaper}) center/cover no-repeat` : (isDark ? "#070707" : "#f5f5f5"),
+      color: isDark ? "#fff" : "#000"
+    }}>
+      {/* Header */}
+      <header style={{ position: "sticky", top:0, zIndex:90, display:"flex", alignItems:"center", gap:12, padding:12,
+        background: "#1877F2", color: "#fff", borderBottom: "1px solid rgba(0,0,0,0.06)"
+      }}>
+        <button onClick={() => navigate("/chat")} style={{ fontSize:20, background:'transparent', border:'none', color:'#fff', cursor:'pointer' }}>←</button>
+
+        <img onClick={() => friendInfo && navigate(`/user-profile/${friendInfo.id}`)} src={friendInfo?.photoURL || chatInfo?.photoURL || "/default-avatar.png"} alt="avatar" style={{ width:48, height:48, borderRadius:"50%", objectFit:"cover", cursor:"pointer" }} />
+
+        <div style={{ minWidth:0, cursor: 'pointer' }} onClick={() => friendInfo && navigate(`/user-profile/${friendInfo.id}`)}>
+          <div style={{ fontWeight:700, fontSize:16 }}>{friendInfo?.displayName || chatInfo?.name || "Chat"}</div>
+          <div style={{ fontSize:12, opacity:0.95 }}>
+            {friendInfo?.isOnline ? "Online" : (friendInfo?.lastSeen ? (() => {
+              const ls = friendInfo.lastSeen;
+              const d = ls?.toDate ? ls.toDate() : new Date(ls);
+              // pretty last seen (Today / Yesterday / exact)
+              const now = new Date();
+              const yesterday = new Date(); yesterday.setDate(now.getDate()-1);
+              if (d.toDateString() === now.toDateString()) return `Today ${d.toLocaleTimeString([], { hour:'numeric', minute:'2-digit' })}`;
+              if (d.toDateString() === yesterday.toDateString()) return `Yesterday`;
+              return d.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: d.getFullYear() });
+            })() : "Offline")}
+          </div>
+        </div>
+
+        <div style={{ marginLeft:"auto", position:"relative" }}>
+          <button onClick={() => setHeaderMenuOpen(s => !s)} style={{ background:"transparent", border:"none", color:"#fff", cursor:"pointer", fontSize:20 }}>⋮</button>
+          {headerMenuOpen && (
+            <div style={{ position:"absolute", right:0, top:36, background:"#fff", color:"#000", padding:8, borderRadius:10, boxShadow:"0 8px 30px rgba(0,0,0,0.12)" }}>
+              <button onClick={() => { setHeaderMenuOpen(false); navigate(`/user-profile/${friendInfo?.id}`); }} style={menuBtnStyle}>View Profile</button>
+              <button onClick={() => { clearChat(); }} style={menuBtnStyle}>Clear Chat</button>
+              <button onClick={() => { toggleBlock(); }} style={menuBtnStyle}>{(chatInfo?.blockedBy || []).includes(myUid) ? "Unblock" : "Block"}</button>
+              <button onClick={() => { alert("Reported"); setHeaderMenuOpen(false); }} style={menuBtnStyle}>Report</button>
+              <button onClick={() => { setHeaderMenuOpen(false); navigate(`/voice-call/${chatId}`); }} style={menuBtnStyle}>📞 Call</button>
+              <button onClick={() => { setHeaderMenuOpen(false); navigate(`/video-call/${chatId}`); }} style={menuBtnStyle}>🎥 Video Call</button>
+            </div>
+          )}
+        </div>
+      </header>
+
+      {/* Messages area */}
+      <main ref={messagesRefEl} style={{ flex:1, overflowY:"auto", padding:12 }}>
+        {loadingMsgs && <div style={{ textAlign:"center", color:"#888", marginTop:12 }}>Loading messages…</div>}
+
+        {groupedMessages.map(item => {
+          if (item.type === "day") {
+            return <div key={item.id} style={{ textAlign:"center", margin:"14px 0", color:"#8a8a8a", fontSize:12 }}>{item.label}</div>;
+          }
+          const m = item;
+          const mine = m.senderId === myUid;
+          return (
+            <div key={m.id} id={`msg-${m.id}`} onTouchStart={() => handleMsgTouchStart(m)} onTouchMove={handleMsgTouchMove} onTouchEnd={() => handleMsgTouchEnd(m)} onMouseDown={(e)=>{ if (e.button === 2) setMenuOpenFor(m.id); }} style={{ display:"flex", justifyContent: mine ? "flex-end" : "flex-start", marginBottom:12, position:"relative" }}>
+              <div style={{ background: mine ? (isDark ? "#0b84ff" : "#007bff") : (isDark ? "#1b1b1b" : "#fff"), color: mine ? "#fff" : (isDark ? "#fff" : "#000"), padding:12, borderRadius:14, maxWidth:"78%", position:"relative", wordBreak:"break-word" }}>
+                {/* reply snippet */}
+                {m.replyTo && (
+                  <div style={{ marginBottom:6, padding:"6px 8px", borderRadius:8, background:isDark ? "#0f0f0f" : "#f3f3f3", color:isDark ? "#ddd" : "#333", fontSize:12 }}>
+                    <div style={{ fontWeight:700, marginBottom:4 }}>{m.replyTo.senderId === myUid ? "You" : "Them"}</div>
+                    <div style={{ maxWidth:240, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{m.replyTo.text}</div>
+                  </div>
+                )}
+
+                <div onClick={() => { setMenuOpenFor(null); setReactionFor(null); }}>{renderMessageContent(m)}</div>
+                {m.edited && <div style={{ fontSize:11, opacity:0.9 }}> · edited</div>}
+
+                {m.reactions && Object.keys(m.reactions).length > 0 && (
+                  <div style={{ position:"absolute", bottom:-14, right:6, background:isDark ? "#111" : "#fff", padding:"4px 8px", borderRadius:12, fontSize:12, boxShadow:"0 2px 8px rgba(0,0,0,0.12)" }}>
+                    {Object.values(m.reactions).slice(0,4).join(" ")}
+                  </div>
+                )}
+
+                <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:8, fontSize:11, opacity:0.9 }}>
+                  <div style={{ marginLeft:"auto" }}>{fmtTime(m.createdAt)} {renderStatusTick(m)}</div>
+                </div>
+
+                {/* uploading spinner / progress inside bubble */}
+                {m.status === "uploading" && uploadingIds[m.id] !== undefined && (
+                  <div style={{ position:"absolute", left:8, top:"50%", transform:"translateY(-50%)" }}>
+                    <div style={{ width:36, height:36, borderRadius:18, display:"flex", alignItems:"center", justifyContent:"center", background:"#eee", color:"#333", fontSize:12 }}>
+                      {uploadingIds[m.id]}%
+                    </div>
+                  </div>
+                )}
+
+                {m.status === "failed" && <div style={{ marginTop:8 }}><button onClick={() => alert("Please re-select file to retry")} style={{ padding:"6px 8px", borderRadius:8, background:"#ffcc00", border:"none" }}>Retry</button></div>}
+              </div>
+
+              {/* action buttons */}
+              <div style={{ marginLeft:8, display:"flex", flexDirection:"column", gap:6 }}>
+                <button title="React" onClick={() => { setReactionFor(m.id); setMenuOpenFor(null); }} style={{ border:"none", background:"transparent", cursor:"pointer" }}>😊</button>
+                <button title="More" onClick={() => setMenuOpenFor(m.id)} style={{ border:"none", background:"transparent", cursor:"pointer" }}>⋯</button>
+              </div>
+
+              {/* inline menu */}
+              {menuOpenFor === m.id && (
+                <div style={{ position:"absolute", transform:"translate(-50px, -100%)", zIndex:999, right: (m.senderId === myUid) ? 20 : "auto", left: (m.senderId === myUid) ? "auto" : 80 }}>
+                  <div style={{ background:isDark ? "#111" : "#fff", padding:8, borderRadius:10, boxShadow:"0 8px 30px rgba(0,0,0,0.14)" }}>
+                    <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                      <button onClick={() => replyToMessage(m)} style={menuBtnStyle}>Reply</button>
+                      <button onClick={() => copyMessageText(m)} style={menuBtnStyle}>Copy</button>
+                      {m.senderId === myUid && <button onClick={() => editMessage(m)} style={menuBtnStyle}>Edit</button>}
+                      <button onClick={() => forwardMessage(m)} style={menuBtnStyle}>Forward</button>
+                      <button onClick={() => pinMessage(m)} style={menuBtnStyle}>Pin</button>
+                      <button onClick={() => { if (confirm("Delete for everyone?")) deleteMessageForEveryone(m.id); else deleteMessageForMe(m.id); }} style={menuBtnStyle}>Delete</button>
+                      <button onClick={() => { setMenuOpenFor(null); setReactionFor(m.id); }} style={menuBtnStyle}>React</button>
+                      <button onClick={() => setMenuOpenFor(null)} style={menuBtnStyle}>Close</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {reactionFor === m.id && (
+                <div style={{ position:"absolute", top:"calc(100% - 12px)", transform:"translateY(6px)", zIndex:998 }}>
+                  <div style={{ display:"flex", gap:8, padding:8, borderRadius:20, background:isDark ? "#111" : "#fff", boxShadow:"0 6px 18px rgba(0,0,0,0.08)", alignItems:"center" }}>
+                    {INLINE_REACTIONS.map(r => <button key={r} onClick={() => applyReaction(m.id, r)} style={{ fontSize:18, width:36, height:36, borderRadius:10, border:"none", background:"transparent", cursor:"pointer" }}>{r}</button>)}
+                    <button onClick={() => { setEmojiPickerFor(m.id); setShowEmojiPicker(true); }} style={{ border:"none", background:"transparent", cursor:"pointer" }}>＋</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        <div ref={endRef} />
+      </main>
+
+      {/* scroll to latest arrow */}
+      {!isAtBottom && (
+        <button onClick={scrollToBottom} style={{ position:"fixed", left:"50%", transform:"translateX(-50%)", bottom:120, zIndex:80, background:"#007bff", color:"#fff", border:"none", borderRadius:22, width:48, height:48, fontSize:22 }}>↓</button>
+      )}
+
+      {/* pinned reply preview */}
+      {replyTo && (
+        <div style={{ position:"sticky", bottom:84, left:12, right:12, display:"flex", justifyContent:"space-between", background:isDark ? "#101010" : "#fff", padding:8, borderRadius:8, boxShadow:"0 6px 18px rgba(0,0,0,0.08)", zIndex:90 }}>
+          <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+            <div style={{ width:4, height:40, background:"#34B7F1", borderRadius:4 }} />
+            <div style={{ maxWidth:"85%" }}>
+              <div style={{ fontSize:12, color:"#888" }}>{replyTo.senderId === myUid ? "You" : "Them"}</div>
+              <div style={{ fontSize:14, fontWeight:700, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{replyTo.text || (replyTo.mediaType || 'media')}</div>
+            </div>
+          </div>
+          <div style={{ display:"flex", gap:8 }}>
+            <button onClick={() => { const id = replyTo.id; const el = document.getElementById(`msg-${id}`); if (el) { el.scrollIntoView({ behavior: "smooth", block: "center" }); } setReplyTo(null); }} style={{ border:"none", background:"transparent", cursor:"pointer" }}>Go</button>
+            <button onClick={() => setReplyTo(null)} style={{ border:"none", background:"transparent", cursor:"pointer" }}>✕</button>
+          </div>
+        </div>
+      )}
+
+      {/* previews strip (multiple). Each preview has × (cancel) and one selected pinned */}
+      {previews.length > 0 && (
+        <div style={{ display:"flex", gap:8, padding:8, overflowX:"auto", alignItems:"center", borderTop:"1px solid rgba(0,0,0,0.06)", background:isDark ? "#0b0b0b" : "#fff" }}>
+          {previews.map((p, idx) => (
+            <div key={idx} style={{ position:"relative", cursor:"pointer", border: idx === selectedPreviewIndex ? `2px solid #34B7F1` : "none", borderRadius:8 }}>
+              {p.url ? (p.type === "image" ? <img onClick={() => setSelectedPreviewIndex(idx)} src={p.url} alt={p.name} style={{ width:80, height:80, objectFit:"cover", borderRadius:8 }} /> : p.type === "video" ? <video onClick={() => setSelectedPreviewIndex(idx)} src={p.url} style={{ width:110, height:80, objectFit:"cover", borderRadius:8 }} /> : <div style={{ width:80, height:80, display:"flex", alignItems:"center", justifyContent:"center", borderRadius:8, background:"#eee", padding:6 }}>{p.name}</div>) : (<div style={{ width:80, height:80, display:"flex", alignItems:"center", justifyContent:"center", borderRadius:8, background:"#eee" }}>{p.name}</div>)}
+              <button onClick={() => { setSelectedFiles(sf => sf.filter((_,i) => i !== idx)); setPreviews(ps => { const copy = ps.filter((_,i) => i !== idx); setSelectedPreviewIndex(prev => Math.max(0, Math.min(prev, copy.length - 1))); return copy; }); }} style={{ position:"absolute", top:-6, right:-6, background:"#ff4d4f", border:"none", borderRadius:"50%", width:22, height:22, color:"#fff", cursor:"pointer" }}>×</button>
+            </div>
+          ))}
+
+          {/* send and cancel */}
+          <div style={{ marginLeft:"auto", display:"flex", gap:8 }}>
+            <button onClick={sendTextMessage} style={{ padding:"8px 12px", borderRadius:8, background:"#34B7F1", color:"#fff", border:"none", cursor:"pointer" }}>➤</button>
+            <button onClick={() => { setSelectedFiles([]); setPreviews([]); setSelectedPreviewIndex(0); }} style={{ padding:"8px 12px", borderRadius:8, background:"#ddd", border:"none", cursor:"pointer" }}>×</button>
+          </div>
+        </div>
+      )}
+
+      {/* input area: 📎 Type a message... ➤ (press-and-hold to record when empty) */}
+      <div style={{ position:"sticky", bottom:0, background:isDark ? "#0b0b0b" : "#fff", padding:10, borderTop:"1px solid rgba(0,0,0,0.06)", display:"flex", alignItems:"center", gap:8, zIndex:90 }}>
+        <label style={{ cursor:"pointer", display:"inline-flex", alignItems:"center", justifyContent:"center" }}>
+          📎
+          <input type="file" multiple style={{ display:"none" }} onChange={onFilesSelected} />
+        </label>
+
+        {/* pinned selected preview above input (thumbnail) */}
+        {previews.length > 0 && previews[selectedPreviewIndex] && (
+          <div style={{ width:80, height:80, borderRadius:8, overflow:"hidden" }}>
+            {previews[selectedPreviewIndex].url ? (previews[selectedPreviewIndex].type === "image" ? <img src={previews[selectedPreviewIndex].url} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : <video src={previews[selectedPreviewIndex].url} style={{ width:"100%", height:"100%", objectFit:"cover" }} />) : <div style={{ width:"100%", height:"100%", display:"flex", alignItems:"center", justifyContent:"center", background:"#eee" }}>{previews[selectedPreviewIndex].name}</div>}
+          </div>
+        )}
+
+        <div style={{ flex:1 }}>
+          <input type="text" value={text} onChange={(e) => setText(e.target.value)} placeholder="Type a message..." onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendTextMessage(); } }} style={{ width:"100%", padding:"10px 12px", borderRadius:20, border:"1px solid rgba(0,0,0,0.06)", background:isDark ? "#111" : "#f5f5f5", color:isDark ? "#fff" : "#000" }} />
+        </div>
+
+        <div>
+          <button
+            onMouseDown={(e) => { if (!text.trim() && previews.length === 0) holdStart(e); }}
+            onMouseUp={(e) => { if (!text.trim() && previews.length === 0) holdEnd(e); else if (text.trim() || previews.length > 0) sendTextMessage(); }}
+            onTouchStart={(e) => { if (!text.trim() && previews.length === 0) holdStart(e); }}
+            onTouchEnd={(e) => { if (!text.trim() && previews.length === 0) holdEnd(e); else if (text.trim() || previews.length > 0) sendTextMessage(); }}
+            onClick={(e) => { if (text.trim() || previews.length > 0) sendTextMessage(); }}
+            style={{ padding:10, borderRadius:12, background:"#34B7F1", color:"#fff", border:"none", cursor:"pointer" }}
+            title={(!text.trim() && previews.length === 0) ? (recording ? "Recording... release to send" : "Hold to record, click to start") : "Send"}
+          >
+            {(!text.trim() && previews.length === 0) ? (recording ? "● Recording" : "🎤") : "➤"}
+          </button>
+        </div>
+      </div>
+
+      {/* emoji picker modal */}
+      {showEmojiPicker && (
+        <div style={{ position:"fixed", left:0, right:0, top:0, bottom:0, background:"rgba(0,0,0,0.35)", display:"flex", alignItems:"flex-end", zIndex:999 }}>
+          <div style={{ width:"100%", maxHeight:"45vh", background:isDark ? "#0b0b0b" : "#fff", borderTopLeftRadius:14, borderTopRightRadius:14, padding:12, overflowY:"auto" }}>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(8,1fr)", gap:8 }}>
+              {EXTENDED_EMOJIS.map(e => <button key={e} onClick={() => { applyReaction(emojiPickerFor, e); setShowEmojiPicker(false); }} style={{ padding:10, fontSize:20, border:"none", background:"transparent" }}>{e}</button>)}
+            </div>
+            <div style={{ textAlign:"right", marginTop:8 }}><button onClick={() => setShowEmojiPicker(false)} style={{ padding:"8px 10px", borderRadius:8, border:"none", background:"#ddd" }}>Close</button></div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
-setHeaderMenuOpen(false);
+
+const menuBtnStyle = {
+  padding: "8px 10px",
+  borderRadius: 8,
+  border: "none",
+  background: "transparent",
+  cursor: "pointer",
+  textAlign: "left"
 };
-
-// -------------------- Render --------------------
-const renderMessage = (m, idx) => {
-const isMine = m.senderId === myUid;
-const showMenu = menuOpenFor === m.id;
-const showReactionPicker = reactionFor === m.id;
-const senderName = isMine ? "You" : friendInfo?.name || "Friend";
-const time = fmtTime(m.createdAt);
-
-return (  
-  <div key={m.id} style={{ display: "flex", flexDirection: "column", alignItems: isMine ? "flex-end" : "flex-start", marginBottom: SPACING.sm }}>  
-
-    {/* Day label separator */}  
-    {idx === 0 || dayLabel(messages[idx-1]?.createdAt) !== dayLabel(m.createdAt) ? (  
-      <div style={{ textAlign: "center", fontSize: 12, color: COLORS.mutedText, margin: `${SPACING.sm}px 0` }}>  
-        {dayLabel(m.createdAt)}  
-      </div>  
-    ) : null}  
-
-    <div  
-      onTouchStart={() => handleMsgTouchStart(m)}  
-      onTouchMove={handleMsgTouchMove}  
-      onTouchEnd={() => handleMsgTouchEnd(m)}  
-      style={{  
-        maxWidth: "70%",  
-        padding: SPACING.sm,  
-        borderRadius: SPACING.borderRadius,  
-        backgroundColor: isMine ? COLORS.primary : isDark ? COLORS.darkCard : COLORS.lightCard,  
-        color: isMine ? "#fff" : isDark ? COLORS.darkText : COLORS.lightText,  
-        position: "relative",  
-        cursor: "pointer",  
-        wordBreak: "break-word"  
-      }}  
-    >  
-      {/* Reply preview inside message */}  
-      {m.replyTo && (  
-        <div style={{ fontSize: 12, color: COLORS.edited, borderLeft: `3px solid ${COLORS.mutedText}`, paddingLeft: 4, marginBottom: 4 }}>  
-          {m.replyTo.text || m.replyTo.mediaType}  
-        </div>  
-      )}  
-
-      {/* Message text */}  
-      {m.text && <div>{m.text}</div>}  
-
-      {/* Media attachments */}  
-      {m.mediaUrl && (  
-        <div style={{ marginTop: 4 }}>  
-          {m.mediaType === "image" && <img src={m.mediaUrl} alt="" style={{ maxWidth: "100%", borderRadius: SPACING.borderRadius }} />}  
-          {m.mediaType === "video" && <video src={m.mediaUrl} controls style={{ maxWidth: "100%", borderRadius: SPACING.borderRadius }} />}  
-          {m.mediaType === "audio" && <audio src={m.mediaUrl} controls />}  
-          {m.mediaType === "pdf" && <a href={m.mediaUrl} target="_blank" rel="noreferrer">{m.fileName || "PDF Document"}</a>}  
-        </div>  
-      )}  
-
-      {/* Timestamp & status */}  
-      <div style={{ fontSize: 10, color: COLORS.mutedText, marginTop: 2, textAlign: "right" }}>  
-        {m.edited && "(edited)"} {time} {m.status && isMine ? `• ${m.status}` : ""}  
-      </div>  
-
-      {/* Reactions */}  
-      {Object.keys(m.reactions || {}).length > 0 && (  
-        <div style={{ position: "absolute", bottom: -12, right: -12, display: "flex", gap: 2 }}>  
-          {Object.values(m.reactions).map((r, i) => r && <span key={i} style={{ backgroundColor: COLORS.reactionBg, color: "#fff", borderRadius: 8, padding: "0 4px", fontSize: 10 }}>{r}</span>)}  
-        </div>  
-      )}  
-
-      {/* Message menu */}  
-      {showMenu && (  
-        <div className="menu" style={{ position: "absolute", top: -SPACING.lg, right: 0, background: COLORS.lightCard, border: `1px solid ${COLORS.grayBorder}`, borderRadius: SPACING.borderRadius, zIndex: 10 }}>  
-          <button style={menuBtnStyle} onClick={() => replyToMessage(m)}>Reply</button>  
-          <button style={menuBtnStyle} onClick={() => setReactionFor(m.id)}>React</button>  
-          {isMine && <button style={menuBtnStyle} onClick={() => editMessage(m)}>Edit</button>}  
-          {isMine && <button style={menuBtnStyle} onClick={() => deleteMessageForEveryone(m.id)}>Delete for Everyone</button>}  
-          <button style={menuBtnStyle} onClick={() => deleteMessageForMe(m.id)}>Delete for Me</button>  
-          <button style={menuBtnStyle} onClick={() => forwardMessage(m)}>Forward</button>  
-          <button style={menuBtnStyle} onClick={() => pinMessage(m)}>Pin</button>  
-          <button style={menuBtnStyle} onClick={() => copyMessageText(m)}>Copy</button>  
-          <button style={menuBtnStyle} onClick={() => setMenuOpenFor(null)}>Close</button>  
-        </div>  
-      )}  
-
-      {/* Inline reaction picker */}  
-      {showReactionPicker && (  
-        <div className="emoji-picker" style={{ position: "absolute", bottom: -28, left: 0, display: "flex", gap: 4, background: COLORS.lightCard, borderRadius: SPACING.borderRadius, padding: "2px 4px" }}>  
-          {INLINE_REACTIONS.map((r, i) => (  
-            <span key={i} style={{ cursor: "pointer", fontSize: 14 }} onClick={() => applyReaction(m.id, r)}>{r}</span>  
-          ))}  
-        </div>  
-      )}  
-    </div>  
-  </div>  
-);
-
-};
-
-return (
-<div style={{ display: "flex", flexDirection: "column", height: "100vh", backgroundColor: wallpaper || (isDark ? COLORS.darkBg : COLORS.lightBg), color: isDark ? COLORS.darkText : COLORS.lightText }}>
-
-{/* ---------------- Header ---------------- */}  
-  <div style={{ height: 56, backgroundColor: COLORS.headerBlue, color: "#fff", display: "flex", alignItems: "center", padding: "0 12px", justifyContent: "space-between", position: "relative" }}>  
-    <div style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }} onClick={() => navigate(`/profile/${friendInfo?.id}`)}>  
-      <button onClick={() => navigate(-1)} style={{ background: "transparent", border: "none", color: "#fff", fontSize: 18 }}>←</button>  
-      <img src={friendInfo?.photoURL || ""} alt="" style={{ width: 36, height: 36, borderRadius: "50%" }} />  
-      <div>  
-        <div>{friendInfo?.name || "Chat"}</div>  
-        <div style={{ fontSize: 12 }}>{friendInfo?.status || ""}</div>  
-      </div>  
-    </div>  
-    <div style={{ display: "flex", gap: 12 }}>  
-      <button onClick={() => navigate(`/voice-call/${chatId}`)} style={{ background: "transparent", border: "none", color: "#fff" }}>📞</button>  
-      <button onClick={() => navigate(`/video-call/${chatId}`)} style={{ background: "transparent", border: "none", color: "#fff" }}>🎥</button>  
-      <button onClick={() => setHeaderMenuOpen(prev => !prev)} style={{ background: "transparent", border: "none", color: "#fff" }}>⋮</button>  
-    </div>  
-    {headerMenuOpen && (  
-      <div className="menu" style={{ position: "absolute", top: 56, right: 12, background: COLORS.lightCard, borderRadius: SPACING.borderRadius, boxShadow: "0 2px 6px rgba(0,0,0,0.2)", zIndex: 20 }}>  
-        <button style={menuBtnStyle} onClick={clearChat}>Clear Chat</button>  
-        <button style={menuBtnStyle} onClick={toggleBlock}>{(chatInfo?.blockedBy || []).includes(myUid) ? "Unblock" : "Block"}</button>  
-        <button style={menuBtnStyle} onClick={() => setHeaderMenuOpen(false)}>Close</button>  
-      </div>  
-    )}  
-  </div>  
-
-  {/* ---------------- Messages ---------------- */}  
-  <div ref={messagesRefEl} style={{ flex: 1, overflowY: "auto", padding: SPACING.sm }}>  
-    {loadingMsgs && <div style={{ textAlign: "center", marginTop: SPACING.md }}>Loading...</div>}  
-    {messages.map(renderMessage)}  
-    <div ref={endRef} />  
-  </div>  
-
-  {/* ---------------- Reply Preview ---------------- */}  
-  {replyTo && (  
-    <div style={{ padding: SPACING.sm, background: isDark ? COLORS.darkCard : COLORS.lightCard, borderTop: `1px solid ${COLORS.grayBorder}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>  
-      <div>  
-        Replying to: <b>{replyTo.text || replyTo.mediaType}</b>  
-      </div>  
-      <button onClick={() => setReplyTo(null)} style={{ border: "none", background: "transparent", fontSize: 16 }}>×</button>  
-    </div>  
-  )}  
-
-  {/* ---------------- Input ---------------- */}  
-  <div style={{ padding: SPACING.sm, display: "flex", alignItems: "center", gap: SPACING.sm, borderTop: `1px solid ${COLORS.grayBorder}`, background: isDark ? COLORS.darkCard : COLORS.lightCard }}>  
-    <button onClick={() => setShowEmojiPicker(prev => !prev)} style={{ fontSize: 24, background: "transparent", border: "none" }}>😊</button>  
-    <input  
-      value={text}  
-      onChange={e => setText(e.target.value)}  
-      placeholder="Type a message"  
-      style={{ flex: 1, padding: SPACING.sm, borderRadius: SPACING.borderRadius, border: `1px solid ${COLORS.grayBorder}`, outline: "none", background: isDark ? COLORS.darkBg : "#fff", color: isDark ? COLORS.darkText : COLORS.lightText }}  
-      onKeyDown={e => e.key === "Enter" && sendTextMessage()}  
-    />  
-    <input type="file" multiple onChange={onFilesSelected} style={{ display: "none" }} id="fileInput" />  
-    <label htmlFor="fileInput" style={{ cursor: "pointer" }}>📎</label>  
-    <button  
-      onMouseDown={holdStart}  
-      onMouseUp={holdEnd}  
-      onTouchStart={holdStart}  
-      onTouchEnd={holdEnd}  
-      onClick={sendTextMessage}  
-      style={{ fontSize: 18, background: "transparent", border: "none" }}  
-    >  
-      {recording ? "🔴" : "📩"}  
-    </button>  
-  </div>  
-
-  {/* ---------------- Emoji Picker ---------------- */}  
-  {showEmojiPicker && (  
-    <div className="emoji-picker" style={{ position: "absolute", bottom: 60, left: 12, background: COLORS.lightCard, borderRadius: SPACING.borderRadius, padding: SPACING.sm, display: "flex", flexWrap: "wrap", maxWidth: 300, gap: 4, boxShadow: "0 2px 6px rgba(0,0,0,0.2)" }}>  
-      {EXTENDED_EMOJIS.map((e, i) => (  
-        <span key={i} style={{ cursor: "pointer", fontSize: 20 }} onClick={() => setText(prev => prev + e)}>{e}</span>  
-      ))}  
-      <button onClick={() => setShowEmojiPicker(false)} style={{ border: "none", background: "transparent", fontSize: 16 }}>×</button>  
-    </div>  
-  )}  
-</div>
-
-);
-}
