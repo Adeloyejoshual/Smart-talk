@@ -4,6 +4,7 @@ import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "./context/ThemeContext";
 import { auth, setUserPresence } from "./firebaseConfig";
 
+// Pages
 import HomePage from "./components/HomePage";
 import ChatPage from "./components/ChatPage";
 import ChatConversationPage from "./components/ChatConversationPage";
@@ -11,17 +12,18 @@ import CallPage from "./components/CallPage";
 import SettingsPage from "./components/SettingsPage";
 import CallHistoryPage from "./components/CallHistoryPage";
 import WithdrawalPage from "./components/WithdrawalPage";
-import ProtectedRoute from "./components/ProtectedRoute";
-
-// NEW PAGES
 import UserProfile from "./components/UserProfile";
 import VoiceCallPage from "./components/VoiceCallPage";
 import VideoCallPage from "./components/VideoCallPage";
+
+// Components
+import ProtectedRoute from "./components/ProtectedRoute";
 
 export default function App() {
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [user, setUser] = useState(null);
 
+  // Listen for auth changes and set presence
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((u) => {
       setUser(u);
@@ -32,10 +34,10 @@ export default function App() {
         return () => cleanupPresence && cleanupPresence();
       }
     });
-
     return () => unsubscribe();
   }, []);
 
+  // Splash/loading screen
   if (checkingAuth) {
     return (
       <div
@@ -99,8 +101,10 @@ export default function App() {
     <ThemeProvider>
       <Router>
         <Routes>
+          {/* Public Route */}
           <Route path="/" element={user ? <ChatPage /> : <HomePage />} />
 
+          {/* Protected Routes */}
           <Route
             path="/chat"
             element={
@@ -109,7 +113,6 @@ export default function App() {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/chat/:chatId"
             element={
@@ -118,7 +121,6 @@ export default function App() {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/call"
             element={
@@ -127,7 +129,6 @@ export default function App() {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/settings"
             element={
@@ -136,7 +137,6 @@ export default function App() {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/history"
             element={
@@ -145,7 +145,6 @@ export default function App() {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/withdrawal"
             element={
@@ -155,11 +154,7 @@ export default function App() {
             }
           />
 
-          {/* ----------------------
-              NEW ROUTES ADDED
-          ----------------------- */}
-
-          {/* USER PROFILE */}
+          {/* User Profile */}
           <Route
             path="/profile/:uid"
             element={
@@ -169,7 +164,7 @@ export default function App() {
             }
           />
 
-          {/* VOICE CALL */}
+          {/* Voice Call */}
           <Route
             path="/voicecall/:uid"
             element={
@@ -179,7 +174,7 @@ export default function App() {
             }
           />
 
-          {/* VIDEO CALL */}
+          {/* Video Call */}
           <Route
             path="/videocall/:uid"
             element={
@@ -188,7 +183,6 @@ export default function App() {
               </ProtectedRoute>
             }
           />
-
         </Routes>
       </Router>
     </ThemeProvider>
