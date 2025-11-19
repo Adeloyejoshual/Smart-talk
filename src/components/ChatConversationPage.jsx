@@ -298,7 +298,7 @@ export default function ChatConversationPage() {
       setChatInfo(prev => ({ ...prev, blockedBy: blockedBy.filter(id => id !== myUid) }));
       alert("You unblocked this chat.");
     } else {
-      await updateDoc(chat
+      await updateDoc(chatRef, { blockedBy: arrayUnion(myUid) });
 Info, { ...prev, blockedBy: [...blockedBy, myUid] }));
       alert("You blocked this chat.");
     }
