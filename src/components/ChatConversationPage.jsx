@@ -15,12 +15,12 @@ import {
   arrayRemove,
   deleteDoc,
   limit as fsLimit,
-  getDocs
+  getDocs,
 } from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
 import { ThemeContext } from "../context/ThemeContext";
 
-// ---------- Helpers ----------
+// -------------------- Helpers --------------------
 const fmtTime = (ts) => {
   if (!ts) return "";
   const d = ts.toDate ? ts.toDate() : new Date(ts);
@@ -37,51 +37,45 @@ const dayLabel = (ts) => {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: d.getFullYear() !== now.getFullYear() ? "numeric" : undefined });
 };
 
-const formatLastSeen = (ts) => {
-  if (!ts) return "Offline";
-  const d = ts.toDate ? ts.toDate() : new Date(ts);
-  const now = new Date();
-  const diff = Math.floor((now - d) / 1000 / 60); // minutes
-  if (diff < 1) return "Just now";
-  if (diff < 60) return `${diff} minutes ago`;
-  const yesterday = new Date(); yesterday.setDate(now.getDate() - 1);
-  if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: d.getFullYear() !== now.getFullYear() ? "numeric" : undefined });
-};
-
-const detectFileType = (file) => {
-  const t = file.type;
-  if (t.startsWith("image/")) return "image";
-  if (t.startsWith("video/")) return "video";
-  if (t.startsWith("audio/")) return "audio";
-  if (t === "application/pdf") return "pdf";
-  return "file";
-};
-
+// -------------------- Constants --------------------
 const INLINE_REACTIONS = ["❤️", "😂", "👍", "😮", "😢"];
 const EXTENDED_EMOJIS = ["❤️","😂","👍","😮","😢","👎","👏","🔥","😅","🤩","😍","😎","🙂","🙃","😉","🤔","🤨","🤗","🤯","🥳","🙏","💪"];
+const COLORS = {
+  primary: "#34B7F1",
+  primaryDark: "#007bff",
+  headerBlue: "#1877F2",
+  lightBg: "#f5f5f5",
+  darkBg: "#0b0b0b",
+  lightText: "#000",
+  darkText: "#fff",
+  lightCard: "#fff",
+  darkCard: "#1b1b1b",
+  mutedText: "#888",
+  grayBorder: "rgba(0,0,0,0.06)",
+  edited: "#999",
+  reactionBg: "#111"
+};
+const SPACING = { xs: 4, sm: 8, md: 12, lg: 14, xl: 20, borderRadius: 12 };
+const menuBtnStyle = { padding: SPACING.sm, borderRadius: SPACING.borderRadius, border: "none", background: "transparent", cursor: "pointer", textAlign: "left", width: "100%" };
 
+// -------------------- Component --------------------
 export default function ChatConversationPage() {
   const { chatId } = useParams();
   const navigate = useNavigate();
   const { theme, wallpaper } = useContext(ThemeContext);
   const isDark = theme === "dark";
-  const myUid = auth.currentUser?.uid;
 
-  // ---------- Refs ----------
+  const myUid = auth.currentUser?.uid;
   const messagesRefEl = useRef(null);
   const endRef = useRef(null);
-  const pinnedMessageRef = useRef(null);
   const longPressTimer = useRef(null);
   const swipeStartX = useRef(null);
   const recorderRef = useRef(null);
   const recorderChunksRef = useRef([]);
 
-  // ---------- State ----------
   const [chatInfo, setChatInfo] = useState(null);
   const [friendInfo, setFriendInfo] = useState(null);
   const [messages, setMessages] = useState([]);
-  const [pinnedMessage, setPinnedMessage] = useState(null);
   const [loadingMsgs, setLoadingMsgs] = useState(true);
   const [text, setText] = useState("");
   const [selectedFiles, setSelectedFiles] = useState([]);
@@ -98,39 +92,34 @@ export default function ChatConversationPage() {
   const [recorderAvailable, setRecorderAvailable] = useState(false);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
 
-  // ---------- Cloudinary Upload ----------
-  const uploadToCloudinary = (file, onProgress) => {
-    return new Promise((resolve, reject) => {
-      try {
-        const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
-        const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
-        if (!cloudName || !uploadPreset) return reject(new Error("Cloudinary env not set"));
-        const url = `https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`;
-        const xhr = new XMLHttpRequest();
-        xhr.open("POST", url);
-        xhr.upload.addEventListener("progress", (e) => {
-          if (e.lengthComputable && onProgress) {
-            onProgress(Math.round((e.loaded * 100) / e.total));
-          }
-        });
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            const res = JSON.parse(xhr.responseText);
-            resolve(res.secure_url || res.url);
-          } else reject(new Error("Cloudinary upload failed: " + xhr.status));
-        };
-        xhr.onerror = () => reject(new Error("Network error"));
-        const fd = new FormData();
-        fd.append("file", file);
-        fd.append("upload_preset", uploadPreset);
-        xhr.send(fd);
-      } catch (err) {
-        reject(err);
-      }
-    });
+  // -------------------- Cloudinary --------------------
+  const detectFileType = (file) => {
+    const t = file.type;
+    if (t.startsWith("image/")) return "image";
+    if (t.startsWith("video/")) return "video";
+    if (t.startsWith("audio/")) return "audio";
+    if (t === "application/pdf") return "pdf";
+    return "file";
   };
+  const uploadToCloudinary = (file, onProgress) => new Promise((resolve, reject) => {
+    try {
+      const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+      const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+      if (!cloudName || !uploadPreset) return reject(new Error("Cloudinary env not set"));
+      const url = `https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`;
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", url);
+      xhr.upload.addEventListener("progress", e => { if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded * 100) / e.total)); });
+      xhr.onload = () => { if (xhr.status >= 200 && xhr.status < 300) resolve(JSON.parse(xhr.responseText).secure_url); else reject(new Error("Cloudinary upload failed")); };
+      xhr.onerror = () => reject(new Error("Network error"));
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("upload_preset", uploadPreset);
+      xhr.send(fd);
+    } catch (err) { reject(err); }
+  });
 
-  // ---------- Load Chat Info ----------
+  // -------------------- Load chat & friend --------------------
   useEffect(() => {
     if (!chatId) return;
     let unsubChat = null;
@@ -141,60 +130,74 @@ export default function ChatConversationPage() {
         if (cSnap.exists()) {
           const data = cSnap.data();
           setChatInfo({ id: cSnap.id, ...data });
-          // Friend info
           const friendId = data.participants?.find(p => p !== myUid);
           if (friendId) {
             const fRef = doc(db, "users", friendId);
             const fSnap = await getDoc(fRef);
             if (fSnap.exists()) setFriendInfo({ id: fSnap.id, ...fSnap.data() });
           }
-          // pinned message
-          if (data.pinnedMessageId) {
-            const pSnap = await getDoc(doc(db, "chats", chatId, "messages", data.pinnedMessageId));
-            if (pSnap.exists()) setPinnedMessage({ id: pSnap.id, ...pSnap.data() });
-          }
         }
-        unsubChat = onSnapshot(cRef, s => {
-          if (s.exists()) setChatInfo(prev => ({ ...(prev||{}), ...s.data() }));
-        });
-      } catch(e){ console.error(e); }
+        unsubChat = onSnapshot(doc(db, "chats", chatId), s => { if (s.exists()) setChatInfo(prev => ({ ...(prev||{}), ...s.data() })); });
+      } catch (e) { console.error(e); }
     };
     loadMeta();
-    return () => unsubChat && unsubChat();
+    return () => { if (unsubChat) unsubChat(); };
   }, [chatId, myUid]);
 
-  // ---------- Messages Realtime ----------
+  // -------------------- Messages realtime --------------------
   useEffect(() => {
     if (!chatId) return;
     setLoadingMsgs(true);
-    const msgsRef = collection(db, "chats", chatId, "messages");
-    const q = query(msgsRef, orderBy("createdAt", "asc"), fsLimit(2000));
+    const q = query(collection(db, "chats", chatId, "messages"), orderBy("createdAt", "asc"), fsLimit(2000));
     const unsub = onSnapshot(q, snap => {
-      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      const filtered = docs.filter(m => !(m.deletedFor?.includes(myUid)));
-      setMessages(filtered);
+      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(m => !(m.deletedFor?.includes(myUid)));
+      setMessages(docs);
+      docs.forEach(async m => { if (m.senderId !== myUid && m.status === "sent") await updateDoc(doc(db, "chats", chatId, "messages", m.id), { status: "delivered" }); });
       setLoadingMsgs(false);
       setTimeout(() => { if (isAtBottom) endRef.current?.scrollIntoView({ behavior: "smooth" }); }, 80);
     });
     return () => unsub();
   }, [chatId, myUid, isAtBottom]);
 
-  // ---------- Scroll Detection ----------
+  // -------------------- Scroll detection --------------------
   useEffect(() => {
     const el = messagesRefEl.current;
     if (!el) return;
-    const onScroll = () => {
-      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-      setIsAtBottom(atBottom);
-    };
+    const onScroll = () => { setIsAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 80); };
     el.addEventListener("scroll", onScroll);
     return () => el.removeEventListener("scroll", onScroll);
   }, []);
 
   const scrollToBottom = () => { endRef.current?.scrollIntoView({ behavior: "smooth" }); setIsAtBottom(true); };
 
-  // ---------- File Select ----------
-  const onFilesSelected = (e) => {
+  // -------------------- Mark seen --------------------
+  useEffect(() => {
+    const onVisibility = async () => {
+      if (document.visibilityState !== "visible") return;
+      const lastIncoming = [...messages].reverse().find(m => m.senderId !== myUid);
+      if (lastIncoming && lastIncoming.status !== "seen") await updateDoc(doc(db, "chats", chatId, "messages", lastIncoming.id), { status: "seen" });
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    onVisibility();
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [messages, chatId, myUid]);
+
+  // -------------------- Click outside to close menus --------------------
+  useEffect(() => {
+    const handleClickOutside = e => {
+      if (!e.target.closest(".menu") && !e.target.closest(".emoji-picker")) {
+        setMenuOpenFor(null);
+        setReactionFor(null);
+        setShowEmojiPicker(false);
+        setHeaderMenuOpen(false);
+      }
+    };
+    document.addEventListener("click", handleClickOutside);
+    return () => document.removeEventListener("click", handleClickOutside);
+  }, []);
+
+  // -------------------- File select & preview --------------------
+  const onFilesSelected = e => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
     const newPreviews = files.map(f => ({
@@ -208,156 +211,277 @@ export default function ChatConversationPage() {
     setSelectedPreviewIndex(prev => prev >= 0 ? prev : 0);
   };
 
-  // ---------- Send Message ----------
+  // -------------------- Send message --------------------
   const sendTextMessage = async () => {
-    if (chatInfo?.blockedBy?.includes(myUid)) return alert("You are blocked");
+    if ((chatInfo?.blockedBy || []).includes(myUid)) return alert("You are blocked in this chat.");
+    
     if (selectedFiles.length > 0) {
       const filesToSend = [...selectedFiles];
       setSelectedFiles([]); setPreviews([]); setSelectedPreviewIndex(0);
       for (const file of filesToSend) {
         try {
-          const placeholder = { senderId: myUid, text:"", mediaUrl:"", mediaType:detectFileType(file), fileName:file.name, createdAt:serverTimestamp(), status:"uploading", reactions:{} };
-          const mRef = await addDoc(collection(db,"chats",chatId,"messages"), placeholder);
+          const placeholder = { senderId: myUid, text: "", mediaUrl: "", mediaType: detectFileType(file), fileName: file.name, createdAt: serverTimestamp(), status: "uploading", reactions: {} };
+          const mRef = await addDoc(collection(db, "chats", chatId, "messages"), placeholder);
           const messageId = mRef.id;
           setUploadingIds(prev => ({ ...prev, [messageId]: 0 }));
           const url = await uploadToCloudinary(file, pct => setUploadingIds(prev => ({ ...prev, [messageId]: pct })));
-          await updateDoc(doc(db,"chats",chatId,"messages",messageId), { mediaUrl:url, status:"sent", sentAt:serverTimestamp() });
-          setTimeout(()=>setUploadingIds(prev=>{ const c={...prev}; delete c[messageId]; return c; }),200);
-        } catch(err){ console.error(err); }
+          await updateDoc(doc(db, "chats", chatId, "messages", messageId), { mediaUrl: url, status: "sent", sentAt: serverTimestamp() });
+          setTimeout(() => setUploadingIds(prev => { const c={...prev}; delete c[messageId]; return c; }), 200);
+        } catch (err) { console.error("upload error:", err); }
       }
       return;
     }
+
     if (text.trim()) {
       try {
-        const payload = { senderId: myUid, text:text.trim(), mediaUrl:"", mediaType:null, createdAt:serverTimestamp(), status:"sent", reactions:{} };
-        if (replyTo) payload.replyTo = { id:replyTo.id, text:replyTo.text || replyTo.mediaType, senderId:replyTo.senderId };
-        setReplyTo(null);
-        await addDoc(collection(db,"chats",chatId,"messages"), payload);
+        const payload = { senderId: myUid, text: text.trim(), mediaUrl: "", mediaType: null, createdAt: serverTimestamp(), status: "sent", reactions: {} };
+        if (replyTo) { payload.replyTo = { id: replyTo.id, text: replyTo.text || (replyTo.mediaType || "media"), senderId: replyTo.senderId }; setReplyTo(null); }
+        await addDoc(collection(db, "chats", chatId, "messages"), payload);
         setText("");
-        setTimeout(()=>endRef.current?.scrollIntoView({ behavior:"smooth" }),80);
-      } catch(e){ console.error(e); alert("Failed to send"); }
+        setTimeout(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), 80);
+      } catch (e) { console.error(e); alert("Failed to send"); }
     }
   };
 
-  // ---------- Return JSX ----------
-  return (
-    <div className={`flex flex-col h-full w-full relative ${wallpaper ? "bg-cover bg-center" : isDark ? "bg-gray-900" : "bg-gray-100"}`}
-         style={{ backgroundImage: wallpaper ? `url(${wallpaper})` : undefined }}>
+  // -------------------- Recording --------------------
+  useEffect(() => setRecorderAvailable(!!(navigator.mediaDevices && window.MediaRecorder)), []);
+  const startRecording = async () => {
+    if (!recorderAvailable) return alert("Recording not supported");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mr = new MediaRecorder(stream);
+      recorderChunksRef.current = [];
+      mr.ondataavailable = ev => { if (ev.data.size) recorderChunksRef.current.push(ev.data); };
+      mr.onstop = async () => {
+        const blob = new Blob(recorderChunksRef.current, { type: "audio/webm" });
+        const placeholder = { senderId: myUid, text: "", mediaUrl: "", mediaType: "audio", createdAt: serverTimestamp(), status: "uploading", reactions: {} };
+        try {
+          const mRef = await addDoc(collection(db, "chats", chatId, "messages"), placeholder);
+          const messageId = mRef.id;
+          setUploadingIds(prev => ({ ...prev, [messageId]: 0 }));
+          const url = await uploadToCloudinary(blob, pct => setUploadingIds(prev => ({ ...prev, [messageId]: pct })));
+          await updateDoc(doc(db, "chats", chatId, "messages", messageId), { mediaUrl: url, status: "sent", sentAt: serverTimestamp() });
+          setTimeout(() => setUploadingIds(prev => { const c={...prev}; delete c[messageId]; return c; }), 200);
+        } catch (err) { console.error("voice upload failed", err); }
+      };
+      mr.start();
+      recorderRef.current = mr;
+      setRecording(true);
+    } catch (err) { console.error(err); alert("Could not start recording"); }
+  };
+  const stopRecording = () => { try { recorderRef.current?.stop(); recorderRef.current?.stream?.getTracks().forEach(t=>t.stop()); } catch(e){} setRecording(false); };
+  const holdStart = e => { e.preventDefault(); longPressTimer.current = setTimeout(() => startRecording(), 250); };
+  const holdEnd = e => { clearTimeout(longPressTimer.current); if (recording) stopRecording(); };
 
-      {/* Header */}
-      <div className="flex items-center justify-between p-2 bg-white dark:bg-gray-800 sticky top-0 z-20 shadow-md">
-        <div className="flex items-center space-x-3 cursor-pointer" onClick={() => friendInfo && navigate(`/user-profile/${friendInfo.id}`)}>
-          <img src={friendInfo?.photoURL || "/default-avatar.png"} alt="avatar" className="w-10 h-10 rounded-full"/>
-          <div className="flex flex-col">
-            <span className="font-semibold text-gray-900 dark:text-gray-100">{friendInfo?.displayName || chatInfo?.name}</span>
-            <span className="text-xs text-gray-500 dark:text-gray-300">{formatLastSeen(friendInfo?.lastSeen)}</span>
-          </div>
-        </div>
-        <div className="flex items-center space-x-2">
-          <button onClick={() => navigate(`/voice-call/${chatId}`)} className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700">📞</button>
-          <button onClick={() => navigate(`/video-call/${chatId}`)} className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700">🎥</button>
-          <div className="relative">
-            <button onClick={() => setHeaderMenuOpen(!headerMenuOpen)} className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700">⋮</button>
-            {headerMenuOpen && (
-              <div className="absolute right-0 mt-1 w-40 bg-white dark:bg-gray-800 shadow-md rounded menu z-30">
-                <button onClick={() => setHeaderMenuOpen(false)} className="block w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700">View Profile</button>
-                <button onClick={() => { setHeaderMenuOpen(false); clearChat(); }} className="block w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700">Clear Chat</button>
-                <button onClick={() => { setHeaderMenuOpen(false); }} className="block w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700">{chatInfo?.blockedBy?.includes(myUid) ? "Unblock" : "Block"}</button>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+  // -------------------- Message actions --------------------
+  const applyReaction = async (messageId, emoji) => {
+    try {
+      const mRef = doc(db, "chats", chatId, "messages", messageId);
+      const snap = await getDoc(mRef);
+      if (!snap.exists()) return;
+      const existing = snap.data().reactions?.[myUid];
+      await updateDoc(mRef, { [`reactions.${myUid}`]: existing===emoji?null:emoji });
+      setReactionFor(null);
+    } catch(e){console.error(e);}
+  };
+  const copyMessageText = async m => { try { await navigator.clipboard.writeText(m.text||m.mediaUrl||""); alert("Copied"); setMenuOpenFor(null); } catch(e){alert("Copy failed");} };
+  const editMessage = async m => { if (m.senderId!==myUid) return alert("You can only edit your messages."); const newText=window.prompt("Edit message", m.text||""); if(newText==null) return; await updateDoc(doc(db, "chats", chatId, "messages", m.id), { text:newText, edited:true }); setMenuOpenFor(null); };
+  const deleteMessageForEveryone = async id => { if(!confirm("Delete for everyone?")) return; await deleteDoc(doc(db, "chats", chatId, "messages", id)); setMenuOpenFor(null); };
+  const deleteMessageForMe = async id => { await updateDoc(doc(db, "chats", chatId, "messages", id), { deletedFor: arrayUnion(myUid) }); setMenuOpenFor(null); };
+  const forwardMessage = m => navigate(`/forward/${m.id}`, { state: { message: m }});
+  const pinMessage = async m => { await updateDoc(doc(db, "chats", chatId), { pinnedMessageId: m.id, pinnedMessageText: m.text || (m.mediaType||"") }); setMenuOpenFor(null); alert("Pinned"); };
+  const replyToMessage = m => { setReplyTo(m); setMenuOpenFor(null); };
 
-      {/* Pinned Message */}
-      {pinnedMessage && (
-        <div ref={pinnedMessageRef} className="bg-yellow-100 dark:bg-yellow-700 text-yellow-900 dark:text-yellow-100 p-2 text-sm rounded-md mx-3 my-1 cursor-pointer flex justify-between items-center shadow" onClick={()=>pinnedMessageRef.current?.scrollIntoView({ behavior:"smooth", block:"center" })}>
-          <div className="truncate">📌 {pinnedMessage.text || pinnedMessage.mediaType || "Pinned message"}</div>
-          <div className="text-xs opacity-70">{new Date(pinnedMessage.createdAt?.toDate()).toLocaleDateString()}</div>
-        </div>
-      )}
+  // -------------------- Header actions --------------------
+  const clearChat = async () => { if(!confirm("Clear chat?")) return; const snap=await getDocs(query(collection(db,"chats",chatId,"messages"),orderBy("createdAt","asc"))); for(const d of snap.docs) try{await deleteDoc(d.ref);}catch(e){} setHeaderMenuOpen(false); alert("Chat cleared."); };
+  const toggleBlock = async () => {
+    if (!chatInfo) return;
+    const chatRef = doc(db, "chats", chatId);
+    const blockedBy = chatInfo.blockedBy || [];
+    if (blockedBy.includes(myUid)) {
+      await updateDoc(chatRef, { blockedBy: arrayRemove(myUid) });
+      setChatInfo(prev => ({ ...prev, blockedBy: blockedBy.filter(id => id !== myUid) }));
+      alert("You unblocked this chat.");
+    } else {
+      await updateDoc(chatRef, { blockedBy: arrayUnion(myUid) });
+      setChatInfo(prev => ({ ...prev, blockedBy: [...blockedBy, myUid] }));
+      alert("Youblocked this chat.");
+}
+setHeaderMenuOpen(false);
+};
 
-      {/* Messages */}
-      <div ref={messagesRefEl} className="flex-1 overflow-y-auto p-3 space-y-2">
-        {loadingMsgs && <div className="text-center text-gray-500 dark:text-gray-300">Loading messages…</div>}
-        {messages.map((m, idx) => {
-          const prev = messages[idx-1];
-          const showDay = !prev || dayLabel(prev.createdAt) !== dayLabel(m.createdAt);
-          const isMe = m.senderId === myUid;
-          const isPinned = pinnedMessage?.id === m.id;
-          return (
-            <React.Fragment key={m.id}>
-              {showDay && <div className="text-center text-gray-500 dark:text-gray-300 text-xs my-2">{dayLabel(m.createdAt)}</div>}
-              <div className={`flex ${isMe ? "justify-end" : "justify-start"} relative`}>
-                <div className={`max-w-[70%] p-2 rounded-lg ${isMe ? "bg-blue-500 text-white" : "bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100"} ${isPinned ? "border-2 border-yellow-400 dark:border-yellow-300" : ""}`}>
-                  {m.replyTo && (
-                    <div className="bg-gray-300 dark:bg-gray-600 p-1 rounded mb-1 text-xs truncate">
-                      <strong>{m.replyTo.senderId===myUid?"You":"Them"}:</strong> {m.replyTo.text}
-                    </div>
-                  )}
-                  {m.mediaUrl ? (
-                    m.mediaType==="image"?<img src={m.mediaUrl} alt={m.fileName} className="max-w-full rounded"/>:
-                    m.mediaType==="video"?<video src={m.mediaUrl} controls className="max-w-full rounded"/>:
-                    m.mediaType==="audio"?<audio src={m.mediaUrl} controls className="w-full"/>:
-                    <a href={m.mediaUrl} target="_blank" rel="noreferrer" className="underline">{m.fileName||"File"}</a>
-                  ) : <div className="break-words">{m.text}</div>}
-                  <div className="text-right text-xs opacity-70 mt-1">{fmtTime(m.createdAt)}</div>
-                </div>
-              </div>
-            </React.Fragment>
-          );
-        })}
-        <div ref={endRef}/>
-      </div>
+// -------------------- Render --------------------
+const renderMessage = (m, idx) => {
+const isMine = m.senderId === myUid;
+const showMenu = menuOpenFor === m.id;
+const showReactionPicker = reactionFor === m.id;
+const senderName = isMine ? "You" : friendInfo?.name || "Friend";
+const time = fmtTime(m.createdAt);
 
-      {/* Input */}
-      <div className="sticky bottom-0 bg-white dark:bg-gray-800 flex items-center p-2 gap-2 border-t border-gray-300 dark:border-gray-700">
-        <label className="cursor-pointer">
-          📎 <input type="file" multiple className="hidden" onChange={onFilesSelected}/>
-        </label>
-        <input type="text" className="flex-1<input
-          type="text"
-          className="flex-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-400"
-          placeholder="Type a message..."
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") sendTextMessage(); }}
-        />
-        <button
-          onClick={sendTextMessage}
-          className="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded-lg"
-        >
-          ➤
-        </button>
-      </div>
+return (  
+  <div key={m.id} style={{ display: "flex", flexDirection: "column", alignItems: isMine ? "flex-end" : "flex-start", marginBottom: SPACING.sm }}>  
 
-      {/* Selected File Previews */}
-      {previews.length > 0 && (
-        <div className="flex overflow-x-auto p-2 gap-2 bg-gray-100 dark:bg-gray-900 border-t border-gray-300 dark:border-gray-700">
-          {previews.map((p, i) => (
-            <div
-              key={i}
-              className={`relative w-20 h-20 rounded-lg overflow-hidden border ${i === selectedPreviewIndex ? "border-blue-500" : "border-gray-400"} cursor-pointer`}
-              onClick={() => setSelectedPreviewIndex(i)}
-            >
-              {p.type === "image" && <img src={p.url} alt={p.name} className="w-full h-full object-cover" />}
-              {p.type === "video" && <video src={p.url} className="w-full h-full object-cover" />}
-              {p.type === "audio" && <audio src={p.url} controls className="w-full h-full"/>}
-              {p.type === "file" && <div className="flex items-center justify-center w-full h-full bg-gray-300 dark:bg-gray-600 text-xs text-gray-700 dark:text-gray-200">{p.name}</div>}
-              <button
-                onClick={() => {
-                  setSelectedFiles(prev => prev.filter((_, idx) => idx !== i));
-                  setPreviews(prev => prev.filter((_, idx) => idx !== i));
-                  setSelectedPreviewIndex(0);
-                }}
-                className="absolute top-0 right-0 bg-red-500 text-white w-5 h-5 text-xs flex items-center justify-center rounded-full"
-              >
-                ×
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+    {/* Day label separator */}  
+    {idx === 0 || dayLabel(messages[idx-1]?.createdAt) !== dayLabel(m.createdAt) ? (  
+      <div style={{ textAlign: "center", fontSize: 12, color: COLORS.mutedText, margin: `${SPACING.sm}px 0` }}>  
+        {dayLabel(m.createdAt)}  
+      </div>  
+    ) : null}  
+
+    <div  
+      onTouchStart={() => handleMsgTouchStart(m)}  
+      onTouchMove={handleMsgTouchMove}  
+      onTouchEnd={() => handleMsgTouchEnd(m)}  
+      style={{  
+        maxWidth: "70%",  
+        padding: SPACING.sm,  
+        borderRadius: SPACING.borderRadius,  
+        backgroundColor: isMine ? COLORS.primary : isDark ? COLORS.darkCard : COLORS.lightCard,  
+        color: isMine ? "#fff" : isDark ? COLORS.darkText : COLORS.lightText,  
+        position: "relative",  
+        cursor: "pointer",  
+        wordBreak: "break-word"  
+      }}  
+    >  
+      {/* Reply preview inside message */}  
+      {m.replyTo && (  
+        <div style={{ fontSize: 12, color: COLORS.edited, borderLeft: `3px solid ${COLORS.mutedText}`, paddingLeft: 4, marginBottom: 4 }}>  
+          {m.replyTo.text || m.replyTo.mediaType}  
+        </div>  
+      )}  
+
+      {/* Message text */}  
+      {m.text && <div>{m.text}</div>}  
+
+      {/* Media attachments */}  
+      {m.mediaUrl && (  
+        <div style={{ marginTop: 4 }}>  
+          {m.mediaType === "image" && <img src={m.mediaUrl} alt="" style={{ maxWidth: "100%", borderRadius: SPACING.borderRadius }} />}  
+          {m.mediaType === "video" && <video src={m.mediaUrl} controls style={{ maxWidth: "100%", borderRadius: SPACING.borderRadius }} />}  
+          {m.mediaType === "audio" && <audio src={m.mediaUrl} controls />}  
+          {m.mediaType === "pdf" && <a href={m.mediaUrl} target="_blank" rel="noreferrer">{m.fileName || "PDF Document"}</a>}  
+        </div>  
+      )}  
+
+      {/* Timestamp & status */}  
+      <div style={{ fontSize: 10, color: COLORS.mutedText, marginTop: 2, textAlign: "right" }}>  
+        {m.edited && "(edited)"} {time} {m.status && isMine ? `• ${m.status}` : ""}  
+      </div>  
+
+      {/* Reactions */}  
+      {Object.keys(m.reactions || {}).length > 0 && (  
+        <div style={{ position: "absolute", bottom: -12, right: -12, display: "flex", gap: 2 }}>  
+          {Object.values(m.reactions).map((r, i) => r && <span key={i} style={{ backgroundColor: COLORS.reactionBg, color: "#fff", borderRadius: 8, padding: "0 4px", fontSize: 10 }}>{r}</span>)}  
+        </div>  
+      )}  
+
+      {/* Message menu */}  
+      {showMenu && (  
+        <div className="menu" style={{ position: "absolute", top: -SPACING.lg, right: 0, background: COLORS.lightCard, border: `1px solid ${COLORS.grayBorder}`, borderRadius: SPACING.borderRadius, zIndex: 10 }}>  
+          <button style={menuBtnStyle} onClick={() => replyToMessage(m)}>Reply</button>  
+          <button style={menuBtnStyle} onClick={() => setReactionFor(m.id)}>React</button>  
+          {isMine && <button style={menuBtnStyle} onClick={() => editMessage(m)}>Edit</button>}  
+          {isMine && <button style={menuBtnStyle} onClick={() => deleteMessageForEveryone(m.id)}>Delete for Everyone</button>}  
+          <button style={menuBtnStyle} onClick={() => deleteMessageForMe(m.id)}>Delete for Me</button>  
+          <button style={menuBtnStyle} onClick={() => forwardMessage(m)}>Forward</button>  
+          <button style={menuBtnStyle} onClick={() => pinMessage(m)}>Pin</button>  
+          <button style={menuBtnStyle} onClick={() => copyMessageText(m)}>Copy</button>  
+          <button style={menuBtnStyle} onClick={() => setMenuOpenFor(null)}>Close</button>  
+        </div>  
+      )}  
+
+      {/* Inline reaction picker */}  
+      {showReactionPicker && (  
+        <div className="emoji-picker" style={{ position: "absolute", bottom: -28, left: 0, display: "flex", gap: 4, background: COLORS.lightCard, borderRadius: SPACING.borderRadius, padding: "2px 4px" }}>  
+          {INLINE_REACTIONS.map((r, i) => (  
+            <span key={i} style={{ cursor: "pointer", fontSize: 14 }} onClick={() => applyReaction(m.id, r)}>{r}</span>  
+          ))}  
+        </div>  
+      )}  
+    </div>  
+  </div>  
+);
+
+};
+
+return (
+<div style={{ display: "flex", flexDirection: "column", height: "100vh", backgroundColor: wallpaper || (isDark ? COLORS.darkBg : COLORS.lightBg), color: isDark ? COLORS.darkText : COLORS.lightText }}>
+
+{/* ---------------- Header ---------------- */}  
+  <div style={{ height: 56, backgroundColor: COLORS.headerBlue, color: "#fff", display: "flex", alignItems: "center", padding: "0 12px", justifyContent: "space-between", position: "relative" }}>  
+    <div style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }} onClick={() => navigate(`/profile/${friendInfo?.id}`)}>  
+      <button onClick={() => navigate(-1)} style={{ background: "transparent", border: "none", color: "#fff", fontSize: 18 }}>←</button>  
+      <img src={friendInfo?.photoURL || ""} alt="" style={{ width: 36, height: 36, borderRadius: "50%" }} />  
+      <div>  
+        <div>{friendInfo?.name || "Chat"}</div>  
+        <div style={{ fontSize: 12 }}>{friendInfo?.status || ""}</div>  
+      </div>  
+    </div>  
+    <div style={{ display: "flex", gap: 12 }}>  
+      <button onClick={() => navigate(`/voice-call/${chatId}`)} style={{ background: "transparent", border: "none", color: "#fff" }}>📞</button>  
+      <button onClick={() => navigate(`/video-call/${chatId}`)} style={{ background: "transparent", border: "none", color: "#fff" }}>🎥</button>  
+      <button onClick={() => setHeaderMenuOpen(prev => !prev)} style={{ background: "transparent", border: "none", color: "#fff" }}>⋮</button>  
+    </div>  
+    {headerMenuOpen && (  
+      <div className="menu" style={{ position: "absolute", top: 56, right: 12, background: COLORS.lightCard, borderRadius: SPACING.borderRadius, boxShadow: "0 2px 6px rgba(0,0,0,0.2)", zIndex: 20 }}>  
+        <button style={menuBtnStyle} onClick={clearChat}>Clear Chat</button>  
+        <button style={menuBtnStyle} onClick={toggleBlock}>{(chatInfo?.blockedBy || []).includes(myUid) ? "Unblock" : "Block"}</button>  
+        <button style={menuBtnStyle} onClick={() => setHeaderMenuOpen(false)}>Close</button>  
+      </div>  
+    )}  
+  </div>  
+
+  {/* ---------------- Messages ---------------- */}  
+  <div ref={messagesRefEl} style={{ flex: 1, overflowY: "auto", padding: SPACING.sm }}>  
+    {loadingMsgs && <div style={{ textAlign: "center", marginTop: SPACING.md }}>Loading...</div>}  
+    {messages.map(renderMessage)}  
+    <div ref={endRef} />  
+  </div>  
+
+  {/* ---------------- Reply Preview ---------------- */}  
+  {replyTo && (  
+    <div style={{ padding: SPACING.sm, background: isDark ? COLORS.darkCard : COLORS.lightCard, borderTop: `1px solid ${COLORS.grayBorder}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>  
+      <div>  
+        Replying to: <b>{replyTo.text || replyTo.mediaType}</b>  
+      </div>  
+      <button onClick={() => setReplyTo(null)} style={{ border: "none", background: "transparent", fontSize: 16 }}>×</button>  
+    </div>  
+  )}  
+
+  {/* ---------------- Input ---------------- */}  
+  <div style={{ padding: SPACING.sm, display: "flex", alignItems: "center", gap: SPACING.sm, borderTop: `1px solid ${COLORS.grayBorder}`, background: isDark ? COLORS.darkCard : COLORS.lightCard }}>  
+    <button onClick={() => setShowEmojiPicker(prev => !prev)} style={{ fontSize: 24, background: "transparent", border: "none" }}>😊</button>  
+    <input  
+      value={text}  
+      onChange={e => setText(e.target.value)}  
+      placeholder="Type a message"  
+      style={{ flex: 1, padding: SPACING.sm, borderRadius: SPACING.borderRadius, border: `1px solid ${COLORS.grayBorder}`, outline: "none", background: isDark ? COLORS.darkBg : "#fff", color: isDark ? COLORS.darkText : COLORS.lightText }}  
+      onKeyDown={e => e.key === "Enter" && sendTextMessage()}  
+    />  
+    <input type="file" multiple onChange={onFilesSelected} style={{ display: "none" }} id="fileInput" />  
+    <label htmlFor="fileInput" style={{ cursor: "pointer" }}>📎</label>  
+    <button  
+      onMouseDown={holdStart}  
+      onMouseUp={holdEnd}  
+      onTouchStart={holdStart}  
+      onTouchEnd={holdEnd}  
+      onClick={sendTextMessage}  
+      style={{ fontSize: 18, background: "transparent", border: "none" }}  
+    >  
+      {recording ? "🔴" : "📩"}  
+    </button>  
+  </div>  
+
+  {/* ---------------- Emoji Picker ---------------- */}  
+  {showEmojiPicker && (  
+    <div className="emoji-picker" style={{ position: "absolute", bottom: 60, left: 12, background: COLORS.lightCard, borderRadius: SPACING.borderRadius, padding: SPACING.sm, display: "flex", flexWrap: "wrap", maxWidth: 300, gap: 4, boxShadow: "0 2px 6px rgba(0,0,0,0.2)" }}>  
+      {EXTENDED_EMOJIS.map((e, i) => (  
+        <span key={i} style={{ cursor: "pointer", fontSize: 20 }} onClick={() => setText(prev => prev + e)}>{e}</span>  
+      ))}  
+      <button onClick={() => setShowEmojiPicker(false)} style={{ border: "none", background: "transparent", fontSize: 16 }}>×</button>  
+    </div>  
+  )}  
+</div>
+
+);
 }
