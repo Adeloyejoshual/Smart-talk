@@ -782,3 +782,28 @@ export default function ChatConversationPage() {
             onClick={(e) => { if (text.trim() || previews.length > 0) sendTextMessage(); }}
             style={{ padding: 10, borderRadius: 12, background: "#34B7F1", color: "#fff", border: "none", cursor: "pointer" }}
             title={(!text.trim() && previews.length === 0) ? (recording ? "Recording...
+title={(!text.trim() && previews.length === 0)
+              ? (recording ? "Recording... Release to send" : "Hold to record voice message")
+              : "Send message"}
+          >
+            {(!text.trim() && previews.length === 0) ? (recording ? "⏺" : "🎤") : "➤"}
+          </button>
+        </div>
+      </div>
+
+      {/* global emoji picker */}
+      {emojiPickerGlobal && !emojiPickerFor && (
+        <div className="emoji-picker" style={{ position: "absolute", bottom: 60, left: 12, zIndex: 999 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 8, padding: 10, background: isDark ? "#111" : "#fff", borderRadius: 10, boxShadow: "0 10px 30px rgba(0,0,0,0.12)" }}>
+            {EXTENDED_EMOJIS.map(e => (
+              <button key={e} onClick={() => { setText(prev => prev + e); setEmojiPickerGlobal(false); }} style={{ fontSize: 18, border: "none", background: "transparent", cursor: "pointer" }}>{e}</button>
+            ))}
+            <div style={{ gridColumn: "1/-1", textAlign: "right" }}>
+              <button onClick={() => setEmojiPickerGlobal(false)} style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: "#eee" }}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
