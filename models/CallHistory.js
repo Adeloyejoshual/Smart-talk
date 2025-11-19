@@ -1,13 +1,14 @@
-import mongoose from "mongoose";
+// models/CallHistory.js
+const mongoose = require("mongoose");
 
-const CallHistorySchema = new mongoose.Schema({
-  callerId: { type: String, required: true },        // user who starts call
-  receiverId: { type: String, required: true },      // user receiving call
-  callType: { type: String, enum: ["audio", "video"], required: true },
-  status: { type: String, enum: ["incoming", "outgoing", "missed", "ended"], default: "ended" },
-  startedAt: { type: Date, default: Date.now },
-  endedAt: { type: Date },
-  duration: { type: Number, default: 0 },            // seconds
+const callHistorySchema = new mongoose.Schema({
+  chatId: { type: String, required: true },
+  participants: [{ type: String, required: true }], // array of user IDs
+  type: { type: String, enum: ["voice", "video"], required: true },
+  status: { type: String, enum: ["completed", "missed"], default: "completed" },
+  duration: { type: Number, default: 0 }, // seconds
+  startedAt: { type: Date, required: true },
+  endedAt: { type: Date, required: true },
 }, { timestamps: true });
 
-export default mongoose.model("CallHistory", CallHistorySchema);
+module.exports = mongoose.model("CallHistory", callHistorySchema);
