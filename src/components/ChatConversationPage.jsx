@@ -1,5 +1,5 @@
 // src/components/ChatConversationPage.jsx
-import React, { useEffect, useState, useRef, useContext, useCallback } from "react";
+import React, { useEffect, useState, useRef, useContext } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   collection,
@@ -22,23 +22,24 @@ import { ThemeContext } from "../context/ThemeContext";
 
 /**
  * ChatConversationPage.jsx
- * Upgraded and cleaned version. Drop-in replacement for your previous file.
+ * Fully self-contained, inline-styled chat page with:
+ * - Cloudinary uploads (images, video, audio, files)
+ * - Voice recording (press & hold)
+ * - Per-message menu + reactions + emoji picker
+ * - File preview strip & multi-file send
+ * - Header with View Profile / Clear / Block / Report / Call actions
  *
  * Requirements:
  * - VITE_CLOUDINARY_CLOUD_NAME
  * - VITE_CLOUDINARY_UPLOAD_PRESET
- *
- * Notes:
- * - Routes expected: /user-profile/:id, /voice-call/:chatId, /video-call/:chatId, /forward/:id
  */
 
-// -------------------- Helpers --------------------
+// ---------- Helpers ----------
 const fmtTime = (ts) => {
   if (!ts) return "";
   const d = ts.toDate ? ts.toDate() : new Date(ts);
   return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 };
-
 const dayLabel = (ts) => {
   if (!ts) return "";
   const d = ts.toDate ? ts.toDate() : new Date(ts);
@@ -62,19 +63,13 @@ const menuBtnStyle = {
   width: "100%"
 };
 
-// -------------------- VoiceMessage (inline component) --------------------
-// Renders an <audio> plus waveform canvas (if WebAudio available).
+// ---------- VoiceMessage component ----------
 function VoiceMessage({ src }) {
   const audioRef = useRef(null);
   const canvasRef = useRef(null);
-  const [supported, setSupported] = useState(true);
 
   useEffect(() => {
-    let ctx;
-    let animationId;
-    let source;
-    let analyser;
-    let audioCtx;
+    let audioCtx, source, analyser, animationId;
     const audioEl = audioRef.current;
     if (!audioEl) return;
 
@@ -105,22 +100,18 @@ function VoiceMessage({ src }) {
       animationId = requestAnimationFrame(draw);
     };
 
-    const init = async () => {
-      try {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        source = audioCtx.createMediaElementSource(audioEl);
-        analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 1024;
-        source.connect(analyser);
-        analyser.connect(audioCtx.destination);
-        draw();
-      } catch (e) {
-        // WebAudio not available (fallback)
-        setSupported(false);
-      }
-    };
-
-    init();
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      source = audioCtx.createMediaElementSource(audioEl);
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 1024;
+      source.connect(analyser);
+      analyser.connect(audioCtx.destination);
+      draw();
+    } catch (e) {
+      // fall back if WebAudio not supported — still show audio element
+      if (animationId) cancelAnimationFrame(animationId);
+    }
 
     return () => {
       if (animationId) cancelAnimationFrame(animationId);
@@ -136,7 +127,7 @@ function VoiceMessage({ src }) {
   );
 }
 
-// -------------------- Component --------------------
+// ---------- Main component ----------
 export default function ChatConversationPage() {
   const { chatId } = useParams();
   const navigate = useNavigate();
@@ -150,20 +141,17 @@ export default function ChatConversationPage() {
   const swipeStartX = useRef(null);
   const recorderRef = useRef(null);
   const recorderChunksRef = useRef([]);
-
-  // refs for outside click
   const containerRef = useRef(null);
 
-  // state
   const [chatInfo, setChatInfo] = useState(null);
   const [friendInfo, setFriendInfo] = useState(null);
   const [messages, setMessages] = useState([]);
   const [loadingMsgs, setLoadingMsgs] = useState(true);
   const [text, setText] = useState("");
-  const [selectedFiles, setSelectedFiles] = useState([]); // File[]
-  const [previews, setPreviews] = useState([]); // { url, type, name, file }
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [previews, setPreviews] = useState([]);
   const [selectedPreviewIndex, setSelectedPreviewIndex] = useState(0);
-  const [uploadingIds, setUploadingIds] = useState({}); // messageId -> pct
+  const [uploadingIds, setUploadingIds] = useState({});
   const [replyTo, setReplyTo] = useState(null);
   const [menuOpenFor, setMenuOpenFor] = useState(null);
   const [reactionFor, setReactionFor] = useState(null);
@@ -175,36 +163,34 @@ export default function ChatConversationPage() {
   const [recorderAvailable, setRecorderAvailable] = useState(false);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
 
-  // ---------- Cloudinary upload ----------
-  const uploadToCloudinary = (file, onProgress) => {
-    return new Promise((resolve, reject) => {
-      try {
-        const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
-        const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
-        if (!cloudName || !uploadPreset) return reject(new Error("Cloudinary env not set"));
-        const url = `https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`;
-        const xhr = new XMLHttpRequest();
-        xhr.open("POST", url);
-        xhr.upload.addEventListener("progress", (e) => {
-          if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded * 100) / e.total));
-        });
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            const res = JSON.parse(xhr.responseText);
-            resolve(res.secure_url || res.url);
-          } else reject(new Error("Cloudinary upload failed: " + xhr.status));
-        };
-        xhr.onerror = () => reject(new Error("Network error"));
-        const fd = new FormData();
-        fd.append("file", file);
-        fd.append("upload_preset", uploadPreset);
-        xhr.send(fd);
-      } catch (err) { reject(err); }
-    });
-  };
+  // ---------- Cloudinary ----------
+  const uploadToCloudinary = (file, onProgress) => new Promise((resolve, reject) => {
+    try {
+      const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+      const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+      if (!cloudName || !uploadPreset) return reject(new Error("Cloudinary env not set"));
+      const url = `https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`;
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", url);
+      xhr.upload.addEventListener("progress", (e) => {
+        if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded * 100) / e.total));
+      });
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          const res = JSON.parse(xhr.responseText);
+          resolve(res.secure_url || res.url);
+        } else reject(new Error("Cloudinary upload failed: " + xhr.status));
+      };
+      xhr.onerror = () => reject(new Error("Network error"));
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("upload_preset", uploadPreset);
+      xhr.send(fd);
+    } catch (err) { reject(err); }
+  });
 
   const detectFileType = (file) => {
-    const t = file.type;
+    const t = file.type || "";
     if (t.startsWith("image/")) return "image";
     if (t.startsWith("video/")) return "video";
     if (t.startsWith("audio/")) return "audio";
@@ -247,7 +233,6 @@ export default function ChatConversationPage() {
       const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       const filtered = docs.filter(m => !(m.deletedFor && Array.isArray(m.deletedFor) && m.deletedFor.includes(myUid)));
       setMessages(filtered);
-      // mark delivered for incoming messages
       filtered.forEach(async (m) => {
         if (m.senderId !== myUid && m.status === "sent") {
           try { await updateDoc(doc(db, "chats", chatId, "messages", m.id), { status: "delivered" }); } catch (e) {}
@@ -273,7 +258,7 @@ export default function ChatConversationPage() {
 
   const scrollToBottom = () => { endRef.current?.scrollIntoView({ behavior: "smooth" }); setIsAtBottom(true); };
 
-  // ---------- mark seen when visible ----------
+  // ---------- mark seen ----------
   useEffect(() => {
     const onVisibility = async () => {
       if (document.visibilityState !== "visible") return;
@@ -287,11 +272,10 @@ export default function ChatConversationPage() {
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, [messages, chatId, myUid]);
 
-  // ---------- Click outside to close menus ----------
+  // ---------- click outside to close menus ----------
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (!containerRef.current) return;
-      // if click not inside container or it's inside but not inside any menu element
       const target = e.target;
       const clickedInside = containerRef.current.contains(target);
       if (!clickedInside) {
@@ -302,8 +286,6 @@ export default function ChatConversationPage() {
         setEmojiPickerGlobal(false);
         setHeaderMenuOpen(false);
       } else {
-        // clicked inside container; but if click is outside menus/pickers we still close those
-        // menus have class "message-menu", emoji picker have class "emoji-picker", header menu has "header-menu"
         if (!target.closest(".message-menu")) setMenuOpenFor(null);
         if (!target.closest(".reaction-picker")) setReactionFor(null);
         if (!target.closest(".emoji-picker")) { setEmojiPickerFor(null); setEmojiPickerGlobal(false); }
@@ -319,7 +301,7 @@ export default function ChatConversationPage() {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
     const newPreviews = files.map(f => ({
-      url: (f.type.startsWith("image/") || f.type.startsWith("video/")) ? URL.createObjectURL(f) : null,
+      url: (f.type && (f.type.startsWith("image/") || f.type.startsWith("video/"))) ? URL.createObjectURL(f) : null,
       type: detectFileType(f),
       name: f.name,
       file: f
@@ -327,17 +309,15 @@ export default function ChatConversationPage() {
     setSelectedFiles(prev => [...prev, ...files]);
     setPreviews(prev => [...prev, ...newPreviews]);
     setSelectedPreviewIndex(prev => prev >= 0 ? prev : 0);
+    // reset input value to allow selecting same file again
+    e.target.value = "";
   };
 
-  // ---------- send (➤) behaviour ----------
+  // ---------- send message (text or files) ----------
   const sendTextMessage = async () => {
     const blockedBy = chatInfo?.blockedBy || [];
-    if (blockedBy && blockedBy.includes(myUid)) {
-      alert("You are blocked in this chat. You cannot send messages.");
-      return;
-    }
+    if (blockedBy && blockedBy.includes(myUid)) { alert("You are blocked in this chat. You cannot send messages."); return; }
 
-    // files first
     if (selectedFiles.length > 0) {
       const filesToSend = [...selectedFiles];
       setSelectedFiles([]); setPreviews([]); setSelectedPreviewIndex(0);
@@ -364,7 +344,6 @@ export default function ChatConversationPage() {
       return;
     }
 
-    // text message
     if (text.trim()) {
       try {
         const payload = {
@@ -387,7 +366,7 @@ export default function ChatConversationPage() {
     }
   };
 
-  // ---------- press & hold to record ----------
+  // ---------- recording ----------
   useEffect(() => { setRecorderAvailable(!!(navigator.mediaDevices && window.MediaRecorder)); }, []);
   const startRecording = async () => {
     if (!recorderAvailable) return alert("Recording not supported in this browser");
@@ -395,7 +374,7 @@ export default function ChatConversationPage() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mr = new MediaRecorder(stream);
       recorderChunksRef.current = [];
-      mr.ondataavailable = (ev) => { if (ev.data.size) recorderChunksRef.current.push(ev.data); };
+      mr.ondataavailable = (ev) => { if (ev.data && ev.data.size) recorderChunksRef.current.push(ev.data); };
       mr.onstop = async () => {
         const blob = new Blob(recorderChunksRef.current, { type: "audio/webm" });
         const placeholder = { senderId: myUid, text: "", mediaUrl: "", mediaType: "audio", createdAt: serverTimestamp(), status: "uploading", reactions: {} };
@@ -443,7 +422,6 @@ export default function ChatConversationPage() {
     try { await navigator.clipboard.writeText(m.text || m.mediaUrl || ""); alert("Copied"); setMenuOpenFor(null); }
     catch (e) { alert("Copy failed"); }
   };
-
   const editMessage = async (m) => {
     if (m.senderId !== myUid) return alert("You can only edit your messages.");
     const newText = window.prompt("Edit message", m.text || "");
@@ -451,7 +429,6 @@ export default function ChatConversationPage() {
     await updateDoc(doc(db, "chats", chatId, "messages", m.id), { text: newText, edited: true });
     setMenuOpenFor(null);
   };
-
   const deleteMessageForEveryone = async (id) => {
     if (!confirm("Delete for everyone?")) return;
     await deleteDoc(doc(db, "chats", chatId, "messages", id));
@@ -461,7 +438,6 @@ export default function ChatConversationPage() {
     await updateDoc(doc(db, "chats", chatId, "messages", id), { deletedFor: arrayUnion(myUid) });
     setMenuOpenFor(null);
   };
-
   const forwardMessage = (m) => navigate(`/forward/${m.id}`, { state: { message: m }});
   const pinMessage = async (m) => {
     await updateDoc(doc(db, "chats", chatId), { pinnedMessageId: m.id, pinnedMessageText: m.text || (m.mediaType || "") });
@@ -470,14 +446,9 @@ export default function ChatConversationPage() {
   };
   const replyToMessage = (m) => { setReplyTo(m); setMenuOpenFor(null); };
 
-  // ---------- mobile long-press handlers ----------
-  const handleMsgTouchStart = (m) => {
-    longPressTimer.current = setTimeout(() => setMenuOpenFor(m.id), 500);
-    swipeStartX.current = null;
-  };
-  const handleMsgTouchMove = (ev) => {
-    if (!swipeStartX.current && ev.touches && ev.touches[0]) swipeStartX.current = ev.touches[0].clientX;
-  };
+  // ---------- mobile handlers ----------
+  const handleMsgTouchStart = (m) => { longPressTimer.current = setTimeout(() => setMenuOpenFor(m.id), 500); swipeStartX.current = null; };
+  const handleMsgTouchMove = (ev) => { if (!swipeStartX.current && ev.touches && ev.touches[0]) swipeStartX.current = ev.touches[0].clientX; };
   const handleMsgTouchEnd = (m, ev) => {
     clearTimeout(longPressTimer.current);
     if (!swipeStartX.current) return;
@@ -494,15 +465,13 @@ export default function ChatConversationPage() {
     try {
       const msgsRef = collection(db, "chats", chatId, "messages");
       const snap = await getDocs(query(msgsRef, orderBy("createdAt", "asc")));
-      const docs = snap.docs;
-      for (const d of docs) {
+      for (const d of snap.docs) {
         try { await deleteDoc(d.ref); } catch (e) {}
       }
       setHeaderMenuOpen(false);
       alert("Chat cleared.");
     } catch (e) { console.error(e); alert("Failed to clear chat"); }
   };
-
   const toggleBlock = async () => {
     try {
       const chatRef = doc(db, "chats", chatId);
@@ -510,11 +479,8 @@ export default function ChatConversationPage() {
       if (!snap.exists()) return;
       const data = snap.data();
       const blockedBy = data.blockedBy || [];
-      if (blockedBy.includes(myUid)) {
-        await updateDoc(chatRef, { blockedBy: arrayRemove(myUid) });
-      } else {
-        await updateDoc(chatRef, { blockedBy: arrayUnion(myUid) });
-      }
+      if (blockedBy.includes(myUid)) await updateDoc(chatRef, { blockedBy: arrayRemove(myUid) });
+      else await updateDoc(chatRef, { blockedBy: arrayUnion(myUid) });
       setHeaderMenuOpen(false);
     } catch (e) { console.error(e); alert("Block toggle failed"); }
   };
@@ -548,7 +514,7 @@ export default function ChatConversationPage() {
     return <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", overflowWrap: "break-word" }}>{m.text}</div>;
   };
 
-  // ---------- grouped messages (for rendering day separators) ----------
+  // ---------- grouped messages ----------
   const groupedMessages = (() => {
     const out = [];
     let lastDay = null;
@@ -560,15 +526,14 @@ export default function ChatConversationPage() {
     return out;
   })();
 
-  // ---------- render message bubble ----------
-  const renderMessage = (m, idxInGrouped) => {
+  // ---------- render single message ----------
+  const renderMessage = (m) => {
     const mine = m.senderId === myUid;
     const showMenu = menuOpenFor === m.id;
     const showReactionPicker = reactionFor === m.id;
     return (
       <div key={m.id} id={`msg-${m.id}`} onTouchStart={() => handleMsgTouchStart(m)} onTouchMove={handleMsgTouchMove} onTouchEnd={(ev) => handleMsgTouchEnd(m, ev)} onMouseDown={(e) => { if (e.button === 2) setMenuOpenFor(m.id); }} style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start", marginBottom: 12, position: "relative" }}>
         <div style={{ background: mine ? (isDark ? "#0b84ff" : "#007bff") : (isDark ? "#1b1b1b" : "#fff"), color: mine ? "#fff" : (isDark ? "#fff" : "#000"), padding: 12, borderRadius: 14, maxWidth: "78%", position: "relative", wordBreak: "break-word", overflowWrap: "anywhere" }}>
-          {/* reply snippet */}
           {m.replyTo && (
             <div style={{ marginBottom: 6, padding: "6px 8px", borderRadius: 8, background: isDark ? "#0f0f0f" : "#f3f3f3", color: isDark ? "#ddd" : "#333", fontSize: 12 }}>
               <div style={{ fontWeight: 700, marginBottom: 4 }}>{m.replyTo.senderId === myUid ? "You" : "Them"}</div>
@@ -585,12 +550,10 @@ export default function ChatConversationPage() {
             </div>
           )}
 
-          {/* timestamp & status */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, fontSize: 11, opacity: 0.9 }}>
             <div style={{ marginLeft: "auto" }}>{fmtTime(m.createdAt)} {renderStatusTick(m)}</div>
           </div>
 
-          {/* uploading indicator */}
           {m.status === "uploading" && uploadingIds[m.id] !== undefined && (
             <div style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)" }}>
               <div style={{ width: 36, height: 36, borderRadius: 18, display: "flex", alignItems: "center", justifyContent: "center", background: "#eee", color: "#333", fontSize: 12 }}>
@@ -602,13 +565,11 @@ export default function ChatConversationPage() {
           {m.status === "failed" && <div style={{ marginTop: 8 }}><button onClick={() => alert("Please re-select file to retry")} style={{ padding: "6px 8px", borderRadius: 8, background: "#ffcc00", border: "none" }}>Retry</button></div>}
         </div>
 
-        {/* action column */}
         <div style={{ marginLeft: 8, display: "flex", flexDirection: "column", gap: 6 }}>
           <button title="React" onClick={() => { setReactionFor(m.id); setMenuOpenFor(null); }} style={{ border: "none", background: "transparent", cursor: "pointer" }}>😊</button>
           <button title="More" onClick={() => setMenuOpenFor(m.id)} style={{ border: "none", background: "transparent", cursor: "pointer" }}>⋯</button>
         </div>
 
-        {/* inline menu */}
         {showMenu && (
           <div className="message-menu" style={{ position: "absolute", transform: "translate(-50px, -100%)", zIndex: 999, right: (m.senderId === myUid) ? 20 : "auto", left: (m.senderId === myUid) ? "auto" : 80 }}>
             <div style={{ background: isDark ? "#111" : "#fff", padding: 8, borderRadius: 10, boxShadow: "0 8px 30px rgba(0,0,0,0.14)" }}>
@@ -626,7 +587,6 @@ export default function ChatConversationPage() {
           </div>
         )}
 
-        {/* reaction picker */}
         {reactionFor === m.id && (
           <div className="reaction-picker" style={{ position: "absolute", top: "calc(100% - 12px)", transform: "translateY(6px)", zIndex: 998 }}>
             <div style={{ display: "flex", gap: 8, padding: 8, borderRadius: 20, background: isDark ? "#111" : "#fff", boxShadow: "0 6px 18px rgba(0,0,0,0.08)", alignItems: "center" }}>
@@ -636,7 +596,6 @@ export default function ChatConversationPage() {
           </div>
         )}
 
-        {/* expanded emoji picker for this message */}
         {emojiPickerFor === m.id && emojiPickerGlobal && (
           <div className="emoji-picker" style={{ position: "absolute", top: "calc(100% + 36px)", left: -10, zIndex: 999 }}>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 8, padding: 10, background: isDark ? "#111" : "#fff", borderRadius: 10, boxShadow: "0 10px 30px rgba(0,0,0,0.12)" }}>
@@ -653,7 +612,7 @@ export default function ChatConversationPage() {
     );
   };
 
-  // -------------------- Render UI --------------------
+  // ---------- Render UI ----------
   return (
     <div ref={containerRef} style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: wallpaper ? `url(${wallpaper}) center/cover no-repeat` : (isDark ? "#070707" : "#f5f5f5"), color: isDark ? "#fff" : "#000" }}>
       {/* Header */}
@@ -695,7 +654,7 @@ export default function ChatConversationPage() {
         </div>
       </header>
 
-      {/* Messages area */}
+      {/* Messages */}
       <main ref={messagesRefEl} style={{ flex: 1, overflowY: "auto", padding: 12 }}>
         {loadingMsgs && <div style={{ textAlign: "center", color: "#888", marginTop: 12 }}>Loading messages…</div>}
 
@@ -704,18 +663,18 @@ export default function ChatConversationPage() {
             return <div key={item.id} style={{ textAlign: "center", margin: "14px 0", color: "#8a8a8a", fontSize: 12 }}>{item.label}</div>;
           }
           const m = item;
-          return renderMessage(m, i);
+          return renderMessage(m);
         })}
 
         <div ref={endRef} />
       </main>
 
-      {/* scroll to latest arrow */}
+      {/* Scroll to bottom arrow */}
       {!isAtBottom && (
         <button onClick={scrollToBottom} style={{ position: "fixed", left: "50%", transform: "translateX(-50%)", bottom: 120, zIndex: 80, background: "#007bff", color: "#fff", border: "none", borderRadius: 22, width: 48, height: 48, fontSize: 22 }}>↓</button>
       )}
 
-      {/* pinned reply preview */}
+      {/* Reply preview */}
       {replyTo && (
         <div style={{ position: "sticky", bottom: 84, left: 12, right: 12, display: "flex", justifyContent: "space-between", background: isDark ? "#101010" : "#fff", padding: 8, borderRadius: 8, boxShadow: "0 6px 18px rgba(0,0,0,0.08)", zIndex: 90 }}>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -732,7 +691,7 @@ export default function ChatConversationPage() {
         </div>
       )}
 
-      {/* previews strip (multiple) */}
+      {/* Previews strip */}
       {previews.length > 0 && (
         <div style={{ display: "flex", gap: 8, padding: 8, overflowX: "auto", alignItems: "center", borderTop: "1px solid rgba(0,0,0,0.06)", background: isDark ? "#0b0b0b" : "#fff" }}>
           {previews.map((p, idx) => (
@@ -749,20 +708,15 @@ export default function ChatConversationPage() {
         </div>
       )}
 
-      {/* input area */}
+      {/* Input area */}
       <div style={{ position: "sticky", bottom: 0, background: isDark ? "#0b0b0b" : "#fff", padding: 10, borderTop: "1px solid rgba(0,0,0,0.06)", display: "flex", alignItems: "center", gap: 8, zIndex: 90 }}>
-        <label style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-          😊
-          <input type="button" onClick={() => { setEmojiPickerGlobal(s => !s); setEmojiPickerFor(null); }} style={{ display: "none" }} />
-        </label>
+        <button onClick={() => { setEmojiPickerGlobal(s => !s); setEmojiPickerFor(null); }} style={{ cursor: "pointer", fontSize: 20, background: "transparent", border: "none" }}>😊</button>
 
-        {/* file input */}
         <label style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
           📎
           <input type="file" multiple style={{ display: "none" }} onChange={onFilesSelected} />
         </label>
 
-        {/* pinned preview thumbnail */}
         {previews.length > 0 && previews[selectedPreviewIndex] && (
           <div style={{ width: 80, height: 80, borderRadius: 8, overflow: "hidden" }}>
             {previews[selectedPreviewIndex].url ? (previews[selectedPreviewIndex].type === "image" ? <img src={previews[selectedPreviewIndex].url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <video src={previews[selectedPreviewIndex].url} style={{ width: "100%", height: "100%", objectFit: "cover" }} />) : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", background: "#eee" }}>{previews[selectedPreviewIndex].name}</div>}
@@ -781,26 +735,21 @@ export default function ChatConversationPage() {
             onTouchEnd={(e) => { if (!text.trim() && previews.length === 0) holdEnd(e); else if (text.trim() || previews.length > 0) sendTextMessage(); }}
             onClick={(e) => { if (text.trim() || previews.length > 0) sendTextMessage(); }}
             style={{ padding: 10, borderRadius: 12, background: "#34B7F1", color: "#fff", border: "none", cursor: "pointer" }}
-            title={(!text.trim() && previews.length === 0) ? (recording ? "Recording...
-title={(!text.trim() && previews.length === 0)
-              ? (recording ? "Recording... Release to send" : "Hold to record voice message")
-              : "Send message"}
+            title={(!text.trim() && previews.length === 0) ? (recording ? "Recording... release to stop" : "Hold to record, click to send") : "Send"}
           >
-            {(!text.trim() && previews.length === 0) ? (recording ? "⏺" : "🎤") : "➤"}
+            {(!text.trim() && previews.length === 0) ? (recording ? "● Recording" : "🎤") : "➤"}
           </button>
         </div>
       </div>
 
-      {/* global emoji picker */}
-      {emojiPickerGlobal && !emojiPickerFor && (
-        <div className="emoji-picker" style={{ position: "absolute", bottom: 60, left: 12, zIndex: 999 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 8, padding: 10, background: isDark ? "#111" : "#fff", borderRadius: 10, boxShadow: "0 10px 30px rgba(0,0,0,0.12)" }}>
-            {EXTENDED_EMOJIS.map(e => (
-              <button key={e} onClick={() => { setText(prev => prev + e); setEmojiPickerGlobal(false); }} style={{ fontSize: 18, border: "none", background: "transparent", cursor: "pointer" }}>{e}</button>
-            ))}
-            <div style={{ gridColumn: "1/-1", textAlign: "right" }}>
-              <button onClick={() => setEmojiPickerGlobal(false)} style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: "#eee" }}>Close</button>
+      {/* Global emoji picker */}
+      {emojiPickerGlobal && (
+        <div className="emoji-picker" style={{ position: "fixed", left: 12, right: 12, bottom: 78, maxHeight: "40vh", overflowY: "auto", zIndex: 999 }}>
+          <div style={{ background: isDark ? "#111" : "#fff", borderRadius: 12, padding: 12, boxShadow: "0 10px 30px rgba(0,0,0,0.12)" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(8,1fr)", gap: 8 }}>
+              {EXTENDED_EMOJIS.map(e => <button key={e} onClick={() => { setText(prev => prev + e); setEmojiPickerGlobal(false); }} style={{ fontSize: 20, border: "none", background: "transparent", cursor: "pointer" }}>{e}</button>)}
             </div>
+            <div style={{ textAlign: "right", marginTop: 8 }}><button onClick={() => setEmojiPickerGlobal(false)} style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: "#eee" }}>Close</button></div>
           </div>
         </div>
       )}
