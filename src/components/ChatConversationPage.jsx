@@ -21,33 +21,20 @@ import { db, auth } from "../firebaseConfig";
 import { ThemeContext } from "../context/ThemeContext";
 
 // -------------------- Helpers --------------------
-const fmtTime = (ts) => {
-  if (!ts) return "";
-  const d = ts.toDate ? ts.toDate() : new Date(ts);
-  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-};
-
+const fmtTime = (ts) => ts ? (ts.toDate ? ts.toDate() : new Date(ts)).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "";
 const dayLabel = (ts) => {
   if (!ts) return "";
   const d = ts.toDate ? ts.toDate() : new Date(ts);
   const now = new Date();
-  const yesterday = new Date(); 
-  yesterday.setDate(now.getDate() - 1);
+  const yesterday = new Date(); yesterday.setDate(now.getDate() - 1);
   if (d.toDateString() === now.toDateString()) return "Today";
   if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
-  return d.toLocaleDateString(undefined, { 
-    month: "short", 
-    day: "numeric", 
-    year: d.getFullYear() !== now.getFullYear() ? "numeric" : undefined 
-  });
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: d.getFullYear() !== now.getFullYear() ? "numeric" : undefined });
 };
 
 // -------------------- Constants --------------------
 const INLINE_REACTIONS = ["❤️", "😂", "👍", "😮", "😢"];
-const EXTENDED_EMOJIS = [
-  "❤️","😂","👍","😮","😢","👎","👏","🔥","😅","🤩","😍","😎","🙂","🙃","😉",
-  "🤔","🤨","🤗","🤯","🥳","🙏","💪"
-];
+const EXTENDED_EMOJIS = ["❤️","😂","👍","😮","😢","👎","👏","🔥","😅","🤩","😍","😎","🙂","🙃","😉","🤔","🤨","🤗","🤯","🥳","🙏","💪"];
 const COLORS = {
   primary: "#34B7F1",
   primaryDark: "#007bff",
@@ -94,6 +81,7 @@ export default function ChatConversationPage() {
   const [menuOpenFor, setMenuOpenFor] = useState(null);
   const [reactionFor, setReactionFor] = useState(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [emojiPickerFor, setEmojiPickerFor] = useState(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [recording, setRecording] = useState(false);
   const [recorderAvailable, setRecorderAvailable] = useState(false);
@@ -108,7 +96,6 @@ export default function ChatConversationPage() {
     if (t === "application/pdf") return "pdf";
     return "file";
   };
-
   const uploadToCloudinary = (file, onProgress) => new Promise((resolve, reject) => {
     try {
       const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
@@ -117,13 +104,8 @@ export default function ChatConversationPage() {
       const url = `https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`;
       const xhr = new XMLHttpRequest();
       xhr.open("POST", url);
-      xhr.upload.addEventListener("progress", e => { 
-        if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded * 100) / e.total)); 
-      });
-      xhr.onload = () => { 
-        if (xhr.status >= 200 && xhr.status < 300) resolve(JSON.parse(xhr.responseText).secure_url); 
-        else reject(new Error("Cloudinary upload failed")); 
-      };
+      xhr.upload.addEventListener("progress", e => { if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded * 100) / e.total)); });
+      xhr.onload = () => { if (xhr.status >= 200 && xhr.status < 300) resolve(JSON.parse(xhr.responseText).secure_url); else reject(new Error("Cloudinary upload failed")); };
       xhr.onerror = () => reject(new Error("Network error"));
       const fd = new FormData();
       fd.append("file", file);
@@ -150,9 +132,7 @@ export default function ChatConversationPage() {
             if (fSnap.exists()) setFriendInfo({ id: fSnap.id, ...fSnap.data() });
           }
         }
-        unsubChat = onSnapshot(doc(db, "chats", chatId), s => { 
-          if (s.exists()) setChatInfo(prev => ({ ...(prev||{}), ...s.data() })); 
-        });
+        unsubChat = onSnapshot(doc(db, "chats", chatId), s => { if (s.exists()) setChatInfo(prev => ({ ...(prev||{}), ...s.data() })); });
       } catch (e) { console.error(e); }
     };
     loadMeta();
@@ -165,15 +145,11 @@ export default function ChatConversationPage() {
     setLoadingMsgs(true);
     const q = query(collection(db, "chats", chatId, "messages"), orderBy("createdAt", "asc"), fsLimit(2000));
     const unsub = onSnapshot(q, snap => {
-      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-        .filter(m => !(m.deletedFor?.includes(myUid)));
+      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(m => !(m.deletedFor?.includes(myUid)));
       setMessages(docs);
-      docs.forEach(async m => { 
-        if (m.senderId !== myUid && m.status === "sent") 
-          await updateDoc(doc(db, "chats", chatId, "messages", m.id), { status: "delivered" }); 
-      });
+      docs.forEach(async m => { if (m.senderId !== myUid && m.status === "sent") await updateDoc(doc(db, "chats", chatId, "messages", m.id), { status: "delivered" }); });
       setLoadingMsgs(false);
-      if (isAtBottom) endRef.current?.scrollIntoView({ behavior: "smooth" });
+      setTimeout(() => { if (isAtBottom) endRef.current?.scrollIntoView({ behavior: "smooth" }); }, 80);
     });
     return () => unsub();
   }, [chatId, myUid, isAtBottom]);
@@ -194,8 +170,7 @@ export default function ChatConversationPage() {
     const onVisibility = async () => {
       if (document.visibilityState !== "visible") return;
       const lastIncoming = [...messages].reverse().find(m => m.senderId !== myUid);
-      if (lastIncoming && lastIncoming.status !== "seen") 
-        await updateDoc(doc(db, "chats", chatId, "messages", lastIncoming.id), { status: "seen" });
+      if (lastIncoming && lastIncoming.status !== "seen") await updateDoc(doc(db, "chats", chatId, "messages", lastIncoming.id), { status: "seen" });
     };
     document.addEventListener("visibilitychange", onVisibility);
     onVisibility();
@@ -241,20 +216,16 @@ export default function ChatConversationPage() {
     if (text.trim()) {
       try {
         const payload = { senderId: myUid, text: text.trim(), mediaUrl: "", mediaType: null, createdAt: serverTimestamp(), status: "sent", reactions: {} };
-        if (replyTo) { 
-          payload.replyTo = { id: replyTo.id, text: replyTo.text || (replyTo.mediaType || "media"), senderId: replyTo.senderId }; 
-          setReplyTo(null); 
-        }
+        if (replyTo) { payload.replyTo = { id: replyTo.id, text: replyTo.text || (replyTo.mediaType || "media"), senderId: replyTo.senderId }; setReplyTo(null); }
         await addDoc(collection(db, "chats", chatId, "messages"), payload);
         setText("");
-        scrollToBottom();
+        setTimeout(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), 80);
       } catch (e) { console.error(e); alert("Failed to send"); }
     }
   };
 
   // -------------------- Recording --------------------
   useEffect(() => setRecorderAvailable(!!(navigator.mediaDevices && window.MediaRecorder)), []);
-
   const startRecording = async () => {
     if (!recorderAvailable) return alert("Recording not supported");
     try {
@@ -279,15 +250,7 @@ export default function ChatConversationPage() {
       setRecording(true);
     } catch (err) { console.error(err); alert("Could not start recording"); }
   };
-
-  const stopRecording = () => { 
-    try { 
-      recorderRef.current?.stop(); 
-      recorderRef.current?.stream?.getTracks().forEach(t => t.stop()); 
-    } catch(e){} 
-    setRecording(false); 
-  };
-
+  const stopRecording = () => { try { recorderRef.current?.stop(); recorderRef.current?.stream?.getTracks().forEach(t=>t.stop()); } catch(e){} setRecording(false); };
   const holdStart = e => { e.preventDefault(); longPressTimer.current = setTimeout(() => startRecording(), 250); };
   const holdEnd = e => { clearTimeout(longPressTimer.current); if (recording) stopRecording(); };
 
@@ -298,12 +261,11 @@ export default function ChatConversationPage() {
       const snap = await getDoc(mRef);
       if (!snap.exists()) return;
       const existing = snap.data().reactions?.[myUid];
-      await updateDoc(mRef, { [`reactions.${myUid}`]: existing === emoji ? null : emoji });
+      await updateDoc(mRef, { [`reactions.${myUid}`]: existing===emoji?null:emoji });
       setReactionFor(null);
     } catch(e){console.error(e);}
   };
-
-  const copyMessageText = async m => { try { await navigator.clipboard.writeText(m.text || m.mediaUrl || ""); alert("Copied"); setMenuOpenFor(null); } catch(e){alert("Copy failed");} };
+  const copyMessageText = async m => { try { await navigator.clipboard.writeText(m.text||m.mediaUrl||""); alert("Copied"); setMenuOpenFor(null); } catch(e){alert("Copy failed");} };
   const editMessage = async m => { if (m.senderId!==myUid) return alert("You can only edit your messages."); const newText=window.prompt("Edit message", m.text||""); if(newText==null) return; await updateDoc(doc(db, "chats", chatId, "messages", m.id), { text:newText, edited:true }); setMenuOpenFor(null); };
   const deleteMessageForEveryone = async id => { if(!confirm("Delete for everyone?")) return; await deleteDoc(doc(db, "chats", chatId, "messages", id)); setMenuOpenFor(null); };
   const deleteMessageForMe = async id => { await updateDoc(doc(db, "chats", chatId, "messages", id), { deletedFor: arrayUnion(myUid) }); setMenuOpenFor(null); };
@@ -314,7 +276,7 @@ export default function ChatConversationPage() {
   // -------------------- Touch handlers --------------------
   const handleMsgTouchStart = m => { longPressTimer.current = setTimeout(() => setMenuOpenFor(m.id), 500); swipeStartX.current=null; };
   const handleMsgTouchMove = ev => { if(!swipeStartX.current && ev.touches?.[0]) swipeStartX.current=ev.touches[0].clientX; };
-  const handleMsgTouchEnd = m => { clearTimeout(longPressTimer.current); if(!swipeStartX.current) return; const endX=event.changedTouches?.[0]?.clientX; if(endX==null) return; if(swipeStartX.current - endX > 80) replyToMessage(m); swipeStartX.current=null; };
+  const handleMsgTouchEnd = (m, ev) => { clearTimeout(longPressTimer.current); if(!swipeStartX.current) return; const endX=ev.changedTouches?.[0]?.clientX; if(endX==null) return; if(swipeStartX.current - endX > 80) replyToMessage(m); swipeStartX.current=null; };
 
   // -------------------- Header actions --------------------
   const clearChat = async () => { if(!confirm("Clear chat?")) return; const snap=await getDocs(query(collection(db,"chats",chatId,"messages"),orderBy("createdAt","asc"))); for(const d of snap.docs) try{await deleteDoc(d.ref);}catch(e){} setHeaderMenuOpen(false); alert("Chat cleared."); };
@@ -324,168 +286,115 @@ export default function ChatConversationPage() {
     const blockedBy = chatInfo.blockedBy || [];
     if (blockedBy.includes(myUid)) {
       await updateDoc(chatRef, { blockedBy: arrayRemove(myUid) });
-      setChatInfo(prev => ({ ...prev, blockedBy: blockedBy.filter(id => id !== myUid) }));
       alert("You unblocked this chat.");
     } else {
       await updateDoc(chatRef, { blockedBy: arrayUnion(myUid) });
-      setChatInfo(prev => ({ ...prev, blockedBy: [...blockedBy, myUid] }));
       alert("You blocked this chat.");
     }
     setHeaderMenuOpen(false);
   };
 
-  // -------------------- Render Messages --------------------
-  const renderMessage = (m) => {
-    const isMine = m.senderId === myUid;
-    const showMenu = menuOpenFor === m.id;
-    const showReactionPicker = reactionFor === m.id;
-    const senderName = isMine ? "You" : friendInfo?.name || "Friend";
-    const time = fmtTime(m.createdAt);
-
-    return (
-      <div key={m.id} style={{ display: "flex", flexDirection: "column", alignItems: isMine ? "flex-end" : "flex-start", marginBottom: SPACING.sm }}>
-        <div
-          onTouchStart={() => handleMsgTouchStart(m)}
-          onTouchMove={handleMsgTouchMove}
-          onTouchEnd={() => handleMsgTouchEnd(m)}
-          style={{
-            maxWidth: "70%",
-            padding: SPACING.sm,
-            borderRadius: SPACING.borderRadius,
-            backgroundColor: isMine ? COLORS.primary : isDark ? COLORS.darkCard : COLORS.lightCard,
-            color: isMine ? "#fff" : isDark ? COLORS.darkText : COLORS.lightText,
-            position: "relative",
-            cursor: "pointer",
-            wordBreak: "break-word"
-          }}
-        >
-          {m.replyTo && (
-            <div style={{ fontSize: 12, color: COLORS.edited, borderLeft: `3px solid ${COLORS.mutedText}`, paddingLeft: 4, marginBottom: 4 }}>
-              {m.replyTo.text || m.replyTo.mediaType}
-            </div>
-          )}
-          {m.text && <div>{m.text}</div>}
-          {m.mediaUrl && (
-            <div style={{ marginTop: 4 }}>
-              {m.mediaType === "image" && <img src={m.mediaUrl} alt="" style={{ maxWidth: "100%", borderRadius: SPACING.borderRadius }} />}
-              {m.mediaType === "video" && <video src={m.mediaUrl} controls style={{ maxWidth: "100%", borderRadius: SPACING.borderRadius }} />}
-              {m.mediaType === "audio" && <audio src={m.mediaUrl} controls />}
-              {m.mediaType === "pdf" && <a href={m.mediaUrl} target="_blank" rel="noreferrer">{m.fileName || "PDF Document"}</a>}
-            </div>
-          )}
-          <div style={{ fontSize: 10, color: COLORS.mutedText, marginTop: 2, textAlign: "right" }}>
-            {m.edited && "(edited)"} {time} {m.status && isMine ? `• ${m.status}` : ""}
-          </div>
-
-          {Object.keys(m.reactions || {}).length > 0 && (
-            <div style={{ position: "absolute", bottom: -12, right: -12, display: "flex", gap: 2 }}>
-              {Object.values(m.reactions).map((r, i) => r && <span key={i} style={{ backgroundColor: COLORS.reactionBg, color: "#fff", borderRadius: 8, padding: "0 4px", fontSize: 10 }}>{r}</span>)}
-            </div>
-          )}
-
-          {showMenu && (
-            <div style={{ position: "absolute", top: -SPACING.lg, right: 0, background: COLORS.lightCard, border: `1px solid ${COLORS.grayBorder}`, borderRadius: SPACING.borderRadius, zIndex: 10 }}>
-              <button style={menuBtnStyle} onClick={() => replyToMessage(m)}>Reply</button>
-              <button style={menuBtnStyle} onClick={() => setReactionFor(m.id)}>React</button>
-              {isMine && <button style={menuBtnStyle} onClick={() => editMessage(m)}>Edit</button>}
-              {isMine && <button style={menuBtnStyle} onClick={() => deleteMessageForEveryone(m.id)}>Delete for Everyone</button>}
-              <button style={menuBtnStyle} onClick={() => deleteMessageForMe(m.id)}>Delete for Me</button>
-              <button style={menuBtnStyle} onClick={() => forwardMessage(m)}>Forward</button>
-              <button style={menuBtnStyle} onClick={() => pinMessage(m)}>Pin</button>
-              <button style={menuBtnStyle} onClick={() => copyMessageText(m)}>Copy</button>
-              <button style={menuBtnStyle} onClick={() => setMenuOpenFor(null)}>Close</button>
-            </div>
-          )}
-
-          {showReactionPicker && (
-            <div style={{ position: "absolute", bottom: -28, left: 0, display: "flex", gap: 4, background: COLORS.lightCard, borderRadius: SPACING.borderRadius, padding: "2px 4px" }}>
-              {INLINE_REACTIONS.map((r, i) => (
-                <span key={i} style={{ cursor: "pointer", fontSize: 14 }} onClick={() => applyReaction(m.id, r)}>{r}</span>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
-
+  // -------------------- Render --------------------
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh", backgroundColor: wallpaper || (isDark ? COLORS.darkBg : COLORS.lightBg), color: isDark ? COLORS.darkText : COLORS.lightText }}>
-      
+    <div className="flex flex-col h-full w-full" style={{ background: wallpaper || (isDark ? COLORS.darkBg : COLORS.lightBg) }}>
       {/* Header */}
-      <div style={{ height: 56, backgroundColor: COLORS.headerBlue, color: "#fff", display: "flex", alignItems: "center", padding: "0 12px", justifyContent: "space-between", position: "relative" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <button onClick={() => navigate(-1)} style={{ background: "transparent", border: "none", color: "#fff", fontSize: 18 }}>←</button>
-          <img src={friendInfo?.photoURL || ""} alt="" style={{ width: 36, height: 36, borderRadius: "50%" }} />
+      <div className="flex items-center justify-between p-3 sticky top-0 z-50" style={{ backgroundColor: COLORS.headerBlue, color: COLORS.darkText, boxShadow: "0 2px 4px rgba(0,0,0,0.1)" }}>
+        <div className="flex items-center gap-3">
+          <img src={friendInfo?.avatar || "/default-avatar.png"} alt="avatar" className="w-10 h-10 rounded-full object-cover"/>
           <div>
-            <div>{friendInfo?.name || "Chat"}</div>
-            <div style={{ fontSize: 12 }}>{friendInfo?.status || ""}</div>
+            <div className="font-semibold">{friendInfo?.name || "Chat"}</div>
+            <div className="text-xs text-gray-200">{chatInfo?.pinnedMessageText ? `📌 ${chatInfo.pinnedMessageText}` : friendInfo?.lastSeen ? `Last seen: ${fmtTime(friendInfo.lastSeen)}` : "Online"}</div>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 12 }}>
-          <button onClick={() => alert("Voice call")} style={{ background: "transparent", border: "none", color: "#fff" }}>📞</button>
-          <button onClick={() => alert("Video call")} style={{ background: "transparent", border: "none", color: "#fff" }}>🎥</button>
-          <button onClick={() => setHeaderMenuOpen(prev => !prev)} style={{ background: "transparent", border: "none", color: "#fff" }}>⋮</button>
+        <div className="relative">
+          <button onClick={() => setHeaderMenuOpen(prev => !prev)} style={menuBtnStyle}>⋮</button>
+          {headerMenuOpen && (
+            <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-darkCard border border-gray-200 dark:border-gray-700 rounded shadow-lg z-50">
+              <button style={menuBtnStyle} onClick={clearChat}>Clear Chat</button>
+              <button style={menuBtnStyle} onClick={toggleBlock}>{(chatInfo?.blockedBy||[]).includes(myUid) ? "Unblock" : "Block"}</button>
+            </div>
+          )}
         </div>
-        {headerMenuOpen && (
-          <div style={{ position: "absolute", top: 56, right: 12, background: COLORS.lightCard, borderRadius: SPACING.borderRadius, boxShadow: "0 2px 6px rgba(0,0,0,0.2)", zIndex: 20 }}>
-            <button style={menuBtnStyle} onClick={clearChat}>Clear Chat</button>
-            <button style={menuBtnStyle} onClick={toggleBlock}>{(chatInfo?.blockedBy || []).includes(myUid) ? "Unblock" : "Block"}</button>
-            <button style={menuBtnStyle} onClick={() => setHeaderMenuOpen(false)}>Close</button>
-          </div>
-        )}
       </div>
 
       {/* Messages */}
-      <div ref={messagesRefEl} style={{ flex: 1, overflowY: "auto", padding: SPACING.sm }}>
-        {loadingMsgs && <div style={{ textAlign: "center", marginTop: SPACING.md }}>Loading...</div>}
-        {messages.map(renderMessage)}
+      <div ref={messagesRefEl} className="flex-1 overflow-y-auto p-3 space-y-2">
+        {messages.map((m, idx) => {
+          const isMe = m.senderId === myUid;
+          const daySep = idx === 0 || dayLabel(messages[idx-1]?.createdAt) !== dayLabel(m.createdAt);
+          return (
+            <React.Fragment key={m.id}>
+              {daySep && <div className="text-center text-gray-400 my-2">{dayLabel(m.createdAt)}</div>}
+              <div
+                onTouchStart={() => handleMsgTouchStart(m)}
+                onTouchMove={handleMsgTouchMove}
+                onTouchEnd={(ev) => handleMsgTouchEnd(m, ev)}
+                className={`max-w-[70%] p-2 rounded-lg ${isMe ? "ml-auto bg-blue-500 text-white" : "bg-gray-200 dark:bg-darkCard text-black"} relative`}
+              >
+                {m.replyTo && <div className="border-l-2 border-blue-300 pl-2 mb-1 text-xs opacity-70">{m.replyTo.text || "Media"}</div>}
+                {m.text && <div>{m.text} {m.edited && <span className="text-[10px] text-gray-400">(edited)</span>}</div>}
+                {m.mediaUrl && m.mediaType === "image" && <img src={m.mediaUrl} alt="" className="rounded max-h-48 object-cover"/>}
+                {m.mediaUrl && m.mediaType === "video" && <video src={m.mediaUrl} controls className="rounded max-h-48"/>}
+                {m.mediaUrl && m.mediaType === "audio" && <audio src={m.mediaUrl} controls className="w-full"/>}
+                <div className="flex justify-between text-[10px] mt-1">
+                  <span>{fmtTime(m.createdAt)}</span>
+                  <span>{isMe && m.status}</span>
+                </div>
+                <div className="flex gap-1 mt-1">
+                  {INLINE_REACTIONS.map(r => (
+                    <button key={r} onClick={() => applyReaction(m.id, r)} className={`text-xs ${Object.values(m.reactions||{}).includes(r) ? "font-bold" : ""}`}>{r}</button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Message menu */}
+              {menuOpenFor === m.id && (
+                <div className="absolute bg-white dark:bg-darkCard border border-gray-300 dark:border-gray-700 rounded shadow p-2 z-50">
+                  <button style={menuBtnStyle} onClick={() => replyToMessage(m)}>Reply</button>
+                  <button style={menuBtnStyle} onClick={() => copyMessageText(m)}>Copy</button>
+                  <button style={menuBtnStyle} onClick={() => editMessage(m)}>Edit</button>
+                  <button style={menuBtnStyle} onClick={() => deleteMessageForMe(m.id)}>Delete for me</button>
+                  {isMe && <button style={menuBtnStyle} onClick={() => deleteMessageForEveryone(m.id)}>Delete for everyone</button>}
+                  <button style={menuBtnStyle} onClick={() => pinMessage(m)}>Pin</button>
+                  <button style={menuBtnStyle} onClick={() => setMenuOpenFor(null)}>Cancel</button>
+                </div>
+              )}
+            </React.Fragment>
+          );
+        })}
         <div ref={endRef} />
       </div>
 
-      {/* Reply Preview */}
+      {/* Reply preview */}
       {replyTo && (
-        <div style={{ padding: SPACING.sm, background: isDark ? COLORS.darkCard : COLORS.lightCard, borderTop: `1px solid ${COLORS.grayBorder}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div>
-            Replying to: <b>{replyTo.text || replyTo.mediaType}</b>
-          </div>
-          <button onClick={() => setReplyTo(null)} style={{ border: "none", background: "transparent", fontSize: 16 }}>×</button>
+        <div className="p-2 bg-gray-300 dark:bg-gray-700 flex justify-between items-center">
+          <div className="text-sm truncate">{replyTo.text || replyTo.mediaType}</div>
+          <button onClick={() => setReplyTo(null)}>✖</button>
         </div>
       )}
 
-      {/* Input */}
-      <div style={{ padding: SPACING.sm, display: "flex", alignItems: "center", gap: SPACING.sm, borderTop: `1px solid ${COLORS.grayBorder}`, background: isDark ? COLORS.darkCard : COLORS.lightCard }}>
-        <button onClick={() => setShowEmojiPicker(prev => !prev)} style={{ fontSize: 24, background: "transparent", border: "none" }}>😊</button>
+      {/* Composer */}
+      <div className="p-2 flex items-center gap-2 bg-gray-100 dark:bg-darkCard sticky bottom-0">
         <input
+          type="text"
+          placeholder="Type a message"
+          className="flex-1 p-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-darkCard"
           value={text}
           onChange={e => setText(e.target.value)}
-          placeholder="Type a message"
-          style={{ flex: 1, padding: SPACING.sm, borderRadius: SPACING.borderRadius, border: `1px solid ${COLORS.grayBorder}`, outline: "none", background: isDark ? COLORS.darkBg : "#fff", color: isDark ? COLORS.darkText : COLORS.lightText }}
-          onKeyDown={e => e.key === "Enter" && sendTextMessage()}
         />
-        <input type="file" multiple onChange={onFilesSelected} style={{ display: "none" }} id="fileInput" />
-        <label htmlFor="fileInput" style={{ cursor: "pointer" }}>📎</label>
+        <input type="file" multiple onChange={onFilesSelected} className="hidden" id="mediaInput"/>
+        <label htmlFor="mediaInput" className="cursor-pointer">📎</label>
         <button
           onMouseDown={holdStart}
           onMouseUp={holdEnd}
           onTouchStart={holdStart}
           onTouchEnd={holdEnd}
-          onClick={sendTextMessage}
-          style={{ fontSize: 18, background: "transparent", border: "none" }}
+          className="px-3 py-2 rounded-full bg-blue-500 text-white"
         >
-          {recording ? "🔴" : "📩"}
+          {recording ? "🎤..." : "Send"}
         </button>
+        <button onClick={sendTextMessage} className="px-3 py-2 rounded-full bg-green-500 text-white">➡️</button>
       </div>
-
-      {/* Emoji Picker */}
-      {showEmojiPicker && (
-        <div style={{ position: "absolute", bottom: 60, left: 12, background: COLORS.lightCard, borderRadius: SPACING.borderRadius, padding: SPACING.sm, display: "flex", flexWrap: "wrap", maxWidth: 300, gap: 4, boxShadow: "0 2px 6px rgba(0,0,0,0.2)" }}>
-          {EXTENDED_EMOJIS.map((e, i) => (
-            <span key={i} style={{ cursor: "pointer", fontSize: 20 }} onClick={() => setText(prev => prev + e)}>{e}</span>
-          ))}
-          <button onClick={() => setShowEmojiPicker(false)} style={{ border: "none", background: "transparent", fontSize: 16 }}>×</button>
-        </div>
-      )}
     </div>
   );
 }
