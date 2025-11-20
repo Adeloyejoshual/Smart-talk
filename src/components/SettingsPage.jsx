@@ -1,20 +1,30 @@
 // src/components/SettingsPage.jsx
-import React, { useEffect, useState, useContext } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useEffect, useState, useContext, useRef } from "react";
 import { auth, db } from "../firebaseConfig";
-import { doc, getDoc, onSnapshot } from "firebase/firestore";
+import {
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  onSnapshot,
+  collection,
+  query,
+  where,
+  orderBy,
+  serverTimestamp,
+  onSnapshot as onCollection,
+} from "firebase/firestore";
+import { useNavigate } from "react-router-dom";
 import { ThemeContext } from "../context/ThemeContext";
 
 export default function SettingsPage() {
-  const navigate = useNavigate();
   const { theme, wallpaper, updateSettings } = useContext(ThemeContext);
-
   const [user, setUser] = useState(null);
-  const [name, setName] = useState("Unnamed");
-  const [bio, setBio] = useState("");
-  const [profilePic, setProfilePic] = useState(null);
-
   const [balance, setBalance] = useState(0);
+  const [transactions, setTransactions] = useState([]);
+  const [newTheme, setNewTheme] = useState(theme);
+  const [newWallpaper, setNewWallpaper] = useState(wallpaper || "");
+  const [previewWallpaper, setPreviewWallpaper] = useState(wallpaper || "");
   const [checkedInToday, setCheckedInToday] = useState(false);
   const [language, setLanguage] = useState("English");
   const [fontSize, setFontSize] = useState("Medium");
@@ -25,62 +35,80 @@ export default function SettingsPage() {
     sound: false,
   });
 
-  const isDark = theme === "dark";
+  const navigate = useNavigate();
+  const fileInputRef = useRef(null);
 
-  // Load user info
+  // Load user & preferences
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(async (u) => {
-      if (!u) return;
-      setUser(u);
+    const unsubscribe = auth.onAuthStateChanged(async (userAuth) => {
+      if (!userAuth) return;
+      setUser(userAuth);
 
-      const userRef = doc(db, "users", u.uid);
+      const userRef = doc(db, "users", userAuth.uid);
       const snap = await getDoc(userRef);
-      if (snap.exists()) {
-        const data = snap.data();
-        setName(data.name || "Unnamed");
-        setBio(data.bio || "");
-        setProfilePic(data.profilePic || null);
 
+      if (!snap.exists()) {
+        await setDoc(userRef, {
+          balance: 5.0,
+          createdAt: serverTimestamp(),
+          lastCheckin: null,
+          preferences: {
+            language: "English",
+            fontSize: "Medium",
+            layout: "Default",
+            theme: "light",
+            wallpaper: null,
+          },
+        });
+        alert("🎁 Welcome! You’ve received a $5 new user bonus!");
+      } else {
+        const data = snap.data();
         if (data.preferences) {
           setLanguage(data.preferences.language || "English");
           setFontSize(data.preferences.fontSize || "Medium");
           setLayout(data.preferences.layout || "Default");
+          setNewTheme(data.preferences.theme || "light");
+          setNewWallpaper(data.preferences.wallpaper || wallpaper || "");
         }
-
-        setBalance(data.balance || 0);
-        checkLastCheckin(data.lastCheckin);
       }
 
-      // Listen for live updates
-      const unsub = onSnapshot(userRef, (docSnap) => {
+      // Wallet balance live updates
+      const unsubBalance = onSnapshot(userRef, (docSnap) => {
         if (!docSnap.exists()) return;
         const data = docSnap.data();
         setBalance(data.balance || 0);
-        setName(data.name || "Unnamed");
-        setBio(data.bio || "");
-        setProfilePic(data.profilePic || null);
-        if (data.preferences) {
-          setLanguage(data.preferences.language || "English");
-          setFontSize(data.preferences.fontSize || "Medium");
-          setLayout(data.preferences.layout || "Default");
-        }
         checkLastCheckin(data.lastCheckin);
       });
 
-      return () => unsub();
+      // Transactions live updates
+      const txRef = collection(db, "transactions");
+      const txQuery = query(
+        txRef,
+        where("uid", "==", userAuth.uid),
+        orderBy("createdAt", "desc")
+      );
+      const unsubTx = onCollection(txQuery, (snapshot) => {
+        setTransactions(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
+      });
+
+      return () => {
+        unsubBalance();
+        unsubTx();
+      };
     });
 
     return () => unsubscribe();
   }, []);
 
+  // Daily check-in
   const checkLastCheckin = (lastCheckin) => {
     if (!lastCheckin) return setCheckedInToday(false);
     const lastDate = new Date(lastCheckin.seconds * 1000);
     const today = new Date();
     setCheckedInToday(
       lastDate.getDate() === today.getDate() &&
-        lastDate.getMonth() === today.getMonth() &&
-        lastDate.getFullYear() === today.getFullYear()
+      lastDate.getMonth() === today.getMonth() &&
+      lastDate.getFullYear() === today.getFullYear()
     );
   };
 
@@ -89,11 +117,11 @@ export default function SettingsPage() {
     const userRef = doc(db, "users", user.uid);
     const snap = await getDoc(userRef);
     if (!snap.exists()) return;
+
     const data = snap.data();
-    const lastCheckin = data.lastCheckin
-      ? new Date(data.lastCheckin.seconds * 1000)
-      : null;
+    const lastCheckin = data.lastCheckin ? new Date(data.lastCheckin.seconds * 1000) : null;
     const today = new Date();
+
     if (
       lastCheckin &&
       lastCheckin.getDate() === today.getDate() &&
@@ -103,18 +131,45 @@ export default function SettingsPage() {
       alert("✅ You already checked in today!");
       return;
     }
-    await doc(db, "users", user.uid).update({
-      balance: (data.balance || 0) + 0.25,
-      lastCheckin: new Date(),
+
+    const newBalance = (data.balance || 0) + 0.25;
+    await updateDoc(userRef, {
+      balance: newBalance,
+      lastCheckin: serverTimestamp(),
     });
-    alert("🎉 You earned +$0.25 for your daily check-in!");
     setCheckedInToday(true);
+    alert("🎉 You earned +$0.25 for your daily check-in!");
   };
 
-  const handleLogout = async () => {
-    await auth.signOut();
-    navigate("/");
+  const handleWallpaperClick = () => fileInputRef.current.click();
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (ev) => setNewWallpaper(ev.target.result);
+      reader.readAsDataURL(file);
+    }
   };
+
+  const removeWallpaper = () => setNewWallpaper("");
+
+  const handleSavePreferences = async () => {
+    if (!user) return;
+    const userRef = doc(db, "users", user.uid);
+    await updateDoc(userRef, {
+      preferences: {
+        language,
+        fontSize,
+        layout,
+        theme: newTheme,
+        wallpaper: newWallpaper || null,
+      },
+    });
+    updateSettings(newTheme, newWallpaper);
+    alert("✅ Preferences saved successfully!");
+  };
+
+  const isDark = newTheme === "dark";
 
   if (!user) return <p>Loading user...</p>;
 
@@ -146,79 +201,35 @@ export default function SettingsPage() {
 
       <h2 style={{ textAlign: "center", marginBottom: 20 }}>⚙️ Settings</h2>
 
-      {/* Profile Card (clickable) */}
-      <div
-        onClick={() => navigate("/edit-profile")}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 16,
-          background: isDark ? "#111" : "#fff",
-          padding: 16,
-          borderRadius: 12,
-          boxShadow: "0 6px 24px rgba(0,0,0,0.06)",
-          cursor: "pointer",
-        }}
-      >
+      {/* ================= Wallet ================= */}
+      <Section title="Wallet" isDark={isDark}>
         <div
-          style={{
-            width: 88,
-            height: 88,
-            borderRadius: 44,
-            background: profilePic
-              ? `url(${profilePic}) center/cover`
-              : "#8b8b8b",
-            flexShrink: 0,
-          }}
-        />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <h2
-            style={{
-              margin: 0,
-              fontSize: 20,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
-            {name}
-          </h2>
-          <p
-            style={{
-              margin: "8px 0",
-              color: isDark ? "#cfcfcf" : "#666",
-              overflowWrap: "anywhere",
-            }}
-          >
-            {bio || "No bio yet — click to edit"}
-          </p>
-          <p style={{ margin: 0, fontSize: 13, color: isDark ? "#bdbdbd" : "#777" }}>
-            {user.email}
+          onClick={() => navigate("/wallet")}
+          style={{ cursor: "pointer" }}
+        >
+          <p style={{ margin: 0 }}>
+            Balance:{" "}
+            <strong style={{ color: isDark ? "#00e676" : "#007bff" }}>
+              ${balance.toFixed(2)}
+            </strong>
           </p>
         </div>
-      </div>
 
-      {/* Wallet Section */}
-      <Section title="Wallet" isDark={isDark}>
-        <p>
-          Balance:{" "}
-          <strong style={{ color: isDark ? "#00e676" : "#007bff" }}>
-            ${balance.toFixed(2)}
-          </strong>
-        </p>
         <button
           onClick={handleDailyCheckin}
           disabled={checkedInToday}
           style={{
             ...btnStyle(checkedInToday ? "#666" : "#4CAF50"),
             opacity: checkedInToday ? 0.7 : 1,
+            marginTop: 10,
+            width: "100%",
           }}
         >
           {checkedInToday ? "✅ Checked In Today" : "🧩 Daily Check-in (+$0.25)"}
         </button>
       </Section>
 
-      {/* Preferences */}
+      {/* ================= Preferences ================= */}
       <Section title="User Preferences" isDark={isDark}>
         <label>Language:</label>
         <select
@@ -255,7 +266,53 @@ export default function SettingsPage() {
         </select>
       </Section>
 
-      {/* Notifications */}
+      {/* ================= Theme & Wallpaper ================= */}
+      <Section title="Theme & Wallpaper" isDark={isDark}>
+        <select
+          value={newTheme}
+          onChange={(e) => setNewTheme(e.target.value)}
+          style={selectStyle(isDark)}
+        >
+          <option value="light">🌞 Light</option>
+          <option value="dark">🌙 Dark</option>
+        </select>
+
+        <div
+          onClick={handleWallpaperClick}
+          style={{
+            ...previewBox,
+            backgroundImage: newWallpaper ? `url(${newWallpaper})` : "none",
+            cursor: "pointer",
+          }}
+        >
+          <p>{newWallpaper ? "Wallpaper Selected" : "🌈 Wallpaper Preview"}</p>
+        </div>
+        {newWallpaper && (
+          <button
+            onClick={removeWallpaper}
+            style={{ ...btnStyle("#d32f2f"), marginTop: 10 }}
+          >
+            Remove Wallpaper
+          </button>
+        )}
+
+        <input
+          type="file"
+          accept="image/*"
+          ref={fileInputRef}
+          style={{ display: "none" }}
+          onChange={handleFileChange}
+        />
+
+        <button
+          onClick={handleSavePreferences}
+          style={{ ...btnStyle("#007bff"), marginTop: 15, borderRadius: 20 }}
+        >
+          💾 Save Preferences
+        </button>
+      </Section>
+
+      {/* ================= Notifications ================= */}
       <Section title="Notifications" isDark={isDark}>
         <label>
           <input
@@ -289,7 +346,7 @@ export default function SettingsPage() {
         </label>
       </Section>
 
-      {/* About */}
+      {/* ================= About ================= */}
       <Section title="About" isDark={isDark}>
         <p>Version 1.0.0</p>
         <p>© 2025 Hahala App</p>
@@ -299,7 +356,7 @@ export default function SettingsPage() {
   );
 }
 
-/* === Section Wrapper === */
+// ================= Section Wrapper =================
 function Section({ title, children, isDark }) {
   return (
     <div
@@ -311,15 +368,15 @@ function Section({ title, children, isDark }) {
         boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
       }}
     >
-      <h3>{title}</h3>
+      <h3 style={{ marginBottom: 12 }}>{title}</h3>
       {children}
     </div>
   );
 }
 
-/* === Reusable Styles === */
+// ================= Reusable Styles =================
 const btnStyle = (bg) => ({
-  marginTop: 8,
+  marginRight: 8,
   padding: "10px 15px",
   background: bg,
   color: "#fff",
@@ -328,6 +385,7 @@ const btnStyle = (bg) => ({
   cursor: "pointer",
   fontWeight: "bold",
 });
+
 const selectStyle = (isDark) => ({
   width: "100%",
   padding: 8,
@@ -337,3 +395,16 @@ const selectStyle = (isDark) => ({
   color: isDark ? "#fff" : "#000",
   border: "1px solid #666",
 });
+
+const previewBox = {
+  width: "100%",
+  height: 150,
+  borderRadius: 10,
+  border: "2px solid #555",
+  marginTop: 15,
+  display: "flex",
+  justifyContent: "center",
+  alignItems: "center",
+  backgroundSize: "cover",
+  backgroundPosition: "center",
+};
