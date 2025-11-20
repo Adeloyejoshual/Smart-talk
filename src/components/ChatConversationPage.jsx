@@ -25,19 +25,8 @@ const fmtTime = (ts) => {
   const d = ts.toDate ? ts.toDate() : new Date(ts);
   return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 };
-const dayLabel = (ts) => {
-  if (!ts) return "";
-  const d = ts.toDate ? ts.toDate() : new Date(ts);
-  const now = new Date();
-  const yesterday = new Date();
-  yesterday.setDate(now.getDate() - 1);
-  if (d.toDateString() === now.toDateString()) return "Today";
-  if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
-  return d.toLocaleDateString();
-};
 
 // -------------------- Constants --------------------
-const INLINE_REACTIONS = ["❤️", "😂", "👍", "😮", "😢"];
 const EXTENDED_EMOJIS = ["❤️","😂","👍","😮","😢","👎","👏","🔥","😅","🤩","😍","😎","🙂","🙃","😉","🤔","🤨","🤗","🤯","🥳","🙏","💪"];
 const COLORS = {
   primary: "#34B7F1",
@@ -49,11 +38,9 @@ const COLORS = {
   lightCard: "#fff",
   darkCard: "#1b1b1b",
   mutedText: "#888",
-  reactionBg: "#111",
-  edited: "#999",
   grayBorder: "rgba(0,0,0,0.06)",
 };
-const SPACING = { xs: 4, sm: 8, md: 12, lg: 14, xl: 20, borderRadius: 12 };
+const SPACING = { sm: 8, borderRadius: 12 };
 const menuBtnStyle = { padding: SPACING.sm, borderRadius: SPACING.borderRadius, border: "none", background: "transparent", cursor: "pointer", textAlign: "left", width: "100%" };
 
 // -------------------- Component --------------------
@@ -77,6 +64,7 @@ export default function ChatConversationPage() {
   const [reactionFor, setReactionFor] = useState(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  const [selectedMessage, setSelectedMessage] = useState(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
 
   // -------------------- Placeholder Handlers --------------------
@@ -85,7 +73,10 @@ export default function ChatConversationPage() {
     console.log("Send message:", text);
     setText(""); 
   };
-  const onFilesSelected = (e) => { console.log("Files selected", e.target.files); };
+  const onFilesSelected = (e) => {
+    const files = Array.from(e.target.files);
+    console.log("Files selected:", files);
+  };
   const holdStart = () => console.log("Recording start");
   const holdEnd = () => console.log("Recording stop");
   const replyToMessage = (m) => setReplyTo(m);
@@ -175,11 +166,12 @@ export default function ChatConversationPage() {
   // -------------------- Render message --------------------
   const renderMessage = (m) => {
     const isMine = m.senderId === myUid;
-    const showMenu = menuOpenFor === m.id;
-    const showReactionPicker = reactionFor === m.id;
+    const handleLongPress = () => setSelectedMessage(m);
 
     return (
-      <div key={m.id} style={{ display: "flex", flexDirection: "column", alignItems: isMine ? "flex-end" : "flex-start", marginBottom: SPACING.sm }}>
+      <div key={m.id} style={{ display: "flex", flexDirection: "column", alignItems: isMine ? "flex-end" : "flex-start", marginBottom: SPACING.sm }}
+           onContextMenu={e => { e.preventDefault(); handleLongPress(); }}
+      >
         <div
           style={{
             maxWidth: "70%",
@@ -193,6 +185,10 @@ export default function ChatConversationPage() {
           }}
         >
           {m.text && <div>{m.text}</div>}
+          {m.image && <img src={m.image} alt="" style={{ maxWidth: "100%", borderRadius: SPACING.borderRadius, marginTop: 4 }} />}
+          {m.video && <video src={m.video} controls style={{ width: "100%", borderRadius: SPACING.borderRadius, marginTop: 4 }} />}
+          {m.audio && <audio src={m.audio} controls style={{ width: "100%", marginTop: 4 }} />}
+          {m.file && <a href={m.file} download style={{ display: "block", marginTop: 4, color: COLORS.primary }}>{m.fileName || "Download File"}</a>}
           <div style={{ fontSize: 10, color: COLORS.mutedText, marginTop: 2, textAlign: "right" }}>
             {fmtTime(m.createdAt)}
           </div>
@@ -220,26 +216,29 @@ export default function ChatConversationPage() {
           <button onClick={startVideoCall} style={{ background: "transparent", border: "none", color: "#fff" }}>🎥</button>
           <button onClick={() => setHeaderMenuOpen(prev => !prev)} style={{ background: "transparent", border: "none", color: "#fff" }}>⋮</button>
         </div>
-        {headerMenuOpen && (
-          <div style={{ position: "absolute", top: 56, right: 12, background: COLORS.lightCard, borderRadius: SPACING.borderRadius, boxShadow: "0 2px 6px rgba(0,0,0,0.2)", zIndex: 20 }}>
-            <button style={menuBtnStyle} onClick={clearChat}>Clear Chat</button>
-            <button style={menuBtnStyle} onClick={toggleBlock}>{(chatInfo?.blockedBy || []).includes(myUid) ? "Unblock" : "Block"}</button>
-            <button style={menuBtnStyle} onClick={() => setHeaderMenuOpen(false)}>Close</button>
-          </div>
-        )}
       </div>
 
       {/* Messages */}
       <div ref={messagesRefEl} style={{ flex: 1, overflowY: "auto", padding: SPACING.sm }}>
-        {loadingMsgs && <div style={{ textAlign: "center", marginTop: SPACING.md }}>Loading...</div>}
+        {loadingMsgs && <div style={{ textAlign: "center", marginTop: SPACING.sm }}>Loading...</div>}
         {messages.map(renderMessage)}
         <div ref={endRef} />
       </div>
 
+      {/* Selected Message Actions */}
+      {selectedMessage && (
+        <div style={{ padding: SPACING.sm, background: isDark ? COLORS.darkCard : COLORS.lightCard, borderTop: `1px solid ${COLORS.grayBorder}`, display: "flex", justifyContent: "space-around" }}>
+          <button onClick={() => { replyToMessage(selectedMessage); setSelectedMessage(null); }}>↩️ Reply</button>
+          <button onClick={() => { copyMessageText(selectedMessage); setSelectedMessage(null); }}>📋 Copy</button>
+          <button onClick={() => { pinMessage(selectedMessage); setSelectedMessage(null); }}>📌 Pin</button>
+          <button onClick={() => setSelectedMessage(null)}>❌ Close</button>
+        </div>
+      )}
+
       {/* Reply preview */}
       {replyTo && (
         <div style={{ padding: SPACING.sm, background: isDark ? COLORS.darkCard : COLORS.lightCard, borderTop: `1px solid ${COLORS.grayBorder}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div>Replying to: <b>{replyTo.text}</b></div>
+          <div>Replying to: <b>{replyTo.text || "Media"}</b></div>
           <button onClick={() => setReplyTo(null)} style={{ border: "none", background: "transparent", fontSize: 16 }}>×</button>
         </div>
       )}
