@@ -215,8 +215,6 @@ export default function ChatConversationPage() {
   // -------------------- Send message --------------------
   const sendTextMessage = async () => {
     if((chatInfo?.blockedBy||[]).includes(myUid)) return alert("You are blocked in this chat.");
-
-    // --- media messages ---
     if(selectedFiles.length>0){
       const filesToSend = [...selectedFiles];
       setSelectedFiles([]); setPreviews([]); setSelectedPreviewIndex(0);
@@ -233,8 +231,6 @@ export default function ChatConversationPage() {
       }
       return;
     }
-
-    // --- text messages ---
     if(text.trim()){
       try{
         const payload = { senderId: myUid, text:text.trim(), mediaUrl:"", mediaType:null, createdAt:serverTimestamp(), status:"sent", reactions:{} };
@@ -355,6 +351,7 @@ export default function ChatConversationPage() {
           flexDirection: "column",
           alignItems: isMine ? "flex-end" : "flex-start",
           marginBottom: SPACING.sm,
+          position: "relative"
         }}
       >
         <div
@@ -367,7 +364,6 @@ export default function ChatConversationPage() {
             borderRadius: SPACING.borderRadius,
             backgroundColor: isMine ? COLORS.primary : isDark ? COLORS.darkCard : COLORS.lightCard,
             color: isMine ? "#fff" : isDark ? COLORS.darkText : COLORS.lightText,
-            position: "relative",
             cursor: "pointer",
             wordBreak: "break-word",
           }}
@@ -393,10 +389,18 @@ export default function ChatConversationPage() {
           {/* Media */}
           {m.mediaUrl && (
             <div style={{ marginTop: 4 }}>
-              {m.mediaType === "image" && <img src={m.mediaUrl} alt="" style={{ maxWidth: "100%", borderRadius: SPACING.borderRadius }} />}
-              {m.mediaType === "video" && <video src={m.mediaUrl} controls style={{ maxWidth: "100%", borderRadius: SPACING.borderRadius }} />}
+              {m.mediaType === "image" && (
+                <img src={m.mediaUrl} alt="" style={{ maxWidth: "100%", borderRadius: SPACING.borderRadius }} />
+              )}
+              {m.mediaType === "video" && (
+                <video src={m.mediaUrl} controls style={{ maxWidth: "100%", borderRadius: SPACING.borderRadius }} />
+              )}
               {m.mediaType === "audio" && <audio src={m.mediaUrl} controls />}
-              {m.mediaType === "pdf" && <a href={m.mediaUrl} target="_blank" rel="noreferrer">{m.fileName || "PDF Document"}</a>}
+              {m.mediaType === "pdf" && (
+                <a href={m.mediaUrl} target="_blank" rel="noreferrer">
+                  {m.fileName || "PDF Document"}
+                </a>
+              )}
             </div>
           )}
 
@@ -490,52 +494,38 @@ export default function ChatConversationPage() {
   // -------------------- JSX Return --------------------
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", backgroundColor: wallpaper || (isDark ? COLORS.darkBg : COLORS.lightBg), color: isDark ? COLORS.darkText : COLORS.lightText }}>
+      {/* Header */}
+      <div style={{ height: 56, backgroundColor: COLORS.headerBlue, color: "#fff", display: "flex", alignItems: "center", padding: "0 12px", justifyContent: "space-between", position: "relative" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }} onClick={() => navigate(`/user/${friendInfo?.id}`)}>
+          <button 
+            onClick={(e) => { e.stopPropagation(); navigate(-1); }} 
+            style={{ background: "transparent", border: "none", color: "#fff", fontSize: 18 }}
+          >
+            ←
+          </button>
+          <img src={friendInfo?.photoURL || "/default-avatar.png"} alt="" style={{ width: 36, height: 36, borderRadius: "50%" }} />
+          <div>
+            <div>{friendInfo?.name || "Chat"}</div>
+            <div style={{ fontSize: 12 }}>{friendInfo?.status || ""}</div>
+          </div>
+        </div>
 
-{/* Header */}
-<div style={{ height: 56, backgroundColor: COLORS.headerBlue, color: "#fff", display: "flex", alignItems: "center", padding: "0 12px", justifyContent: "space-between", position: "relative" }}>
-  {/* Left: Back + Profile */}
-  <div style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }} onClick={() => navigate(`/user/${friendInfo?.id}`)}>
-    <button 
-      onClick={(e) => { e.stopPropagation(); navigate(-1); }} 
-      style={{ background: "transparent", border: "none", color: "#fff", fontSize: 18 }}
-    >
-      ←
-    </button>
-    <img src={friendInfo?.photoURL || "/default-avatar.png"} alt="" style={{ width: 36, height: 36, borderRadius: "50%" }} />
-    <div>
-      <div>{friendInfo?.name || "Chat"}</div>
-      <div style={{ fontSize: 12 }}>{friendInfo?.status || ""}</div>
-    </div>
-  </div>
+        <div style={{ display: "flex", gap: 12 }}>
+          <button onClick={() => navigate(`/voice-call/${friendInfo?.id}`)} style={{ background: "transparent", border: "none", color: "#fff" }}>📞</button>
+          <button onClick={() => navigate(`/video-call/${friendInfo?.id}`)} style={{ background: "transparent", border: "none", color: "#fff" }}>🎥</button>
+          <button onClick={() => setHeaderMenuOpen(prev => !prev)} style={{ background: "transparent", border: "none", color: "#fff" }}>⋮</button>
+        </div>
 
-  {/* Right: Voice/Video calls + Menu */}
-  <div style={{ display: "flex", gap: 12 }}>
-    <button 
-      onClick={() => navigate(`/voice-call/${friendInfo?.id}`)} 
-      style={{ background: "transparent", border: "none", color: "#fff" }}
-    >
-      📞
-    </button>
-    <button 
-      onClick={() => navigate(`/video-call/${friendInfo?.id}`)} 
-      style={{ background: "transparent", border: "none", color: "#fff" }}
-    >
-      🎥
-    </button>
-    <button onClick={() => setHeaderMenuOpen(prev => !prev)} style={{ background: "transparent", border: "none", color: "#fff" }}>⋮</button>
-  </div>
-
-  {/* Header menu */}
-  {headerMenuOpen && (
-    <div style={{ position: "absolute", top: 56, right: 12, background: COLORS.lightCard, borderRadius: SPACING.borderRadius, boxShadow: "0 2px 6px rgba(0,0,0,0.2)", zIndex: 20 }}>
-      <button style={menuBtnStyle} onClick={clearChat}>Clear Chat</button>
-      <button style={menuBtnStyle} onClick={toggleBlock}>
-        {(chatInfo?.blockedBy || []).includes(myUid) ? "Unblock" : "Block"}
-      </button>
-      <button style={menuBtnStyle} onClick={() => setHeaderMenuOpen(false)}>Close</button>
-    </div>
-  )}
-</div>
+        {headerMenuOpen && (
+          <div style={{ position: "absolute", top: 56, right: 12, background: COLORS.lightCard, borderRadius: SPACING.borderRadius, boxShadow: "0 2px 6px rgba(0,0,0,0.2)", zIndex: 20 }}>
+            <button style={menuBtnStyle} onClick={clearChat}>Clear Chat</button>
+            <button style={menuBtnStyle} onClick={toggleBlock}>
+              {(chatInfo?.blockedBy || []).includes(myUid) ? "Unblock" : "Block"}
+            </button>
+            <button style={menuBtnStyle} onClick={() => setHeaderMenuOpen(false)}>Close</button>
+          </div>
+        )}
+      </div>
 
       {/* Messages */}
       <div ref={messagesRefEl} style={{ flex: 1, overflowY: "auto", padding: SPACING.sm }}>
@@ -545,31 +535,31 @@ export default function ChatConversationPage() {
       </div>
 
       {/* Reply preview */}
-{replyTo && (
-  <div style={{
-    padding: SPACING.sm,
-    background: isDark ? COLORS.darkCard : COLORS.lightCard,
-    borderTop: `1px solid ${COLORS.grayBorder}`,
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center"
-  }}>
-    <div>
-      <b>
-        {replyTo.text 
-          ? (replyTo.text.length > 30 ? replyTo.text.slice(0, 30) + "…" : replyTo.text)
-          : replyTo.mediaType
-        }
-      </b>
-    </div>
-    <button
-      onClick={() => setReplyTo(null)}
-      style={{ border: "none", background: "transparent", fontSize: 16 }}
-    >
-      ×
-    </button>
-  </div>
-
+      {replyTo && (
+        <div style={{
+          padding: SPACING.sm,
+          background: isDark ? COLORS.darkCard : COLORS.lightCard,
+          borderTop: `1px solid ${COLORS.grayBorder}`,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center"
+        }}>
+          <div>
+            <b>
+              {replyTo.text 
+                ? (replyTo.text.length > 30 ? replyTo.text.slice(0, 30) + "…" : replyTo.text)
+                : replyTo.mediaType
+              }
+            </b>
+          </div>
+          <button
+            onClick={() => setReplyTo(null)}
+            style={{ border: "none", background: "transparent", fontSize: 16 }}
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {/* Input */}
       <div style={{ padding: SPACING.sm, display: "flex", alignItems: "center", gap: SPACING.sm, borderTop: `1px solid ${COLORS.grayBorder}`, background: isDark ? COLORS.darkCard : COLORS.lightCard }}>
