@@ -2,12 +2,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { auth, db } from "../firebaseConfig";
-import {
-  doc,
-  getDoc,
-  updateDoc,
-  serverTimestamp,
-} from "firebase/firestore";
+import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 
 const EditProfilePage = () => {
   const navigate = useNavigate();
@@ -21,9 +16,11 @@ const EditProfilePage = () => {
   const [saving, setSaving] = useState(false);
 
   const profileInputRef = useRef(null);
+
+  const NAME_LIMIT = 25;
   const BIO_LIMIT = 80;
 
-  // Load existing data
+  // Load user data
   useEffect(() => {
     if (!user) return;
 
@@ -48,9 +45,7 @@ const EditProfilePage = () => {
     const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
     const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
 
-    if (!cloudName || !uploadPreset) {
-      throw new Error("Cloudinary keys missing.");
-    }
+    if (!cloudName || !uploadPreset) throw new Error("Cloudinary keys missing.");
 
     const formData = new FormData();
     formData.append("file", file);
@@ -79,13 +74,10 @@ const EditProfilePage = () => {
 
   const handleSave = async () => {
     if (!user) return;
-
     setSaving(true);
-    let uploadedUrl = profilePic;
 
-    if (selectedFile) {
-      uploadedUrl = await uploadToCloudinary(selectedFile);
-    }
+    let uploadedUrl = profilePic;
+    if (selectedFile) uploadedUrl = await uploadToCloudinary(selectedFile);
 
     const userRef = doc(db, "users", user.uid);
     await updateDoc(userRef, {
@@ -98,6 +90,14 @@ const EditProfilePage = () => {
 
     setSaving(false);
     navigate("/settings");
+  };
+
+  // Get initials from name
+  const getInitials = (fullName) => {
+    if (!fullName) return "NA";
+    const names = fullName.trim().split(" ");
+    if (names.length === 1) return names[0][0].toUpperCase();
+    return (names[0][0] + names[1][0]).toUpperCase();
   };
 
   return (
@@ -116,26 +116,44 @@ const EditProfilePage = () => {
           border: "none",
           fontSize: "18px",
           marginBottom: "15px",
+          cursor: "pointer",
         }}
       >
         ← Back
       </button>
 
-      {/* Profile Photo */}
+      {/* Profile Photo / Initials */}
       <div style={{ textAlign: "center", marginBottom: "25px" }}>
-        <img
-          src={
-            profilePic ||
-            "https://cdn-icons-png.flaticon.com/512/149/149071.png"
-          }
-          alt="Profile"
-          style={{
-            width: "110px",
-            height: "110px",
-            borderRadius: "50%",
-            objectFit: "cover",
-          }}
-        />
+        {profilePic ? (
+          <img
+            src={profilePic}
+            alt="Profile"
+            style={{
+              width: "110px",
+              height: "110px",
+              borderRadius: "50%",
+              objectFit: "cover",
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              width: "110px",
+              height: "110px",
+              borderRadius: "50%",
+              background: "#007bff",
+              color: "#fff",
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              fontSize: 36,
+              fontWeight: "bold",
+              margin: "0 auto",
+            }}
+          >
+            {getInitials(name)}
+          </div>
+        )}
 
         <br />
 
@@ -148,6 +166,7 @@ const EditProfilePage = () => {
             border: "none",
             background: "#007bff",
             color: "#fff",
+            cursor: "pointer",
           }}
         >
           Choose Photo
@@ -162,6 +181,7 @@ const EditProfilePage = () => {
               borderRadius: "10px",
               border: "1px solid #999",
               background: "#f5f5f5",
+              cursor: "pointer",
             }}
           >
             Remove
@@ -181,24 +201,25 @@ const EditProfilePage = () => {
       <label style={{ fontWeight: "600" }}>Name</label>
       <input
         value={name}
-        onChange={(e) => setName(e.target.value)}
+        onChange={(e) => setName(e.target.value.slice(0, NAME_LIMIT))}
         placeholder="Full name"
         style={{
           width: "100%",
           padding: "12px",
           borderRadius: "8px",
           border: "1px solid #ccc",
-          marginBottom: "15px",
+          marginBottom: "5px",
         }}
       />
+      <div style={{ textAlign: "right", fontSize: "12px", color: "#555" }}>
+        {NAME_LIMIT - name.length} characters remaining
+      </div>
 
-      {/* Bio with character countdown */}
+      {/* Bio */}
       <label style={{ fontWeight: "600" }}>Bio</label>
       <textarea
         value={bio}
-        onChange={(e) =>
-          setBio(e.target.value.slice(0, BIO_LIMIT)) // enforce max 80 chars
-        }
+        onChange={(e) => setBio(e.target.value.slice(0, BIO_LIMIT))}
         placeholder="Your bio"
         rows={3}
         style={{
@@ -213,7 +234,7 @@ const EditProfilePage = () => {
         {BIO_LIMIT - bio.length} characters remaining
       </div>
 
-      {/* Email (read only) */}
+      {/* Email */}
       <label style={{ fontWeight: "600" }}>Email</label>
       <input
         value={email}
@@ -241,6 +262,7 @@ const EditProfilePage = () => {
           background: "#28a745",
           color: "white",
           fontWeight: "600",
+          cursor: "pointer",
         }}
       >
         {saving ? "Saving..." : "Save"}
