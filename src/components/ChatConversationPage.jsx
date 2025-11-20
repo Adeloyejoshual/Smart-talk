@@ -492,108 +492,95 @@ export default function ChatConversationPage() {
   };
 
   // -------------------- JSX Return --------------------
-  return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh", backgroundColor: wallpaper || (isDark ? COLORS.darkBg : COLORS.lightBg), color: isDark ? COLORS.darkText : COLORS.lightText }}>
-      {/* Header */}
-      <div style={{ height: 56, backgroundColor: COLORS.headerBlue, color: "#fff", display: "flex", alignItems: "center", padding: "0 12px", justifyContent: "space-between", position: "relative" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }} onClick={() => navigate(`/user/${friendInfo?.id}`)}>
-          <button 
-            onClick={(e) => { e.stopPropagation(); navigate(-1); }} 
-            style={{ background: "transparent", border: "none", color: "#fff", fontSize: 18 }}
-          >
-            ←
-          </button>
-          <img src={friendInfo?.photoURL || "/default-avatar.png"} alt="" style={{ width: 36, height: 36, borderRadius: "50%" }} />
-          <div>
-            <div>{friendInfo?.name || "Chat"}</div>
-            <div style={{ fontSize: 12 }}>{friendInfo?.status || ""}</div>
-          </div>
-        </div>
+return (
+  <div style={{ display: "flex", flexDirection: "column", height: "100vh", backgroundColor: wallpaper || (isDark ? COLORS.darkBg : COLORS.lightBg), color: isDark ? COLORS.darkText : COLORS.lightText }}>
 
-        <div style={{ display: "flex", gap: 12 }}>
-          <button onClick={() => navigate(`/voice-call/${friendInfo?.id}`)} style={{ background: "transparent", border: "none", color: "#fff" }}>📞</button>
-          <button onClick={() => navigate(`/video-call/${friendInfo?.id}`)} style={{ background: "transparent", border: "none", color: "#fff" }}>🎥</button>
-          <button onClick={() => setHeaderMenuOpen(prev => !prev)} style={{ background: "transparent", border: "none", color: "#fff" }}>⋮</button>
-        </div>
-
-        {headerMenuOpen && (
-          <div style={{ position: "absolute", top: 56, right: 12, background: COLORS.lightCard, borderRadius: SPACING.borderRadius, boxShadow: "0 2px 6px rgba(0,0,0,0.2)", zIndex: 20 }}>
-            <button style={menuBtnStyle} onClick={clearChat}>Clear Chat</button>
-            <button style={menuBtnStyle} onClick={toggleBlock}>
-              {(chatInfo?.blockedBy || []).includes(myUid) ? "Unblock" : "Block"}
-            </button>
-            <button style={menuBtnStyle} onClick={() => setHeaderMenuOpen(false)}>Close</button>
-          </div>
-        )}
+  {/* Header */}
+  <div style={{ height: 56, backgroundColor: COLORS.headerBlue, color: "#fff", display: "flex", alignItems: "center", padding: "0 12px", justifyContent: "space-between", position: "relative", flexShrink: 0 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }} onClick={() => navigate(`/user/${friendInfo?.id}`)}>
+      <button onClick={(e) => { e.stopPropagation(); navigate(-1); }} style={{ background: "transparent", border: "none", color: "#fff", fontSize: 18 }}>←</button>
+      <img src={friendInfo?.photoURL || "/default-avatar.png"} alt="" style={{ width: 36, height: 36, borderRadius: "50%" }} />
+      <div>
+        <div>{friendInfo?.name || "Chat"}</div>
+        <div style={{ fontSize: 12 }}>{friendInfo?.status || ""}</div>
       </div>
-
-      {/* Messages */}
-      <div ref={messagesRefEl} style={{ flex: 1, overflowY: "auto", padding: SPACING.sm }}>
-        {loadingMsgs && <div style={{ textAlign: "center", marginTop: SPACING.md }}>Loading...</div>}
-        {messages.map(renderMessage)}
-        <div ref={endRef} />
-      </div>
-
-      {/* Reply preview */}
-      {replyTo && (
-        <div style={{
-          padding: SPACING.sm,
-          background: isDark ? COLORS.darkCard : COLORS.lightCard,
-          borderTop: `1px solid ${COLORS.grayBorder}`,
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center"
-        }}>
-          <div>
-            <b>
-              {replyTo.text 
-                ? (replyTo.text.length > 30 ? replyTo.text.slice(0, 30) + "…" : replyTo.text)
-                : replyTo.mediaType
-              }
-            </b>
-          </div>
-          <button
-            onClick={() => setReplyTo(null)}
-            style={{ border: "none", background: "transparent", fontSize: 16 }}
-          >
-            ×
-          </button>
-        </div>
-      )}
-
-      {/* Input */}
-      <div style={{ padding: SPACING.sm, display: "flex", alignItems: "center", gap: SPACING.sm, borderTop: `1px solid ${COLORS.grayBorder}`, background: isDark ? COLORS.darkCard : COLORS.lightCard }}>
-        <button onClick={() => setShowEmojiPicker(prev => !prev)} style={{ fontSize: 24, background: "transparent", border: "none" }}>😊</button>
-        <input
-          value={text}
-          onChange={e => setText(e.target.value)}
-          placeholder="Type a message"
-          style={{ flex: 1, padding: SPACING.sm, borderRadius: SPACING.borderRadius, border: `1px solid ${COLORS.grayBorder}`, outline: "none", background: isDark ? COLORS.darkBg : "#fff", color: isDark ? COLORS.darkText : COLORS.lightText }}
-          onKeyDown={e => e.key === "Enter" && sendTextMessage()}
-        />
-        <input type="file" multiple onChange={onFilesSelected} style={{ display: "none" }} id="fileInput" />
-        <label htmlFor="fileInput" style={{ cursor: "pointer" }}>📎</label>
-        <button
-          onMouseDown={holdStart}
-          onMouseUp={holdEnd}
-          onTouchStart={holdStart}
-          onTouchEnd={holdEnd}
-          onClick={sendTextMessage}
-          style={{ fontSize: 18, background: "transparent", border: "none" }}
-        >
-          {recording ? "🔴" : "📩"}
-        </button>
-      </div>
-
-      {/* Emoji picker */}
-      {showEmojiPicker && (
-        <div style={{ position: "absolute", bottom: 60, left: 12, background: COLORS.lightCard, borderRadius: SPACING.borderRadius, padding: SPACING.sm, display: "flex", flexWrap: "wrap", maxWidth: 300, gap: 4, boxShadow: "0 2px 6px rgba(0,0,0,0.2)" }}>
-          {EXTENDED_EMOJIS.map((e, i) => (
-            <span key={i} style={{ cursor: "pointer", fontSize: 20 }} onClick={() => setText(prev => prev + e)}>{e}</span>
-          ))}
-          <button onClick={() => setShowEmojiPicker(false)} style={{ border: "none", background: "transparent", fontSize: 16 }}>×</button>
-        </div>
-      )}
     </div>
+
+    <div style={{ display: "flex", gap: 12 }}>
+      <button onClick={() => navigate(`/voice-call/${friendInfo?.id}`)} style={{ background: "transparent", border: "none", color: "#fff" }}>📞</button>
+      <button onClick={() => navigate(`/video-call/${friendInfo?.id}`)} style={{ background: "transparent", border: "none", color: "#fff" }}>🎥</button>
+      <button onClick={() => setHeaderMenuOpen(prev => !prev)} style={{ background: "transparent", border: "none", color: "#fff" }}>⋮</button>
+    </div>
+
+    {headerMenuOpen && (
+      <div style={{ position: "absolute", top: 56, right: 12, background: COLORS.lightCard, borderRadius: SPACING.borderRadius, boxShadow: "0 2px 6px rgba(0,0,0,0.2)", zIndex: 20 }}>
+        <button style={menuBtnStyle} onClick={clearChat}>Clear Chat</button>
+        <button style={menuBtnStyle} onClick={toggleBlock}>
+          {(chatInfo?.blockedBy || []).includes(myUid) ? "Unblock" : "Block"}
+        </button>
+        <button style={menuBtnStyle} onClick={() => setHeaderMenuOpen(false)}>Close</button>
+      </div>
+    )}
+  </div>
+
+  {/* Pinned message */}
+  {chatInfo?.pinnedMessageId && (
+    <div style={{ padding: SPACING.sm, background: isDark ? COLORS.darkCard : COLORS.lightCard, borderBottom: `1px solid ${COLORS.grayBorder}`, flexShrink: 0 }}>
+      <b>Pinned:</b> {chatInfo.pinnedMessageText || ""}
+    </div>
+  )}
+
+  {/* Messages scrollable container */}
+  <div ref={messagesRefEl} style={{ flex: 1, overflowY: "auto", padding: SPACING.sm }}>
+    {loadingMsgs && <div style={{ textAlign: "center", marginTop: SPACING.md }}>Loading...</div>}
+    {messages.map(renderMessage)}
+    <div ref={endRef} />
+  </div>
+
+  {/* Reply preview above input */}
+  {replyTo && (
+    <div style={{ padding: SPACING.sm, background: isDark ? COLORS.darkCard : COLORS.lightCard, borderTop: `1px solid ${COLORS.grayBorder}`, display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
+      <div>
+        <b>{replyTo.text ? (replyTo.text.length > 30 ? replyTo.text.slice(0, 30) + "…" : replyTo.text) : replyTo.mediaType}</b>
+      </div>
+      <button onClick={() => setReplyTo(null)} style={{ border: "none", background: "transparent", fontSize: 16 }}>×</button>
+    </div>
+  )}
+
+  {/* Input bar fixed at bottom */}
+  <div style={{ padding: SPACING.sm, display: "flex", alignItems: "center", gap: SPACING.sm, borderTop: `1px solid ${COLORS.grayBorder}`, background: isDark ? COLORS.darkCard : COLORS.lightCard, flexShrink: 0 }}>
+    <button onClick={() => setShowEmojiPicker(prev => !prev)} style={{ fontSize: 24, background: "transparent", border: "none" }}>😊</button>
+    <input
+      value={text}
+      onChange={e => setText(e.target.value)}
+      placeholder="Type a message"
+      style={{ flex: 1, padding: SPACING.sm, borderRadius: SPACING.borderRadius, border: `1px solid ${COLORS.grayBorder}`, outline: "none", background: isDark ? COLORS.darkBg : "#fff", color: isDark ? COLORS.darkText : COLORS.lightText }}
+      onKeyDown={e => e.key === "Enter" && sendTextMessage()}
+    />
+    <input type="file" multiple onChange={onFilesSelected} style={{ display: "none" }} id="fileInput" />
+    <label htmlFor="fileInput" style={{ cursor: "pointer" }}>📎</label>
+    <button
+      onMouseDown={holdStart}
+      onMouseUp={holdEnd}
+      onTouchStart={holdStart}
+      onTouchEnd={holdEnd}
+      onClick={sendTextMessage}
+      style={{ fontSize: 18, background: "transparent", border: "none" }}
+    >
+      {recording ? "🔴" : "📩"}
+    </button>
+  </div>
+
+  {/* Emoji picker */}
+  {showEmojiPicker && (
+    <div style={{ position: "absolute", bottom: 56 + 48, left: 12, background: COLORS.lightCard, borderRadius: SPACING.borderRadius, padding: SPACING.sm, display: "flex", flexWrap: "wrap", maxWidth: 300, gap: 4, boxShadow: "0 2px 6px rgba(0,0,0,0.2)" }}>
+      {EXTENDED_EMOJIS.map((e, i) => (
+        <span key={i} style={{ cursor: "pointer", fontSize: 20 }} onClick={() => setText(prev => prev + e)}>{e}</span>
+      ))}
+      <button onClick={() => setShowEmojiPicker(false)} style={{ border: "none", background: "transparent", fontSize: 16 }}>×</button>
+    </div>
+  )}
+
+</div>
   );
 }
