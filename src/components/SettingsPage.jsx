@@ -6,7 +6,6 @@ import {
   getDoc,
   setDoc,
   updateDoc,
-  onSnapshot,
   collection,
   query,
   where,
@@ -122,8 +121,8 @@ export default function SettingsPage() {
     const today = new Date();
     setCheckedInToday(
       lastDate.getDate() === today.getDate() &&
-      lastDate.getMonth() === today.getMonth() &&
-      lastDate.getFullYear() === today.getFullYear()
+        lastDate.getMonth() === today.getMonth() &&
+        lastDate.getFullYear() === today.getFullYear()
     );
   };
 
@@ -134,7 +133,9 @@ export default function SettingsPage() {
     if (!snap.exists()) return;
 
     const data = snap.data();
-    const lastCheckin = data.lastCheckin ? new Date(data.lastCheckin.seconds * 1000) : null;
+    const lastCheckin = data.lastCheckin
+      ? new Date(data.lastCheckin.seconds * 1000)
+      : null;
     const today = new Date();
 
     if (
@@ -165,7 +166,6 @@ export default function SettingsPage() {
       reader.readAsDataURL(file);
     }
   };
-
   const removeWallpaper = () => setNewWallpaper("");
 
   const handleSavePreferences = async () => {
@@ -196,8 +196,6 @@ export default function SettingsPage() {
   };
 
   const displayName = profileData.name || "No Name";
-  const maxNameChars = 25;
-  const nameCharsLeft = maxNameChars - displayName.length;
 
   return (
     <div
@@ -273,12 +271,24 @@ export default function SettingsPage() {
         )}
         <div>
           <p style={{ margin: 0, fontWeight: "600", fontSize: 16 }}>
-            {displayName} ({nameCharsLeft})
+            {displayName}
           </p>
-          <p style={{ margin: 0, fontSize: 14, color: isDark ? "#ccc" : "#555" }}>
+          <p
+            style={{
+              margin: 0,
+              fontSize: 14,
+              color: isDark ? "#ccc" : "#555",
+            }}
+          >
             {profileData.bio || "No bio yet — click to edit"}
           </p>
-          <p style={{ margin: 0, fontSize: 12, color: isDark ? "#aaa" : "#888" }}>
+          <p
+            style={{
+              margin: 0,
+              fontSize: 12,
+              color: isDark ? "#aaa" : "#888",
+            }}
+          >
             {profileData.email}
           </p>
         </div>
@@ -361,7 +371,7 @@ export default function SettingsPage() {
         </select>
 
         <div
-          onClick={handleWallpaperClick}
+          onClick={() => fileInputRef.current.click()}
           style={{
             ...previewBox,
             backgroundImage: newWallpaper ? `url(${newWallpaper})` : "none",
@@ -435,6 +445,28 @@ export default function SettingsPage() {
         <p>© 2025 Hahala App</p>
         <p>Terms of Service | Privacy Policy</p>
       </Section>
+
+      {/* ================= Logout ================= */}
+      <div style={{ marginTop: 40, textAlign: "center" }}>
+        <button
+          onClick={async () => {
+            await auth.signOut();
+            navigate("/");
+          }}
+          style={{
+            padding: "12px 25px",
+            background: "#e53935",
+            color: "#fff",
+            border: "none",
+            borderRadius: 12,
+            cursor: "pointer",
+            fontWeight: "bold",
+            fontSize: 16,
+          }}
+        >
+          🚪 Logout
+        </button>
+      </div>
     </div>
   );
 }
