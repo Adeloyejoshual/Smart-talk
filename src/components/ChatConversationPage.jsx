@@ -91,7 +91,6 @@ export default function ChatConversationPage() {
   const [replyTo, setReplyTo] = useState(null);
   const [menuOpenFor, setMenuOpenFor] = useState(null);
   const [reactionFor, setReactionFor] = useState(null);
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [emojiPickerFor, setEmojiPickerFor] = useState(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [recording, setRecording] = useState(false);
@@ -549,7 +548,6 @@ return (
 
   {/* Input bar (sticky at bottom) */}
   <div style={{ padding: SPACING.sm, display: "flex", alignItems: "center", gap: SPACING.sm, borderTop: `1px solid ${COLORS.grayBorder}`, background: isDark ? COLORS.darkCard : COLORS.lightCard, position: "sticky", bottom: 0, zIndex: 20 }}>
-    <button onClick={() => setShowEmojiPicker(prev => !prev)} style={{ fontSize: 24, background: "transparent", border: "none" }}>😊</button>
     <input
       value={text}
       onChange={e => setText(e.target.value)}
@@ -570,17 +568,6 @@ return (
       {recording ? "🔴" : "📩"}
     </button>
   </div>
-
-  {/* Emoji picker */}
-  {showEmojiPicker && (
-    <div style={{ position: "absolute", bottom: 56 + 48, left: 12, background: COLORS.lightCard, borderRadius: SPACING.borderRadius, padding: SPACING.sm, display: "flex", flexWrap: "wrap", maxWidth: 300, gap: 4, boxShadow: "0 2px 6px rgba(0,0,0,0.2)" }}>
-      {EXTENDED_EMOJIS.map((e, i) => (
-        <span key={i} style={{ cursor: "pointer", fontSize: 20 }} onClick={() => setText(prev => prev + e)}>{e}</span>
-      ))}
-      <button onClick={() => setShowEmojiPicker(false)} style={{ border: "none", background: "transparent", fontSize: 16 }}>×</button>
-    </div>
-  )}
-
 </div>
   );
 }
