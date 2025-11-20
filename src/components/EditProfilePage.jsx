@@ -1,137 +1,251 @@
-import React, { useEffect, useState, useRef } from "react";
-import { auth, db } from "../firebaseConfig";
-import { doc, getDoc, updateDoc, setDoc, serverTimestamp } from "firebase/firestore";
+// src/components/EditProfilePage.jsx
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { auth, db } from "../firebaseConfig";
+import {
+  doc,
+  getDoc,
+  updateDoc,
+  serverTimestamp,
+} from "firebase/firestore";
 
-const CLOUDINARY_CLOUD = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
-const CLOUDINARY_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+const EditProfilePage = () => {
+  const navigate = useNavigate();
+  const user = auth.currentUser;
 
-export default function EditProfilePage() {
-  const [user, setUser] = useState(null);
   const [name, setName] = useState("");
   const [bio, setBio] = useState("");
-  const [profilePic, setProfilePic] = useState(null);
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [newTheme, setNewTheme] = useState("light");
-  const [newWallpaper, setNewWallpaper] = useState(null);
-  const wallpaperInputRef = useRef(null);
-  const profileInputRef = useRef(null);
-  const navigate = useNavigate();
+  const [email, setEmail] = useState("");
+  const [profilePic, setProfilePic] = useState("");
 
+  const [selectedFile, setSelectedFile] = useState(null);
+  const profileInputRef = useRef(null);
+  const [saving, setSaving] = useState(false);
+
+  // Load existing data
   useEffect(() => {
-    const unsub = auth.onAuthStateChanged(async (u) => {
-      if (!u) return navigate("/");
-      setUser(u);
-      const userRef = doc(db, "users", u.uid);
-      const snap = await getDoc(userRef);
+    if (!user) return;
+
+    const load = async () => {
+      const ref = doc(db, "users", user.uid);
+      const snap = await getDoc(ref);
+
       if (snap.exists()) {
         const data = snap.data();
         setName(data.name || "");
         setBio(data.bio || "");
-        setProfilePic(data.profilePic || null);
-        if (data.preferences) {
-          setNewTheme(data.preferences.theme || "light");
-          setNewWallpaper(data.preferences.wallpaper || null);
-        }
+        setEmail(data.email || user.email);
+        setProfilePic(data.profilePic || "");
       }
-    });
-    return () => unsub();
-  }, []);
+    };
 
+    load();
+  }, [user]);
+
+  // Cloudinary uploader
   const uploadToCloudinary = async (file) => {
-    const fd = new FormData();
-    fd.append("file", file);
-    fd.append("upload_preset", CLOUDINARY_PRESET);
-    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`, {
-      method: "POST",
-      body: fd,
-    });
+    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+    const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+
+    if (!cloudName || !uploadPreset) {
+      throw new Error("Cloudinary keys missing.");
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("upload_preset", uploadPreset);
+
+    const res = await fetch(
+      `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
+      { method: "POST", body: formData }
+    );
+
     const data = await res.json();
-    return data.secure_url || data.url;
+    return data.secure_url;
   };
 
-  const handleProfileChange = (e) => {
-    const f = e.target.files[0];
-    if (!f) return;
-    setSelectedFile(f);
-    const reader = new FileReader();
-    reader.onload = (ev) => setProfilePic(ev.target.result);
-    reader.readAsDataURL(f);
+  const onProfileFileChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setSelectedFile(file);
+    setProfilePic(URL.createObjectURL(file));
   };
 
-  const handleWallpaperChange = (e) => {
-    const f = e.target.files[0];
-    if (!f) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => setNewWallpaper(ev.target.result);
-    reader.readAsDataURL(f);
+  const removeProfilePhoto = () => {
+    setSelectedFile(null);
+    setProfilePic("");
   };
 
   const handleSave = async () => {
     if (!user) return;
-    const userRef = doc(db, "users", user.uid);
-    let profileUrl = profilePic;
 
+    setSaving(true);
+
+    let uploadedUrl = profilePic;
+
+    // Upload new photo if selected
     if (selectedFile) {
-      profileUrl = await uploadToCloudinary(selectedFile);
-    } else if (profilePic?.startsWith("data:")) {
-      const blob = await fetch(profilePic).then(r => r.blob());
-      profileUrl = await uploadToCloudinary(blob);
+      uploadedUrl = await uploadToCloudinary(selectedFile);
     }
+
+    const userRef = doc(db, "users", user.uid);
 
     await updateDoc(userRef, {
       name,
       bio,
-      profilePic: profileUrl,
-      preferences: {
-        theme: newTheme,
-        wallpaper: newWallpaper || null,
-      },
+      email,
+      profilePic: uploadedUrl,
+      updatedAt: serverTimestamp(),
     });
 
-    alert("✅ Profile saved!");
-    navigate("/settings"); // go back
+    setSaving(false);
+
+    navigate("/settings");
   };
 
-  if (!user) return <p>Loading...</p>;
-  const isDark = newTheme === "dark";
-
   return (
-    <div style={{ padding: 20, minHeight: "100vh", background: isDark ? "#1c1c1c" : "#f8f8f8", color: isDark ? "#fff" : "#000" }}>
-      <button onClick={() => navigate("/settings")} style={{ marginBottom: 20 }}>⬅ Back</button>
-      <h2>Edit Profile</h2>
+    <div
+      style={{
+        padding: "20px",
+        maxWidth: "500px",
+        margin: "0 auto",
+      }}
+    >
+      {/* Back button */}
+      <button
+        onClick={() => navigate(-1)}
+        style={{
+          background: "transparent",
+          border: "none",
+          fontSize: "18px",
+          marginBottom: "15px",
+        }}
+      >
+        ← Back
+      </button>
 
-      <label>Full Name</label>
-      <input value={name} onChange={e => setName(e.target.value)} style={{ width: "100%", padding: 8, marginBottom: 10, borderRadius: 6 }} />
+      {/* Profile Photo */}
+      <div style={{ textAlign: "center", marginBottom: "25px" }}>
+        <img
+          src={
+            profilePic ||
+            "https://cdn-icons-png.flaticon.com/512/149/149071.png"
+          }
+          alt="Profile"
+          style={{
+            width: "110px",
+            height: "110px",
+            borderRadius: "50%",
+            objectFit: "cover",
+          }}
+        />
 
-      <label>Bio</label>
-      <input value={bio} onChange={e => setBio(e.target.value)} style={{ width: "100%", padding: 8, marginBottom: 10, borderRadius: 6 }} />
+        <br />
 
-      <label>Profile Photo</label>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-        <div style={{ width: 72, height: 72, borderRadius: 10, background: profilePic ? `url(${profilePic}) center/cover` : "#999" }} />
-        <div>
-          <button onClick={() => profileInputRef.current.click()}>Choose Photo</button>
-          <button onClick={() => { setProfilePic(null); setSelectedFile(null); }}>Remove</button>
-        </div>
+        <button
+          onClick={() => profileInputRef.current.click()}
+          style={{
+            marginTop: "10px",
+            padding: "8px 15px",
+            borderRadius: "10px",
+            border: "none",
+            background: "#007bff",
+            color: "#fff",
+          }}
+        >
+          Choose Photo
+        </button>
+
+        {profilePic && (
+          <button
+            onClick={removeProfilePhoto}
+            style={{
+              marginLeft: "10px",
+              padding: "8px 15px",
+              borderRadius: "10px",
+              border: "1px solid #999",
+              background: "#f5f5f5",
+            }}
+          >
+            Remove
+          </button>
+        )}
+
+        <input
+          type="file"
+          ref={profileInputRef}
+          style={{ display: "none" }}
+          accept="image/*"
+          onChange={onProfileFileChange}
+        />
       </div>
-      <input type="file" ref={profileInputRef} style={{ display: "none" }} accept="image/*" onChange={handleProfileChange} />
 
-      <label>Wallpaper</label>
-      <div style={{ width: "100%", height: 150, borderRadius: 10, border: "2px solid #555", backgroundSize: "cover", backgroundPosition: "center", marginBottom: 10, backgroundImage: newWallpaper ? `url(${newWallpaper})` : "none", display: "flex", justifyContent: "center", alignItems: "center" }}>
-        {!newWallpaper && <span>Click to select wallpaper</span>}
-      </div>
-      <button onClick={() => wallpaperInputRef.current.click()}>Choose Wallpaper</button>
-      <button onClick={() => setNewWallpaper(null)}>Remove Wallpaper</button>
-      <input type="file" ref={wallpaperInputRef} style={{ display: "none" }} accept="image/*" onChange={handleWallpaperChange} />
+      {/* Name */}
+      <label style={{ fontWeight: "600" }}>Name</label>
+      <input
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="Full name"
+        style={{
+          width: "100%",
+          padding: "12px",
+          borderRadius: "8px",
+          border: "1px solid #ccc",
+          marginBottom: "15px",
+        }}
+      />
 
-      <label>Theme</label>
-      <select value={newTheme} onChange={e => setNewTheme(e.target.value)} style={{ width: "100%", padding: 8, borderRadius: 6, marginBottom: 10 }}>
-        <option value="light">Light</option>
-        <option value="dark">Dark</option>
-      </select>
+      {/* Bio */}
+      <label style={{ fontWeight: "600" }}>Bio</label>
+      <textarea
+        value={bio}
+        onChange={(e) => setBio(e.target.value)}
+        placeholder="Your bio"
+        rows={3}
+        style={{
+          width: "100%",
+          padding: "12px",
+          borderRadius: "8px",
+          border: "1px solid #ccc",
+          marginBottom: "15px",
+        }}
+      />
 
-      <button onClick={handleSave} style={{ padding: 12, background: "#007bff", color: "#fff", borderRadius: 50 }}>💾 Save Profile</button>
+      {/* Email (read only) */}
+      <label style={{ fontWeight: "600" }}>Email</label>
+      <input
+        value={email}
+        readOnly
+        style={{
+          width: "100%",
+          padding: "12px",
+          borderRadius: "8px",
+          border: "1px solid #ccc",
+          background: "#eee",
+          marginBottom: "20px",
+        }}
+      />
+
+      {/* Save */}
+      <button
+        onClick={handleSave}
+        disabled={saving}
+        style={{
+          width: "100%",
+          padding: "14px",
+          borderRadius: "20px",
+          border: "none",
+          fontSize: "16px",
+          background: "#28a745",
+          color: "white",
+          fontWeight: "600",
+        }}
+      >
+        {saving ? "Saving..." : "Save"}
+      </button>
     </div>
   );
-}
+};
+
+export default EditProfilePage;
