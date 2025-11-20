@@ -39,7 +39,11 @@ export default function SettingsPage() {
     sound: false,
   });
 
+  // Profile picture
+  const [photoURL, setPhotoURL] = useState(null);
+
   const fileInputRef = useRef(null);
+  const profilePicInputRef = useRef(null);
   const navigate = useNavigate();
 
   // -------------------- Load user + preferences --------------------
@@ -55,6 +59,7 @@ export default function SettingsPage() {
           balance: 5.0,
           createdAt: serverTimestamp(),
           lastCheckin: null,
+          photoURL: null,
           preferences: {
             language: "English",
             fontSize: "Medium",
@@ -66,6 +71,7 @@ export default function SettingsPage() {
         alert("🎁 Welcome! You’ve received a $5 new user bonus!");
       } else {
         const data = userSnap.data();
+        setPhotoURL(data.photoURL || null);
         const p = data.preferences || {};
         setLanguage(p.language || "English");
         setFontSize(p.fontSize || "Medium");
@@ -164,6 +170,31 @@ export default function SettingsPage() {
     return data.secure_url || data.url;
   };
 
+  // -------------------- Profile picture --------------------
+  const handleProfilePicClick = () => profilePicInputRef.current.click();
+
+  const handleProfilePicChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => setPhotoURL(event.target.result);
+    reader.readAsDataURL(file);
+
+    try {
+      const url = await uploadToCloudinary(file);
+      setPhotoURL(url);
+      if (user) {
+        const userRef = doc(db, "users", user.uid);
+        await updateDoc(userRef, { photoURL: url });
+        alert("✅ Profile picture updated!");
+      }
+    } catch (err) {
+      console.error("Profile picture upload failed:", err);
+      alert("Failed to upload profile picture");
+    }
+  };
+
   // -------------------- Wallpaper --------------------
   const handleWallpaperClick = () => fileInputRef.current.click();
   const handleFileChange = async (e) => {
@@ -210,6 +241,37 @@ export default function SettingsPage() {
       <button onClick={() => navigate("/chat")} style={{ position: "absolute", top: 20, left: 20, background: isDark ? "#555" : "#e0e0e0", border: "none", borderRadius: "50%", padding: 8, cursor: "pointer" }}>⬅</button>
       <h2 style={{ textAlign: "center", marginBottom: 20 }}>⚙️ Settings</h2>
 
+      {/* Profile Picture */}
+      <div style={{ textAlign: "center", marginBottom: 20 }}>
+        <div
+          onClick={handleProfilePicClick}
+          style={{
+            width: 100,
+            height: 100,
+            margin: "0 auto 10px",
+            borderRadius: "50%",
+            overflow: "hidden",
+            cursor: "pointer",
+            border: "3px solid #007bff",
+            backgroundColor: "#ccc",
+          }}
+        >
+          <img
+            src={photoURL || "/default-avatar.png"}
+            alt="Profile"
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          />
+        </div>
+        <p>Click to change profile picture</p>
+        <input
+          type="file"
+          accept="image/*"
+          ref={profilePicInputRef}
+          style={{ display: "none" }}
+          onChange={handleProfilePicChange}
+        />
+      </div>
+
       {/* Wallet */}
       <Section title="Wallet" isDark={isDark}>
         <p>Balance: <strong style={{ color: isDark ? "#00e676" : "#007bff" }}>${balance.toFixed(2)}</strong></p>
@@ -251,7 +313,7 @@ export default function SettingsPage() {
           <option value="light">🌞 Light</option>
           <option value="dark">🌙 Dark</option>
         </select>
-        <div onClick={handleWallpaperClick} style={{ ...previewBox, backgroundImage: previewWallpaper ? `url(${previewWallpaper})` : "none" }}>
+        <div onClick={() => fileInputRef.current.click()} style={{ ...previewBox, backgroundImage: previewWallpaper ? `url(${previewWallpaper})` : "none" }}>
           <p>🌈 Wallpaper Preview</p>
         </div>
         <input type="file" accept="image/*" ref={fileInputRef} style={{ display: "none" }} onChange={handleFileChange} />
