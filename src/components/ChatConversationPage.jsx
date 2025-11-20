@@ -491,29 +491,51 @@ export default function ChatConversationPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", backgroundColor: wallpaper || (isDark ? COLORS.darkBg : COLORS.lightBg), color: isDark ? COLORS.darkText : COLORS.lightText }}>
 
-      {/* Header */}
-      <div style={{ height: 56, backgroundColor: COLORS.headerBlue, color: "#fff", display: "flex", alignItems: "center", padding: "0 12px", justifyContent: "space-between", position: "relative" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <button onClick={() => navigate(-1)} style={{ background: "transparent", border: "none", color: "#fff", fontSize: 18 }}>←</button>
-          <img src={friendInfo?.photoURL || ""} alt="" style={{ width: 36, height: 36, borderRadius: "50%" }} />
-          <div>
-            <div>{friendInfo?.name || "Chat"}</div>
-            <div style={{ fontSize: 12 }}>{friendInfo?.status || ""}</div>
-          </div>
-        </div>
-        <div style={{ display: "flex", gap: 12 }}>
-          <button onClick={() => alert("Voice call")} style={{ background: "transparent", border: "none", color: "#fff" }}>📞</button>
-          <button onClick={() => alert("Video call")} style={{ background: "transparent", border: "none", color: "#fff" }}>🎥</button>
-          <button onClick={() => setHeaderMenuOpen(prev => !prev)} style={{ background: "transparent", border: "none", color: "#fff" }}>⋮</button>
-        </div>
-        {headerMenuOpen && (
-          <div style={{ position: "absolute", top: 56, right: 12, background: COLORS.lightCard, borderRadius: SPACING.borderRadius, boxShadow: "0 2px 6px rgba(0,0,0,0.2)", zIndex: 20 }}>
-            <button style={menuBtnStyle} onClick={clearChat}>Clear Chat</button>
-            <button style={menuBtnStyle} onClick={toggleBlock}>{(chatInfo?.blockedBy || []).includes(myUid) ? "Unblock" : "Block"}</button>
-            <button style={menuBtnStyle} onClick={() => setHeaderMenuOpen(false)}>Close</button>
-          </div>
-        )}
-      </div>
+{/* Header */}
+<div style={{ height: 56, backgroundColor: COLORS.headerBlue, color: "#fff", display: "flex", alignItems: "center", padding: "0 12px", justifyContent: "space-between", position: "relative" }}>
+  {/* Left: Back + Profile */}
+  <div style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }} onClick={() => navigate(`/user/${friendInfo?.id}`)}>
+    <button 
+      onClick={(e) => { e.stopPropagation(); navigate(-1); }} 
+      style={{ background: "transparent", border: "none", color: "#fff", fontSize: 18 }}
+    >
+      ←
+    </button>
+    <img src={friendInfo?.photoURL || "/default-avatar.png"} alt="" style={{ width: 36, height: 36, borderRadius: "50%" }} />
+    <div>
+      <div>{friendInfo?.name || "Chat"}</div>
+      <div style={{ fontSize: 12 }}>{friendInfo?.status || ""}</div>
+    </div>
+  </div>
+
+  {/* Right: Voice/Video calls + Menu */}
+  <div style={{ display: "flex", gap: 12 }}>
+    <button 
+      onClick={() => navigate(`/voice-call/${friendInfo?.id}`)} 
+      style={{ background: "transparent", border: "none", color: "#fff" }}
+    >
+      📞
+    </button>
+    <button 
+      onClick={() => navigate(`/video-call/${friendInfo?.id}`)} 
+      style={{ background: "transparent", border: "none", color: "#fff" }}
+    >
+      🎥
+    </button>
+    <button onClick={() => setHeaderMenuOpen(prev => !prev)} style={{ background: "transparent", border: "none", color: "#fff" }}>⋮</button>
+  </div>
+
+  {/* Header menu */}
+  {headerMenuOpen && (
+    <div style={{ position: "absolute", top: 56, right: 12, background: COLORS.lightCard, borderRadius: SPACING.borderRadius, boxShadow: "0 2px 6px rgba(0,0,0,0.2)", zIndex: 20 }}>
+      <button style={menuBtnStyle} onClick={clearChat}>Clear Chat</button>
+      <button style={menuBtnStyle} onClick={toggleBlock}>
+        {(chatInfo?.blockedBy || []).includes(myUid) ? "Unblock" : "Block"}
+      </button>
+      <button style={menuBtnStyle} onClick={() => setHeaderMenuOpen(false)}>Close</button>
+    </div>
+  )}
+</div>
 
       {/* Messages */}
       <div ref={messagesRefEl} style={{ flex: 1, overflowY: "auto", padding: SPACING.sm }}>
