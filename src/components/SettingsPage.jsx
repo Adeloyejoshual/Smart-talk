@@ -24,7 +24,6 @@ export default function SettingsPage() {
   const [transactions, setTransactions] = useState([]);
   const [newTheme, setNewTheme] = useState(theme);
   const [newWallpaper, setNewWallpaper] = useState(wallpaper || "");
-  const [previewWallpaper, setPreviewWallpaper] = useState(wallpaper || "");
   const [checkedInToday, setCheckedInToday] = useState(false);
   const [language, setLanguage] = useState("English");
   const [fontSize, setFontSize] = useState("Medium");
@@ -33,6 +32,13 @@ export default function SettingsPage() {
     push: true,
     email: true,
     sound: false,
+  });
+
+  const [profileData, setProfileData] = useState({
+    name: "",
+    bio: "",
+    profilePic: "",
+    email: "",
   });
 
   const navigate = useNavigate();
@@ -52,6 +58,10 @@ export default function SettingsPage() {
           balance: 5.0,
           createdAt: serverTimestamp(),
           lastCheckin: null,
+          name: userAuth.displayName || "",
+          bio: "",
+          email: userAuth.email,
+          profilePic: userAuth.photoURL || "",
           preferences: {
             language: "English",
             fontSize: "Medium",
@@ -63,6 +73,12 @@ export default function SettingsPage() {
         alert("🎁 Welcome! You’ve received a $5 new user bonus!");
       } else {
         const data = snap.data();
+        setProfileData({
+          name: data.name || "",
+          bio: data.bio || "",
+          profilePic: data.profilePic || "",
+          email: data.email || userAuth.email,
+        });
         if (data.preferences) {
           setLanguage(data.preferences.language || "English");
           setFontSize(data.preferences.fontSize || "Medium");
@@ -100,7 +116,6 @@ export default function SettingsPage() {
     return () => unsubscribe();
   }, []);
 
-  // Daily check-in
   const checkLastCheckin = (lastCheckin) => {
     if (!lastCheckin) return setCheckedInToday(false);
     const lastDate = new Date(lastCheckin.seconds * 1000);
@@ -173,6 +188,17 @@ export default function SettingsPage() {
 
   if (!user) return <p>Loading user...</p>;
 
+  const getInitials = (name) => {
+    if (!name) return "NA";
+    const names = name.split(" ");
+    if (names.length === 1) return names[0][0].toUpperCase();
+    return (names[0][0] + names[1][0]).toUpperCase();
+  };
+
+  const displayName = profileData.name || "No Name";
+  const maxNameChars = 25;
+  const nameCharsLeft = maxNameChars - displayName.length;
+
   return (
     <div
       style={{
@@ -200,6 +226,63 @@ export default function SettingsPage() {
       </button>
 
       <h2 style={{ textAlign: "center", marginBottom: 20 }}>⚙️ Settings</h2>
+
+      {/* ================= Profile Card ================= */}
+      <div
+        onClick={() => navigate("/edit-profile")}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          cursor: "pointer",
+          background: isDark ? "#2b2b2b" : "#fff",
+          padding: 15,
+          borderRadius: 12,
+          boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
+        }}
+      >
+        {profileData.profilePic ? (
+          <img
+            src={profileData.profilePic}
+            alt="Profile"
+            style={{
+              width: 70,
+              height: 70,
+              borderRadius: "50%",
+              objectFit: "cover",
+              marginRight: 15,
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              width: 70,
+              height: 70,
+              borderRadius: "50%",
+              background: "#007bff",
+              color: "#fff",
+              fontWeight: "bold",
+              fontSize: 24,
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              marginRight: 15,
+            }}
+          >
+            {getInitials(displayName)}
+          </div>
+        )}
+        <div>
+          <p style={{ margin: 0, fontWeight: "600", fontSize: 16 }}>
+            {displayName} ({nameCharsLeft})
+          </p>
+          <p style={{ margin: 0, fontSize: 14, color: isDark ? "#ccc" : "#555" }}>
+            {profileData.bio || "No bio yet — click to edit"}
+          </p>
+          <p style={{ margin: 0, fontSize: 12, color: isDark ? "#aaa" : "#888" }}>
+            {profileData.email}
+          </p>
+        </div>
+      </div>
 
       {/* ================= Wallet ================= */}
       <Section title="Wallet" isDark={isDark}>
