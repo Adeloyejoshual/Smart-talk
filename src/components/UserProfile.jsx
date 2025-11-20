@@ -5,9 +5,9 @@ import { auth, db } from "../firebaseConfig";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 
 export default function UserProfile() {
-  const { uid } = useParams();          // Profile owner ID
+  const { uid } = useParams();
   const navigate = useNavigate();
-  const currentUser = auth.currentUser; // Logged-in user
+  const currentUser = auth.currentUser;
   const isOwner = currentUser?.uid === uid;
 
   const [loading, setLoading] = useState(true);
@@ -19,7 +19,49 @@ export default function UserProfile() {
   });
 
   const [editMode, setEditMode] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
+  // -----------------------------
+  //  CLOUDINARY UPLOAD FUNCTION
+  // -----------------------------
+  const uploadToCloudinary = async (file, onProgress) => {
+    try {
+      const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+      const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+
+      if (!cloudName || !uploadPreset)
+        throw new Error("Cloudinary env not set");
+
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("upload_preset", uploadPreset);
+
+      return await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open(
+          "POST",
+          `https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`
+        );
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable && onProgress)
+            onProgress(Math.round((e.loaded * 100) / e.total));
+        };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve(JSON.parse(xhr.responseText).secure_url);
+          } else reject(new Error("Cloudinary upload failed"));
+        };
+        xhr.onerror = () => reject(new Error("Network error"));
+        xhr.send(fd);
+      });
+    } catch (err) {
+      throw err;
+    }
+  };
+
+  // -----------------------------
+  // LOAD PROFILE
+  // -----------------------------
   useEffect(() => {
     async function loadProfile() {
       const ref = doc(db, "users", uid);
@@ -28,21 +70,51 @@ export default function UserProfile() {
       if (snap.exists()) {
         setProfile(snap.data());
       }
-
       setLoading(false);
     }
-
     loadProfile();
   }, [uid]);
 
+  // -----------------------------
+  // SAVE TEXT FIELDS
+  // -----------------------------
   async function saveProfile() {
     const ref = doc(db, "users", uid);
     await updateDoc(ref, {
       displayName: profile.displayName,
       email: profile.email,
       about: profile.about,
+      photoURL: profile.photoURL,
     });
+
     setEditMode(false);
+  }
+
+  // -----------------------------
+  // CHANGE PROFILE PICTURE
+  // -----------------------------
+  async function changePhoto(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+
+    try {
+      const url = await uploadToCloudinary(file, (p) =>
+        console.log("upload", p + "%")
+      );
+
+      setProfile((p) => ({ ...p, photoURL: url }));
+
+      const ref = doc(db, "users", uid);
+      await updateDoc(ref, { photoURL: url });
+
+      alert("Profile picture updated!");
+    } catch (err) {
+      alert("Upload failed: " + err.message);
+    } finally {
+      setUploading(false);
+    }
   }
 
   if (loading) {
@@ -55,7 +127,6 @@ export default function UserProfile() {
 
   return (
     <div className="min-h-screen bg-black text-white p-4">
-
       {/* BACK ARROW */}
       <div className="flex items-center gap-3 mb-6">
         <button
@@ -73,9 +144,26 @@ export default function UserProfile() {
           className="w-32 h-32 rounded-full object-cover border border-gray-700 mb-4"
         />
 
-        {/* ---------------------------
-             OWNER CAN EDIT THEIR PROFILE
-           --------------------------- */}
+        {/* Upload button */}
+        {isOwner && (
+          <>
+            <label
+              htmlFor="photoUpload"
+              className="bg-blue-600 px-4 py-2 rounded-lg text-white mb-4 cursor-pointer"
+            >
+              {uploading ? "Uploading..." : "Change Photo"}
+            </label>
+
+            <input
+              id="photoUpload"
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={changePhoto}
+            />
+          </>
+        )}
+
         {isOwner && !editMode && (
           <button
             className="bg-blue-600 px-4 py-2 rounded-lg text-white mb-4"
@@ -86,7 +174,7 @@ export default function UserProfile() {
         )}
       </div>
 
-      {/* DISPLAY MODE */}
+      {/* VIEW MODE */}
       {!editMode && (
         <div className="space-y-4 mt-4">
           <div>
@@ -106,7 +194,7 @@ export default function UserProfile() {
         </div>
       )}
 
-      {/* EDIT MODE (ONLY OWNER) */}
+      {/* EDIT MODE */}
       {editMode && isOwner && (
         <div className="space-y-4 mt-6">
           <div>
