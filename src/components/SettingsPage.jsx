@@ -9,14 +9,14 @@ import {
   onSnapshot,
   serverTimestamp,
 } from "firebase/firestore";
-import { signOut } from "firebase/auth";
+import { updateProfile, signOut } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
 import { ThemeContext } from "../context/ThemeContext";
 
 /*
- Env support:
- - Vite: VITE_CLOUDINARY_CLOUD, VITE_CLOUDINARY_PRESET
- - CRA-style fallback: REACT_APP_CLOUDINARY_CLOUD, REACT_APP_CLOUDINARY_PRESET
+  ENV variables (either Vite or CRA-style)
+  - Vite: VITE_CLOUDINARY_CLOUD, VITE_CLOUDINARY_PRESET
+  - CRA-style fallback: REACT_APP_CLOUDINARY_CLOUD, REACT_APP_CLOUDINARY_PRESET
 */
 const CLOUDINARY_CLOUD =
   import.meta?.env?.VITE_CLOUDINARY_CLOUD || process.env.REACT_APP_CLOUDINARY_CLOUD;
@@ -25,6 +25,7 @@ const CLOUDINARY_PRESET =
 
 export default function SettingsPage() {
   const { theme, wallpaper, updateSettings } = useContext(ThemeContext);
+
   const [user, setUser] = useState(null);
 
   // profile fields
@@ -34,15 +35,15 @@ export default function SettingsPage() {
   const [profilePic, setProfilePic] = useState(null); // URL shown
   const [selectedFile, setSelectedFile] = useState(null); // File to upload
 
-  // settings live-edit
-  const [newTheme, setNewTheme] = useState(theme);
+  // preferences
+  const [newTheme, setNewTheme] = useState(theme || "light");
   const [newWallpaper, setNewWallpaper] = useState(wallpaper || "");
   const [language, setLanguage] = useState("English");
   const [fontSize, setFontSize] = useState("Medium");
   const [layout, setLayout] = useState("Default");
   const [notifications, setNotifications] = useState({ push: true, email: true, sound: false });
 
-  // UI state
+  // ui
   const [menuOpen, setMenuOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [loadingSave, setLoadingSave] = useState(false);
@@ -51,7 +52,7 @@ export default function SettingsPage() {
   const profileInputRef = useRef(null);
   const wallpaperInputRef = useRef(null);
 
-  // load current user + live snapshot
+  // Load user + listen to Firestore user doc for live changes
   useEffect(() => {
     const unsubAuth = auth.onAuthStateChanged(async (u) => {
       if (!u) {
@@ -62,13 +63,14 @@ export default function SettingsPage() {
       setEmail(u.email || "");
 
       const userRef = doc(db, "users", u.uid);
-      // ensure doc exists
       const snap = await getDoc(userRef);
+
+      // Create doc if missing
       if (!snap.exists()) {
         await setDoc(userRef, {
           name: u.displayName || "User",
           bio: "",
-          profilePic: null,
+          profilePic: u.photoURL || null,
           preferences: {
             theme: "light",
             wallpaper: null,
@@ -81,13 +83,13 @@ export default function SettingsPage() {
         });
       }
 
-      // live updates: reflect changes everywhere immediately
+      // live snapshot
       const unsubSnap = onSnapshot(userRef, (s) => {
         if (!s.exists()) return;
         const data = s.data();
         setName(data.name || "");
         setBio(data.bio || "");
-        setProfilePic(data.profilePic || null);
+        setProfilePic(data.profilePic || (u.photoURL || null));
 
         if (data.preferences) {
           const p = data.preferences;
@@ -97,12 +99,12 @@ export default function SettingsPage() {
           setFontSize(p.fontSize || "Medium");
           setLayout(p.layout || "Default");
           setNotifications(p.notifications || { push: true, email: true, sound: false });
-          // also notify ThemeContext
+          // reflect in ThemeContext
           updateSettings(p.theme || "light", p.wallpaper || wallpaper || "");
         }
       });
 
-      // cleanup when auth change/unmount
+      // cleanup snapshot on sign-out or unmount
       return () => unsubSnap();
     });
 
@@ -110,7 +112,7 @@ export default function SettingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // helpers
+  // Cloudinary upload helper
   const uploadToCloudinary = async (file) => {
     if (!CLOUDINARY_CLOUD || !CLOUDINARY_PRESET) {
       throw new Error(
@@ -133,17 +135,19 @@ export default function SettingsPage() {
     return data.secure_url || data.url;
   };
 
-  // profile input change (preview locally)
+  // When user picks a local file -> preview and keep file object
   const onProfileFileChange = (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
     setSelectedFile(f);
+
+    // show data URL preview instantly
     const reader = new FileReader();
     reader.onload = (ev) => setProfilePic(ev.target.result);
     reader.readAsDataURL(f);
   };
 
-  // wallpaper input change (preview)
+  // wallpaper preview change
   const onWallpaperFileChange = (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
@@ -152,7 +156,7 @@ export default function SettingsPage() {
     reader.readAsDataURL(f);
   };
 
-  // Save profile (name, bio, profilePic) and preferences
+  // Save everything: profile (name, bio, profilePic), preferences
   const handleSaveAll = async () => {
     if (!user) return alert("Not signed in");
     setLoadingSave(true);
@@ -161,17 +165,17 @@ export default function SettingsPage() {
       const userRef = doc(db, "users", user.uid);
       let profileUrl = profilePic;
 
-      // if user selected a file (not just preview data URL), upload
+      // Upload if user selected a real file (Blob/File)
       if (selectedFile) {
         profileUrl = await uploadToCloudinary(selectedFile);
       } else if (profilePic && typeof profilePic === "string" && profilePic.startsWith("data:")) {
-        // data URL selected but user didn't select file (edge case) -> convert to blob then upload
+        // edge: we have only a dataURL (maybe from preview) -> convert to blob then upload
         const res = await fetch(profilePic);
         const blob = await res.blob();
         profileUrl = await uploadToCloudinary(blob);
       }
 
-      // assemble preferences
+      // build preferences object
       const prefs = {
         theme: newTheme,
         wallpaper: newWallpaper || null,
@@ -181,7 +185,7 @@ export default function SettingsPage() {
         notifications,
       };
 
-      // update Firestore user doc (name is canonical -> used everywhere)
+      // update Firestore doc
       await updateDoc(userRef, {
         name: name || null,
         bio: bio || "",
@@ -189,9 +193,21 @@ export default function SettingsPage() {
         preferences: prefs,
       });
 
-      // update theme context (immediate UI update)
+      // also update Firebase Auth profile so photoURL & displayName are available app-wide
+      try {
+        await updateProfile(auth.currentUser, {
+          displayName: name || auth.currentUser.displayName,
+          photoURL: profileUrl || auth.currentUser.photoURL,
+        });
+      } catch (err) {
+        // non-fatal: sometimes updateProfile can fail due to auth state race conditions
+        console.warn("updateProfile failed:", err);
+      }
+
+      // apply theme immediately
       updateSettings(newTheme, newWallpaper || "");
 
+      // reset selection state
       setSelectedFile(null);
       setMenuOpen(false);
       setEditing(false);
@@ -209,14 +225,12 @@ export default function SettingsPage() {
     navigate("/");
   };
 
-  // small keyboard-friendly helpers
   const onKeySave = (e) => {
     if (e.key === "Enter") handleSaveAll();
   };
 
   const isDark = newTheme === "dark";
 
-  // UI
   return (
     <div
       style={{
@@ -226,7 +240,7 @@ export default function SettingsPage() {
         color: isDark ? "#fff" : "#111",
       }}
     >
-      {/* header + back */}
+      {/* back */}
       <button
         onClick={() => navigate("/chat")}
         style={{
@@ -278,7 +292,6 @@ export default function SettingsPage() {
             title="Click to change profile photo"
           />
 
-          {/* name / bio / email */}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <h2 style={{ margin: 0, fontSize: 20, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -333,10 +346,9 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* hidden file input for profile */}
         <input ref={profileInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={onProfileFileChange} />
 
-        {/* Editing panel (modal-like) */}
+        {/* Editing panel */}
         {editing && (
           <div style={{
             marginTop: 18,
@@ -347,7 +359,7 @@ export default function SettingsPage() {
           }}>
             <h3 style={{ marginTop: 0 }}>Edit Profile</h3>
 
-            <label style={labelStyle}>Full name</label>
+            <label style={labelStyle}>Name</label>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -374,7 +386,6 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            {/* Preferences quick edits inside the same modal so Save button updates everything */}
             <div style={{ marginTop: 12 }}>
               <label style={labelStyle}>Theme</label>
               <select value={newTheme} onChange={(e) => setNewTheme(e.target.value)} style={inputStyle(isDark)}>
@@ -400,9 +411,8 @@ export default function SettingsPage() {
           </div>
         )}
 
-        {/* Settings page sections (non-edit view) */}
+        {/* Other settings panels */}
         <div style={{ marginTop: 22, display: "grid", gap: 16 }}>
-          {/* Theme & Wallpaper */}
           <div style={{ background: isDark ? "#0f0f0f" : "#fff", padding: 14, borderRadius: 10 }}>
             <h4 style={{ marginTop: 0 }}>Appearance</h4>
             <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
@@ -422,14 +432,10 @@ export default function SettingsPage() {
             <input ref={wallpaperInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={onWallpaperFileChange} />
             {newWallpaper && <div style={{ marginTop: 10, height: 120, borderRadius: 8, background: `url(${newWallpaper}) center/cover` }} />}
             <div style={{ marginTop: 10 }}>
-              <button onClick={() => {
-                // Save preferences quick
-                handleSaveAll();
-              }} style={btnStyle("#28a745")}>Apply & Save</button>
+              <button onClick={() => { handleSaveAll(); }} style={btnStyle("#28a745")}>Apply & Save</button>
             </div>
           </div>
 
-          {/* Notifications */}
           <div style={{ background: isDark ? "#0f0f0f" : "#fff", padding: 14, borderRadius: 10 }}>
             <h4 style={{ marginTop: 0 }}>Notifications</h4>
             <label style={{ display: "block", marginBottom: 8 }}>
@@ -444,7 +450,6 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* logout */}
         <div style={{ textAlign: "center", marginTop: 22 }}>
           <button onClick={handleLogout} style={btnStyle("#d32f2f")}>🚪 Log out</button>
         </div>
