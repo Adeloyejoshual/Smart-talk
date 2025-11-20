@@ -509,6 +509,10 @@ const renderMessage = (m) => {
   const showReactionPicker = reactionFor === m.id;
   const time = fmtTime(m.createdAt);
 
+  // Function to view sender profile
+  const viewSenderProfile = () => navigate(`/user/${m.senderId}`);
+  const reportSender = () => alert("Reported user"); // Replace with actual report logic
+
   return (
     <div
       key={m.id}
@@ -589,6 +593,7 @@ const renderMessage = (m) => {
           </div>
         )}
 
+        {/* Long press / menu */}
         {showMenu && (
           <div
             id={`msg-menu-${m.id}`}
@@ -600,10 +605,14 @@ const renderMessage = (m) => {
               border: `1px solid ${COLORS.grayBorder}`,
               borderRadius: SPACING.borderRadius,
               zIndex: 10,
+              display: "flex",
+              flexDirection: "column",
             }}
           >
             <button style={menuBtnStyle} onClick={() => replyToMessage(m)}>Reply</button>
             <button style={menuBtnStyle} onClick={() => setReactionFor(m.id)}>React</button>
+            {!isMine && <button style={menuBtnStyle} onClick={viewSenderProfile}>View Profile</button>}
+            {!isMine && <button style={menuBtnStyle} onClick={reportSender}>Report</button>}
             {isMine && <button style={menuBtnStyle} onClick={() => editMessage(m)}>Edit</button>}
             {isMine && <button style={menuBtnStyle} onClick={() => deleteMessageForEveryone(m.id)}>Delete for Everyone</button>}
             <button style={menuBtnStyle} onClick={() => deleteMessageForMe(m.id)}>Delete for Me</button>
@@ -614,6 +623,7 @@ const renderMessage = (m) => {
           </div>
         )}
 
+        {/* Inline reaction picker */}
         {showReactionPicker && (
           <div
             style={{
