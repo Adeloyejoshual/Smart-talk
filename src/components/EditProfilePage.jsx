@@ -17,10 +17,11 @@ const EditProfilePage = () => {
   const [bio, setBio] = useState("");
   const [email, setEmail] = useState("");
   const [profilePic, setProfilePic] = useState("");
-
   const [selectedFile, setSelectedFile] = useState(null);
-  const profileInputRef = useRef(null);
   const [saving, setSaving] = useState(false);
+
+  const profileInputRef = useRef(null);
+  const BIO_LIMIT = 80;
 
   // Load existing data
   useEffect(() => {
@@ -67,7 +68,6 @@ const EditProfilePage = () => {
   const onProfileFileChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
     setSelectedFile(file);
     setProfilePic(URL.createObjectURL(file));
   };
@@ -81,16 +81,13 @@ const EditProfilePage = () => {
     if (!user) return;
 
     setSaving(true);
-
     let uploadedUrl = profilePic;
 
-    // Upload new photo if selected
     if (selectedFile) {
       uploadedUrl = await uploadToCloudinary(selectedFile);
     }
 
     const userRef = doc(db, "users", user.uid);
-
     await updateDoc(userRef, {
       name,
       bio,
@@ -100,7 +97,6 @@ const EditProfilePage = () => {
     });
 
     setSaving(false);
-
     navigate("/settings");
   };
 
@@ -196,11 +192,13 @@ const EditProfilePage = () => {
         }}
       />
 
-      {/* Bio */}
+      {/* Bio with character countdown */}
       <label style={{ fontWeight: "600" }}>Bio</label>
       <textarea
         value={bio}
-        onChange={(e) => setBio(e.target.value)}
+        onChange={(e) =>
+          setBio(e.target.value.slice(0, BIO_LIMIT)) // enforce max 80 chars
+        }
         placeholder="Your bio"
         rows={3}
         style={{
@@ -208,9 +206,12 @@ const EditProfilePage = () => {
           padding: "12px",
           borderRadius: "8px",
           border: "1px solid #ccc",
-          marginBottom: "15px",
+          marginBottom: "5px",
         }}
       />
+      <div style={{ textAlign: "right", fontSize: "12px", color: "#555" }}>
+        {BIO_LIMIT - bio.length} characters remaining
+      </div>
 
       {/* Email (read only) */}
       <label style={{ fontWeight: "600" }}>Email</label>
