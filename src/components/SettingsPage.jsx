@@ -1,3 +1,4 @@
+// src/components/SettingsPage.jsx
 import React, { useEffect, useState, useContext, useRef } from "react";
 import { auth, db } from "../firebaseConfig";
 import {
@@ -16,92 +17,120 @@ import { signOut } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
 import { ThemeContext } from "../context/ThemeContext";
 
+// -------------------- Cloudinary env --------------------
 const CLOUDINARY_CLOUD = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
 const CLOUDINARY_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
 
 export default function SettingsPage() {
   const { theme, wallpaper, updateSettings } = useContext(ThemeContext);
-  const [user, setUser] = useState(null);
-  const [balance, setBalance] = useState(0);
-  const [transactions, setTransactions] = useState([]);
-  const [checkedInToday, setCheckedInToday] = useState(false);
 
-  // Preferences
+  const [user, setUser] = useState(null);
+
+  // profile
+  const [name, setName] = useState("");
+  const [bio, setBio] = useState("");
+  const [email, setEmail] = useState("");
+  const [profilePic, setProfilePic] = useState(null);
+  const [wallpaperUrl, setWallpaperUrl] = useState("");
+  const [audioUrl, setAudioUrl] = useState(null);
+
+  const [selectedProfileFile, setSelectedProfileFile] = useState(null);
+  const [selectedWallpaperFile, setSelectedWallpaperFile] = useState(null);
+  const [selectedAudioFile, setSelectedAudioFile] = useState(null);
+
+  // preferences
+  const [newTheme, setNewTheme] = useState(theme);
   const [language, setLanguage] = useState("English");
   const [fontSize, setFontSize] = useState("Medium");
   const [layout, setLayout] = useState("Default");
-  const [newTheme, setNewTheme] = useState(theme);
-  const [newWallpaper, setNewWallpaper] = useState(wallpaper);
-  const [previewWallpaper, setPreviewWallpaper] = useState(wallpaper);
   const [notifications, setNotifications] = useState({
     push: true,
     email: true,
     sound: false,
   });
 
-  // Profile picture
-  const [photoURL, setPhotoURL] = useState(null);
+  // wallet
+  const [balance, setBalance] = useState(0);
+  const [transactions, setTransactions] = useState([]);
+  const [checkedInToday, setCheckedInToday] = useState(false);
 
-  const fileInputRef = useRef(null);
-  const profilePicInputRef = useRef(null);
   const navigate = useNavigate();
+  const profileInputRef = useRef(null);
+  const wallpaperInputRef = useRef(null);
+  const audioInputRef = useRef(null);
 
-  // -------------------- Load user + preferences --------------------
+  const [loadingSave, setLoadingSave] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const isDark = newTheme === "dark";
+
+  // -------------------- Load user & Firestore --------------------
   useEffect(() => {
-    const unsubAuth = auth.onAuthStateChanged(async (userAuth) => {
-      if (!userAuth) return setUser(null);
-      setUser(userAuth);
-      const userRef = doc(db, "users", userAuth.uid);
-      const userSnap = await getDoc(userRef);
+    const unsubAuth = auth.onAuthStateChanged(async (u) => {
+      if (!u) return setUser(null);
+      setUser(u);
+      setEmail(u.email || "");
+      const userRef = doc(db, "users", u.uid);
 
-      if (!userSnap.exists()) {
+      // ensure doc exists
+      const snap = await getDoc(userRef);
+      if (!snap.exists()) {
         await setDoc(userRef, {
+          name: u.displayName || "User",
+          bio: "",
+          profilePic: null,
+          wallpaper: null,
+          audio: null,
           balance: 5.0,
-          createdAt: serverTimestamp(),
           lastCheckin: null,
-          photoURL: null,
           preferences: {
+            theme: "light",
             language: "English",
             fontSize: "Medium",
             layout: "Default",
-            theme: "light",
-            wallpaper: null,
+            notifications: { push: true, email: true, sound: false },
           },
+          createdAt: serverTimestamp(),
         });
         alert("🎁 Welcome! You’ve received a $5 new user bonus!");
-      } else {
-        const data = userSnap.data();
-        setPhotoURL(data.photoURL || null);
-        const p = data.preferences || {};
-        setLanguage(p.language || "English");
-        setFontSize(p.fontSize || "Medium");
-        setLayout(p.layout || "Default");
-        setNewTheme(p.theme || "light");
-        setNewWallpaper(p.wallpaper || wallpaper);
-        setPreviewWallpaper(p.wallpaper || wallpaper);
       }
 
-      // Listen for balance updates
-      const unsubBalance = onSnapshot(userRef, (snap) => {
-        if (!snap.exists()) return;
-        const data = snap.data();
+      // live user snapshot
+      const unsubSnap = onSnapshot(userRef, (s) => {
+        if (!s.exists()) return;
+        const data = s.data();
+        setName(data.name || "");
+        setBio(data.bio || "");
+        setProfilePic(data.profilePic || null);
+        setWallpaperUrl(data.wallpaper || "");
+        setAudioUrl(data.audio || null);
+
+        if (data.preferences) {
+          const p = data.preferences;
+          setNewTheme(p.theme || "light");
+          setLanguage(p.language || "English");
+          setFontSize(p.fontSize || "Medium");
+          setLayout(p.layout || "Default");
+          setNotifications(p.notifications || { push: true, email: true, sound: false });
+          updateSettings(p.theme || "light", p.wallpaper || wallpaper || "");
+        }
+
         setBalance(data.balance || 0);
         checkLastCheckin(data.lastCheckin);
       });
 
-      // Listen for transactions
+      // transactions
       const txRef = collection(db, "transactions");
       const txQuery = query(
         txRef,
-        where("uid", "==", userAuth.uid),
+        where("uid", "==", u.uid),
         orderBy("createdAt", "desc")
       );
-      const unsubTx = onSnapshot(txQuery, (snap) => {
-        setTransactions(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-      });
+      const unsubTx = onSnapshot(txQuery, (snap) =>
+        setTransactions(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
+      );
 
       return () => {
-        unsubBalance();
+        unsubSnap();
         unsubTx();
       };
     });
@@ -109,15 +138,14 @@ export default function SettingsPage() {
     return () => unsubAuth();
   }, []);
 
-  // -------------------- Daily check-in --------------------
   const checkLastCheckin = (lastCheckin) => {
     if (!lastCheckin) return setCheckedInToday(false);
     const lastDate = new Date(lastCheckin.seconds * 1000);
     const today = new Date();
     setCheckedInToday(
       lastDate.getDate() === today.getDate() &&
-        lastDate.getMonth() === today.getMonth() &&
-        lastDate.getFullYear() === today.getFullYear()
+      lastDate.getMonth() === today.getMonth() &&
+      lastDate.getFullYear() === today.getFullYear()
     );
   };
 
@@ -128,210 +156,209 @@ export default function SettingsPage() {
     if (!userSnap.exists()) return;
 
     const data = userSnap.data();
-    const lastCheckin = data.lastCheckin
-      ? new Date(data.lastCheckin.seconds * 1000)
-      : null;
+    const lastCheckin = data.lastCheckin ? new Date(data.lastCheckin.seconds * 1000) : null;
     const today = new Date();
+
     if (
       lastCheckin &&
       lastCheckin.getDate() === today.getDate() &&
       lastCheckin.getMonth() === today.getMonth() &&
       lastCheckin.getFullYear() === today.getFullYear()
     ) {
-      alert("✅ You already checked in today!");
-      return;
+      return alert("✅ Already checked in today!");
     }
 
-    const newBalance = (data.balance || 0) + 0.25;
     await updateDoc(userRef, {
-      balance: newBalance,
+      balance: (data.balance || 0) + 0.25,
       lastCheckin: serverTimestamp(),
     });
     setCheckedInToday(true);
-    alert("🎉 You earned +$0.25 for your daily check-in!");
+    alert("🎉 +$0.25 for daily check-in!");
   };
 
-  // -------------------- Cloudinary upload --------------------
-  const uploadToCloudinary = async (file) => {
-    if (!CLOUDINARY_CLOUD || !CLOUDINARY_PRESET)
+  // -------------------- Cloudinary Upload --------------------
+  const uploadToCloudinary = async (file, type = "image") => {
+    if (!CLOUDINARY_CLOUD || !CLOUDINARY_PRESET) {
       throw new Error(
-        "Cloudinary environment not set. Ensure VITE_CLOUDINARY_CLOUD_NAME and VITE_CLOUDINARY_UPLOAD_PRESET are defined"
+        "Cloudinary env not set. Define VITE_CLOUDINARY_CLOUD_NAME and VITE_CLOUDINARY_UPLOAD_PRESET"
       );
+    }
+    const resourceType = type === "audio" ? "raw" : type === "video" ? "video" : "image";
 
     const fd = new FormData();
     fd.append("file", file);
     fd.append("upload_preset", CLOUDINARY_PRESET);
 
     const res = await fetch(
-      `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`,
+      `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/${resourceType}/upload`,
       { method: "POST", body: fd }
     );
+
+    if (!res.ok) throw new Error("Cloudinary upload failed");
     const data = await res.json();
     return data.secure_url || data.url;
   };
 
-  // -------------------- Profile picture --------------------
-  const handleProfilePicClick = () => profilePicInputRef.current.click();
-
-  const handleProfilePicChange = async (e) => {
+  // -------------------- File Handlers --------------------
+  const handleProfileFile = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
+    setSelectedProfileFile(file);
     const reader = new FileReader();
-    reader.onload = (event) => setPhotoURL(event.target.result);
+    reader.onload = (ev) => setProfilePic(ev.target.result);
     reader.readAsDataURL(file);
+  };
+
+  const handleWallpaperFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setSelectedWallpaperFile(file);
+    const reader = new FileReader();
+    reader.onload = (ev) => setWallpaperUrl(ev.target.result);
+    reader.readAsDataURL(file);
+  };
+
+  const handleAudioFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setSelectedAudioFile(file);
+    const reader = new FileReader();
+    reader.onload = (ev) => setAudioUrl(ev.target.result);
+    reader.readAsDataURL(file);
+  };
+
+  // -------------------- Save All --------------------
+  const handleSaveAll = async () => {
+    if (!user) return alert("Not signed in");
+    setLoadingSave(true);
 
     try {
-      const url = await uploadToCloudinary(file);
-      setPhotoURL(url);
-      if (user) {
-        const userRef = doc(db, "users", user.uid);
-        await updateDoc(userRef, { photoURL: url });
-        alert("✅ Profile picture updated!");
-      }
+      const userRef = doc(db, "users", user.uid);
+      let profileUrl = profilePic;
+      let wallUrl = wallpaperUrl;
+      let audUrl = audioUrl;
+
+      if (selectedProfileFile) profileUrl = await uploadToCloudinary(selectedProfileFile, "image");
+      if (selectedWallpaperFile) wallUrl = await uploadToCloudinary(selectedWallpaperFile, "image");
+      if (selectedAudioFile) audUrl = await uploadToCloudinary(selectedAudioFile, "audio");
+
+      await updateDoc(userRef, {
+        name: name || null,
+        bio: bio || "",
+        profilePic: profileUrl || null,
+        wallpaper: wallUrl || null,
+        audio: audUrl || null,
+        preferences: {
+          theme: newTheme,
+          language,
+          fontSize,
+          layout,
+          notifications,
+        },
+      });
+
+      updateSettings(newTheme, wallUrl);
+      setSelectedProfileFile(null);
+      setSelectedWallpaperFile(null);
+      setSelectedAudioFile(null);
+      setEditing(false);
+      alert("✅ Profile & preferences saved!");
     } catch (err) {
-      console.error("Profile picture upload failed:", err);
-      alert("Failed to upload profile picture");
+      console.error(err);
+      alert("Failed to save: " + err.message);
+    } finally {
+      setLoadingSave(false);
     }
   };
 
-  // -------------------- Wallpaper --------------------
-  const handleWallpaperClick = () => fileInputRef.current.click();
-  const handleFileChange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => setPreviewWallpaper(event.target.result);
-    reader.readAsDataURL(file);
-
-    try {
-      const url = await uploadToCloudinary(file);
-      setNewWallpaper(url);
-      updateSettings(newTheme, url);
-    } catch (err) {
-      console.error("Wallpaper upload failed:", err);
-      alert("Failed to upload wallpaper");
-    }
-  };
-
-  // -------------------- Save preferences --------------------
-  const handleSavePreferences = async () => {
-    if (!user) return;
-    const userRef = doc(db, "users", user.uid);
-    await updateDoc(userRef, {
-      preferences: { language, fontSize, layout, theme: newTheme, wallpaper: newWallpaper },
-      notifications,
-    });
-    updateSettings(newTheme, newWallpaper);
-    alert("✅ Preferences saved successfully!");
-  };
-
-  // -------------------- Logout --------------------
   const handleLogout = async () => {
     await signOut(auth);
     navigate("/");
   };
 
   if (!user) return <p>Loading user...</p>;
-  const isDark = newTheme === "dark";
 
   return (
-    <div style={{ padding: 20, background: isDark ? "#1c1c1c" : "#f8f8f8", color: isDark ? "#fff" : "#000", minHeight: "100vh" }}>
-      <button onClick={() => navigate("/chat")} style={{ position: "absolute", top: 20, left: 20, background: isDark ? "#555" : "#e0e0e0", border: "none", borderRadius: "50%", padding: 8, cursor: "pointer" }}>⬅</button>
+    <div style={{ padding: 20, minHeight: "100vh", background: isDark ? "#1c1c1c" : "#f8f8f8", color: isDark ? "#fff" : "#000" }}>
+      <button onClick={() => navigate("/chat")} style={{ position: "absolute", top: 20, left: 20, padding: 8, borderRadius: "50%", border: "none", background: isDark ? "#555" : "#e0e0e0", cursor: "pointer" }}>⬅</button>
       <h2 style={{ textAlign: "center", marginBottom: 20 }}>⚙️ Settings</h2>
 
-      {/* Profile Picture */}
-      <div style={{ textAlign: "center", marginBottom: 20 }}>
-        <div
-          onClick={handleProfilePicClick}
-          style={{
-            width: 100,
-            height: 100,
-            margin: "0 auto 10px",
-            borderRadius: "50%",
-            overflow: "hidden",
-            cursor: "pointer",
-            border: "3px solid #007bff",
-            backgroundColor: "#ccc",
-          }}
-        >
-          <img
-            src={photoURL || "/default-avatar.png"}
-            alt="Profile"
-            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+      {/* Profile & Media */}
+      <Section title="Profile" isDark={isDark}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <div
+            onClick={() => profileInputRef.current.click()}
+            style={{
+              width: 88, height: 88, borderRadius: "50%",
+              background: profilePic ? `url(${profilePic}) center/cover` : "#888",
+              cursor: "pointer",
+            }}
           />
+          <div>
+            <input ref={profileInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleProfileFile} />
+            <input ref={wallpaperInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleWallpaperFile} />
+            <input ref={audioInputRef} type="file" accept="audio/*" style={{ display: "none" }} onChange={handleAudioFile} />
+            <p>{name || "Unnamed"}</p>
+            <p>{bio || "No bio"}</p>
+            <p>{email}</p>
+          </div>
         </div>
-        <p>Click to change profile picture</p>
-        <input
-          type="file"
-          accept="image/*"
-          ref={profilePicInputRef}
-          style={{ display: "none" }}
-          onChange={handleProfilePicChange}
-        />
-      </div>
 
-      {/* Wallet */}
-      <Section title="Wallet" isDark={isDark}>
-        <p>Balance: <strong style={{ color: isDark ? "#00e676" : "#007bff" }}>${balance.toFixed(2)}</strong></p>
-        <button onClick={handleDailyCheckin} disabled={checkedInToday} style={{ ...btnStyle(checkedInToday ? "#666" : "#4CAF50"), opacity: checkedInToday ? 0.7 : 1 }}>
-          {checkedInToday ? "✅ Checked In Today" : "🧩 Daily Check-in (+$0.25)"}
-        </button>
-        <div style={{ marginTop: 10 }}>
-          <button onClick={() => navigate("/topup")} style={btnStyle("#007bff")}>💳 Top Up</button>
-          <button onClick={() => navigate("/withdrawal")} style={btnStyle("#28a745")}>💸 Withdraw</button>
-        </div>
+        <button onClick={() => wallpaperInputRef.current.click()} style={btnStyle("#007bff")}>Change Wallpaper</button>
+        {wallpaperUrl && <div style={{ marginTop: 10, width: "100%", height: 120, background: `url(${wallpaperUrl}) center/cover`, borderRadius: 8 }} />}
+        <button onClick={() => audioInputRef.current.click()} style={{ marginTop: 10, ...btnStyle("#28a745") }}>Upload Audio</button>
+        {audioUrl && <audio controls src={audioUrl} style={{ marginTop: 10, width: "100%" }} />}
       </Section>
 
       {/* Preferences */}
-      <Section title="User Preferences" isDark={isDark}>
-        <label>Language:</label>
+      <Section title="Preferences" isDark={isDark}>
+        <label>Theme</label>
+        <select value={newTheme} onChange={(e) => setNewTheme(e.target.value)} style={selectStyle(isDark)}>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+
+        <label>Language</label>
         <select value={language} onChange={(e) => setLanguage(e.target.value)} style={selectStyle(isDark)}>
           <option>English</option>
           <option>French</option>
           <option>Spanish</option>
           <option>Arabic</option>
         </select>
-        <label>Font Size:</label>
+
+        <label>Font Size</label>
         <select value={fontSize} onChange={(e) => setFontSize(e.target.value)} style={selectStyle(isDark)}>
           <option>Small</option>
           <option>Medium</option>
           <option>Large</option>
         </select>
-        <label>Layout:</label>
+
+        <label>Layout</label>
         <select value={layout} onChange={(e) => setLayout(e.target.value)} style={selectStyle(isDark)}>
           <option>Default</option>
           <option>Compact</option>
           <option>Spacious</option>
         </select>
+
+        <label>Notifications</label>
+        {["push", "email", "sound"].map((n) => (
+          <label key={n} style={{ display: "block" }}>
+            <input type="checkbox" checked={notifications[n]} onChange={() => setNotifications({ ...notifications, [n]: !notifications[n] })} />
+            {n.charAt(0).toUpperCase() + n.slice(1)}
+          </label>
+        ))}
+
+        <button onClick={handleSaveAll} style={btnStyle("#007bff")} disabled={loadingSave}>
+          {loadingSave ? "Saving…" : "💾 Save All"}
+        </button>
       </Section>
 
-      {/* Theme & Wallpaper */}
-      <Section title="Theme & Wallpaper" isDark={isDark}>
-        <select value={newTheme} onChange={(e) => setNewTheme(e.target.value)} style={selectStyle(isDark)}>
-          <option value="light">🌞 Light</option>
-          <option value="dark">🌙 Dark</option>
-        </select>
-        <div onClick={() => fileInputRef.current.click()} style={{ ...previewBox, backgroundImage: previewWallpaper ? `url(${previewWallpaper})` : "none" }}>
-          <p>🌈 Wallpaper Preview</p>
-        </div>
-        <input type="file" accept="image/*" ref={fileInputRef} style={{ display: "none" }} onChange={handleFileChange} />
-        <button onClick={handleSavePreferences} style={btnStyle("#007bff")}>💾 Save Preferences</button>
-      </Section>
-
-      {/* Notifications */}
-      <Section title="Notifications" isDark={isDark}>
-        <label><input type="checkbox" checked={notifications.push} onChange={() => setNotifications({ ...notifications, push: !notifications.push })}/> Push Notifications</label>
-        <label><input type="checkbox" checked={notifications.email} onChange={() => setNotifications({ ...notifications, email: !notifications.email })}/> Email Alerts</label>
-        <label><input type="checkbox" checked={notifications.sound} onChange={() => setNotifications({ ...notifications, sound: !notifications.sound })}/> Sounds</label>
-      </Section>
-
-      {/* About */}
-      <Section title="About" isDark={isDark}>
-        <p>Version 1.0.0</p>
-        <p>© 2025 Hahala App</p>
-        <p>Terms of Service | Privacy Policy</p>
+      {/* Wallet */}
+      <Section title="Wallet" isDark={isDark}>
+        <p>Balance: <strong>${balance.toFixed(2)}</strong></p>
+        <button onClick={handleDailyCheckin} disabled={checkedInToday} style={{ ...btnStyle("#4CAF50"), opacity: checkedInToday ? 0.7 : 1 }}>
+          {checkedInToday ? "✅ Checked In Today" : "🧩 Daily Check-in (+$0.25)"}
+        </button>
       </Section>
 
       <div style={{ textAlign: "center", marginTop: 20 }}>
@@ -341,17 +368,35 @@ export default function SettingsPage() {
   );
 }
 
-/* === Section Wrapper === */
+/* Section Wrapper */
 function Section({ title, children, isDark }) {
   return (
-    <div style={{ background: isDark ? "#2b2b2b" : "#fff", padding: 20, borderRadius: 12, marginTop: 25, boxShadow: "0 2px 6px rgba(0,0,0,0.1)" }}>
+    <div style={{ background: isDark ? "#2b2b2b" : "#fff", padding: 20, borderRadius: 12, marginTop: 25 }}>
       <h3>{title}</h3>
       {children}
     </div>
   );
 }
 
-/* === Reusable Styles === */
-const btnStyle = (bg) => ({ marginRight: 8, padding: "10px 15px", background: bg, color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: "bold" });
-const selectStyle = (isDark) => ({ width: "100%", padding: 8, marginBottom: 10, borderRadius: 6, background: isDark ? "#222" : "#fafafa", color: isDark ? "#fff" : "#000", border: "1px solid #666" });
-const previewBox = { width: "100%", height: 150, borderRadius: 10, border: "2px solid #555", marginTop: 15, display: "flex", justifyContent: "center", alignItems: "center", backgroundSize: "cover", backgroundPosition: "center" };
+/* Styles */
+const btnStyle = (bg) => ({
+  padding: "10px 15px",
+  marginTop: 10,
+  marginRight: 8,
+  background: bg,
+  color: "#fff",
+  border: "none",
+  borderRadius: 8,
+  cursor: "pointer",
+  fontWeight: "bold",
+});
+
+const selectStyle = (isDark) => ({
+  width: "100%",
+  padding: 8,
+  marginBottom: 10,
+  borderRadius: 6,
+  background: isDark ? "#222" : "#fafafa",
+  color: isDark ? "#fff" : "#000",
+  border: "1px solid #666",
+});
