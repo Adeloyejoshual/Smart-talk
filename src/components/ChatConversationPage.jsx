@@ -545,14 +545,31 @@ export default function ChatConversationPage() {
       </div>
 
       {/* Reply preview */}
-      {replyTo && (
-        <div style={{ padding: SPACING.sm, background: isDark ? COLORS.darkCard : COLORS.lightCard, borderTop: `1px solid ${COLORS.grayBorder}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div>
-            Replying to: <b>{replyTo.text || replyTo.mediaType}</b>
-          </div>
-          <button onClick={() => setReplyTo(null)} style={{ border: "none", background: "transparent", fontSize: 16 }}>×</button>
-        </div>
-      )}
+{replyTo && (
+  <div style={{
+    padding: SPACING.sm,
+    background: isDark ? COLORS.darkCard : COLORS.lightCard,
+    borderTop: `1px solid ${COLORS.grayBorder}`,
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center"
+  }}>
+    <div>
+      <b>
+        {replyTo.text 
+          ? (replyTo.text.length > 30 ? replyTo.text.slice(0, 30) + "…" : replyTo.text)
+          : replyTo.mediaType
+        }
+      </b>
+    </div>
+    <button
+      onClick={() => setReplyTo(null)}
+      style={{ border: "none", background: "transparent", fontSize: 16 }}
+    >
+      ×
+    </button>
+  </div>
+
 
       {/* Input */}
       <div style={{ padding: SPACING.sm, display: "flex", alignItems: "center", gap: SPACING.sm, borderTop: `1px solid ${COLORS.grayBorder}`, background: isDark ? COLORS.darkCard : COLORS.lightCard }}>
