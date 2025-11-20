@@ -15,6 +15,7 @@ import WithdrawalPage from "./components/WithdrawalPage";
 import UserProfile from "./components/UserProfile";
 import VoiceCallPage from "./components/VoiceCallPage";
 import VideoCallPage from "./components/VideoCallPage";
+import EditProfilePage from "./components/EditProfilePage";
 
 // Components
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -134,6 +135,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <SettingsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/edit-profile"
+            element={
+              <ProtectedRoute>
+                <EditProfilePage />
               </ProtectedRoute>
             }
           />
