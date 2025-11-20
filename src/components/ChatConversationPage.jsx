@@ -43,9 +43,7 @@ const dayLabel = (ts) => {
 
 // -------------------- Constants --------------------
 const INLINE_REACTIONS = ["❤️", "😂", "👍", "😮", "😢"];
-const EXTENDED_EMOJIS = [
-  "❤️","😂","👍","😮","😢","👎","👏","🔥","😅","🤩","😍","😎","🙂","🙃","😉","🤔","🤨","🤗","🤯","🥳","🙏","💪"
-];
+
 const COLORS = {
   primary: "#34B7F1",
   primaryDark: "#007bff",
