@@ -4,6 +4,9 @@ import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "./context/ThemeContext";
 import { auth, setUserPresence } from "./firebaseConfig";
 
+// Wallet context
+import { WalletProvider } from "./context/WalletContext";
+
 // Pages
 import HomePage from "./components/HomePage";
 import ChatPage from "./components/ChatPage";
@@ -40,7 +43,6 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Splash/loading screen
   if (checkingAuth) {
     return (
       <div
@@ -102,118 +104,120 @@ export default function App() {
 
   return (
     <ThemeProvider>
-      <Router>
-        <Routes>
-          {/* Public Route */}
-          <Route path="/" element={user ? <ChatPage /> : <HomePage />} />
+      <WalletProvider>
+        <Router>
+          <Routes>
+            {/* Public Route */}
+            <Route path="/" element={user ? <ChatPage /> : <HomePage />} />
 
-          {/* Protected Routes */}
-          <Route
-            path="/chat"
-            element={
-              <ProtectedRoute>
-                <ChatPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/chat/:chatId"
-            element={
-              <ProtectedRoute>
-                <ChatConversationPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/call"
-            element={
-              <ProtectedRoute>
-                <CallPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/settings"
-            element={
-              <ProtectedRoute>
-                <SettingsPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/edit-profile"
-            element={
-              <ProtectedRoute>
-                <EditProfilePage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/history"
-            element={
-              <ProtectedRoute>
-                <CallHistoryPage />
-              </ProtectedRoute>
-            }
-          />
+            {/* Protected Routes */}
+            <Route
+              path="/chat"
+              element={
+                <ProtectedRoute>
+                  <ChatPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/chat/:chatId"
+              element={
+                <ProtectedRoute>
+                  <ChatConversationPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/call"
+              element={
+                <ProtectedRoute>
+                  <CallPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/settings"
+              element={
+                <ProtectedRoute>
+                  <SettingsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/edit-profile"
+              element={
+                <ProtectedRoute>
+                  <EditProfilePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/history"
+              element={
+                <ProtectedRoute>
+                  <CallHistoryPage />
+                </ProtectedRoute>
+              }
+            />
 
-          {/* Wallet */}
-          <Route
-            path="/wallet"
-            element={
-              <ProtectedRoute>
-                <WalletPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/topup"
-            element={
-              <ProtectedRoute>
-                <TopUpPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/withdraw"
-            element={
-              <ProtectedRoute>
-                <WithdrawPage />
-              </ProtectedRoute>
-            }
-          />
+            {/* Wallet */}
+            <Route
+              path="/wallet"
+              element={
+                <ProtectedRoute>
+                  <WalletPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/topup"
+              element={
+                <ProtectedRoute>
+                  <TopUpPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/withdraw"
+              element={
+                <ProtectedRoute>
+                  <WithdrawPage />
+                </ProtectedRoute>
+              }
+            />
 
-          {/* User Profile */}
-          <Route
-            path="/profile/:uid"
-            element={
-              <ProtectedRoute>
-                <UserProfile />
-              </ProtectedRoute>
-            }
-          />
+            {/* User Profile */}
+            <Route
+              path="/profile/:uid"
+              element={
+                <ProtectedRoute>
+                  <UserProfile />
+                </ProtectedRoute>
+              }
+            />
 
-          {/* Voice Call */}
-          <Route
-            path="/voicecall/:uid"
-            element={
-              <ProtectedRoute>
-                <VoiceCallPage />
-              </ProtectedRoute>
-            }
-          />
+            {/* Voice Call */}
+            <Route
+              path="/voicecall/:uid"
+              element={
+                <ProtectedRoute>
+                  <VoiceCallPage />
+                </ProtectedRoute>
+              }
+            />
 
-          {/* Video Call */}
-          <Route
-            path="/videocall/:uid"
-            element={
-              <ProtectedRoute>
-                <VideoCallPage />
-              </ProtectedRoute>
-            }
-          />
-        </Routes>
-      </Router>
+            {/* Video Call */}
+            <Route
+              path="/videocall/:uid"
+              element={
+                <ProtectedRoute>
+                  <VideoCallPage />
+                </ProtectedRoute>
+              }
+            />
+          </Routes>
+        </Router>
+      </WalletProvider>
     </ThemeProvider>
   );
 }
