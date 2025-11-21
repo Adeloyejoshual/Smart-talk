@@ -2,15 +2,16 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { auth } from "../firebaseConfig";
-import { handleStripePayment, handleFlutterwavePayment } from "../payments";
-import { motion } from "framer-motion";
+import axios from "axios";
 
 export default function TopUpPage() {
   const [amount, setAmount] = useState(10);
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [verifying, setVerifying] = useState(false);
   const navigate = useNavigate();
 
+  // Listen for auth
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((userAuth) => {
       if (userAuth) setUser(userAuth);
@@ -21,86 +22,163 @@ export default function TopUpPage() {
 
   if (!user) return <p>Loading...</p>;
 
-  const handleTopUp = async (method) => {
-    if (!amount || amount < 1) return alert("Please enter a valid amount.");
+  const generateTxRef = () => `tx_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+  const handleFlutterwaveTopUp = async () => {
+    if (!amount || amount < 1) {
+      alert("Please enter a valid amount.");
+      return;
+    }
+
     setLoading(true);
     try {
-      if (method === "stripe") await handleStripePayment(amount, user.uid);
-      else if (method === "flutterwave") await handleFlutterwavePayment(amount, user.uid);
+      const tx_ref = generateTxRef();
+
+      // Create a pending transaction on server
+      const token = await user.getIdToken();
+      await axios.post(
+        "/api/wallet",
+        {
+          uid: user.uid,
+          type: "deposit",
+          amount,
+          description: "Flutterwave Payment",
+          txnId: tx_ref,
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      // Redirect user to Flutterwave payment
+      const flutterwaveURL = `https://checkout.flutterwave.com/v3/hosted/pay?tx_ref=${tx_ref}&amount=${amount}&currency=USD&customer[email]=${user.email}`;
+      window.location.href = flutterwaveURL;
+
     } catch (err) {
-      console.error("Top-up error:", err);
-      alert("Payment failed. Try again.");
+      console.error(err);
+      alert("Payment initialization failed");
     } finally {
       setLoading(false);
     }
   };
 
+  // Optional: verify after redirect (if you detect query params)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tx_ref = params.get("tx_ref");
+    if (tx_ref) {
+      verifyFlutterwave(tx_ref);
+    }
+  }, []);
+
+  const verifyFlutterwave = async (tx_ref) => {
+    if (!user) return;
+    setVerifying(true);
+    try {
+      const token = await user.getIdToken();
+      const res = await axios.get(`/api/flutterwave/verify/${tx_ref}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (res.data.success) {
+        alert(`Top-up successful! New balance: $${res.data.balance.toFixed(2)}`);
+        // Remove query param from URL
+        window.history.replaceState({}, document.title, "/topup");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Top-up verification failed.");
+    } finally {
+      setVerifying(false);
+    }
+  };
+
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-800 to-pink-700 p-6 flex flex-col items-center text-white"
+    <div
+      style={{
+        minHeight: "100vh",
+        padding: "30px 20px",
+        background: "#e0f0ff",
+        color: "#000",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+      }}
     >
       {/* Back Button */}
       <button
-        onClick={() => navigate("/wallet")}
-        className="absolute top-6 left-6 text-white font-bold text-2xl"
+        onClick={() => navigate("/settings")}
+        style={{
+          position: "absolute",
+          top: "20px",
+          left: "20px",
+          padding: "8px 12px",
+          background: "#ddd",
+          borderRadius: "8px",
+          border: "none",
+          cursor: "pointer",
+        }}
       >
-        ⬅
+        ← Back
       </button>
 
-      {/* Page Header */}
-      <h2 className="mt-12 text-3xl font-bold mb-2">💳 Wallet Top-Up</h2>
-      <p className="text-gray-200 mb-6 text-center max-w-md">
-        Add funds to your wallet quickly and securely using Stripe or Flutterwave.
-      </p>
+      <h2 style={{ marginTop: "50px" }}>💳 Wallet Top-Up</h2>
+      <p>Choose how much you want to add to your wallet.</p>
 
-      {/* Amount Input */}
-      <motion.input
-        whileFocus={{ scale: 1.02 }}
+      <input
         type="number"
+        placeholder="Enter amount (USD)"
         value={amount}
         onChange={(e) => setAmount(Number(e.target.value))}
-        placeholder="Enter amount (USD)"
-        className="p-3 w-full max-w-md rounded-xl text-black font-semibold text-lg focus:outline-none focus:ring-2 focus:ring-blue-400 mb-4"
+        style={{
+          padding: "10px",
+          borderRadius: "8px",
+          border: "1px solid #ccc",
+          margin: "15px 0",
+          width: "80%",
+          maxWidth: "300px",
+          fontSize: "16px",
+          textAlign: "center",
+        }}
       />
 
-      {/* Quick Amount Buttons */}
-      <div className="flex flex-wrap gap-3 justify-center mb-6">
+      <div style={{ display: "flex", gap: "10px", marginBottom: "20px" }}>
         {[5, 10, 20, 50].map((amt) => (
           <button
             key={amt}
             onClick={() => setAmount(amt)}
-            className="bg-blue-500 hover:bg-blue-600 transition px-4 py-2 rounded-lg font-semibold"
+            style={{
+              padding: "10px 15px",
+              background: "#007BFF",
+              color: "#fff",
+              border: "none",
+              borderRadius: "8px",
+              cursor: "pointer",
+              fontWeight: "bold",
+            }}
           >
             ${amt}
           </button>
         ))}
       </div>
 
-      {/* Payment Options */}
-      <h3 className="text-xl font-semibold mb-3">Select Payment Method</h3>
-      <div className="flex flex-col gap-4 items-center w-full max-w-md">
+      <h3>Select Payment Method</h3>
+      <div style={{ display: "flex", flexDirection: "column", gap: "15px", marginTop: "15px" }}>
         <button
-          disabled={loading}
-          onClick={() => handleTopUp("stripe")}
-          className={`w-full py-3 rounded-xl text-white font-bold transition ${
-            loading ? "bg-gray-600 cursor-not-allowed" : "bg-purple-500 hover:bg-purple-600"
-          }`}
+          disabled={loading || verifying}
+          onClick={() => handleFlutterwaveTopUp()}
+          style={{
+            background: "#FF9A00",
+            color: "#fff",
+            padding: "12px 20px",
+            border: "none",
+            borderRadius: "8px",
+            fontSize: "16px",
+            cursor: loading || verifying ? "not-allowed" : "pointer",
+            width: "250px",
+          }}
         >
-          {loading ? "Processing..." : "💳 Pay with Stripe"}
-        </button>
-
-        <button
-          disabled={loading}
-          onClick={() => handleTopUp("flutterwave")}
-          className={`w-full py-3 rounded-xl text-white font-bold transition ${
-            loading ? "bg-gray-600 cursor-not-allowed" : "bg-yellow-500 hover:bg-yellow-600"
-          }`}
-        >
-          {loading ? "Processing..." : "🌍 Pay with Flutterwave"}
+          {loading || verifying ? "Processing..." : "🌍 Pay with Flutterwave"}
         </button>
       </div>
-    </motion.div>
+    </div>
   );
 }
