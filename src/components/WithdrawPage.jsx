@@ -85,56 +85,55 @@ export default function WithdrawPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [modalOpen]);
 
-  return (
-    <div style={styles.page}>
-      {/* Back Button */}
-      <button onClick={() => navigate("/wallet")} style={styles.backBtn}>←</button>
-      <h2 style={styles.title}>💵 Withdraw Funds</h2>
+return (
+  <div style={styles.page}>
+    {/* Back Button */}
+    <button onClick={() => navigate("/wallet")} style={styles.backBtn}>←</button>
+    <h2 style={styles.title}>💵 Withdraw Funds</h2>
 
-      {/* Balance Card */}
-      <div style={styles.walletCard}>
-        <p style={styles.balanceLabel}>Your Balance</p>
-        <h1 style={styles.balanceAmount}>${balance.toFixed(2)}</h1>
-      </div>
+    {/* Balance Card */}
+    <div style={styles.walletCard}>
+      <p style={styles.balanceLabel}>Your Balance</p>
+      <h1 style={styles.balanceAmount}>${balance.toFixed(2)}</h1>
+    </div>
 
-      {/* Task Buttons */}
-      <div style={{ marginTop: 20, display: "flex", flexDirection: "column", gap: 12, alignItems: "center" }}>
-        <button style={styles.taskBtn} onClick={handleWatchVideo} disabled={tasksLoading}>
-          🎥 Watch a video → +$0.25
-        </button>
-        <button style={styles.taskBtn} onClick={handleFollowInstagram} disabled={tasksLoading}>
-          📱 Follow us on Instagram → +$0.50
-        </button>
-        <button style={styles.taskBtn} onClick={handleInviteFriend}>
-          👥 Invite a friend → +$0.50 per join
-        </button>
-      </div>
+    {/* Task Buttons + Withdraw pinned below */}
+    <div style={{ marginTop: 20, display: "flex", flexDirection: "column", gap: 12, alignItems: "center" }}>
+      <button style={styles.taskBtn} onClick={handleWatchVideo} disabled={tasksLoading}>
+        🎥 Watch a video → +$0.25
+      </button>
+      <button style={styles.taskBtn} onClick={handleFollowInstagram} disabled={tasksLoading}>
+        📱 Follow us on Instagram → +$0.50
+      </button>
+      <button style={styles.taskBtn} onClick={handleInviteFriend}>
+        👥 Invite a friend → +$0.50 per join
+      </button>
 
-      {/* Withdraw Button at Bottom */}
+      {/* Withdraw Button pinned immediately below tasks */}
       <button
-        style={{ ...styles.roundBtn, background: "#f39c12", marginTop: "auto", width: "90%", maxWidth: 360 }}
+        style={{ ...styles.roundBtn, background: "#f39c12", marginTop: 15, width: "90%", maxWidth: 360 }}
         onClick={() => setModalOpen(true)}
       >
         🚧 Withdraw
       </button>
-
-      {/* Modal */}
-      {modalOpen && (
-        <div style={styles.modalOverlay}>
-          <div style={styles.modal} ref={modalRef}>
-            <h3 style={{ marginBottom: 15 }}>🚧 Coming Soon</h3>
-            <p style={{ marginBottom: 20 }}>
-              Withdraw is not yet available. Continue using the app to chat and earn more credits!
-            </p>
-            <button style={styles.closeBtn} onClick={() => setModalOpen(false)}>
-              Close
-            </button>
-          </div>
-        </div>
-      )}
     </div>
-  );
-}
+
+    {/* Modal */}
+    {modalOpen && (
+      <div style={styles.modalOverlay}>
+        <div style={styles.modal} ref={modalRef}>
+          <h3 style={{ marginBottom: 15 }}>🚧 Coming Soon</h3>
+          <p style={{ marginBottom: 20 }}>
+            Withdraw is not yet available. Continue using the app to chat and earn more credits!
+          </p>
+          <button style={styles.closeBtn} onClick={() => setModalOpen(false)}>
+            Close
+          </button>
+        </div>
+      </div>
+    )}
+  </div>
+);
 
 // ======================================================
 // STYLES
