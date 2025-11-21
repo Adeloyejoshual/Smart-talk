@@ -61,7 +61,7 @@ export default function WithdrawPage() {
       "https://youtube.com/shorts/mQOV18vpAu4?si=8gyR6f-eAK4SGSyw",
       "_blank"
     );
-    updateBalance(0.20);
+    updateBalance(0.2);
   };
 
   const handleFollowInstagram = () => {
@@ -89,6 +89,8 @@ export default function WithdrawPage() {
     <div style={styles.page}>
       {/* Back Button */}
       <button onClick={() => navigate("/wallet")} style={styles.backBtn}>←</button>
+
+      {/* Page Title */}
       <h2 style={styles.title}>💵 Withdraw Funds</h2>
 
       {/* Balance Card */}
@@ -97,8 +99,8 @@ export default function WithdrawPage() {
         <h1 style={styles.balanceAmount}>${balance.toFixed(2)}</h1>
       </div>
 
-      {/* Sticky Tasks + Withdraw */}
-      <div style={styles.stickyBottom}>
+      {/* Centered Tasks & Withdraw */}
+      <div style={styles.centerContent}>
         <button style={styles.taskBtn} onClick={handleWatchVideo} disabled={tasksLoading}>
           🎥 Watch a video → +$0.20
         </button>
@@ -108,9 +110,8 @@ export default function WithdrawPage() {
         <button style={styles.taskBtn} onClick={handleInviteFriend}>
           👥 Invite a friend → +$0.25 per join
         </button>
-
         <button
-          style={{ ...styles.roundBtn, background: "#f39c12", marginTop: 10, width: "90%" }}
+          style={{ ...styles.roundBtn, background: "#f39c12", marginTop: 12, width: "90%" }}
           onClick={() => setModalOpen(true)}
         >
           🚧 Withdraw
@@ -147,7 +148,8 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    paddingBottom: 150, // space for sticky bottom
+    justifyContent: "flex-start",
+    position: "relative",
   },
   backBtn: {
     position: "absolute",
@@ -193,20 +195,18 @@ const styles = {
     cursor: "pointer",
     fontWeight: "bold",
     width: "90%",
+    maxWidth: 320,
     textAlign: "center",
     marginBottom: 8,
   },
-  stickyBottom: {
-    position: "fixed",
-    bottom: 20,
+  centerContent: {
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
+    marginTop: "10vh",
     width: "100%",
-    maxWidth: 400,
-    left: "50%",
-    transform: "translateX(-50%)",
-    zIndex: 999,
+    maxWidth: 380,
+    gap: 12,
   },
   modalOverlay: {
     position: "fixed",
