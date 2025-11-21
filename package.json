@@ -1,43 +1,291 @@
-{
-  "name": "smarttalk",
-  "version": "1.0.0",
-  "type": "module",
-  "private": true,
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
-    "start": "node server.js"
-  },
-  "dependencies": {
-    "axios": "^1.6.0",
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
-    "express": "^4.18.2",
-    "firebase": "^11.0.0",
-    "firebase-admin": "^12.6.0",
-    "mongoose": "^7.5.0",
-    "react-firebase-hooks": "^5.1.1",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-router-dom": "^6.26.1",
-    "framer-motion": "^11.0.0",
-    "react-icons": "^5.3.0",
-    "emoji-picker-react": "^4.6.3",
-    "lucide-react": "^0.441.0",
-    "twilio-video": "^2.28.1",
-    "@stripe/stripe-js": "^1.52.1",
-    "stripe": "^14.23.0",
-    "@aws-sdk/client-s3": "^3.658.0",
-    "@aws-sdk/credential-provider-cognito-identity": "^3.658.0",
-    "date-fns": "^2.30.0",
-    "wavesurfer.js": "^7.8.5"
-  },
-  "devDependencies": {
-    "@vitejs/plugin-react": "^4.2.1",
-    "vite": "^5.4.0"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  }
+// server.js
+import express from "express";
+import cors from "cors";
+import path from "path";
+import { fileURLToPath } from "url";
+import dotenv from "dotenv";
+import admin from "firebase-admin";
+import Stripe from "stripe";
+import mongoose from "mongoose";
+
+dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+// ------------------- Firebase Admin -------------------
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert({
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+    }),
+  });
+  console.log("✅ Firebase Admin initialized");
 }
+
+// ------------------- Stripe -------------------
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+// ------------------- MongoDB -------------------
+mongoose.set("strictQuery", true);
+mongoose
+  .connect(process.env.MONGO_URI)
+  .then(() => console.log("✅ MongoDB connected"))
+  .catch((err) => console.error("❌ MongoDB connection error:", err));
+
+// ------------------- Models -------------------
+const transactionSchema = new mongoose.Schema(
+  {
+    uid: { type: String, required: true, index: true },
+    type: {
+      type: String,
+      enum: ["credit", "debit", "checkin", "deposit", "withdraw"],
+      required: true,
+    },
+    amount: { type: Number, required: true },
+    description: { type: String, default: "" },
+    status: { type: String, enum: ["Pending", "Success", "Failed"], default: "Success" },
+    txnId: { type: String, unique: true, index: true },
+    balanceAfter: { type: Number },
+    createdAt: { type: Date, default: Date.now },
+  },
+  { versionKey: false }
+);
+const Transaction = mongoose.model("Transaction", transactionSchema);
+
+const walletSchema = new mongoose.Schema({
+  uid: { type: String, required: true, unique: true, index: true },
+  balance: { type: Number, default: 0 },
+  lastCheckIn: { type: String, default: null },
+});
+const Wallet = mongoose.model("Wallet", walletSchema);
+
+// ------------------- Utilities -------------------
+const generateTxnId = () => `txn_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+
+// Firebase token verification middleware
+const verifyFirebaseToken = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization || "";
+    const idToken = authHeader.startsWith("Bearer ") ? authHeader.split(" ")[1] : null;
+    if (!idToken) return res.status(401).json({ error: "Missing or invalid Authorization header" });
+
+    const decoded = await admin.auth().verifyIdToken(idToken);
+    req.authUID = decoded.uid;
+    next();
+  } catch (err) {
+    console.error("Firebase token verify error:", err);
+    return res.status(401).json({ error: "Invalid auth token" });
+  }
+};
+
+// ------------------- API Routes -------------------
+
+// 1️⃣ Stripe Payment
+app.post("/api/payment/stripe", verifyFirebaseToken, async (req, res) => {
+  try {
+    const { amount, currency = "usd" } = req.body;
+    const uid = req.authUID;
+
+    if (!amount || typeof amount !== "number") return res.status(400).json({ error: "Invalid amount" });
+
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: Math.round(amount),
+      currency,
+    });
+
+    const txn = await Transaction.create({
+      uid,
+      type: "deposit",
+      amount: amount / 100,
+      description: "Stripe Payment",
+      status: "Pending",
+      txnId: generateTxnId(),
+    });
+
+    res.json({ clientSecret: paymentIntent.client_secret, txnId: txn.txnId });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 2️⃣ Flutterwave Payment
+app.post("/api/payment/flutterwave", verifyFirebaseToken, async (req, res) => {
+  try {
+    const { amount, currency = "NGN", redirectUrl } = req.body;
+    const uid = req.authUID;
+
+    if (!amount || typeof amount !== "number") return res.status(400).json({ error: "Invalid amount" });
+
+    // Flutterwave payload
+    const payload = {
+      tx_ref: generateTxnId(),
+      amount,
+      currency,
+      redirect_url: redirectUrl,
+      customer: { email: req.body.email || "user@example.com" },
+      payment_options: "card,ussd,qr",
+    };
+
+    const response = await fetch("https://api.flutterwave.com/v3/payments", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.FLUTTERWAVE_SECRET_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await response.json();
+    if (!data.status || data.status !== "success") return res.status(500).json({ error: data.message });
+
+    // Log transaction as pending
+    const txn = await Transaction.create({
+      uid,
+      type: "deposit",
+      amount,
+      description: "Flutterwave Payment",
+      status: "Pending",
+      txnId: payload.tx_ref,
+    });
+
+    res.json({ link: data.data.link, txnId: txn.txnId });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 3️⃣ Wallet Transactions + Balance
+app.get("/api/wallet/:uid", verifyFirebaseToken, async (req, res) => {
+  try {
+    const { uid } = req.params;
+    if (req.authUID !== uid) return res.status(403).json({ error: "Forbidden" });
+
+    const transactions = await Transaction.find({ uid }).sort({ createdAt: -1 }).limit(100);
+    const walletDoc = await Wallet.findOne({ uid });
+    const balance = walletDoc ? walletDoc.balance : transactions.reduce((sum, t) => sum + t.amount, 0);
+
+    res.json({ transactions, balance });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 4️⃣ Daily Check-In
+app.post("/api/wallet/daily", verifyFirebaseToken, async (req, res) => {
+  try {
+    const { amount } = req.body;
+    const uid = req.authUID;
+
+    if (!amount || typeof amount !== "number") return res.status(400).json({ error: "Invalid amount" });
+
+    let wallet = await Wallet.findOne({ uid });
+    if (!wallet) wallet = await Wallet.create({ uid, balance: 0, lastCheckIn: null });
+
+    const today = new Date().toISOString().split("T")[0];
+    if (wallet.lastCheckIn === today) return res.status(400).json({ error: "Already checked in today" });
+
+    const newBalance = wallet.balance + amount;
+
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    try {
+      await Transaction.create(
+        [
+          {
+            uid,
+            type: "checkin",
+            amount,
+            description: "Daily Check-In",
+            status: "Success",
+            txnId: generateTxnId(),
+            balanceAfter: newBalance,
+          },
+        ],
+        { session }
+      );
+
+      await Wallet.findOneAndUpdate(
+        { uid },
+        { $set: { lastCheckIn: today }, $inc: { balance: amount } },
+        { session }
+      );
+
+      await session.commitTransaction();
+      session.endSession();
+
+      res.json({ success: true, balance: newBalance });
+    } catch (txErr) {
+      await session.abortTransaction();
+      session.endSession();
+      throw txErr;
+    }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 5️⃣ Withdraw
+app.post("/api/wallet/withdraw", verifyFirebaseToken, async (req, res) => {
+  try {
+    const { amount, destination } = req.body;
+    const uid = req.authUID;
+
+    if (!amount || amount <= 0) return res.status(400).json({ error: "Invalid amount" });
+
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    try {
+      const wallet = await Wallet.findOne({ uid }).session(session);
+      if (!wallet || wallet.balance < amount) throw new Error("Insufficient funds");
+
+      const newBalance = wallet.balance - amount;
+
+      await Wallet.findOneAndUpdate({ uid }, { $inc: { balance: -amount } }, { session });
+
+      const txn = await Transaction.create(
+        [
+          {
+            uid,
+            type: "withdraw",
+            amount: -amount,
+            description: destination ? `Withdraw to ${destination}` : "Withdraw request",
+            status: "Pending",
+            txnId: generateTxnId(),
+            balanceAfter: newBalance,
+          },
+        ],
+        { session }
+      );
+
+      await session.commitTransaction();
+      session.endSession();
+
+      res.json({ success: true, balance: newBalance, txn: txn[0] });
+    } catch (txErr) {
+      await session.abortTransaction();
+      session.endSession();
+      throw txErr;
+    }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Serve frontend
+app.use(express.static(path.join(__dirname, "dist")));
+app.get("*", (req, res) => res.sendFile(path.resolve(__dirname, "dist/index.html")));
+
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
