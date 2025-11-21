@@ -1,8 +1,10 @@
+
 // src/components/WalletPage.jsx
 import React, { useEffect, useState, useRef } from "react";
-import { auth } from "../firebaseConfig";
+import { auth, db } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
 
 export default function WalletPage() {
   const [user, setUser] = useState(null);
@@ -18,7 +20,7 @@ export default function WalletPage() {
 
   const backend = "https://smart-talk-dqit.onrender.com";
 
-  // AUTH + LOAD WALLET
+  // AUTH
   useEffect(() => {
     const unsub = auth.onAuthStateChanged((u) => {
       if (u) {
@@ -29,55 +31,64 @@ export default function WalletPage() {
     return unsub;
   }, []);
 
-  // FETCH WALLET + TRANSACTIONS FROM BACKEND
+  // FETCH WALLET + TRANSACTIONS
   const loadWallet = async (uid) => {
     try {
       const token = await auth.currentUser.getIdToken(true);
       const res = await axios.get(`${backend}/api/wallet/${uid}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-
       setBalance(res.data.balance || 0);
       setTransactions(res.data.transactions || []);
-      if (res.data.transactions?.length) {
+      if (res.data.transactions.length) {
         setSelectedMonth(
-          new Date(res.data.transactions[0].createdAt || res.data.transactions[0].date)
+          new Date(
+            res.data.transactions[0].createdAt ||
+              res.data.transactions[0].date
+          )
         );
       }
     } catch (err) {
       console.error(err);
-      alert("Failed to load wallet. Check console.");
     }
   };
 
-  // CLAIM DAILY REWARD VIA BACKEND
+  // CLAIM DAILY REWARD
   const handleDailyReward = async () => {
     if (!user) return;
     setLoadingReward(true);
-
     try {
-      const token = await auth.currentUser.getIdToken(true);
-      const res = await axios.post(
-        `${backend}/api/wallet/daily`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const userRef = doc(db, "users", user.uid);
+      const snap = await getDoc(userRef);
+      if (!snap.exists()) return;
 
-      if (res.data.balance !== undefined) {
-        setBalance(res.data.balance);
-        setTransactions(
-          (res.data.transactions || transactions)
-            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-        );
-        alert("🎉 Daily reward claimed!");
-      } else if (res.data.error?.toLowerCase().includes("already claimed")) {
-        alert("✅ You already claimed today's reward!");
-      } else {
-        alert(res.data.error || "Failed to claim daily reward.");
+      const data = snap.data();
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const lastClaim = data.lastDailyClaim?.toDate?.();
+      if (lastClaim) {
+        const last = new Date(lastClaim);
+        last.setHours(0, 0, 0, 0);
+        if (last.getTime() === today.getTime()) {
+          alert("✅ You already claimed today!");
+          setLoadingReward(false);
+          return;
+        }
       }
+
+      const amount = 0.25; // daily reward amount
+      const newBalance = (data.balance || 0) + amount;
+
+      await updateDoc(userRef, {
+        balance: newBalance,
+        lastDailyClaim: new Date(),
+      });
+
+      setBalance(newBalance);
+      alert(`🎉 Daily reward claimed! +$${amount}`);
     } catch (err) {
       console.error(err);
-      alert("Failed to claim daily reward. Check console.");
+      alert("Failed to claim daily reward. Try again.");
     } finally {
       setLoadingReward(false);
     }
@@ -117,7 +128,11 @@ export default function WalletPage() {
   // CLOSE MONTH PICKER ON OUTSIDE CLICK
   useEffect(() => {
     const handleClick = (e) => {
-      if (showMonthPicker && modalRef.current && !modalRef.current.contains(e.target)) {
+      if (
+        showMonthPicker &&
+        modalRef.current &&
+        !modalRef.current.contains(e.target)
+      ) {
         setShowMonthPicker(false);
       }
     };
@@ -150,10 +165,16 @@ export default function WalletPage() {
         <h1 style={styles.balanceAmount}>${balance.toFixed(2)}</h1>
 
         <div style={styles.actionRow}>
-          <button style={styles.roundBtn} onClick={() => navigate("/topup")}>
+          <button
+            style={styles.roundBtn}
+            onClick={() => navigate("/topup")}
+          >
             Top-Up
           </button>
-          <button style={styles.roundBtn} onClick={() => navigate("/withdraw")}>
+          <button
+            style={styles.roundBtn}
+            onClick={() => navigate("/withdraw")}
+          >
             Withdraw
           </button>
           <button
@@ -195,9 +216,19 @@ export default function WalletPage() {
       )}
 
       {/* Scrollable transactions */}
-      <div style={styles.list} ref={scrollRef} onScroll={handleScroll}>
+      <div
+        style={styles.list}
+        ref={scrollRef}
+        onScroll={handleScroll}
+      >
         {filteredTransactions.length === 0 ? (
-          <p style={{ textAlign: "center", opacity: 0.5, marginTop: 10 }}>
+          <p
+            style={{
+              textAlign: "center",
+              opacity: 0.5,
+              marginTop: 10,
+            }}
+          >
             No transactions this month.
           </p>
         ) : (
@@ -248,7 +279,10 @@ export default function WalletPage() {
             <p>
               <b>Transaction ID:</b> {details._id}
             </p>
-            <button style={styles.closeBtn} onClick={() => setDetails(null)}>
+            <button
+              style={styles.closeBtn}
+              onClick={() => setDetails(null)}
+            >
               Close
             </button>
           </div>
@@ -258,111 +292,31 @@ export default function WalletPage() {
   );
 }
 
-// ================= STYLES =================
+// ======================================================
+// STYLING
+// ======================================================
 const styles = {
   page: { background: "#eef6ff", minHeight: "100vh", padding: 25, color: "#000" },
-  backBtn: {
-    position: "absolute",
-    top: 20,
-    left: 20,
-    padding: "10px 14px",
-    borderRadius: "50%",
-    background: "#dce9ff",
-    border: "none",
-    cursor: "pointer",
-    fontSize: 18,
-  },
+  backBtn: { position: "absolute", top: 20, left: 20, padding: "10px 14px", borderRadius: "50%", background: "#dce9ff", border: "none", cursor: "pointer", fontSize: 18 },
   title: { marginTop: 20, textAlign: "center", fontSize: 26 },
-  walletCard: {
-    background: "#fff",
-    padding: 20,
-    borderRadius: 18,
-    boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
-    marginTop: 20,
-    textAlign: "center",
-  },
+  walletCard: { background: "#fff", padding: 20, borderRadius: 18, boxShadow: "0 4px 12px rgba(0,0,0,0.08)", marginTop: 20, textAlign: "center" },
   balanceLabel: { opacity: 0.6 },
   balanceAmount: { fontSize: 36, margin: "10px 0" },
   actionRow: { display: "flex", justifyContent: "center", gap: 15, marginTop: 15 },
-  roundBtn: {
-    padding: "12px 20px",
-    background: "#b3dcff",
-    borderRadius: 30,
-    border: "none",
-    cursor: "pointer",
-    fontWeight: "bold",
-  },
-  monthHeader: {
-    display: "flex",
-    justifyContent: "center",
-    gap: 6,
-    marginTop: 25,
-    position: "sticky",
-    top: 0,
-    background: "#eef6ff",
-    padding: "10px 0",
-    zIndex: 5,
-  },
+  roundBtn: { padding: "12px 20px", background: "#b3dcff", borderRadius: 30, border: "none", cursor: "pointer", fontWeight: "bold" },
+  monthHeader: { display: "flex", justifyContent: "center", gap: 6, marginTop: 25, position: "sticky", top: 0, background: "#eef6ff", padding: "10px 0", zIndex: 5 },
   monthText: { fontSize: 18, fontWeight: "bold" },
-  monthArrow: {
-    border: "none",
-    background: "#cfe3ff",
-    padding: "5px 10px",
-    borderRadius: 8,
-    cursor: "pointer",
-  },
-  monthPicker: {
-    background: "#fff",
-    borderRadius: 14,
-    padding: 10,
-    boxShadow: "0 2px 10px rgba(0,0,0,0.1)",
-    position: "absolute",
-    top: 80,
-    left: "50%",
-    transform: "translateX(-50%)",
-    zIndex: 10,
-  },
+  monthArrow: { border: "none", background: "#cfe3ff", padding: "5px 10px", borderRadius: 8, cursor: "pointer" },
+  monthPicker: { background: "#fff", borderRadius: 14, padding: 10, boxShadow: "0 2px 10px rgba(0,0,0,0.1)", position: "absolute", top: 80, left: "50%", transform: "translateX(-50%)", zIndex: 10 },
   monthItem: { padding: 10, borderRadius: 10, cursor: "pointer" },
   list: { marginTop: 10, maxHeight: "50vh", overflowY: "auto" },
-  txRowCompact: {
-    background: "#fff",
-    padding: "10px 12px",
-    borderRadius: 10,
-    marginBottom: 8,
-    display: "flex",
-    justifyContent: "space-between",
-    cursor: "pointer",
-    boxShadow: "0 2px 6px rgba(0,0,0,0.05)",
-  },
+  txRowCompact: { background: "#fff", padding: "10px 12px", borderRadius: 10, marginBottom: 8, display: "flex", justifyContent: "space-between", cursor: "pointer", boxShadow: "0 2px 6px rgba(0,0,0,0.05)" },
   txLeftCompact: {},
   txTypeCompact: { fontSize: 14, fontWeight: 600 },
   txDateCompact: { fontSize: 12, opacity: 0.6 },
   txRightCompact: { textAlign: "right" },
   amount: { fontWeight: 600 },
-  modalOverlay: {
-    position: "fixed",
-    inset: 0,
-    background: "rgba(0,0,0,0.4)",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  modal: {
-    background: "#fff",
-    padding: 25,
-    borderRadius: 18,
-    width: "85%",
-    maxWidth: 380,
-    boxShadow: "0 5px 18px rgba(0,0,0,0.15)",
-  },
-  closeBtn: {
-    marginTop: 15,
-    padding: "10px 15px",
-    background: "#3498db",
-    borderRadius: 10,
-    border: "none",
-    color: "#fff",
-    cursor: "pointer",
-    fontWeight: "bold",
-  },
+  modalOverlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", justifyContent: "center", alignItems: "center" },
+  modal: { background: "#fff", padding: 25, borderRadius: 18, width: "85%", maxWidth: 380, boxShadow: "0 5px 18px rgba(0,0,0,0.15)" },
+  closeBtn: { marginTop: 15, padding: "10px 15px", background: "#3498db", borderRadius: 10, border: "none", color: "#fff", cursor: "pointer", fontWeight: "bold" },
 };
