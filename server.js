@@ -113,14 +113,64 @@ app.post("/api/payment/stripe", verifyFirebaseToken, async (req, res) => {
   }
 });
 
-// Flutterwave payment
-app.post("/api/payment/flutterwave", verifyFirebaseToken, async (req, res) => {
+// ------------------- Flutterwave Redirect Verification -------------------
+import fetch from "node-fetch"; // make sure node-fetch is installed
+
+app.get("/api/flutterwave/verify/:tx_ref", verifyFirebaseToken, async (req, res) => {
   try {
-    const { amount, currency = "NGN", redirect_url } = req.body;
+    const { tx_ref } = req.params;
     const uid = req.authUID;
 
-    if (!amount || typeof amount !== "number") return res.status(400).json({ error: "Invalid amount" });
+    // Fetch transaction status from Flutterwave API
+    const response = await fetch(`https://api.flutterwave.com/v3/transactions/verify_by_tx_ref?tx_ref=${tx_ref}`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${process.env.FLUTTERWAVE_SECRET_KEY}`,
+        "Content-Type": "application/json",
+      },
+    });
 
+    const data = await response.json();
+    if (data.status !== "success") return res.status(400).json({ error: "Failed to verify transaction" });
+
+    const txnData = data.data;
+    if (!txnData || txnData.status !== "successful") {
+      return res.status(400).json({ error: "Transaction not successful" });
+    }
+
+    // Find pending transaction in MongoDB
+    const txn = await Transaction.findOne({ txnId: tx_ref, uid, status: "Pending" });
+    if (!txn) return res.status(404).json({ error: "Transaction not found" });
+
+    // Atomically update wallet and transaction
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    try {
+      const wallet = await Wallet.findOne({ uid }).session(session);
+      if (!wallet) throw new Error("Wallet not found");
+
+      const newBalance = wallet.balance + txn.amount;
+
+      await Wallet.findOneAndUpdate({ uid }, { $inc: { balance: txn.amount } }, { session });
+
+      txn.status = "Success";
+      txn.balanceAfter = newBalance;
+      await txn.save({ session });
+
+      await session.commitTransaction();
+      session.endSession();
+
+      res.json({ success: true, balance: newBalance });
+    } catch (txErr) {
+      await session.abortTransaction();
+      session.endSession();
+      throw txErr;
+    }
+  } catch (err) {
+    console.error("Flutterwave redirect verify error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
     // create transaction in MongoDB as pending
     const txn = await Transaction.create({
       uid,
