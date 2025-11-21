@@ -2,233 +2,113 @@
 import React, { useState, useEffect, useRef } from "react";
 import { auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
 
 export default function WithdrawPage() {
   const [user, setUser] = useState(null);
-  const [balance, setBalance] = useState(0);
-  const [transactions, setTransactions] = useState([]);
-  const [tasksLoading, setTasksLoading] = useState(false);
-  const [completedTasks, setCompletedTasks] = useState([]);
   const [modalOpen, setModalOpen] = useState(false);
-  const [details, setDetails] = useState(null);
+  const [completedTasks, setCompletedTasks] = useState([]);
   const modalRef = useRef();
   const navigate = useNavigate();
 
-  const backend = "https://smart-talk-dqit.onrender.com";
-
-  // AUTH + LOAD WALLET
+  // AUTH
   useEffect(() => {
-    const unsub = auth.onAuthStateChanged(async (u) => {
-      if (u) {
-        setUser(u);
-        await loadWallet(u.uid);
-      } else navigate("/");
+    const unsub = auth.onAuthStateChanged((u) => {
+      if (u) setUser(u);
+      else navigate("/");
     });
     return unsub;
   }, []);
 
-  // AUTO-REFRESH WALLET EVERY 5 SECONDS
-  useEffect(() => {
-    if (!user) return;
-    const interval = setInterval(() => {
-      loadWallet(user.uid);
-    }, 5000); // 5 seconds
-    return () => clearInterval(interval);
-  }, [user]);
-
-  // FETCH WALLET + TRANSACTIONS
-  const loadWallet = async (uid) => {
-    try {
-      const token = await auth.currentUser.getIdToken(true);
-      const res = await axios.get(`${backend}/api/wallet/${uid}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setBalance(res.data.balance || 0);
-      setTransactions(res.data.transactions || []);
-      setCompletedTasks(res.data.completedTasks || []);
-    } catch (err) {
-      console.error("Failed to load wallet:", err.response?.data || err.message);
+  // MARK TASK AS COMPLETED
+  const completeTask = (taskId) => {
+    if (!completedTasks.includes(taskId)) {
+      setCompletedTasks((prev) => [...prev, taskId]);
     }
   };
 
-  // PERFORM TASK
-  const performTask = async (amount, taskId) => {
-    if (!user) return;
-    if (completedTasks.includes(taskId)) {
-      alert("✅ You already completed this task!");
-      return;
-    }
-
-    setTasksLoading(true);
-    try {
-      const token = await auth.currentUser.getIdToken(true);
-      const res = await axios.post(
-        `${backend}/api/wallet/daily`,
-        { amount, taskId },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      setBalance(res.data.balance);
-      setCompletedTasks(res.data.completedTasks || []);
-
-      // Update transactions immediately after task
-      if (res.data.transactions) setTransactions(res.data.transactions);
-
-      alert(`🎉 Task completed! +$${amount}`);
-    } catch (err) {
-      console.error("Failed to update balance:", err.response?.data || err.message);
-      alert(err.response?.data?.message || "Failed to update balance. Check console.");
-    } finally {
-      setTasksLoading(false);
-    }
+  // TASK HANDLERS
+  const handleWatchVideo = () => {
+    window.open("https://youtube.com/shorts/mQOV18vpAu4?si=8gyR6f-eAK4SGSyw");
+    completeTask("watchVideo");
   };
 
-  const handleWatchVideo = () => performTask(0.2, "watchVideo");
-  const handleFollowInstagram = () => performTask(0.15, "followInstagram");
+  const handleFollowInstagram = () => {
+    window.open("https://www.instagram.com/hahahala53");
+    completeTask("followInstagram");
+  };
+
   const handleInviteFriend = () => {
-    navigator.clipboard.writeText(`https://yourapp.com/signup?ref=${user.uid}`);
-    alert("🔗 Referral link copied!");
+    if (user) {
+      navigator.clipboard.writeText(`https://yourapp.com/signup?ref=${user.uid}`);
+      alert("🔗 Referral link copied!");
+      completeTask("inviteFriend");
+    }
   };
-
-  // CLOSE MODAL ON OUTSIDE CLICK
-  useEffect(() => {
-    const clickOutside = (e) => {
-      if (modalOpen && modalRef.current && !modalRef.current.contains(e.target)) {
-        setModalOpen(false);
-      }
-      if (details && modalRef.current && !modalRef.current.contains(e.target)) {
-        setDetails(null);
-      }
-    };
-    document.addEventListener("mousedown", clickOutside);
-    return () => document.removeEventListener("mousedown", clickOutside);
-  }, [modalOpen, details]);
-
-  // FORMATTERS
-  const formatDate = (d) =>
-    new Date(d).toLocaleString("en-US", {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
 
   return (
     <div style={styles.page}>
-      <button onClick={() => navigate("/wallet")} style={styles.backBtn}>
-        ←
-      </button>
+      {/* Back Button */}
+      <button onClick={() => navigate("/wallet")} style={styles.backBtn}>←</button>
 
+      {/* Title */}
       <h2 style={styles.title}>💵 Withdraw Funds</h2>
 
-      <div style={styles.walletCard}>
-        <p style={styles.balanceLabel}>Your Balance</p>
-        <h1 style={styles.balanceAmount}>${balance.toFixed(2)}</h1>
-      </div>
-
+      {/* Center Content */}
       <div style={styles.centerContent}>
         <button
-          style={styles.taskBtn}
+          style={{
+            ...styles.taskBtn,
+            background: completedTasks.includes("watchVideo") ? "#ccc" : "#b3dcff",
+            cursor: completedTasks.includes("watchVideo") ? "not-allowed" : "pointer",
+          }}
           onClick={handleWatchVideo}
-          disabled={tasksLoading || completedTasks.includes("watchVideo")}
+          disabled={completedTasks.includes("watchVideo")}
         >
-          🎥 Watch a video → +$0.20
+          🎥 Watch a video {completedTasks.includes("watchVideo") && "✅"}
         </button>
-        <button
-          style={styles.taskBtn}
-          onClick={handleFollowInstagram}
-          disabled={tasksLoading || completedTasks.includes("followInstagram")}
-        >
-          📱 Follow us on Instagram → +$0.15
-        </button>
-        <button style={styles.taskBtn} onClick={handleInviteFriend}>
-          👥 Invite a friend → +$0.25 per join
-        </button>
+
         <button
           style={{
-            ...styles.withdrawBtn,
-            background: completedTasks.includes("withdraw") ? "#ccc" : "#f39c12",
-            cursor: completedTasks.includes("withdraw") ? "not-allowed" : "pointer",
+            ...styles.taskBtn,
+            background: completedTasks.includes("followInstagram") ? "#ccc" : "#b3dcff",
+            cursor: completedTasks.includes("followInstagram") ? "not-allowed" : "pointer",
           }}
+          onClick={handleFollowInstagram}
+          disabled={completedTasks.includes("followInstagram")}
+        >
+          📱 Follow us on Instagram {completedTasks.includes("followInstagram") && "✅"}
+        </button>
+
+        <button
+          style={{
+            ...styles.taskBtn,
+            background: completedTasks.includes("inviteFriend") ? "#ccc" : "#b3dcff",
+            cursor: completedTasks.includes("inviteFriend") ? "not-allowed" : "pointer",
+          }}
+          onClick={handleInviteFriend}
+          disabled={completedTasks.includes("inviteFriend")}
+        >
+          👥 Invite a friend {completedTasks.includes("inviteFriend") && "✅"}
+        </button>
+
+        <button
+          style={styles.withdrawBtn}
           onClick={() => setModalOpen(true)}
-          disabled={completedTasks.includes("withdraw")}
         >
           🚧 Withdraw
         </button>
       </div>
 
-      {/* Transactions */}
-      <h3 style={{ marginTop: 40 }}>Transaction History</h3>
-      <div style={styles.list}>
-        {transactions.length === 0 ? (
-          <p style={{ textAlign: "center", opacity: 0.5 }}>No transactions yet.</p>
-        ) : (
-          transactions
-            .slice()
-            .reverse()
-            .map((tx) => (
-              <div
-                key={tx._id}
-                style={styles.txRow}
-                onClick={() => setDetails(tx)}
-              >
-                <div>
-                  <p style={styles.txType}>{tx.type}</p>
-                  <span style={styles.txDate}>{formatDate(tx.createdAt || tx.date)}</span>
-                </div>
-                <div>
-                  <span
-                    style={{
-                      ...styles.amount,
-                      color: tx.amount >= 0 ? "#2ecc71" : "#e74c3c",
-                    }}
-                  >
-                    {tx.amount >= 0 ? "+" : "-"}${Math.abs(tx.amount).toFixed(2)}
-                  </span>
-                </div>
-              </div>
-            ))
-        )}
-      </div>
-
-      {/* Withdraw / Task Modal */}
+      {/* Modal */}
       {modalOpen && (
         <div style={styles.modalOverlay}>
           <div style={styles.modal} ref={modalRef}>
-            <h3 style={{ marginBottom: 15 }}>🚧 Coming Soon</h3>
+            <h3 style={{ marginBottom: 15 }}>🚧 Withdraw Locked</h3>
             <p style={{ marginBottom: 20 }}>
-              Withdraw is not yet available. Keep completing tasks to earn more credits!
+              Complete tasks, chat, and make calls to stay active and unlock withdrawals.
             </p>
             <button style={styles.closeBtn} onClick={() => setModalOpen(false)}>
-              Close
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Transaction Details Modal */}
-      {details && (
-        <div style={styles.modalOverlay}>
-          <div style={styles.modal} ref={modalRef}>
-            <h3 style={{ marginBottom: 10 }}>Transaction Details</h3>
-            <p>
-              <b>Type:</b> {details.type}
-            </p>
-            <p>
-              <b>Amount:</b> ${details.amount.toFixed(2)}
-            </p>
-            <p>
-              <b>Date:</b> {formatDate(details.createdAt || details.date)}
-            </p>
-            <p>
-              <b>Status:</b> {details.status}
-            </p>
-            <p>
-              <b>Transaction ID:</b> {details._id}
-            </p>
-            <button style={styles.closeBtn} onClick={() => setDetails(null)}>
-              Close
+              OK
             </button>
           </div>
         </div>
@@ -262,67 +142,39 @@ const styles = {
     cursor: "pointer",
     fontSize: 18,
   },
-  title: { marginTop: 20, textAlign: "center", fontSize: 26 },
-  walletCard: {
-    background: "#fff",
-    padding: 20,
-    borderRadius: 18,
-    boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+  title: {
     marginTop: 20,
     textAlign: "center",
-    width: "90%",
-    maxWidth: 380,
+    fontSize: 26,
   },
-  balanceLabel: { opacity: 0.6 },
-  balanceAmount: { fontSize: 36, margin: "5px 0" },
   centerContent: {
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    marginTop: "12vh",
+    marginTop: "15vh",
     width: "100%",
     maxWidth: 380,
     gap: 12,
   },
   taskBtn: {
     padding: "12px 20px",
-    background: "#b3dcff",
     borderRadius: 30,
     border: "none",
-    cursor: "pointer",
     fontWeight: "bold",
     width: "90%",
     textAlign: "center",
   },
   withdrawBtn: {
     padding: "14px 20px",
+    background: "#f39c12",
     borderRadius: 30,
     border: "none",
+    cursor: "pointer",
     color: "#fff",
     fontWeight: "bold",
     width: "90%",
     marginTop: 10,
   },
-  list: {
-    marginTop: 10,
-    maxHeight: "35vh",
-    overflowY: "auto",
-    width: "90%",
-    maxWidth: 380,
-  },
-  txRow: {
-    background: "#fff",
-    padding: "10px 12px",
-    borderRadius: 10,
-    marginBottom: 8,
-    display: "flex",
-    justifyContent: "space-between",
-    cursor: "pointer",
-    boxShadow: "0 2px 6px rgba(0,0,0,0.05)",
-  },
-  txType: { fontSize: 14, fontWeight: 600 },
-  txDate: { fontSize: 12, opacity: 0.6 },
-  amount: { fontWeight: 600 },
   modalOverlay: {
     position: "fixed",
     inset: 0,
@@ -330,7 +182,6 @@ const styles = {
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
-    zIndex: 50,
   },
   modal: {
     background: "#fff",
