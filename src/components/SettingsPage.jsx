@@ -16,69 +16,74 @@ export default function SettingsPage() {
 
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
-
   const backend = "https://smart-talk-dqit.onrender.com";
 
+  // AUTH + Load Wallet from backend
   useEffect(() => {
-    const unsub = auth.onAuthStateChanged(async (u) => {
-      if (!u) return navigate("/");
-      setUser(u);
-
-      await loadWallet(u.uid);
+    const unsub = auth.onAuthStateChanged(async (userAuth) => {
+      if (!userAuth) return navigate("/");
+      setUser(userAuth);
+      loadWallet(userAuth.uid);
     });
-    return () => unsub();
+    return unsub;
   }, []);
 
-  // Fetch wallet + transactions from backend
   const loadWallet = async (uid) => {
     try {
       const token = await auth.currentUser.getIdToken(true);
       const res = await axios.get(`${backend}/api/wallet/${uid}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-
       setBalance(res.data.balance || 0);
-      setTransactions(res.data.transactions || []);
 
-      // check if user already claimed daily reward
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const lastClaim = res.data.lastDailyClaim
-        ? new Date(res.data.lastDailyClaim)
-        : null;
+      // last 3 transactions
+      setTransactions(
+        (res.data.transactions || [])
+          .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+          .slice(0, 3)
+      );
+
+      // check last daily claim
+      const lastClaim = res.data.lastDailyClaim ? new Date(res.data.lastDailyClaim) : null;
       if (lastClaim) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
         lastClaim.setHours(0, 0, 0, 0);
         setCheckedInToday(lastClaim.getTime() === today.getTime());
       }
     } catch (err) {
-      console.error("Error loading wallet:", err);
+      console.error(err);
+      alert("Failed to load wallet. Check console.");
     }
   };
 
+  // DAILY REWARD
   const handleDailyCheckin = async () => {
-    if (!user || checkedInToday) return;
+    if (!user) return;
     try {
       const token = await auth.currentUser.getIdToken(true);
-      await axios.post(
+      const res = await axios.post(
         `${backend}/api/wallet/daily`,
-        { uid: user.uid, amount: 0.25 },
+        {},
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      await loadWallet(user.uid);
-      alert("🎉 You earned +$0.25 for daily check-in!");
+      setBalance(res.data.balance || balance);
+      setCheckedInToday(true);
+      alert("🎉 You claimed your daily reward!");
     } catch (err) {
       console.error(err);
-      alert("Failed to claim daily reward.");
+      alert("Failed to claim daily reward. Check console.");
     }
   };
 
   const handleWallpaperClick = () => fileInputRef.current.click();
   const handleFileChange = (e) => {
     const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => setNewWallpaper(ev.target.result);
-    reader.readAsDataURL(file);
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (ev) => setNewWallpaper(ev.target.result);
+      reader.readAsDataURL(file);
+    }
   };
   const removeWallpaper = () => setNewWallpaper("");
 
@@ -87,8 +92,8 @@ export default function SettingsPage() {
     try {
       const token = await auth.currentUser.getIdToken(true);
       await axios.post(
-        `${backend}/api/users/preferences`,
-        { uid: user.uid, theme: newTheme, wallpaper: newWallpaper || null },
+        `${backend}/api/user/preferences`,
+        { theme: newTheme, wallpaper: newWallpaper },
         { headers: { Authorization: `Bearer ${token}` } }
       );
       updateSettings(newTheme, newWallpaper);
@@ -99,55 +104,90 @@ export default function SettingsPage() {
     }
   };
 
-  const isDark = newTheme === "dark";
-
   if (!user) return <p>Loading...</p>;
 
   return (
-    <div style={{ padding: 20, minHeight: "100vh", background: isDark ? "#1c1c1c" : "#f8f8f8", color: isDark ? "#fff" : "#000" }}>
-      <button onClick={() => navigate("/chat")} style={{ position: "absolute", top: 20, left: 20, background: isDark ? "#555" : "#e0e0e0", border: "none", borderRadius: "50%", padding: 8, cursor: "pointer" }}>⬅</button>
-
+    <div style={{ padding: 20, minHeight: "100vh", background: "#f8f8f8" }}>
+      <button onClick={() => navigate("/wallet")} style={styles.backBtn}>←</button>
       <h2 style={{ textAlign: "center", marginBottom: 20 }}>⚙️ Settings</h2>
 
-      {/* ================= Wallet ================= */}
-      <div style={{ background: isDark ? "#2b2b2b" : "#fff", padding: 20, borderRadius: 12, boxShadow: "0 2px 6px rgba(0,0,0,0.1)" }}>
-        <p>Balance: <strong style={{ color: isDark ? "#00e676" : "#007bff" }}>${balance.toFixed(2)}</strong></p>
+      {/* Wallet Section */}
+      <div style={styles.section}>
+        <h3>Wallet</h3>
+        <p>Balance: <strong>${balance.toFixed(2)}</strong></p>
         <button
           onClick={handleDailyCheckin}
           disabled={checkedInToday}
-          style={{ padding: 10, marginTop: 10, width: "100%", borderRadius: 8, background: checkedInToday ? "#666" : "#4CAF50", color: "#fff", cursor: checkedInToday ? "not-allowed" : "pointer" }}
+          style={{
+            ...styles.btn,
+            background: checkedInToday ? "#666" : "#4CAF50",
+            opacity: checkedInToday ? 0.7 : 1,
+          }}
         >
-          {checkedInToday ? "✅ Checked In Today" : "🧩 Daily Check-in (+$0.25)"}
+          {checkedInToday ? "✅ Checked In Today" : "🧩 Daily Reward (+$0.25)"}
         </button>
 
-        <h4 style={{ marginTop: 15 }}>Last 3 Transactions</h4>
-        {transactions.slice(0, 3).map((tx) => (
-          <div key={tx._id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #ccc" }}>
-            <span>{tx.type}</span>
-            <span style={{ color: tx.amount >= 0 ? "#2ecc71" : "#e74c3c" }}>
-              {tx.amount >= 0 ? "+" : "-"}${Math.abs(tx.amount).toFixed(2)}
-            </span>
-          </div>
-        ))}
-        {transactions.length === 0 && <p style={{ opacity: 0.6 }}>No transactions yet.</p>}
+        <h4 style={{ marginTop: 15 }}>Last Transactions</h4>
+        {transactions.length === 0 ? (
+          <p style={{ opacity: 0.6 }}>No recent transactions</p>
+        ) : (
+          transactions.map((tx) => (
+            <div key={tx._id} style={styles.txRow}>
+              <span>{tx.type}</span>
+              <span style={{ color: tx.amount >= 0 ? "#2ecc71" : "#e74c3c" }}>
+                {tx.amount >= 0 ? "+" : "-"}${Math.abs(tx.amount).toFixed(2)}
+              </span>
+            </div>
+          ))
+        )}
       </div>
 
-      {/* ================= Theme & Wallpaper ================= */}
-      <div style={{ background: isDark ? "#2b2b2b" : "#fff", padding: 20, borderRadius: 12, marginTop: 25, boxShadow: "0 2px 6px rgba(0,0,0,0.1)" }}>
-        <select value={newTheme} onChange={(e) => setNewTheme(e.target.value)} style={{ width: "100%", padding: 8, marginBottom: 10 }}>
+      {/* Theme & Wallpaper Section */}
+      <div style={styles.section}>
+        <h3>Theme & Wallpaper</h3>
+        <select value={newTheme} onChange={(e) => setNewTheme(e.target.value)} style={styles.select}>
           <option value="light">🌞 Light</option>
           <option value="dark">🌙 Dark</option>
         </select>
 
-        <div onClick={handleWallpaperClick} style={{ width: "100%", height: 150, border: "2px solid #555", borderRadius: 10, marginTop: 15, display: "flex", justifyContent: "center", alignItems: "center", backgroundSize: "cover", backgroundImage: newWallpaper ? `url(${newWallpaper})` : "none", cursor: "pointer" }}>
-          {newWallpaper ? "Wallpaper Selected" : "🌈 Wallpaper Preview"}
+        <div
+          onClick={handleWallpaperClick}
+          style={{
+            width: "100%",
+            height: 150,
+            marginTop: 10,
+            background: newWallpaper ? `url(${newWallpaper}) center/cover` : "#ddd",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            borderRadius: 10,
+            cursor: "pointer",
+          }}
+        >
+          {newWallpaper ? "Wallpaper Selected" : "🌈 Click to select wallpaper"}
         </div>
-        {newWallpaper && <button onClick={removeWallpaper} style={{ marginTop: 10, padding: 10, width: "100%", borderRadius: 8, background: "#d32f2f", color: "#fff" }}>Remove Wallpaper</button>}
+
+        {newWallpaper && (
+          <button onClick={removeWallpaper} style={{ ...styles.btn, background: "#d32f2f", marginTop: 10 }}>
+            Remove Wallpaper
+          </button>
+        )}
 
         <input type="file" accept="image/*" ref={fileInputRef} style={{ display: "none" }} onChange={handleFileChange} />
 
-        <button onClick={handleSavePreferences} style={{ marginTop: 15, padding: 12, width: "100%", borderRadius: 20, background: "#007bff", color: "#fff" }}>💾 Save Preferences</button>
+        <button onClick={handleSavePreferences} style={{ ...styles.btn, background: "#007bff", marginTop: 15 }}>
+          💾 Save Preferences
+        </button>
       </div>
     </div>
   );
 }
+
+// ==================== Styles ====================
+const styles = {
+  backBtn: { position: "absolute", top: 20, left: 20, padding: 8, borderRadius: "50%", border: "none", cursor: "pointer", background: "#e0e0e0" },
+  section: { background: "#fff", padding: 15, borderRadius: 12, marginBottom: 20, boxShadow: "0 2px 6px rgba(0,0,0,0.1)" },
+  btn: { padding: "10px 15px", border: "none", borderRadius: 8, cursor: "pointer", color: "#fff", fontWeight: "bold" },
+  select: { width: "100%", padding: 8, borderRadius: 6, marginTop: 10, marginBottom: 10 },
+  txRow: { display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid #eee" },
+};
