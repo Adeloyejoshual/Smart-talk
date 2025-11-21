@@ -37,20 +37,22 @@ export default function WithdrawPage() {
     }
   };
 
-  // TASKS
-  const updateBalance = async (amount) => {
+  // UPDATE BALANCE ON TASK
+  const performTask = async (amount) => {
     if (!user) return;
     setTasksLoading(true);
     try {
       const token = await auth.currentUser.getIdToken(true);
-      await axios.post(
+      const res = await axios.post(
         `${backend}/api/wallet/daily`,
         { amount },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      await loadBalance(user.uid);
+      // Update balance immediately
+      setBalance(res.data.balance || balance + amount);
     } catch (err) {
       console.error(err);
+      alert("Failed to update balance. Try again.");
     } finally {
       setTasksLoading(false);
     }
@@ -61,12 +63,12 @@ export default function WithdrawPage() {
       "https://youtube.com/shorts/mQOV18vpAu4?si=8gyR6f-eAK4SGSyw",
       "_blank"
     );
-    updateBalance(0.2);
+    performTask(0.2);
   };
 
   const handleFollowInstagram = () => {
     window.open("https://www.instagram.com/hahahala53", "_blank");
-    updateBalance(0.15);
+    performTask(0.15);
   };
 
   const handleInviteFriend = () => {
