@@ -1,137 +1,114 @@
+// src/components/WithdrawPage.jsx
 import React, { useState, useEffect } from "react";
-import axios from "axios";
-import { auth } from "../firebaseConfig";
+import { auth, db } from "../firebaseConfig";
+import { doc, getDoc, updateDoc, setDoc } from "firebase/firestore";
+import { useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
 
-export default function WalletPage() {
-  const [balance, setBalance] = useState(0);
-  const [transactions, setTransactions] = useState([]);
-  const [loading, setLoading] = useState(false);
+export default function WithdrawPage() {
+  const [user, setUser] = useState(null);
+  const [credits, setCredits] = useState(0);
+  const navigate = useNavigate();
 
-  const fetchWallet = async () => {
-    try {
-      setLoading(true);
-      const token = await auth.currentUser.getIdToken(true);
-      const res = await axios.get(`${process.env.REACT_APP_API}/wallet/${auth.currentUser.uid}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setBalance(res.data.balance);
-      setTransactions(res.data.transactions);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
+  // AUTH + LOAD BALANCE
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged(async (userAuth) => {
+      if (userAuth) {
+        setUser(userAuth);
+        const docRef = doc(db, "users", userAuth.uid);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          setCredits(docSnap.data().credits || 0);
+        } else {
+          await setDoc(docRef, { credits: 5 }); // new user bonus
+          setCredits(5);
+        }
+      } else {
+        navigate("/");
+      }
+    });
+    return () => unsubscribe();
+  }, [navigate]);
+
+  // TASK REWARDS
+  const updateCredits = async (amount) => {
+    if (!user) return;
+    const userRef = doc(db, "users", user.uid);
+    const newCredits = credits + amount;
+    await updateDoc(userRef, { credits: newCredits });
+    setCredits(newCredits);
   };
 
-  useEffect(() => {
-    fetchWallet();
-  }, []);
+  const handleFollowInstagram = () => {
+    window.open("https://www.instagram.com/hahahala53", "_blank");
+    updateCredits(0.5);
+  };
 
-  const handleDailyCheckIn = async () => {
-    try {
-      const token = await auth.currentUser.getIdToken(true);
-      const res = await axios.post(
-        `${process.env.REACT_APP_API}/wallet/daily`,
-        { amount: 2 },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      setBalance(res.data.balance);
-      setTransactions([res.data.txn, ...transactions]);
-    } catch (err) {
-      alert(err.response?.data?.error || "Error claiming daily reward");
-    }
+  const handleWatchVideo = () => {
+    window.open(
+      "https://youtube.com/shorts/mQOV18vpAu4?si=8gyR6f-eAK4SGSyw",
+      "_blank"
+    );
+    updateCredits(0.25);
+  };
+
+  const handleInviteFriend = () => {
+    navigator.clipboard.writeText(`https://yourapp.com/signup?ref=${user.uid}`);
+    alert("🔗 Referral link copied! Share with friends.");
   };
 
   return (
-    <div style={{ padding: 20, background: "#f0f9ff", minHeight: "100vh" }}>
-      <h2 style={{ textAlign: "center", marginBottom: 20 }}>💰 My Wallet</h2>
-
-      {/* Balance */}
-      <div
-        style={{
-          textAlign: "center",
-          marginBottom: 20,
-          padding: 20,
-          background: "#fff",
-          borderRadius: 20,
-          boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-        }}
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-800 to-pink-700 p-6 text-white flex flex-col items-center relative"
+    >
+      {/* Back Button */}
+      <button
+        onClick={() => navigate("/wallet")}
+        className="absolute top-6 left-6 text-white font-bold text-2xl"
       >
-        <div style={{ fontSize: 14, color: "#555" }}>Balance</div>
-        <div style={{ fontSize: 28, fontWeight: "bold", marginTop: 8 }}>
-          ${balance.toFixed(2)}
-        </div>
-      </div>
+        ⬅
+      </button>
 
-      {/* Actions */}
-      <div style={{ display: "flex", justifyContent: "center", gap: 16, marginBottom: 20 }}>
-        <button
-          onClick={() => (window.location.href = "/topup")}
-          style={{
-            background: "#6ee7b7",
-            borderRadius: 20,
-            padding: "12px 24px",
-            fontWeight: "bold",
-            cursor: "pointer",
-          }}
-        >
-          Top Up
-        </button>
-        <button
-          onClick={() => (window.location.href = "/withdraw")}
-          style={{
-            background: "#f87171",
-            borderRadius: 20,
-            padding: "12px 24px",
-            fontWeight: "bold",
-            cursor: "pointer",
-          }}
-        >
-          Withdraw
-        </button>
-      </div>
+      {/* Header */}
+      <h2 className="mt-12 text-3xl font-bold mb-2">💵 Withdraw Funds</h2>
+      <p className="text-gray-200 mb-6">Manage and withdraw your credits</p>
 
-      {/* Daily Check-in */}
-      <div style={{ textAlign: "center", marginBottom: 20 }}>
-        <button
-          onClick={handleDailyCheckIn}
-          style={{
-            background: "#3b82f6",
-            color: "#fff",
-            padding: "10px 20px",
-            borderRadius: 16,
-            cursor: "pointer",
-          }}
-        >
-          Daily Check-In (+$2)
+      {/* Balance Card */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-white/20 backdrop-blur-lg rounded-2xl shadow-lg p-6 w-full max-w-md text-center mb-6"
+      >
+        <h3 className="text-lg font-medium text-gray-200">Your Balance</h3>
+        <h1 className="text-4xl font-bold text-green-400">${credits.toFixed(2)}</h1>
+      </motion.div>
+
+      {/* Withdraw Button (Coming Soon) */}
+      <button
+        disabled
+        className="w-full max-w-md py-3 mb-8 rounded-xl bg-gray-600 text-white font-semibold cursor-not-allowed transition"
+      >
+        🚧 Withdraw (Coming Soon)
+      </button>
+
+      {/* Earn More Section */}
+      <h3 className="text-xl font-semibold mb-4">🎯 Complete Tasks to Earn Credits</h3>
+      <div className="w-full max-w-md flex flex-col gap-4">
+        <button onClick={handleWatchVideo} className={taskButtonClass}>
+          🎥 Watch a video → +$0.25
+        </button>
+        <button onClick={handleFollowInstagram} className={taskButtonClass}>
+          📱 Follow us on Instagram → +$0.50
+        </button>
+        <button onClick={handleInviteFriend} className={taskButtonClass}>
+          👥 Invite a friend → +$0.50 per join
         </button>
       </div>
-
-      {/* Transaction History */}
-      <div style={{ maxHeight: "50vh", overflowY: "auto", padding: "0 10px" }}>
-        {transactions.map((t) => (
-          <div
-            key={t.txnId}
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              padding: "12px 16px",
-              marginBottom: 8,
-              borderRadius: 12,
-              background:
-                t.status === "Success"
-                  ? "#d1fae5"
-                  : t.status === "Pending"
-                  ? "#fef3c7"
-                  : "#fee2e2",
-            }}
-          >
-            <div>{t.type}</div>
-            <div>{new Date(t.createdAt).toLocaleDateString()}</div>
-            <div>${t.amount.toFixed(2)}</div>
-          </div>
-        ))}
-      </div>
-    </div>
+    </motion.div>
   );
 }
+
+const taskButtonClass =
+  "w-full py-3 px-5 rounded-lg font-semibold text-left bg-blue-500 hover:bg-blue-600 transition text-white";
