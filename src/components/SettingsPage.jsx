@@ -4,17 +4,20 @@ import { auth } from "../firebaseConfig";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { ThemeContext } from "../context/ThemeContext";
+import confetti from "canvas-confetti";
 
 export default function SettingsPage() {
   const { theme, wallpaper, updateSettings } = useContext(ThemeContext);
   const [user, setUser] = useState(null);
   const [balance, setBalance] = useState(0);
+  const [animatedBalance, setAnimatedBalance] = useState(0);
   const [transactions, setTransactions] = useState([]);
   const [dailyClaimed, setDailyClaimed] = useState(false);
   const [loadingReward, setLoadingReward] = useState(false);
+  const [highlightTxnId, setHighlightTxnId] = useState(null);
+  const [pulseTrigger, setPulseTrigger] = useState(false);
   const [newTheme, setNewTheme] = useState(theme);
   const [newWallpaper, setNewWallpaper] = useState(wallpaper || "");
-
   const [profileData, setProfileData] = useState({
     name: "",
     bio: "",
@@ -24,34 +27,31 @@ export default function SettingsPage() {
 
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
+  const dailyBtnRef = useRef(null);
 
   const backend = "https://smart-talk-dqit.onrender.com";
 
+  // Load user + wallet
   useEffect(() => {
     const unsub = auth.onAuthStateChanged(async (userAuth) => {
       if (!userAuth) return navigate("/");
-
       setUser(userAuth);
 
       try {
         const token = await auth.currentUser.getIdToken(true);
-
-        // Fetch wallet and transactions from backend
         const res = await axios.get(`${backend}/api/wallet/${userAuth.uid}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
 
         setBalance(res.data.balance || 0);
+        setAnimatedBalance(res.data.balance || 0);
         setTransactions(
           (res.data.transactions || [])
             .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
             .slice(0, 3)
         );
-
-        // Check if daily reward already claimed
         setDailyClaimed(res.data.dailyClaimed || false);
 
-        // Set profile info from backend if available
         if (res.data.profile) {
           setProfileData({
             name: res.data.profile.name || "",
@@ -77,17 +77,51 @@ export default function SettingsPage() {
       const token = await auth.currentUser.getIdToken(true);
       const res = await axios.post(
         `${backend}/api/wallet/daily`,
-        {},
+        { amount: 0.25 },
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
       if (res.data.balance !== undefined) {
-        setBalance(res.data.balance);
-        setTransactions(
-          (res.data.transactions || transactions)
-            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-            .slice(0, 3)
-        );
+        const newTxn = res.data.txn;
+
+        // Update last 3 transactions
+        setTransactions((prev) => [newTxn, ...prev].slice(0, 3));
+        setHighlightTxnId(newTxn.txnId);
+
+        // Animate pulse badge
+        setPulseTrigger(true);
+
+        // Launch confetti from button
+        if (dailyBtnRef.current) {
+          const rect = dailyBtnRef.current.getBoundingClientRect();
+          confetti({
+            particleCount: 100,
+            spread: 70,
+            origin: {
+              x: (rect.left + rect.width / 2) / window.innerWidth,
+              y: (rect.top + rect.height / 2) / window.innerHeight,
+            },
+            colors: ["#FFD700", "#FF8C00", "#00FF7F"],
+          });
+        }
+
+        // Animate balance count-up
+        const start = animatedBalance;
+        const end = res.data.balance;
+        const duration = 800;
+        const stepTime = 16;
+        const steps = duration / stepTime;
+        let currentStep = 0;
+        const interval = setInterval(() => {
+          currentStep++;
+          const newVal = start + ((end - start) * currentStep) / steps;
+          setAnimatedBalance(newVal);
+          if (currentStep >= steps) clearInterval(interval);
+        }, stepTime);
+
+        // Stop pulse after animation
+        setTimeout(() => setPulseTrigger(false), duration);
+
         setDailyClaimed(true);
         alert("🎉 Daily reward claimed!");
       } else if (res.data.error) {
@@ -106,6 +140,7 @@ export default function SettingsPage() {
     }
   };
 
+  // Wallpaper handlers
   const handleWallpaperClick = () => fileInputRef.current.click();
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -119,7 +154,6 @@ export default function SettingsPage() {
 
   const handleSavePreferences = async () => {
     if (!user) return;
-
     try {
       const token = await auth.currentUser.getIdToken(true);
       await axios.post(
@@ -136,7 +170,6 @@ export default function SettingsPage() {
   };
 
   const isDark = newTheme === "dark";
-
   if (!user) return <p>Loading user...</p>;
 
   const getInitials = (name) => {
@@ -174,7 +207,7 @@ export default function SettingsPage() {
 
       <h2 style={{ textAlign: "center", marginBottom: 20 }}>⚙️ Settings</h2>
 
-      {/* ================= Profile Card ================= */}
+      {/* Profile Card */}
       <div
         onClick={() => navigate("/edit-profile")}
         style={{
@@ -231,45 +264,67 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* ================= Wallet Section ================= */}
+      {/* Wallet Section */}
       <Section title="Wallet" isDark={isDark}>
         <div
           onClick={() => navigate("/wallet")}
           style={{ cursor: "pointer", marginBottom: 10 }}
         >
-          <p style={{ margin: 0 }}>
-            Balance:{" "}
-            <strong style={{ color: isDark ? "#00e676" : "#007bff" }}>
-              ${balance.toFixed(2)}
-            </strong>
-          </p>
+          Balance:{" "}
+          <strong style={{ color: isDark ? "#00e676" : "#007bff", fontSize: 18 }}>
+            ${animatedBalance.toFixed(2)}
+          </strong>
         </div>
 
-        <button
-          onClick={handleDailyReward}
-          disabled={dailyClaimed || loadingReward}
-          style={{
-            ...btnStyle(dailyClaimed ? "#666" : "#FFD700"),
-            opacity: dailyClaimed ? 0.7 : 1,
-            marginBottom: 15,
-            width: "100%",
-          }}
-        >
-          {loadingReward
-            ? "Processing..."
-            : dailyClaimed
-            ? "✅ Daily Reward Claimed"
-            : "🧩 Daily Reward (+$0.25)"}
-        </button>
+        {/* Daily Reward Button */}
+        <div style={{ position: "relative", width: "100%" }}>
+          <button
+            ref={dailyBtnRef}
+            onClick={handleDailyReward}
+            disabled={dailyClaimed || loadingReward}
+            style={{
+              ...btnStyle(dailyClaimed ? "#666" : "#FFD700"),
+              opacity: dailyClaimed ? 0.7 : 1,
+              width: "100%",
+            }}
+          >
+            {loadingReward
+              ? "Processing..."
+              : dailyClaimed
+              ? "✅ Daily Reward Claimed"
+              : "🧩 Daily Reward"}
+          </button>
 
-        <div>
-          <h4 style={{ marginBottom: 8 }}>Last 3 Transactions</h4>
+          {!dailyClaimed && !loadingReward && (
+            <span
+              style={{
+                position: "absolute",
+                top: "-22px",
+                right: "10px",
+                background: "#FFD700",
+                color: "#000",
+                padding: "3px 7px",
+                borderRadius: 8,
+                fontSize: 12,
+                fontWeight: "bold",
+                boxShadow: "0 0 6px rgba(255, 215, 0, 0.6)",
+                animation: pulseTrigger ? "pulseConfetti 1.2s infinite" : "pulse 1.2s infinite",
+              }}
+            >
+              +$0.25 today
+            </span>
+          )}
+        </div>
+
+        {/* Last 3 Transactions */}
+        <div style={{ marginTop: 15 }}>
+          <h4>Last 3 Transactions</h4>
           {transactions.length === 0 ? (
             <p style={{ fontSize: 14, opacity: 0.6 }}>No recent transactions.</p>
           ) : (
             transactions.map((tx) => (
               <div
-                key={tx._id || tx.id}
+                key={tx._id || tx.id || tx.txnId}
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
@@ -278,6 +333,8 @@ export default function SettingsPage() {
                   background: isDark ? "#3b3b3b" : "#f0f0f0",
                   borderRadius: 8,
                   fontSize: 14,
+                  animation:
+                    tx.txnId === highlightTxnId ? "fadeSlide 0.6s ease-out" : "none",
                 }}
               >
                 <span>{tx.type}</span>
@@ -290,7 +347,7 @@ export default function SettingsPage() {
         </div>
       </Section>
 
-      {/* ================= Theme & Wallpaper ================= */}
+      {/* Theme & Wallpaper */}
       <Section title="Theme & Wallpaper" isDark={isDark}>
         <select
           value={newTheme}
@@ -331,7 +388,7 @@ export default function SettingsPage() {
         </button>
       </Section>
 
-      {/* ================= Logout ================= */}
+      {/* Logout */}
       <div style={{ marginTop: 40, textAlign: "center" }}>
         <button
           onClick={async () => {
@@ -352,11 +409,33 @@ export default function SettingsPage() {
           🚪 Logout
         </button>
       </div>
+
+      {/* Animations */}
+      <style>
+        {`
+          @keyframes pulse {
+            0% { transform: scale(1); box-shadow: 0 0 6px rgba(255, 215, 0, 0.6); }
+            50% { transform: scale(1.1); box-shadow: 0 0 12px rgba(255, 215, 0, 0.9); }
+            100% { transform: scale(1); box-shadow: 0 0 6px rgba(255, 215, 0, 0.6); }
+          }
+          @keyframes pulseConfetti {
+            0% { transform: scale(1); box-shadow: 0 0 6px rgba(255, 215, 0, 0.6); }
+            30% { transform: scale(1.3); box-shadow: 0 0 20px rgba(255, 215, 0, 1); }
+            60% { transform: scale(1.1); box-shadow: 0 0 12px rgba(255, 215, 0, 0.9); }
+            100% { transform: scale(1); box-shadow: 0 0 6px rgba(255, 215, 0, 0.6); }
+          }
+          @keyframes fadeSlide {
+            0% { opacity: 0; transform: translateY(10px); }
+            50% { opacity: 1; transform: translateY(-3px); }
+            100% { opacity: 1; transform: translateY(0); }
+          }
+        `}
+      </style>
     </div>
   );
 }
 
-// ================= Section Wrapper =================
+// Section wrapper
 function Section({ title, children, isDark }) {
   return (
     <div
@@ -374,7 +453,7 @@ function Section({ title, children, isDark }) {
   );
 }
 
-// ================= Reusable Styles =================
+// Styles
 const btnStyle = (bg) => ({
   marginRight: 8,
   padding: "10px 15px",
