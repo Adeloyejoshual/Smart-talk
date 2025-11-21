@@ -12,13 +12,13 @@ export default function SettingsPage() {
   const [transactions, setTransactions] = useState([]);
   const [newTheme, setNewTheme] = useState(theme);
   const [newWallpaper, setNewWallpaper] = useState(wallpaper || "");
-  const [checkedInToday, setCheckedInToday] = useState(false);
+  const [claimedToday, setClaimedToday] = useState(false);
+  const [loadingReward, setLoadingReward] = useState(false);
 
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
   const backend = "https://smart-talk-dqit.onrender.com";
 
-  // AUTH + Load Wallet from backend
   useEffect(() => {
     const unsub = auth.onAuthStateChanged(async (userAuth) => {
       if (!userAuth) return navigate("/");
@@ -43,13 +43,13 @@ export default function SettingsPage() {
           .slice(0, 3)
       );
 
-      // check last daily claim
+      // check daily reward
       const lastClaim = res.data.lastDailyClaim ? new Date(res.data.lastDailyClaim) : null;
       if (lastClaim) {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         lastClaim.setHours(0, 0, 0, 0);
-        setCheckedInToday(lastClaim.getTime() === today.getTime());
+        setClaimedToday(lastClaim.getTime() === today.getTime());
       }
     } catch (err) {
       console.error(err);
@@ -57,9 +57,9 @@ export default function SettingsPage() {
     }
   };
 
-  // DAILY REWARD
-  const handleDailyCheckin = async () => {
+  const handleDailyReward = async () => {
     if (!user) return;
+    setLoadingReward(true);
     try {
       const token = await auth.currentUser.getIdToken(true);
       const res = await axios.post(
@@ -68,11 +68,13 @@ export default function SettingsPage() {
         { headers: { Authorization: `Bearer ${token}` } }
       );
       setBalance(res.data.balance || balance);
-      setCheckedInToday(true);
-      alert("🎉 You claimed your daily reward!");
+      setClaimedToday(true);
+      alert("🎉 Daily reward claimed!");
     } catch (err) {
       console.error(err);
       alert("Failed to claim daily reward. Check console.");
+    } finally {
+      setLoadingReward(false);
     }
   };
 
@@ -114,17 +116,27 @@ export default function SettingsPage() {
       {/* Wallet Section */}
       <div style={styles.section}>
         <h3>Wallet</h3>
-        <p>Balance: <strong>${balance.toFixed(2)}</strong></p>
+        <div
+          onClick={() => navigate("/wallet")}
+          style={{ cursor: "pointer", marginBottom: 10 }}
+        >
+          Balance: <strong>${balance.toFixed(2)}</strong>
+        </div>
+
         <button
-          onClick={handleDailyCheckin}
-          disabled={checkedInToday}
+          onClick={handleDailyReward}
+          disabled={claimedToday || loadingReward}
           style={{
             ...styles.btn,
-            background: checkedInToday ? "#666" : "#4CAF50",
-            opacity: checkedInToday ? 0.7 : 1,
+            background: claimedToday ? "#666" : "#4CAF50",
+            opacity: claimedToday ? 0.7 : 1,
           }}
         >
-          {checkedInToday ? "✅ Checked In Today" : "🧩 Daily Reward (+$0.25)"}
+          {loadingReward
+            ? "Processing..."
+            : claimedToday
+            ? "✅ Claimed Today"
+            : "🧩 Daily Reward (+$0.25)"}
         </button>
 
         <h4 style={{ marginTop: 15 }}>Last Transactions</h4>
@@ -183,7 +195,6 @@ export default function SettingsPage() {
   );
 }
 
-// ==================== Styles ====================
 const styles = {
   backBtn: { position: "absolute", top: 20, left: 20, padding: 8, borderRadius: "50%", border: "none", cursor: "pointer", background: "#e0e0e0" },
   section: { background: "#fff", padding: 15, borderRadius: 12, marginBottom: 20, boxShadow: "0 2px 6px rgba(0,0,0,0.1)" },
