@@ -1,8 +1,9 @@
 // src/components/WalletPage.jsx
 import React, { useEffect, useState, useRef } from "react";
-import { auth } from "../firebaseConfig";
+import { auth, db } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
 
 export default function WalletPage() {
   const [user, setUser] = useState(null);
@@ -12,7 +13,6 @@ export default function WalletPage() {
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   const [details, setDetails] = useState(null);
   const [loadingReward, setLoadingReward] = useState(false);
-  const [showRewardModal, setShowRewardModal] = useState(false);
   const scrollRef = useRef();
   const modalRef = useRef();
   const navigate = useNavigate();
@@ -40,31 +40,54 @@ export default function WalletPage() {
       setBalance(res.data.balance || 0);
       setTransactions(res.data.transactions || []);
       if (res.data.transactions.length) {
-        setSelectedMonth(new Date(res.data.transactions[0].createdAt || res.data.transactions[0].date));
+        setSelectedMonth(
+          new Date(
+            res.data.transactions[0].createdAt ||
+              res.data.transactions[0].date
+          )
+        );
       }
     } catch (err) {
       console.error(err);
     }
   };
 
-  // DAILY REWARD
-  const handleReward = async () => {
+  // CLAIM DAILY REWARD
+  const handleDailyReward = async () => {
+    if (!user) return;
+    setLoadingReward(true);
     try {
-      if (!user) return;
-      setLoadingReward(true);
-      const token = await auth.currentUser.getIdToken(true);
-      const amount = 1; // daily reward amount
-      const res = await axios.post(
-        `${backend}/api/wallet/daily`,
-        { amount },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      setBalance(res.data.balance);
-      setTransactions([res.data.txn, ...transactions]);
-      setShowRewardModal(true);
+      const userRef = doc(db, "users", user.uid);
+      const snap = await getDoc(userRef);
+      if (!snap.exists()) return;
+
+      const data = snap.data();
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const lastClaim = data.lastDailyClaim?.toDate?.();
+      if (lastClaim) {
+        const last = new Date(lastClaim);
+        last.setHours(0, 0, 0, 0);
+        if (last.getTime() === today.getTime()) {
+          alert("✅ You already claimed today!");
+          setLoadingReward(false);
+          return;
+        }
+      }
+
+      const amount = 0.25; // daily reward amount
+      const newBalance = (data.balance || 0) + amount;
+
+      await updateDoc(userRef, {
+        balance: newBalance,
+        lastDailyClaim: new Date(),
+      });
+
+      setBalance(newBalance);
+      alert(`🎉 Daily reward claimed! +$${amount}`);
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.error || "Daily reward failed");
+      alert("Failed to claim daily reward. Try again.");
     } finally {
       setLoadingReward(false);
     }
@@ -82,26 +105,33 @@ export default function WalletPage() {
       minute: "2-digit",
     });
 
-  const statusColor = { Success: "#2ecc71", Pending: "#f1c40f", Failed: "#e74c3c" };
-
   // FILTER TRANSACTIONS BY MONTH
   const filteredTransactions = transactions.filter((t) => {
     const d = new Date(t.createdAt || t.date);
-    return d.getMonth() === selectedMonth.getMonth() && d.getFullYear() === selectedMonth.getFullYear();
+    return (
+      d.getMonth() === selectedMonth.getMonth() &&
+      d.getFullYear() === selectedMonth.getFullYear()
+    );
   });
 
-  // GENERATE UNIQUE MONTHS FOR MONTH PICKER
+  // UNIQUE MONTHS FOR PICKER
   const activeMonths = Array.from(
-    new Set(transactions.map((t) => {
-      const d = new Date(t.createdAt || t.date);
-      return new Date(d.getFullYear(), d.getMonth(), 1).toISOString();
-    }))
+    new Set(
+      transactions.map((t) => {
+        const d = new Date(t.createdAt || t.date);
+        return new Date(d.getFullYear(), d.getMonth(), 1).toISOString();
+      })
+    )
   ).map((s) => new Date(s));
 
   // CLOSE MONTH PICKER ON OUTSIDE CLICK
   useEffect(() => {
     const handleClick = (e) => {
-      if (showMonthPicker && modalRef.current && !modalRef.current.contains(e.target)) {
+      if (
+        showMonthPicker &&
+        modalRef.current &&
+        !modalRef.current.contains(e.target)
+      ) {
         setShowMonthPicker(false);
       }
     };
@@ -124,7 +154,9 @@ export default function WalletPage() {
 
   return (
     <div style={styles.page}>
-      <button onClick={() => navigate("/settings")} style={styles.backBtn}>←</button>
+      <button onClick={() => navigate("/settings")} style={styles.backBtn}>
+        ←
+      </button>
       <h2 style={styles.title}>Wallet</h2>
 
       <div style={styles.walletCard}>
@@ -132,9 +164,23 @@ export default function WalletPage() {
         <h1 style={styles.balanceAmount}>${balance.toFixed(2)}</h1>
 
         <div style={styles.actionRow}>
-          <button style={styles.roundBtn} onClick={() => navigate("/topup")}>Top-Up</button>
-          <button style={styles.roundBtn} onClick={() => navigate("/withdraw")}>Withdraw</button>
-          <button style={{ ...styles.roundBtn, background: "#ffd700" }} onClick={handleReward} disabled={loadingReward}>
+          <button
+            style={styles.roundBtn}
+            onClick={() => navigate("/topup")}
+          >
+            Top-Up
+          </button>
+          <button
+            style={styles.roundBtn}
+            onClick={() => navigate("/withdraw")}
+          >
+            Withdraw
+          </button>
+          <button
+            style={{ ...styles.roundBtn, background: "#ffd700" }}
+            onClick={handleDailyReward}
+            disabled={loadingReward}
+          >
             {loadingReward ? "Processing..." : "Daily Reward"}
           </button>
         </div>
@@ -143,13 +189,25 @@ export default function WalletPage() {
       {/* Month Header */}
       <div style={styles.monthHeader}>
         <span style={styles.monthText}>{formatMonth(selectedMonth)}</span>
-        <button style={styles.monthArrow} onClick={() => setShowMonthPicker(!showMonthPicker)}>▼</button>
+        <button
+          style={styles.monthArrow}
+          onClick={() => setShowMonthPicker(!showMonthPicker)}
+        >
+          ▼
+        </button>
       </div>
 
       {showMonthPicker && (
         <div style={styles.monthPicker} ref={modalRef}>
           {activeMonths.map((d, i) => (
-            <div key={i} style={styles.monthItem} onClick={() => { setSelectedMonth(d); setShowMonthPicker(false); }}>
+            <div
+              key={i}
+              style={styles.monthItem}
+              onClick={() => {
+                setSelectedMonth(d);
+                setShowMonthPicker(false);
+              }}
+            >
               {formatMonth(d)}
             </div>
           ))}
@@ -157,22 +215,47 @@ export default function WalletPage() {
       )}
 
       {/* Scrollable transactions */}
-      <div style={styles.list} ref={scrollRef} onScroll={handleScroll}>
+      <div
+        style={styles.list}
+        ref={scrollRef}
+        onScroll={handleScroll}
+      >
         {filteredTransactions.length === 0 ? (
-          <p style={{ textAlign: "center", opacity: 0.5, marginTop: 10 }}>No transactions this month.</p>
-        ) : filteredTransactions.map((tx) => (
-          <div key={tx._id} style={styles.txRowCompact} onClick={() => setDetails(tx)}>
-            <div style={styles.txLeftCompact}>
-              <p style={styles.txTypeCompact}>{tx.type}</p>
-              <span style={styles.txDateCompact}>{formatDate(tx.createdAt || tx.date)}</span>
+          <p
+            style={{
+              textAlign: "center",
+              opacity: 0.5,
+              marginTop: 10,
+            }}
+          >
+            No transactions this month.
+          </p>
+        ) : (
+          filteredTransactions.map((tx) => (
+            <div
+              key={tx._id}
+              style={styles.txRowCompact}
+              onClick={() => setDetails(tx)}
+            >
+              <div style={styles.txLeftCompact}>
+                <p style={styles.txTypeCompact}>{tx.type}</p>
+                <span style={styles.txDateCompact}>
+                  {formatDate(tx.createdAt || tx.date)}
+                </span>
+              </div>
+              <div style={styles.txRightCompact}>
+                <span
+                  style={{
+                    ...styles.amount,
+                    color: tx.amount >= 0 ? "#2ecc71" : "#e74c3c",
+                  }}
+                >
+                  {tx.amount >= 0 ? "+" : "-"}${Math.abs(tx.amount).toFixed(2)}
+                </span>
+              </div>
             </div>
-            <div style={styles.txRightCompact}>
-              <span style={{ ...styles.amount, color: tx.amount >= 0 ? "#2ecc71" : "#e74c3c" }}>
-                {tx.amount >= 0 ? "+" : "-"}${Math.abs(tx.amount).toFixed(2)}
-              </span>
-            </div>
-          </div>
-        ))}
+          ))
+        )}
       </div>
 
       {/* Transaction Details Modal */}
@@ -180,22 +263,27 @@ export default function WalletPage() {
         <div style={styles.modalOverlay}>
           <div style={styles.modal} ref={modalRef}>
             <h3 style={{ marginBottom: 10 }}>Transaction Details</h3>
-            <p><b>Type:</b> {details.type}</p>
-            <p><b>Amount:</b> ${details.amount.toFixed(2)}</p>
-            <p><b>Date:</b> {formatDate(details.createdAt || details.date)}</p>
-            <p><b>Status:</b> {details.status}</p>
-            <p><b>Transaction ID:</b> {details._id}</p>
-            <button style={styles.closeBtn} onClick={() => setDetails(null)}>Close</button>
-          </div>
-        </div>
-      )}
-
-      {/* Daily Reward Modal */}
-      {showRewardModal && (
-        <div style={styles.rewardModalOverlay} onClick={() => setShowRewardModal(false)}>
-          <div style={styles.rewardModal}>
-            <p>🎉 You got +$1 daily reward!</p>
-            <button style={styles.closeBtn} onClick={() => setShowRewardModal(false)}>Close</button>
+            <p>
+              <b>Type:</b> {details.type}
+            </p>
+            <p>
+              <b>Amount:</b> ${details.amount.toFixed(2)}
+            </p>
+            <p>
+              <b>Date:</b> {formatDate(details.createdAt || details.date)}
+            </p>
+            <p>
+              <b>Status:</b> {details.status}
+            </p>
+            <p>
+              <b>Transaction ID:</b> {details._id}
+            </p>
+            <button
+              style={styles.closeBtn}
+              onClick={() => setDetails(null)}
+            >
+              Close
+            </button>
           </div>
         </div>
       )}
@@ -230,6 +318,4 @@ const styles = {
   modalOverlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", justifyContent: "center", alignItems: "center" },
   modal: { background: "#fff", padding: 25, borderRadius: 18, width: "85%", maxWidth: 380, boxShadow: "0 5px 18px rgba(0,0,0,0.15)" },
   closeBtn: { marginTop: 15, padding: "10px 15px", background: "#3498db", borderRadius: 10, border: "none", color: "#fff", cursor: "pointer", fontWeight: "bold" },
-  rewardModalOverlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", justifyContent: "center", alignItems: "center" },
-  rewardModal: { background: "#fff", padding: 20, borderRadius: 12, width: 200, textAlign: "center", boxShadow: "0 5px 15px rgba(0,0,0,0.2)" }
 };
