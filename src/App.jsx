@@ -16,6 +16,7 @@ import UserProfile from "./components/UserProfile";
 import VoiceCallPage from "./components/VoiceCallPage";
 import VideoCallPage from "./components/VideoCallPage";
 import EditProfilePage from "./components/EditProfilePage";
+import WalletPage from "./components/WalletPage"; // ← WalletPage added
 
 // Components
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -159,6 +160,16 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <WithdrawalPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Wallet */}
+          <Route
+            path="/wallet"
+            element={
+              <ProtectedRoute>
+                <WalletPage />
               </ProtectedRoute>
             }
           />
