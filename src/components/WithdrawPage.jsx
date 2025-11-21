@@ -1,8 +1,8 @@
 // src/components/WithdrawPage.jsx
 import React, { useState, useEffect, useRef } from "react";
-import { auth, db } from "../firebaseConfig";
+import { auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
-import { doc, getDoc, updateDoc, collection, addDoc, serverTimestamp } from "firebase/firestore";
+import axios from "axios";
 
 export default function WithdrawPage() {
   const [user, setUser] = useState(null);
@@ -11,6 +11,8 @@ export default function WithdrawPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const modalRef = useRef();
   const navigate = useNavigate();
+
+  const backend = "https://smart-talk-dqit.onrender.com";
 
   // AUTH + LOAD BALANCE
   useEffect(() => {
@@ -25,44 +27,30 @@ export default function WithdrawPage() {
 
   const loadBalance = async (uid) => {
     try {
-      const userRef = doc(db, "users", uid);
-      const snap = await getDoc(userRef);
-      if (!snap.exists()) return;
-      const data = snap.data();
-      setBalance(data.balance || 0);
+      const token = await auth.currentUser.getIdToken(true);
+      const res = await axios.get(`${backend}/api/wallet/${uid}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setBalance(res.data.balance || 0);
     } catch (err) {
       console.error(err);
     }
   };
 
-  // TASK REWARD + TRANSACTION
-  const performTask = async (type, amount) => {
+  // TASK REWARD
+  const performTask = async (amount) => {
     if (!user) return;
     setTasksLoading(true);
     try {
-      const userRef = doc(db, "users", user.uid);
-      const snap = await getDoc(userRef);
-      if (!snap.exists()) return;
+      const token = await auth.currentUser.getIdToken(true);
+      const res = await axios.post(
+        `${backend}/api/wallet/daily`,
+        { amount },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
 
-      const currentBalance = snap.data().balance || 0;
-      const newBalance = currentBalance + amount;
-
-      // Update balance
-      await updateDoc(userRef, { balance: newBalance });
-
-      // Add transaction
-      const txRef = collection(db, "transactions");
-      await addDoc(txRef, {
-        uid: user.uid,
-        type,
-        amount,
-        status: "success",
-        description: `${type} task reward`,
-        createdAt: serverTimestamp(),
-      });
-
-      setBalance(newBalance);
-      alert(`🎉 Task completed! +$${amount}`);
+      // Update live balance
+      setBalance(res.data.balance);
     } catch (err) {
       console.error(err);
       alert("Failed to update balance. Try again.");
@@ -71,8 +59,16 @@ export default function WithdrawPage() {
     }
   };
 
-  const handleWatchVideo = () => performTask("watch_video", 0.2);
-  const handleFollowInstagram = () => performTask("follow_instagram", 0.15);
+  const handleWatchVideo = () => {
+    window.open("https://youtube.com/shorts/mQOV18vpAu4?si=8gyR6f-eAK4SGSyw");
+    performTask(0.2);
+  };
+
+  const handleFollowInstagram = () => {
+    window.open("https://www.instagram.com/hahahala53");
+    performTask(0.15);
+  };
+
   const handleInviteFriend = () => {
     navigator.clipboard.writeText(`https://yourapp.com/signup?ref=${user.uid}`);
     alert("🔗 Referral link copied!");
@@ -115,7 +111,10 @@ export default function WithdrawPage() {
           👥 Invite a friend → +$0.25 per join
         </button>
 
-        <button style={styles.withdrawBtn} onClick={() => setModalOpen(true)}>
+        <button
+          style={styles.withdrawBtn}
+          onClick={() => setModalOpen(true)}
+        >
           🚧 Withdraw
         </button>
       </div>
@@ -126,7 +125,7 @@ export default function WithdrawPage() {
           <div style={styles.modal} ref={modalRef}>
             <h3 style={{ marginBottom: 15 }}>🚧 Coming Soon</h3>
             <p style={{ marginBottom: 20 }}>
-              Withdraw is not yet available. Keep completing tasks to earn more credits!
+              Withdraw is not yet available. Keep chatting to earn more credits!
             </p>
             <button style={styles.closeBtn} onClick={() => setModalOpen(false)}>
               Close
@@ -163,7 +162,11 @@ const styles = {
     cursor: "pointer",
     fontSize: 18,
   },
-  title: { marginTop: 20, textAlign: "center", fontSize: 26 },
+  title: {
+    marginTop: 20,
+    textAlign: "center",
+    fontSize: 26,
+  },
   walletCard: {
     background: "#fff",
     padding: 20,
@@ -175,7 +178,8 @@ const styles = {
     maxWidth: 380,
   },
   balanceLabel: { opacity: 0.6 },
-  balanceAmount: { fontSize: 36, margin: "10px 0" },
+  balanceAmount: { fontSize: 36, margin: "5px 0" },
+
   centerContent: {
     display: "flex",
     flexDirection: "column",
@@ -185,6 +189,7 @@ const styles = {
     maxWidth: 380,
     gap: 12,
   },
+
   taskBtn: {
     padding: "12px 20px",
     background: "#b3dcff",
@@ -194,8 +199,8 @@ const styles = {
     fontWeight: "bold",
     width: "90%",
     textAlign: "center",
-    fontSize: 16,
   },
+
   withdrawBtn: {
     padding: "14px 20px",
     background: "#f39c12",
@@ -206,8 +211,8 @@ const styles = {
     fontWeight: "bold",
     width: "90%",
     marginTop: 10,
-    fontSize: 16,
   },
+
   modalOverlay: {
     position: "fixed",
     inset: 0,
@@ -215,8 +220,8 @@ const styles = {
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
-    zIndex: 1000,
   },
+
   modal: {
     background: "#fff",
     padding: 25,
@@ -226,6 +231,7 @@ const styles = {
     textAlign: "center",
     boxShadow: "0 5px 18px rgba(0,0,0,0.15)",
   },
+
   closeBtn: {
     marginTop: 15,
     padding: "10px 15px",
@@ -235,6 +241,5 @@ const styles = {
     color: "#fff",
     cursor: "pointer",
     fontWeight: "bold",
-    fontSize: 14,
   },
 };
