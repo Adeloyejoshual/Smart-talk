@@ -1,8 +1,9 @@
 // src/components/WalletPage.jsx
 import React, { useEffect, useState, useRef } from "react";
-import { auth } from "../firebaseConfig";
+import { auth, db } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
 
 export default function WalletPage() {
   const [user, setUser] = useState(null);
@@ -11,15 +12,16 @@ export default function WalletPage() {
   const [selectedMonth, setSelectedMonth] = useState(new Date());
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   const [details, setDetails] = useState(null);
+  const [loadingReward, setLoadingReward] = useState(false);
   const scrollRef = useRef();
   const modalRef = useRef();
   const navigate = useNavigate();
 
   const backend = "https://smart-talk-dqit.onrender.com";
 
-  // AUTH + LOAD WALLET
+  // AUTH
   useEffect(() => {
-    const unsub = auth.onAuthStateChanged(async (u) => {
+    const unsub = auth.onAuthStateChanged((u) => {
       if (u) {
         setUser(u);
         loadWallet(u.uid);
@@ -28,34 +30,68 @@ export default function WalletPage() {
     return unsub;
   }, []);
 
+  // FETCH WALLET + TRANSACTIONS
   const loadWallet = async (uid) => {
     try {
       const token = await auth.currentUser.getIdToken(true);
       const res = await axios.get(`${backend}/api/wallet/${uid}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-
-      // Set balance and transactions
       setBalance(res.data.balance || 0);
       setTransactions(res.data.transactions || []);
-
-      // Set the selected month to most recent transaction
-      if (res.data.transactions.length > 0) {
-        const latestTx = res.data.transactions[0];
-        setSelectedMonth(new Date(latestTx.createdAt || latestTx.date));
+      if (res.data.transactions.length) {
+        setSelectedMonth(
+          new Date(
+            res.data.transactions[0].createdAt ||
+              res.data.transactions[0].date
+          )
+        );
       }
     } catch (err) {
-      console.error("Failed to load wallet:", err);
+      console.error(err);
     }
   };
 
-  // REFRESH WALLET WHEN RETURNING FROM WITHDRAW OR TASK
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (user) loadWallet(user.uid);
-    }, 15000); // refresh every 15s
-    return () => clearInterval(interval);
-  }, [user]);
+  // CLAIM DAILY REWARD
+  const handleDailyReward = async () => {
+    if (!user) return;
+    setLoadingReward(true);
+    try {
+      const userRef = doc(db, "users", user.uid);
+      const snap = await getDoc(userRef);
+      if (!snap.exists()) return;
+
+      const data = snap.data();
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const lastClaim = data.lastDailyClaim?.toDate?.();
+      if (lastClaim) {
+        const last = new Date(lastClaim);
+        last.setHours(0, 0, 0, 0);
+        if (last.getTime() === today.getTime()) {
+          alert("✅ You already claimed today!");
+          setLoadingReward(false);
+          return;
+        }
+      }
+
+      const amount = 0.25; // daily reward amount
+      const newBalance = (data.balance || 0) + amount;
+
+      await updateDoc(userRef, {
+        balance: newBalance,
+        lastDailyClaim: new Date(),
+      });
+
+      setBalance(newBalance);
+      alert(`🎉 Daily reward claimed! +$${amount}`);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to claim daily reward. Try again.");
+    } finally {
+      setLoadingReward(false);
+    }
+  };
 
   // FORMATTERS
   const formatMonth = (date) =>
@@ -88,6 +124,34 @@ export default function WalletPage() {
     )
   ).map((s) => new Date(s));
 
+  // CLOSE MONTH PICKER ON OUTSIDE CLICK
+  useEffect(() => {
+    const handleClick = (e) => {
+      if (
+        showMonthPicker &&
+        modalRef.current &&
+        !modalRef.current.contains(e.target)
+      ) {
+        setShowMonthPicker(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showMonthPicker]);
+
+  // UPDATE MONTH HEADER ON SCROLL
+  const handleScroll = () => {
+    const scrollTop = scrollRef.current.scrollTop;
+    const items = Array.from(scrollRef.current.children);
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].offsetTop - scrollTop >= 0) {
+        const tx = filteredTransactions[i];
+        if (tx) setSelectedMonth(new Date(tx.createdAt || tx.date));
+        break;
+      }
+    }
+  };
+
   return (
     <div style={styles.page}>
       <button onClick={() => navigate("/settings")} style={styles.backBtn}>
@@ -100,11 +164,24 @@ export default function WalletPage() {
         <h1 style={styles.balanceAmount}>${balance.toFixed(2)}</h1>
 
         <div style={styles.actionRow}>
-          <button style={styles.roundBtn} onClick={() => navigate("/topup")}>
+          <button
+            style={styles.roundBtn}
+            onClick={() => navigate("/topup")}
+          >
             Top-Up
           </button>
-          <button style={styles.roundBtn} onClick={() => navigate("/withdraw")}>
+          <button
+            style={styles.roundBtn}
+            onClick={() => navigate("/withdraw")}
+          >
             Withdraw
+          </button>
+          <button
+            style={{ ...styles.roundBtn, background: "#ffd700" }}
+            onClick={handleDailyReward}
+            disabled={loadingReward}
+          >
+            {loadingReward ? "Processing..." : "Daily Reward"}
           </button>
         </div>
       </div>
@@ -137,10 +214,20 @@ export default function WalletPage() {
         </div>
       )}
 
-      {/* Transactions List */}
-      <div style={styles.list} ref={scrollRef}>
+      {/* Scrollable transactions */}
+      <div
+        style={styles.list}
+        ref={scrollRef}
+        onScroll={handleScroll}
+      >
         {filteredTransactions.length === 0 ? (
-          <p style={{ textAlign: "center", opacity: 0.5, marginTop: 10 }}>
+          <p
+            style={{
+              textAlign: "center",
+              opacity: 0.5,
+              marginTop: 10,
+            }}
+          >
             No transactions this month.
           </p>
         ) : (
@@ -191,7 +278,10 @@ export default function WalletPage() {
             <p>
               <b>Transaction ID:</b> {details._id}
             </p>
-            <button style={styles.closeBtn} onClick={() => setDetails(null)}>
+            <button
+              style={styles.closeBtn}
+              onClick={() => setDetails(null)}
+            >
               Close
             </button>
           </div>
