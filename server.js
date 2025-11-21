@@ -1,4 +1,4 @@
-// server.js  
+// server.js
 import express from "express";
 import cors from "cors";
 import path from "path";
@@ -21,21 +21,21 @@ app.use(express.json());
 if (!admin.apps.length) {
   admin.initializeApp({
     credential: admin.credential.cert({
-      projectId: process.env.VITE_FIREBASE_PROJECT_ID,
-      clientEmail: process.env.VITE_FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.VITE_FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"),
     }),
   });
   console.log("✅ Firebase Admin initialized");
 }
 
 // ------------------- Stripe -------------------
-const stripe = new Stripe(process.env.VITE_STRIPE_SECRET_KEY);
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // ------------------- MongoDB -------------------
 mongoose.set("strictQuery", true);
 mongoose
-  .connect(process.env.VITE_MONGO_URI)
+  .connect(process.env.MONGO_URI)
   .then(() => console.log("✅ MongoDB connected"))
   .catch((err) => console.error("❌ MongoDB connection error:", err));
 
@@ -122,18 +122,17 @@ app.post("/api/payment/flutterwave", verifyFirebaseToken, async (req, res) => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.VITE_FLW_SECRET_KEY}`,
+        Authorization: `Bearer ${process.env.FLW_SECRET_KEY}`,
       },
       body: JSON.stringify({
         tx_ref: txRef,
         amount,
         currency,
-        redirect_url: process.env.VITE_FLW_REDIRECT_URL,
+        redirect_url: process.env.FLW_REDIRECT_URL,
         customer: { email },
         payment_type: "card",
       }),
     });
-
     const data = await flutterRes.json();
     if (!data.status) return res.status(500).json({ error: "Flutterwave error" });
 
@@ -170,8 +169,8 @@ app.get("/api/wallet/:uid", verifyFirebaseToken, async (req, res) => {
   }
 });
 
-// Daily reward
-app.post("/api/wwallet/daily", verifyFirebaseToken, async (req, res) => {
+// Daily check-in
+app.post("/api/wallet/daily", verifyFirebaseToken, async (req, res) => {
   try {
     const { amount } = req.body;
     const uid = req.authUID;
@@ -186,7 +185,6 @@ app.post("/api/wwallet/daily", verifyFirebaseToken, async (req, res) => {
     session.startTransaction();
     try {
       const newBalance = wallet.balance + amount;
-
       const txn = await Transaction.create(
         [
           {
@@ -201,9 +199,11 @@ app.post("/api/wwallet/daily", verifyFirebaseToken, async (req, res) => {
         ],
         { session }
       );
-
-      await Wallet.findOneAndUpdate({ uid }, { $set: { lastCheckIn: today }, $inc: { balance: amount } }, { session });
-
+      await Wallet.findOneAndUpdate(
+        { uid },
+        { $set: { lastCheckIn: today }, $inc: { balance: amount } },
+        { session }
+      );
       await session.commitTransaction();
       session.endSession();
 
@@ -219,67 +219,11 @@ app.post("/api/wwallet/daily", verifyFirebaseToken, async (req, res) => {
   }
 });
 
-// ⭐⭐⭐ TASK REWARD — NEW ⭐⭐⭐
-app.post("/api/wallet/task", verifyFirebaseToken, async (req, res) => {
-  try {
-    const { amount, description } = req.body;
-    const uid = req.authUID;
-
-    if (!amount || amount <= 0) {
-      return res.status(400).json({ error: "Invalid amount" });
-    }
-
-    let wallet = await Wallet.findOne({ uid });
-    if (!wallet) wallet = await Wallet.create({ uid, balance: 0 });
-
-    const session = await mongoose.startSession();
-    session.startTransaction();
-
-    try {
-      const newBalance = wallet.balance + amount;
-
-      const txn = await Transaction.create(
-        [
-          {
-            uid,
-            type: "credit",
-            amount,
-            description: description || "Task reward",
-            status: "Success",
-            txnId: generateTxnId(),
-            balanceAfter: newBalance,
-          },
-        ],
-        { session }
-      );
-
-      await Wallet.findOneAndUpdate({ uid }, { $inc: { balance: amount } }, { session });
-
-      await session.commitTransaction();
-      session.endSession();
-
-      return res.json({
-        success: true,
-        balance: newBalance,
-        txn: txn[0],
-      });
-    } catch (txErr) {
-      await session.abortTransaction();
-      session.endSession();
-      throw txErr;
-    }
-  } catch (err) {
-    console.error("Task reward error:", err);
-    return res.status(500).json({ error: err.message });
-  }
-});
-
 // Withdraw
 app.post("/api/wallet/withdraw", verifyFirebaseToken, async (req, res) => {
   try {
     const { amount, destination } = req.body;
     const uid = req.authUID;
-
     if (!amount || amount <= 0) return res.status(400).json({ error: "Invalid amount" });
 
     const session = await mongoose.startSession();
@@ -289,9 +233,7 @@ app.post("/api/wallet/withdraw", verifyFirebaseToken, async (req, res) => {
       if (!wallet || wallet.balance < amount) throw new Error("Insufficient funds");
 
       const newBalance = wallet.balance - amount;
-
       await Wallet.findOneAndUpdate({ uid }, { $inc: { balance: -amount } }, { session });
-
       const txn = await Transaction.create(
         [
           {
@@ -309,7 +251,6 @@ app.post("/api/wallet/withdraw", verifyFirebaseToken, async (req, res) => {
 
       await session.commitTransaction();
       session.endSession();
-
       res.json({ success: true, balance: newBalance, txn: txn[0] });
     } catch (txErr) {
       await session.abortTransaction();
