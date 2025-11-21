@@ -43,7 +43,6 @@ export default function SettingsPage() {
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
 
-  // Load user & preferences
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (userAuth) => {
       if (!userAuth) return;
@@ -75,7 +74,7 @@ export default function SettingsPage() {
         setProfileData({
           name: data.name || "",
           bio: data.bio || "",
-          profilePic: data.profilePic || "",
+          profilePic: data.profilePic || userAuth.photoURL || "",
           email: data.email || userAuth.email,
         });
         if (data.preferences) {
@@ -273,22 +272,10 @@ export default function SettingsPage() {
           <p style={{ margin: 0, fontWeight: "600", fontSize: 16 }}>
             {displayName}
           </p>
-          <p
-            style={{
-              margin: 0,
-              fontSize: 14,
-              color: isDark ? "#ccc" : "#555",
-            }}
-          >
+          <p style={{ margin: 0, fontSize: 14, color: isDark ? "#ccc" : "#555" }}>
             {profileData.bio || "No bio yet — click to edit"}
           </p>
-          <p
-            style={{
-              margin: 0,
-              fontSize: 12,
-              color: isDark ? "#aaa" : "#888",
-            }}
-          >
+          <p style={{ margin: 0, fontSize: 12, color: isDark ? "#aaa" : "#888" }}>
             {profileData.email}
           </p>
         </div>
@@ -371,7 +358,7 @@ export default function SettingsPage() {
         </select>
 
         <div
-          onClick={() => fileInputRef.current.click()}
+          onClick={handleWallpaperClick}
           style={{
             ...previewBox,
             backgroundImage: newWallpaper ? `url(${newWallpaper})` : "none",
