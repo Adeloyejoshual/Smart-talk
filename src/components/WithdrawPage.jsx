@@ -61,12 +61,12 @@ export default function WithdrawPage() {
       "https://youtube.com/shorts/mQOV18vpAu4?si=8gyR6f-eAK4SGSyw",
       "_blank"
     );
-    updateBalance(0.25);
+    updateBalance(0.20);
   };
 
   const handleFollowInstagram = () => {
     window.open("https://www.instagram.com/hahahala53", "_blank");
-    updateBalance(0.5);
+    updateBalance(0.15);
   };
 
   const handleInviteFriend = () => {
@@ -100,13 +100,13 @@ export default function WithdrawPage() {
       {/* Sticky Tasks + Withdraw */}
       <div style={styles.stickyBottom}>
         <button style={styles.taskBtn} onClick={handleWatchVideo} disabled={tasksLoading}>
-          🎥 Watch a video → +$0.25
+          🎥 Watch a video → +$0.20
         </button>
         <button style={styles.taskBtn} onClick={handleFollowInstagram} disabled={tasksLoading}>
-          📱 Follow us on Instagram → +$0.50
+          📱 Follow us on Instagram → +$0.15
         </button>
         <button style={styles.taskBtn} onClick={handleInviteFriend}>
-          👥 Invite a friend → +$0.50 per join
+          👥 Invite a friend → +$0.25 per join
         </button>
 
         <button
