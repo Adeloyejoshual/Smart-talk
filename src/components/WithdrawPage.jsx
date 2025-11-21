@@ -85,55 +85,55 @@ export default function WithdrawPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [modalOpen]);
 
-return (
-  <div style={styles.page}>
-    {/* Back Button */}
-    <button onClick={() => navigate("/wallet")} style={styles.backBtn}>←</button>
-    <h2 style={styles.title}>💵 Withdraw Funds</h2>
+  return (
+    <div style={styles.page}>
+      {/* Back Button */}
+      <button onClick={() => navigate("/wallet")} style={styles.backBtn}>←</button>
+      <h2 style={styles.title}>💵 Withdraw Funds</h2>
 
-    {/* Balance Card */}
-    <div style={styles.walletCard}>
-      <p style={styles.balanceLabel}>Your Balance</p>
-      <h1 style={styles.balanceAmount}>${balance.toFixed(2)}</h1>
-    </div>
-
-    {/* Task Buttons + Withdraw pinned below */}
-    <div style={{ marginTop: 20, display: "flex", flexDirection: "column", gap: 12, alignItems: "center" }}>
-      <button style={styles.taskBtn} onClick={handleWatchVideo} disabled={tasksLoading}>
-        🎥 Watch a video → +$0.25
-      </button>
-      <button style={styles.taskBtn} onClick={handleFollowInstagram} disabled={tasksLoading}>
-        📱 Follow us on Instagram → +$0.50
-      </button>
-      <button style={styles.taskBtn} onClick={handleInviteFriend}>
-        👥 Invite a friend → +$0.50 per join
-      </button>
-
-      {/* Withdraw Button pinned immediately below tasks */}
-      <button
-        style={{ ...styles.roundBtn, background: "#f39c12", marginTop: 15, width: "90%", maxWidth: 360 }}
-        onClick={() => setModalOpen(true)}
-      >
-        🚧 Withdraw
-      </button>
-    </div>
-
-    {/* Modal */}
-    {modalOpen && (
-      <div style={styles.modalOverlay}>
-        <div style={styles.modal} ref={modalRef}>
-          <h3 style={{ marginBottom: 15 }}>🚧 Coming Soon</h3>
-          <p style={{ marginBottom: 20 }}>
-            Withdraw is not yet available. Continue using the app to chat and earn more credits!
-          </p>
-          <button style={styles.closeBtn} onClick={() => setModalOpen(false)}>
-            Close
-          </button>
-        </div>
+      {/* Balance Card */}
+      <div style={styles.walletCard}>
+        <p style={styles.balanceLabel}>Your Balance</p>
+        <h1 style={styles.balanceAmount}>${balance.toFixed(2)}</h1>
       </div>
-    )}
-  </div>
-);
+
+      {/* Sticky Tasks + Withdraw */}
+      <div style={styles.stickyBottom}>
+        <button style={styles.taskBtn} onClick={handleWatchVideo} disabled={tasksLoading}>
+          🎥 Watch a video → +$0.25
+        </button>
+        <button style={styles.taskBtn} onClick={handleFollowInstagram} disabled={tasksLoading}>
+          📱 Follow us on Instagram → +$0.50
+        </button>
+        <button style={styles.taskBtn} onClick={handleInviteFriend}>
+          👥 Invite a friend → +$0.50 per join
+        </button>
+
+        <button
+          style={{ ...styles.roundBtn, background: "#f39c12", marginTop: 10, width: "90%" }}
+          onClick={() => setModalOpen(true)}
+        >
+          🚧 Withdraw
+        </button>
+      </div>
+
+      {/* Modal */}
+      {modalOpen && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.modal} ref={modalRef}>
+            <h3 style={{ marginBottom: 15 }}>🚧 Coming Soon</h3>
+            <p style={{ marginBottom: 20 }}>
+              Withdraw is not yet available. Continue using the app to chat and earn more credits!
+            </p>
+            <button style={styles.closeBtn} onClick={() => setModalOpen(false)}>
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ======================================================
 // STYLES
@@ -147,6 +147,7 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
+    paddingBottom: 150, // space for sticky bottom
   },
   backBtn: {
     position: "absolute",
@@ -182,6 +183,7 @@ const styles = {
     border: "none",
     cursor: "pointer",
     fontWeight: "bold",
+    color: "#fff",
   },
   taskBtn: {
     padding: "12px 20px",
@@ -191,8 +193,20 @@ const styles = {
     cursor: "pointer",
     fontWeight: "bold",
     width: "90%",
-    maxWidth: 320,
     textAlign: "center",
+    marginBottom: 8,
+  },
+  stickyBottom: {
+    position: "fixed",
+    bottom: 20,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    width: "100%",
+    maxWidth: 400,
+    left: "50%",
+    transform: "translateX(-50%)",
+    zIndex: 999,
   },
   modalOverlay: {
     position: "fixed",
