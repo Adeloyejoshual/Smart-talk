@@ -7,13 +7,12 @@ import dotenv from "dotenv";
 import admin from "firebase-admin";
 import Stripe from "stripe";
 import mongoose from "mongoose";
-import fetch from "node-fetch"; // for Flutterwave API calls
+import fetch from "node-fetch";
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -66,12 +65,12 @@ const Wallet = mongoose.model("Wallet", walletSchema);
 // ------------------- Utilities -------------------
 const generateTxnId = () => `txn_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 
-// Firebase token verification middleware
+// Firebase token verification
 const verifyFirebaseToken = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization || "";
     const idToken = authHeader.startsWith("Bearer ") ? authHeader.split(" ")[1] : null;
-    if (!idToken) return res.status(401).json({ error: "Missing or invalid Authorization header" });
+    if (!idToken) return res.status(401).json({ error: "Missing Authorization" });
 
     const decoded = await admin.auth().verifyIdToken(idToken);
     req.authUID = decoded.uid;
@@ -82,20 +81,16 @@ const verifyFirebaseToken = async (req, res, next) => {
   }
 };
 
-// ------------------- API Routes -------------------
+// ------------------- Routes -------------------
 
-// Stripe payment
+// Stripe Payment Intent
 app.post("/api/payment/stripe", verifyFirebaseToken, async (req, res) => {
   try {
     const { amount, currency = "usd" } = req.body;
     const uid = req.authUID;
-
     if (!amount || typeof amount !== "number") return res.status(400).json({ error: "Invalid amount" });
 
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: Math.round(amount), // cents
-      currency,
-    });
+    const paymentIntent = await stripe.paymentIntents.create({ amount: Math.round(amount), currency });
 
     const txn = await Transaction.create({
       uid,
@@ -113,111 +108,53 @@ app.post("/api/payment/stripe", verifyFirebaseToken, async (req, res) => {
   }
 });
 
-// ------------------- Flutterwave Redirect Verification -------------------
-import fetch from "node-fetch"; // make sure node-fetch is installed
-
-app.get("/api/flutterwave/verify/:tx_ref", verifyFirebaseToken, async (req, res) => {
+// Flutterwave Payment
+app.post("/api/payment/flutterwave", verifyFirebaseToken, async (req, res) => {
   try {
-    const { tx_ref } = req.params;
+    const { amount, currency = "USD", email } = req.body;
     const uid = req.authUID;
 
-    // Fetch transaction status from Flutterwave API
-    const response = await fetch(`https://api.flutterwave.com/v3/transactions/verify_by_tx_ref?tx_ref=${tx_ref}`, {
-      method: "GET",
+    if (!amount || typeof amount !== "number") return res.status(400).json({ error: "Invalid amount" });
+
+    const txRef = generateTxnId();
+
+    // Create Flutterwave transaction
+    const flutterRes = await fetch("https://api.flutterwave.com/v3/payments", {
+      method: "POST",
       headers: {
-        Authorization: `Bearer ${process.env.FLUTTERWAVE_SECRET_KEY}`,
         "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.FLW_SECRET_KEY}`,
       },
+      body: JSON.stringify({
+        tx_ref: txRef,
+        amount,
+        currency,
+        redirect_url: process.env.FLW_REDIRECT_URL,
+        customer: { email },
+        payment_type: "card",
+      }),
     });
+    const data = await flutterRes.json();
+    if (!data.status) return res.status(500).json({ error: "Flutterwave error" });
 
-    const data = await response.json();
-    if (data.status !== "success") return res.status(400).json({ error: "Failed to verify transaction" });
-
-    const txnData = data.data;
-    if (!txnData || txnData.status !== "successful") {
-      return res.status(400).json({ error: "Transaction not successful" });
-    }
-
-    // Find pending transaction in MongoDB
-    const txn = await Transaction.findOne({ txnId: tx_ref, uid, status: "Pending" });
-    if (!txn) return res.status(404).json({ error: "Transaction not found" });
-
-    // Atomically update wallet and transaction
-    const session = await mongoose.startSession();
-    session.startTransaction();
-    try {
-      const wallet = await Wallet.findOne({ uid }).session(session);
-      if (!wallet) throw new Error("Wallet not found");
-
-      const newBalance = wallet.balance + txn.amount;
-
-      await Wallet.findOneAndUpdate({ uid }, { $inc: { balance: txn.amount } }, { session });
-
-      txn.status = "Success";
-      txn.balanceAfter = newBalance;
-      await txn.save({ session });
-
-      await session.commitTransaction();
-      session.endSession();
-
-      res.json({ success: true, balance: newBalance });
-    } catch (txErr) {
-      await session.abortTransaction();
-      session.endSession();
-      throw txErr;
-    }
-  } catch (err) {
-    console.error("Flutterwave redirect verify error:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-    // create transaction in MongoDB as pending
-    const txn = await Transaction.create({
+    // Log pending transaction
+    await Transaction.create({
       uid,
       type: "deposit",
       amount,
       description: "Flutterwave Payment",
       status: "Pending",
-      txnId: generateTxnId(),
+      txnId: txRef,
     });
 
-    const payload = {
-      tx_ref: txn.txnId,
-      amount,
-      currency,
-      redirect_url: redirect_url || "https://yourapp.com/wallet",
-      payment_options: "card,ussd,banktransfer",
-      customer: {
-        email: req.body.email || "user@example.com",
-        phonenumber: req.body.phone || "08000000000",
-        name: req.body.name || "Anonymous",
-      },
-      customizations: {
-        title: "SmartTalk Wallet Top-up",
-        description: "Add funds to wallet",
-      },
-    };
-
-    const response = await fetch("https://api.flutterwave.com/v3/payments", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.FLUTTERWAVE_SECRET_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
-
-    const data = await response.json();
-    if (data.status !== "success") return res.status(400).json({ error: data.message });
-
-    res.json({ checkout_url: data.data.link, txnId: txn.txnId });
+    res.json({ link: data.data.link, txnId: txRef });
   } catch (err) {
-    console.error("Flutterwave error:", err);
+    console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// Wallet history
+// Get wallet history
 app.get("/api/wallet/:uid", verifyFirebaseToken, async (req, res) => {
   try {
     const { uid } = req.params;
@@ -234,30 +171,15 @@ app.get("/api/wallet/:uid", verifyFirebaseToken, async (req, res) => {
   }
 });
 
-// Wallet balance only
-app.get("/api/wallet/balance/:uid", verifyFirebaseToken, async (req, res) => {
-  try {
-    const { uid } = req.params;
-    if (req.authUID !== uid) return res.status(403).json({ error: "Forbidden" });
-
-    const walletDoc = await Wallet.findOne({ uid });
-    const balance = walletDoc ? walletDoc.balance : 0;
-    res.json({ balance });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // Daily check-in
 app.post("/api/wallet/daily", verifyFirebaseToken, async (req, res) => {
   try {
-    const { uid, amount } = req.body;
-    if (req.authUID !== uid) return res.status(403).json({ error: "Forbidden" });
+    const { amount } = req.body;
+    const uid = req.authUID;
 
     const today = new Date().toISOString().split("T")[0];
     let wallet = await Wallet.findOne({ uid });
-    if (!wallet) wallet = await Wallet.create({ uid, balance: 0, lastCheckIn: null });
+    if (!wallet) wallet = await Wallet.create({ uid, balance: 0 });
 
     if (wallet.lastCheckIn === today) return res.status(400).json({ error: "Already claimed today" });
 
@@ -279,9 +201,7 @@ app.post("/api/wallet/daily", verifyFirebaseToken, async (req, res) => {
         ],
         { session }
       );
-
       await Wallet.findOneAndUpdate({ uid }, { $set: { lastCheckIn: today }, $inc: { balance: amount } }, { session });
-
       await session.commitTransaction();
       session.endSession();
 
@@ -300,23 +220,18 @@ app.post("/api/wallet/daily", verifyFirebaseToken, async (req, res) => {
 // Withdraw
 app.post("/api/wallet/withdraw", verifyFirebaseToken, async (req, res) => {
   try {
-    const { uid, amount, destination } = req.body;
-    if (req.authUID !== uid) return res.status(403).json({ error: "Forbidden" });
-    if (amount <= 0) return res.status(400).json({ error: "Invalid amount" });
+    const { amount, destination } = req.body;
+    const uid = req.authUID;
+    if (!amount || amount <= 0) return res.status(400).json({ error: "Invalid amount" });
 
     const session = await mongoose.startSession();
     session.startTransaction();
     try {
       const wallet = await Wallet.findOne({ uid }).session(session);
-      if (!wallet || wallet.balance < amount) {
-        await session.abortTransaction();
-        session.endSession();
-        return res.status(400).json({ error: "Insufficient funds" });
-      }
+      if (!wallet || wallet.balance < amount) throw new Error("Insufficient funds");
 
       const newBalance = wallet.balance - amount;
       await Wallet.findOneAndUpdate({ uid }, { $inc: { balance: -amount } }, { session });
-
       const txn = await Transaction.create(
         [
           {
@@ -334,7 +249,6 @@ app.post("/api/wallet/withdraw", verifyFirebaseToken, async (req, res) => {
 
       await session.commitTransaction();
       session.endSession();
-
       res.json({ success: true, balance: newBalance, txn: txn[0] });
     } catch (txErr) {
       await session.abortTransaction();
@@ -350,8 +264,9 @@ app.post("/api/wallet/withdraw", verifyFirebaseToken, async (req, res) => {
 // Serve frontend
 app.use(express.static(path.join(__dirname, "dist")));
 app.get("*", (req, res) => {
-  res.sendFile(path.resolve(__dirname, "dist", "index.html"));
+  res.sendFile(path.resolve(__dirname, "dist/index.html"));
 });
 
+// Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
