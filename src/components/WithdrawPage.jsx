@@ -1,133 +1,68 @@
 // src/components/WithdrawPage.jsx
-import React, { useState, useEffect, useRef } from "react";
-import { auth } from "../firebaseConfig";
+import React, { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
+import { useWallet } from "../context/WalletContext";
+import { auth } from "../firebaseConfig";
 
 export default function WithdrawPage() {
-  const [user, setUser] = useState(null);
-  const [balance, setBalance] = useState(0);
-  const [tasksLoading, setTasksLoading] = useState(false);
+  const navigate = useNavigate();
+  const { balance, addCredits } = useWallet();
   const [modalOpen, setModalOpen] = useState(false);
   const modalRef = useRef();
-  const navigate = useNavigate();
-
-  const backend = "https://smart-talk-dqit.onrender.com";
-
-  // AUTH & LOAD BALANCE
-  useEffect(() => {
-    const unsub = auth.onAuthStateChanged(async (u) => {
-      if (u) {
-        setUser(u);
-        loadBalance(u.uid);
-      } else navigate("/");
-    });
-    return unsub;
-  }, []);
-
-  const loadBalance = async (uid) => {
-    try {
-      const token = await auth.currentUser.getIdToken(true);
-      const res = await axios.get(`${backend}/api/wallet/${uid}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setBalance(res.data.balance || 0);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  // UPDATE BALANCE ON TASK
-  const performTask = async (amount) => {
-    if (!user) return;
-    setTasksLoading(true);
-    try {
-      const token = await auth.currentUser.getIdToken(true);
-      const res = await axios.post(
-        `${backend}/api/wallet/daily`,
-        { amount },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      // Update balance immediately
-      setBalance(res.data.balance || balance + amount);
-    } catch (err) {
-      console.error(err);
-      alert("Failed to update balance. Try again.");
-    } finally {
-      setTasksLoading(false);
-    }
-  };
 
   const handleWatchVideo = () => {
-    window.open(
-      "https://youtube.com/shorts/mQOV18vpAu4?si=8gyR6f-eAK4SGSyw",
-      "_blank"
-    );
-    performTask(0.2);
+    window.open("https://youtube.com/shorts/mQOV18vpAu4?si=8gyR6f-eAK4SGSyw", "_blank");
+    addCredits(0.2);
   };
 
   const handleFollowInstagram = () => {
     window.open("https://www.instagram.com/hahahala53", "_blank");
-    performTask(0.15);
+    addCredits(0.15);
   };
 
   const handleInviteFriend = () => {
-    navigator.clipboard.writeText(`https://yourapp.com/signup?ref=${user.uid}`);
-    alert("🔗 Referral link copied! Share with friends.");
+    navigator.clipboard.writeText(`https://yourapp.com/signup?ref=${auth.currentUser.uid}`);
+    alert("Referral link copied!");
+    addCredits(0.25);
   };
-
-  // CLOSE MODAL WHEN CLICK OUTSIDE
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (modalOpen && modalRef.current && !modalRef.current.contains(e.target)) {
-        setModalOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [modalOpen]);
 
   return (
     <div style={styles.page}>
-      {/* Back Button */}
       <button onClick={() => navigate("/wallet")} style={styles.backBtn}>←</button>
 
-      {/* Page Title */}
       <h2 style={styles.title}>💵 Withdraw Funds</h2>
 
       {/* Balance Card */}
-      <div style={styles.walletCard}>
-        <p style={styles.balanceLabel}>Your Balance</p>
-        <h1 style={styles.balanceAmount}>${balance.toFixed(2)}</h1>
+      <div style={styles.card}>
+        <p style={styles.label}>Your Balance</p>
+        <h1 style={styles.amount}>${balance.toFixed(2)}</h1>
       </div>
 
-      {/* Centered Tasks & Withdraw */}
-      <div style={styles.centerContent}>
-        <button style={styles.taskBtn} onClick={handleWatchVideo} disabled={tasksLoading}>
+      {/* Centered interactive area */}
+      <div style={styles.centerBox}>
+        <button style={styles.taskBtn} onClick={handleWatchVideo}>
           🎥 Watch a video → +$0.20
         </button>
-        <button style={styles.taskBtn} onClick={handleFollowInstagram} disabled={tasksLoading}>
+        <button style={styles.taskBtn} onClick={handleFollowInstagram}>
           📱 Follow us on Instagram → +$0.15
         </button>
         <button style={styles.taskBtn} onClick={handleInviteFriend}>
           👥 Invite a friend → +$0.25 per join
         </button>
-        <button
-          style={{ ...styles.roundBtn, background: "#f39c12", marginTop: 12, width: "90%" }}
-          onClick={() => setModalOpen(true)}
-        >
+
+        <button style={styles.withdrawBtn} onClick={() => setModalOpen(true)}>
           🚧 Withdraw
         </button>
       </div>
 
       {/* Modal */}
       {modalOpen && (
-        <div style={styles.modalOverlay}>
+        <div style={styles.overlay}>
           <div style={styles.modal} ref={modalRef}>
-            <h3 style={{ marginBottom: 15 }}>🚧 Coming Soon</h3>
-            <p style={{ marginBottom: 20 }}>
-              Withdraw is not yet available. Continue using the app to chat and earn more credits!
-            </p>
+            <h3>🚧 Coming Soon</h3>
+            <p>Withdraw is not yet available.  
+            Continue chatting and earning more credits!</p>
+
             <button style={styles.closeBtn} onClick={() => setModalOpen(false)}>
               Close
             </button>
@@ -138,86 +73,74 @@ export default function WithdrawPage() {
   );
 }
 
-// ======================================================
-// STYLES
-// ======================================================
 const styles = {
   page: {
     background: "#eef6ff",
     minHeight: "100vh",
     padding: 25,
-    color: "#000",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    justifyContent: "flex-start",
-    position: "relative",
   },
   backBtn: {
     position: "absolute",
-    top: 20,
     left: 20,
-    padding: "10px 14px",
-    borderRadius: "50%",
+    top: 20,
     background: "#dce9ff",
+    padding: 10,
+    borderRadius: "50%",
     border: "none",
     cursor: "pointer",
-    fontSize: 18,
   },
-  title: {
-    marginTop: 20,
-    textAlign: "center",
-    fontSize: 26,
-  },
-  walletCard: {
+  title: { marginTop: 40, fontSize: 26 },
+  card: {
     background: "#fff",
     padding: 20,
     borderRadius: 18,
-    boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
-    marginTop: 20,
-    textAlign: "center",
     width: "90%",
     maxWidth: 380,
-  },
-  balanceLabel: { opacity: 0.6 },
-  balanceAmount: { fontSize: 36, margin: "5px 0" },
-  roundBtn: {
-    padding: "14px 20px",
-    borderRadius: 30,
-    border: "none",
-    cursor: "pointer",
-    fontWeight: "bold",
-    color: "#fff",
-  },
-  taskBtn: {
-    padding: "12px 20px",
-    background: "#b3dcff",
-    borderRadius: 30,
-    border: "none",
-    cursor: "pointer",
-    fontWeight: "bold",
-    width: "90%",
-    maxWidth: 320,
     textAlign: "center",
-    marginBottom: 8,
+    marginTop: 20,
+    boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
   },
-  centerContent: {
+  label: { opacity: 0.6 },
+  amount: { fontSize: 36, marginTop: 5 },
+  centerBox: {
+    marginTop: 40,
     display: "flex",
     flexDirection: "column",
-    alignItems: "center",
-    marginTop: "10vh",
+    gap: 15,
     width: "100%",
-    maxWidth: 380,
-    gap: 12,
+    alignItems: "center",
   },
-  modalOverlay: {
+  taskBtn: {
+    width: "90%",
+    maxWidth: 330,
+    background: "#b3dcff",
+    border: "none",
+    padding: "12px 20px",
+    borderRadius: 30,
+    fontWeight: "bold",
+    cursor: "pointer",
+  },
+  withdrawBtn: {
+    width: "90%",
+    maxWidth: 330,
+    background: "#f39c12",
+    border: "none",
+    padding: "14px 20px",
+    borderRadius: 30,
+    fontWeight: "bold",
+    cursor: "pointer",
+    marginTop: 10,
+  },
+  overlay: {
     position: "fixed",
     inset: 0,
     background: "rgba(0,0,0,0.4)",
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
-    zIndex: 999,
   },
   modal: {
     background: "#fff",
@@ -226,15 +149,14 @@ const styles = {
     width: "85%",
     maxWidth: 360,
     textAlign: "center",
-    boxShadow: "0 5px 18px rgba(0,0,0,0.15)",
   },
   closeBtn: {
     marginTop: 15,
     padding: "10px 15px",
     background: "#3498db",
-    borderRadius: 10,
-    border: "none",
     color: "#fff",
+    border: "none",
+    borderRadius: 10,
     cursor: "pointer",
     fontWeight: "bold",
   },
