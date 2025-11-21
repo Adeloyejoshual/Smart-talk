@@ -187,9 +187,11 @@ export default function SettingsPage() {
 
   if (!user) return <p>Loading user...</p>;
 
+  // Fixed initials
   const getInitials = (name) => {
-    if (!name) return "NA";
-    const names = name.split(" ");
+    if (!name || typeof name !== "string") return "NA";
+    const names = name.trim().split(" ").filter(Boolean);
+    if (names.length === 0) return "NA";
     if (names.length === 1) return names[0][0].toUpperCase();
     return (names[0][0] + names[1][0]).toUpperCase();
   };
@@ -283,22 +285,17 @@ export default function SettingsPage() {
 
       {/* ================= Wallet ================= */}
       <Section title="Wallet" isDark={isDark}>
-        <button
+        <div
           onClick={() => navigate("/wallet")}
-          style={{
-            width: "100%",
-            padding: "10px 15px",
-            background: isDark ? "#333" : "#e0f7fa",
-            color: isDark ? "#00e676" : "#007bff",
-            border: "none",
-            borderRadius: 8,
-            cursor: "pointer",
-            fontWeight: "bold",
-            textAlign: "center",
-          }}
+          style={{ cursor: "pointer" }}
         >
-          💰 Balance: ${balance.toFixed(2)}
-        </button>
+          <p style={{ margin: 0 }}>
+            Balance:{" "}
+            <strong style={{ color: isDark ? "#00e676" : "#007bff" }}>
+              ${balance.toFixed(2)}
+            </strong>
+          </p>
+        </div>
 
         <button
           onClick={handleDailyCheckin}
