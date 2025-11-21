@@ -54,21 +54,61 @@ const Transaction = mongoose.model("Transaction", transactionSchema);
 // ==================== API Routes ====================
 
 // 1️⃣ Create Stripe Payment Intent
-app.post("/api/payment", async (req, res) => { ... });
+app.post("/api/payment", async (req, res) => {
+  try {
+    const { amount, currency, uid } = req.body;
+
+    const paymentIntent = await stripe.paymentIntents.create({ amount, currency });
+
+    // Log transaction
+    if (uid) {
+      await Transaction.create({
+        uid,
+        type: "credit",
+        amount: amount / 100, // Stripe uses cents
+        description: "Stripe Payment",
+      });
+    }
+
+    res.json({ clientSecret: paymentIntent.client_secret });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // 2️⃣ Wallet History
-app.get("/api/wallet/:uid", async (req, res) => { ... });
+app.get("/api/wallet/:uid", async (req, res) => {
+  try {
+    const { uid } = req.params;
+    const history = await Transaction.find({ uid }).sort({ createdAt: -1 });
+    res.json(history);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // 3️⃣ Add manual credit/debit
-app.post("/api/wallet", async (req, res) => { ... });
+app.post("/api/wallet", async (req, res) => {
+  try {
+    const { uid, type, amount, description } = req.body;
+    if (!uid || !type || !amount) return res.status(400).json({ error: "Missing fields" });
 
-// ✅ 4️⃣ Daily Check-In
+    const txn = await Transaction.create({ uid, type, amount, description });
+    res.json(txn);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 4️⃣ Daily Check-In
 app.post("/api/wallet/daily", async (req, res) => {
   try {
     const { uid, amount } = req.body;
     if (!uid || !amount) return res.status(400).json({ error: "Missing fields" });
 
-    // Check if user already claimed today
     const today = new Date().toISOString().split("T")[0];
     const existing = await Transaction.findOne({
       uid,
@@ -82,7 +122,6 @@ app.post("/api/wallet/daily", async (req, res) => {
 
     if (existing) return res.status(400).json({ error: "Already claimed today" });
 
-    // Add transaction
     const txn = await Transaction.create({
       uid,
       type: "credit",
@@ -96,6 +135,13 @@ app.post("/api/wallet/daily", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ==================== Serve Frontend ====================
+app.use(express.static(path.join(__dirname, "dist")));
+app.get("*", (req, res) => {
+  res.sendFile(path.resolve(__dirname, "dist", "index.html"));
+});
+
 // ==================== Start Server ====================
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
