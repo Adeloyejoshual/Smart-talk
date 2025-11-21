@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import { auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
+import axios from "axios";
 
 export default function WalletPage() {
   const [user, setUser] = useState(null);
@@ -10,43 +11,60 @@ export default function WalletPage() {
   const [selectedMonth, setSelectedMonth] = useState(new Date());
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   const [details, setDetails] = useState(null);
-  const navigate = useNavigate();
+  const [loadingCheckIn, setLoadingCheckIn] = useState(false);
   const modalRef = useRef();
+  const navigate = useNavigate();
 
   const backend = "https://smart-talk-dqit.onrender.com";
 
-  // ======================================================
   // AUTH
-  // ======================================================
   useEffect(() => {
     const unsub = auth.onAuthStateChanged((u) => {
       if (u) {
         setUser(u);
         loadWallet(u.uid);
-      } else {
-        navigate("/");
-      }
+      } else navigate("/");
     });
     return unsub;
   }, []);
 
-  // ======================================================
-  // FETCH WALLET + TRANSACTIONS FROM MONGODB
-  // ======================================================
+  // FETCH WALLET + TRANSACTIONS
   const loadWallet = async (uid) => {
     try {
-      const res = await fetch(`${backend}/wallet/${uid}`);
-      const data = await res.json();
-      setBalance(data.balance || 0);
-      setTransactions(data.transactions || []);
+      const token = await auth.currentUser.getIdToken(true);
+      const res = await axios.get(`${backend}/api/wallet/${uid}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setBalance(res.data.balance || 0);
+      setTransactions(res.data.transactions || []);
     } catch (err) {
       console.error(err);
     }
   };
 
-  // ======================================================
-  // FORMATTERS
-  // ======================================================
+  // DAILY CHECK-IN
+  const handleCheckIn = async () => {
+    try {
+      if (!user) return;
+      setLoadingCheckIn(true);
+      const token = await auth.currentUser.getIdToken(true);
+      const amount = 1; // daily reward amount
+      const res = await axios.post(
+        `${backend}/api/wallet/daily`,
+        { amount },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      alert(`Daily check-in success! +$${amount}`);
+      setBalance(res.data.balance);
+      setTransactions([res.data.txn, ...transactions]);
+    } catch (err) {
+      console.error(err);
+      alert(err.response?.data?.error || "Check-in failed");
+    } finally {
+      setLoadingCheckIn(false);
+    }
+  };
+
   const formatMonth = (date) =>
     date.toLocaleString("en-US", { month: "long", year: "numeric" });
 
@@ -58,57 +76,27 @@ export default function WalletPage() {
       minute: "2-digit",
     });
 
-  const statusColor = {
-    success: "#2ecc71",
-    pending: "#f1c40f",
-    failed: "#e74c3c",
-  };
+  const statusColor = { Success: "#2ecc71", Pending: "#f1c40f", Failed: "#e74c3c" };
 
-  // ======================================================
-  // CLOSE MODAL WHEN CLICKING OUTSIDE
-  // ======================================================
-  useEffect(() => {
-    const handleClick = (e) => {
-      if (details && modalRef.current && !modalRef.current.contains(e.target)) {
-        setDetails(null);
-      }
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [details]);
-
-  // ======================================================
-  // FILTER BY MONTH
-  // ======================================================
   const filteredTransactions = transactions.filter((t) => {
-    const d = new Date(t.date);
-    return (
-      d.getMonth() === selectedMonth.getMonth() &&
-      d.getFullYear() === selectedMonth.getFullYear()
-    );
+    const d = new Date(t.createdAt || t.date);
+    return d.getMonth() === selectedMonth.getMonth() && d.getFullYear() === selectedMonth.getFullYear();
   });
 
   return (
     <div style={styles.page}>
-      {/* Back Button */}
-      <button onClick={() => navigate("/settings")} style={styles.backBtn}>
-        ←
-      </button>
-
-      {/* Title */}
+      <button onClick={() => navigate("/settings")} style={styles.backBtn}>←</button>
       <h2 style={styles.title}>Wallet</h2>
 
-      {/* Wallet Balance Card */}
       <div style={styles.walletCard}>
         <p style={styles.balanceLabel}>Balance</p>
         <h1 style={styles.balanceAmount}>${balance.toFixed(2)}</h1>
 
         <div style={styles.actionRow}>
-          <button style={styles.roundBtn} onClick={() => navigate("/topup")}>
-            Top-Up
-          </button>
-          <button style={styles.roundBtn} onClick={() => navigate("/withdraw")}>
-            Withdraw
+          <button style={styles.roundBtn} onClick={() => navigate("/topup")}>Top-Up</button>
+          <button style={styles.roundBtn} onClick={() => navigate("/withdraw")}>Withdraw</button>
+          <button style={{ ...styles.roundBtn, background: "#ffd700" }} onClick={handleCheckIn} disabled={loadingCheckIn}>
+            {loadingCheckIn ? "Checking in..." : "Daily Check-In"}
           </button>
         </div>
       </div>
@@ -116,28 +104,15 @@ export default function WalletPage() {
       {/* Month Selector */}
       <div style={styles.monthHeader}>
         <span style={styles.monthText}>{formatMonth(selectedMonth)}</span>
-        <button
-          style={styles.monthArrow}
-          onClick={() => setShowMonthPicker(!showMonthPicker)}
-        >
-          ▼
-        </button>
+        <button style={styles.monthArrow} onClick={() => setShowMonthPicker(!showMonthPicker)}>▼</button>
       </div>
 
-      {/* Month Picker */}
       {showMonthPicker && (
         <div style={styles.monthPicker}>
           {Array.from({ length: 12 }).map((_, i) => {
             const d = new Date(selectedMonth.getFullYear(), i, 1);
             return (
-              <div
-                key={i}
-                style={styles.monthItem}
-                onClick={() => {
-                  setSelectedMonth(d);
-                  setShowMonthPicker(false);
-                }}
-              >
+              <div key={i} style={styles.monthItem} onClick={() => { setSelectedMonth(d); setShowMonthPicker(false); }}>
                 {formatMonth(d)}
               </div>
             );
@@ -145,69 +120,46 @@ export default function WalletPage() {
         </div>
       )}
 
-      {/* Transaction List */}
+      {/* Transactions */}
       <div style={styles.list}>
         {filteredTransactions.length === 0 ? (
-          <p style={{ textAlign: "center", opacity: 0.5 }}>
-            No transactions this month.
-          </p>
+          <p style={{ textAlign: "center", opacity: 0.5 }}>No transactions this month.</p>
         ) : (
           filteredTransactions.map((tx) => (
-            <div
-              key={tx._id}
-              style={styles.txRow}
-              onClick={() => setDetails(tx)}
-            >
+            <div key={tx._id} style={styles.txRow} onClick={() => setDetails(tx)}>
               <div style={styles.txLeft}>
                 <p style={styles.txType}>{tx.type}</p>
-                <span style={styles.txDate}>{formatDate(tx.date)}</span>
+                <span style={styles.txDate}>{formatDate(tx.createdAt || tx.date)}</span>
               </div>
-
               <div style={styles.txRight}>
-                <span
-                  style={{
-                    ...styles.amount,
-                    color: tx.amount >= 0 ? "#2ecc71" : "#e74c3c",
-                  }}
-                >
+                <span style={{ ...styles.amount, color: tx.amount >= 0 ? "#2ecc71" : "#e74c3c" }}>
                   {tx.amount >= 0 ? "+" : "-"}${Math.abs(tx.amount).toFixed(2)}
                 </span>
-
-                <span
-                  style={{
-                    ...styles.statusBadge,
-                    background: statusColor[tx.status] || "#999",
-                  }}
-                >
-                  {tx.status}
-                </span>
+                <span style={{ ...styles.statusBadge, background: statusColor[tx.status] || "#999" }}>{tx.status}</span>
               </div>
             </div>
           ))
         )}
       </div>
 
-      {/* Transaction Details Modal */}
+      {/* Modal */}
       {details && (
         <div style={styles.modalOverlay}>
           <div style={styles.modal} ref={modalRef}>
             <h3 style={{ marginBottom: 10 }}>Transaction Details</h3>
-
             <p><b>Type:</b> {details.type}</p>
             <p><b>Amount:</b> ${details.amount.toFixed(2)}</p>
-            <p><b>Date:</b> {formatDate(details.date)}</p>
+            <p><b>Date:</b> {formatDate(details.createdAt || details.date)}</p>
             <p><b>Status:</b> {details.status}</p>
             <p><b>Transaction ID:</b> {details._id}</p>
-
-            <button style={styles.closeBtn} onClick={() => setDetails(null)}>
-              Close
-            </button>
+            <button style={styles.closeBtn} onClick={() => setDetails(null)}>Close</button>
           </div>
         </div>
       )}
     </div>
   );
 }
+
 
 // ======================================================
 // STYLING
