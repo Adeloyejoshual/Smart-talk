@@ -283,17 +283,22 @@ export default function SettingsPage() {
 
       {/* ================= Wallet ================= */}
       <Section title="Wallet" isDark={isDark}>
-        <div
+        <button
           onClick={() => navigate("/wallet")}
-          style={{ cursor: "pointer" }}
+          style={{
+            width: "100%",
+            padding: "10px 15px",
+            background: isDark ? "#333" : "#e0f7fa",
+            color: isDark ? "#00e676" : "#007bff",
+            border: "none",
+            borderRadius: 8,
+            cursor: "pointer",
+            fontWeight: "bold",
+            textAlign: "center",
+          }}
         >
-          <p style={{ margin: 0 }}>
-            Balance:{" "}
-            <strong style={{ color: isDark ? "#00e676" : "#007bff" }}>
-              ${balance.toFixed(2)}
-            </strong>
-          </p>
-        </div>
+          💰 Balance: ${balance.toFixed(2)}
+        </button>
 
         <button
           onClick={handleDailyCheckin}
