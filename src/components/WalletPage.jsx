@@ -1,14 +1,13 @@
 // src/components/WalletPage.jsx
 import React, { useEffect, useState, useRef } from "react";
-import { auth, db } from "../firebaseConfig";
+import { auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { useWallet } from "../context/WalletContext";
+import { useTheme } from "../context/ThemeContext";
 
 export default function WalletPage() {
   const [user, setUser] = useState(null);
-  const [balance, setBalance] = useState(0);
-  const [transactions, setTransactions] = useState([]);
   const [selectedMonth, setSelectedMonth] = useState(new Date());
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   const [details, setDetails] = useState(null);
@@ -16,87 +15,56 @@ export default function WalletPage() {
   const scrollRef = useRef();
   const modalRef = useRef();
   const navigate = useNavigate();
+  const { balance, transactions, updateWallet } = useWallet();
+  const { theme } = useTheme();
 
   const backend = "https://smart-talk-dqit.onrender.com";
 
-  // AUTH
+  // AUTH + LOAD WALLET
   useEffect(() => {
-    const unsub = auth.onAuthStateChanged((u) => {
+    const unsub = auth.onAuthStateChanged(async (u) => {
       if (u) {
         setUser(u);
-        loadWallet(u.uid);
+        await loadWallet(u.uid);
       } else navigate("/");
     });
     return unsub;
   }, []);
 
-  // FETCH WALLET + TRANSACTIONS
   const loadWallet = async (uid) => {
     try {
       const token = await auth.currentUser.getIdToken(true);
       const res = await axios.get(`${backend}/api/wallet/${uid}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setBalance(res.data.balance || 0);
-      setTransactions(res.data.transactions || []);
-      if (res.data.transactions.length) {
-        setSelectedMonth(
-          new Date(
-            res.data.transactions[0].createdAt ||
-              res.data.transactions[0].date
-          )
-        );
-      }
+      updateWallet(res.data.balance || 0, null);
     } catch (err) {
       console.error(err);
     }
   };
 
-  // CLAIM DAILY REWARD
   const handleDailyReward = async () => {
     if (!user) return;
     setLoadingReward(true);
     try {
-      const userRef = doc(db, "users", user.uid);
-      const snap = await getDoc(userRef);
-      if (!snap.exists()) return;
-
-      const data = snap.data();
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const lastClaim = data.lastDailyClaim?.toDate?.();
-      if (lastClaim) {
-        const last = new Date(lastClaim);
-        last.setHours(0, 0, 0, 0);
-        if (last.getTime() === today.getTime()) {
-          alert("✅ You already claimed today!");
-          setLoadingReward(false);
-          return;
-        }
-      }
-
-      const amount = 0.25; // daily reward amount
-      const newBalance = (data.balance || 0) + amount;
-
-      await updateDoc(userRef, {
-        balance: newBalance,
-        lastDailyClaim: new Date(),
-      });
-
-      setBalance(newBalance);
-      alert(`🎉 Daily reward claimed! +$${amount}`);
+      const token = await auth.currentUser.getIdToken(true);
+      const res = await axios.post(
+        `${backend}/api/wallet/daily`,
+        { amount: 0.25 },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      updateWallet(res.data.balance, res.data.txn);
+      alert("🎉 Daily reward claimed!");
     } catch (err) {
       console.error(err);
-      alert("Failed to claim daily reward. Try again.");
+      alert("Failed to claim daily reward.");
     } finally {
       setLoadingReward(false);
     }
   };
 
-  // FORMATTERS
   const formatMonth = (date) =>
     date.toLocaleString("en-US", { month: "long", year: "numeric" });
-
   const formatDate = (d) =>
     new Date(d).toLocaleString("en-US", {
       month: "short",
@@ -105,7 +73,6 @@ export default function WalletPage() {
       minute: "2-digit",
     });
 
-  // FILTER TRANSACTIONS BY MONTH
   const filteredTransactions = transactions.filter((t) => {
     const d = new Date(t.createdAt || t.date);
     return (
@@ -114,66 +81,45 @@ export default function WalletPage() {
     );
   });
 
-  // UNIQUE MONTHS FOR PICKER
   const activeMonths = Array.from(
-    new Set(
-      transactions.map((t) => {
-        const d = new Date(t.createdAt || t.date);
-        return new Date(d.getFullYear(), d.getMonth(), 1).toISOString();
-      })
-    )
+    new Set(transactions.map((t) => new Date(t.createdAt || t.date).toISOString()))
   ).map((s) => new Date(s));
 
-  // CLOSE MONTH PICKER ON OUTSIDE CLICK
-  useEffect(() => {
-    const handleClick = (e) => {
-      if (
-        showMonthPicker &&
-        modalRef.current &&
-        !modalRef.current.contains(e.target)
-      ) {
-        setShowMonthPicker(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [showMonthPicker]);
-
-  // UPDATE MONTH HEADER ON SCROLL
-  const handleScroll = () => {
-    const scrollTop = scrollRef.current.scrollTop;
-    const items = Array.from(scrollRef.current.children);
-    for (let i = 0; i < items.length; i++) {
-      if (items[i].offsetTop - scrollTop >= 0) {
-        const tx = filteredTransactions[i];
-        if (tx) setSelectedMonth(new Date(tx.createdAt || tx.date));
-        break;
-      }
-    }
-  };
-
   return (
-    <div style={styles.page}>
-      <button onClick={() => navigate("/settings")} style={styles.backBtn}>
+    <div
+      style={{
+        ...styles.page,
+        background: theme === "dark" ? "#121212" : "#eef6ff",
+        color: theme === "dark" ? "#fff" : "#000",
+      }}
+    >
+      <button
+        onClick={() => navigate("/settings")}
+        style={{
+          ...styles.backBtn,
+          background: theme === "dark" ? "#333" : "#dce9ff",
+          color: theme === "dark" ? "#fff" : "#000",
+        }}
+      >
         ←
       </button>
       <h2 style={styles.title}>Wallet</h2>
 
-      <div style={styles.walletCard}>
+      <div
+        style={{
+          ...styles.walletCard,
+          background: theme === "dark" ? "#1f1f1f" : "#fff",
+          color: theme === "dark" ? "#fff" : "#000",
+        }}
+      >
         <p style={styles.balanceLabel}>Balance</p>
         <h1 style={styles.balanceAmount}>${balance.toFixed(2)}</h1>
 
         <div style={styles.actionRow}>
-          <button
-            style={styles.roundBtn}
-            onClick={() => navigate("/topup")}
-          >
+          <button style={styles.roundBtn} onClick={() => navigate("/topup")}>
             Top-Up
           </button>
-          <button
-            style={styles.roundBtn}
-            onClick={() => navigate("/withdraw")}
-          >
+          <button style={styles.roundBtn} onClick={() => navigate("/withdraw")}>
             Withdraw
           </button>
           <button
@@ -186,55 +132,20 @@ export default function WalletPage() {
         </div>
       </div>
 
-      {/* Month Header */}
-      <div style={styles.monthHeader}>
-        <span style={styles.monthText}>{formatMonth(selectedMonth)}</span>
-        <button
-          style={styles.monthArrow}
-          onClick={() => setShowMonthPicker(!showMonthPicker)}
-        >
-          ▼
-        </button>
-      </div>
-
-      {showMonthPicker && (
-        <div style={styles.monthPicker} ref={modalRef}>
-          {activeMonths.map((d, i) => (
-            <div
-              key={i}
-              style={styles.monthItem}
-              onClick={() => {
-                setSelectedMonth(d);
-                setShowMonthPicker(false);
-              }}
-            >
-              {formatMonth(d)}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Scrollable transactions */}
-      <div
-        style={styles.list}
-        ref={scrollRef}
-        onScroll={handleScroll}
-      >
+      {/* Transactions List */}
+      <div ref={scrollRef} style={styles.list}>
         {filteredTransactions.length === 0 ? (
-          <p
-            style={{
-              textAlign: "center",
-              opacity: 0.5,
-              marginTop: 10,
-            }}
-          >
+          <p style={{ textAlign: "center", opacity: 0.5, marginTop: 10 }}>
             No transactions this month.
           </p>
         ) : (
           filteredTransactions.map((tx) => (
             <div
               key={tx._id}
-              style={styles.txRowCompact}
+              style={{
+                ...styles.txRowCompact,
+                background: theme === "dark" ? "#2a2a2a" : "#fff",
+              }}
               onClick={() => setDetails(tx)}
             >
               <div style={styles.txLeftCompact}>
@@ -258,10 +169,17 @@ export default function WalletPage() {
         )}
       </div>
 
-      {/* Transaction Details Modal */}
+      {/* Transaction Modal */}
       {details && (
         <div style={styles.modalOverlay}>
-          <div style={styles.modal} ref={modalRef}>
+          <div
+            style={{
+              ...styles.modal,
+              background: theme === "dark" ? "#2a2a2a" : "#fff",
+              color: theme === "dark" ? "#fff" : "#000",
+            }}
+            ref={modalRef}
+          >
             <h3 style={{ marginBottom: 10 }}>Transaction Details</h3>
             <p>
               <b>Type:</b> {details.type}
@@ -278,10 +196,7 @@ export default function WalletPage() {
             <p>
               <b>Transaction ID:</b> {details._id}
             </p>
-            <button
-              style={styles.closeBtn}
-              onClick={() => setDetails(null)}
-            >
+            <button style={styles.closeBtn} onClick={() => setDetails(null)}>
               Close
             </button>
           </div>
