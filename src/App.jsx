@@ -11,12 +11,13 @@ import ChatConversationPage from "./components/ChatConversationPage";
 import CallPage from "./components/CallPage";
 import SettingsPage from "./components/SettingsPage";
 import CallHistoryPage from "./components/CallHistoryPage";
-import WithdrawalPage from "./components/WithdrawalPage";
+import WithdrawPage from "./components/WithdrawPage";
+import TopUpPage from "./components/TopUpPage";
 import UserProfile from "./components/UserProfile";
 import VoiceCallPage from "./components/VoiceCallPage";
 import VideoCallPage from "./components/VideoCallPage";
 import EditProfilePage from "./components/EditProfilePage";
-import WalletPage from "./components/WalletPage"; // ← WalletPage added
+import WalletPage from "./components/WalletPage";
 
 // Components
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -155,14 +156,6 @@ export default function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/withdrawal"
-            element={
-              <ProtectedRoute>
-                <WithdrawalPage />
-              </ProtectedRoute>
-            }
-          />
 
           {/* Wallet */}
           <Route
@@ -170,6 +163,22 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <WalletPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/topup"
+            element={
+              <ProtectedRoute>
+                <TopUpPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/withdraw"
+            element={
+              <ProtectedRoute>
+                <WithdrawPage />
               </ProtectedRoute>
             }
           />
