@@ -11,7 +11,7 @@ import {
   where,
   orderBy,
   serverTimestamp,
-  onSnapshot as onCollection,
+  onSnapshot,
 } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 import { ThemeContext } from "../context/ThemeContext";
@@ -101,7 +101,7 @@ export default function SettingsPage() {
         where("uid", "==", userAuth.uid),
         orderBy("createdAt", "desc")
       );
-      const unsubTx = onCollection(txQuery, (snapshot) => {
+      const unsubTx = onSnapshot(txQuery, (snapshot) => {
         setTransactions(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
       });
 
@@ -187,7 +187,6 @@ export default function SettingsPage() {
 
   if (!user) return <p>Loading user...</p>;
 
-  // Fixed initials
   const getInitials = (name) => {
     if (!name || typeof name !== "string") return "NA";
     const names = name.trim().split(" ").filter(Boolean);
@@ -285,9 +284,10 @@ export default function SettingsPage() {
 
       {/* ================= Wallet ================= */}
       <Section title="Wallet" isDark={isDark}>
+        {/* Balance */}
         <div
           onClick={() => navigate("/wallet")}
-          style={{ cursor: "pointer" }}
+          style={{ cursor: "pointer", marginBottom: 10 }}
         >
           <p style={{ margin: 0 }}>
             Balance:{" "}
@@ -297,18 +297,49 @@ export default function SettingsPage() {
           </p>
         </div>
 
+        {/* Daily check-in */}
         <button
           onClick={handleDailyCheckin}
           disabled={checkedInToday}
           style={{
             ...btnStyle(checkedInToday ? "#666" : "#4CAF50"),
             opacity: checkedInToday ? 0.7 : 1,
-            marginTop: 10,
+            marginBottom: 15,
             width: "100%",
           }}
         >
           {checkedInToday ? "✅ Checked In Today" : "🧩 Daily Check-in (+$0.25)"}
         </button>
+
+        {/* Last 3 transactions */}
+        <div>
+          <h4 style={{ marginBottom: 8 }}>Last 3 Transactions</h4>
+          {transactions.length === 0 ? (
+            <p style={{ fontSize: 14, opacity: 0.6 }}>No recent transactions.</p>
+          ) : (
+            transactions
+              .slice(0, 3)
+              .map((tx) => (
+                <div
+                  key={tx.id}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    padding: "6px 10px",
+                    marginBottom: 6,
+                    background: isDark ? "#3b3b3b" : "#f0f0f0",
+                    borderRadius: 8,
+                    fontSize: 14,
+                  }}
+                >
+                  <span>{tx.type}</span>
+                  <span style={{ color: tx.amount >= 0 ? "#2ecc71" : "#e74c3c" }}>
+                    {tx.amount >= 0 ? "+" : "-"}${Math.abs(tx.amount).toFixed(2)}
+                  </span>
+                </div>
+              ))
+          )}
+        </div>
       </Section>
 
       {/* ================= Preferences ================= */}
