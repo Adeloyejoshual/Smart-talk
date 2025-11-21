@@ -1,51 +1,41 @@
 // src/components/WalletPage.jsx
 import React, { useState, useEffect } from "react";
-import { auth, db } from "../firebaseConfig";
-import {
-  doc,
-  onSnapshot,
-  collection,
-  query,
-  orderBy,
-  getDocs,
-} from "firebase/firestore";
-import { handleStripePayment, handleFlutterwavePayment } from "../payments";
+import { auth } from "../firebaseConfig";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
+import { handleStripePayment, handleFlutterwavePayment } from "../payments";
 
 export default function WalletPage() {
   const [balance, setBalance] = useState(0);
   const [amount, setAmount] = useState("");
   const [transactions, setTransactions] = useState([]);
+  const [loading, setLoading] = useState(true);
   const user = auth.currentUser;
   const navigate = useNavigate();
 
-  // 🔹 Listen for real-time wallet balance
-  useEffect(() => {
+  // 🔹 Fetch MongoDB wallet history
+  const fetchWalletHistory = async () => {
     if (!user) return;
-    const unsub = onSnapshot(doc(db, "wallets", user.uid), (docSnap) => {
-      if (docSnap.exists()) {
-        setBalance(docSnap.data().balance || 0);
-      } else {
-        setBalance(0);
-      }
-    });
-    return () => unsub();
-  }, [user]);
+    try {
+      const res = await fetch(`/api/wallet/${user.uid}`);
+      const data = await res.json();
+      setTransactions(data);
 
-  // 🔹 Load recent transactions
+      // calculate balance
+      let bal = 0;
+      data.forEach(tx => {
+        if (tx.type === "credit") bal += tx.amount;
+        else bal -= tx.amount;
+      });
+      setBalance(bal);
+      setLoading(false);
+    } catch (err) {
+      console.error("Error fetching wallet history:", err);
+    }
+  };
+
   useEffect(() => {
-    if (!user) return;
-    const loadTransactions = async () => {
-      const q = query(
-        collection(db, "wallets", user.uid, "transactions"),
-        orderBy("timestamp", "desc")
-      );
-      const snapshot = await getDocs(q);
-      const tx = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-      setTransactions(tx);
-    };
-    loadTransactions();
+    fetchWalletHistory();
   }, [user]);
 
   // 🔹 Handle top-up
@@ -57,10 +47,29 @@ export default function WalletPage() {
 
     const topUpAmount = parseFloat(amount);
 
-    if (method === "stripe") {
-      await handleStripePayment(topUpAmount, user.uid);
-    } else if (method === "flutterwave") {
-      handleFlutterwavePayment(topUpAmount, user.uid);
+    try {
+      if (method === "stripe") {
+        await handleStripePayment(topUpAmount, user.uid);
+      } else if (method === "flutterwave") {
+        await handleFlutterwavePayment(topUpAmount, user.uid);
+      }
+
+      // Log to MongoDB
+      await fetch("/api/history/topup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          uid: user.uid,
+          amount: topUpAmount,
+          method: method,
+        }),
+      });
+
+      // Refresh history
+      fetchWalletHistory();
+      setAmount("");
+    } catch (err) {
+      console.error("Top-up error:", err);
     }
   };
 
@@ -70,6 +79,8 @@ export default function WalletPage() {
     if (names.length === 1) return names[0][0].toUpperCase();
     return (names[0][0] + names[1][0]).toUpperCase();
   };
+
+  if (loading) return <p className="text-white p-6">Loading wallet...</p>;
 
   return (
     <motion.div
@@ -164,18 +175,18 @@ export default function WalletPage() {
           <div className="space-y-3 max-h-60 overflow-y-auto">
             {transactions.map((tx) => (
               <motion.div
-                key={tx.id}
+                key={tx._id || tx.id}
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 className="bg-white/10 p-3 rounded-lg flex justify-between items-center text-sm"
               >
-                <span>{tx.type === "topup" ? "Top-Up" : "Reward"}</span>
+                <span>{tx.type === "credit" ? "Top-Up" : "Reward"}</span>
                 <span className={tx.amount > 0 ? "text-green-400" : "text-red-400"}>
                   {tx.amount > 0 ? "+" : ""}
                   ${tx.amount.toFixed(2)}
                 </span>
                 <span className="text-gray-300 text-xs">
-                  {new Date(tx.timestamp?.toDate?.() || tx.timestamp).toLocaleString()}
+                  {new Date(tx.createdAt || tx.timestamp?.toDate?.()).toLocaleString()}
                 </span>
               </motion.div>
             ))}
