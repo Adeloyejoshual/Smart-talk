@@ -17,12 +17,14 @@ export default function WithdrawPage() {
 
   const backend = "https://smart-talk-dqit.onrender.com";
 
-  // AUTH + LOAD BALANCE + TRANSACTIONS
+  // -----------------------
+  // AUTH + LOAD WALLET
+  // -----------------------
   useEffect(() => {
     const unsub = auth.onAuthStateChanged(async (u) => {
       if (u) {
         setUser(u);
-        loadWallet(u.uid);
+        await loadWallet(u.uid);
       } else navigate("/");
     });
     return unsub;
@@ -34,23 +36,30 @@ export default function WithdrawPage() {
       const res = await axios.get(`${backend}/api/wallet/${uid}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+
+      console.log("Loaded wallet:", res.data);
+
       setBalance(res.data.balance || 0);
       setCompletedTasks(res.data.completedTasks || []);
       setTransactions(res.data.transactions || []);
     } catch (err) {
-      console.error(err);
+      console.error("Failed to load wallet:", err.response?.data || err.message);
     }
   };
 
+  // -----------------------
   // TASK REWARD
+  // -----------------------
   const performTask = async (amount, taskId) => {
     if (!user) return;
+
     if (completedTasks.includes(taskId)) {
       alert("✅ You already completed this task!");
       return;
     }
 
     setTasksLoading(true);
+
     try {
       const token = await auth.currentUser.getIdToken(true);
       const res = await axios.post(
@@ -59,18 +68,33 @@ export default function WithdrawPage() {
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      // Update balance, completed tasks, and transactions
-      setBalance(res.data.balance);
-      setCompletedTasks(res.data.completedTasks || []);
-      setTransactions(res.data.transactions || []);
+      console.log("Task response:", res.data);
+
+      // Safely update state
+      if (res.data.balance != null) setBalance(res.data.balance);
+      if (res.data.completedTasks) setCompletedTasks(res.data.completedTasks);
+      if (res.data.transactions) setTransactions(res.data.transactions);
+
+      alert(`✅ Task completed! +$${amount}`);
     } catch (err) {
-      console.error(err);
-      alert("Failed to update balance. Try again.");
+      console.error("Failed to perform task:", err.response?.data || err.message);
+
+      if (err.response?.data?.message) {
+        alert(`Failed to update balance: ${err.response.data.message}`);
+      } else {
+        alert("Failed to update balance. Check console for details.");
+      }
     } finally {
       setTasksLoading(false);
+
+      // Backup: fetch latest wallet to make sure balance & transactions are correct
+      if (user) await loadWallet(user.uid);
     }
   };
 
+  // -----------------------
+  // TASK HANDLERS
+  // -----------------------
   const handleWatchVideo = () => performTask(0.2, "watchVideo");
   const handleFollowInstagram = () => performTask(0.15, "followInstagram");
   const handleInviteFriend = () => {
@@ -78,7 +102,9 @@ export default function WithdrawPage() {
     alert("🔗 Referral link copied!");
   };
 
-  // CLOSE MODAL WHEN CLICK OUTSIDE
+  // -----------------------
+  // CLICK OUTSIDE MODAL
+  // -----------------------
   useEffect(() => {
     const clickOutside = (e) => {
       if (modalOpen && modalRef.current && !modalRef.current.contains(e.target)) {
@@ -100,6 +126,9 @@ export default function WithdrawPage() {
       minute: "2-digit",
     });
 
+  // -----------------------
+  // RENDER
+  // -----------------------
   return (
     <div style={styles.page}>
       {/* Back Button */}
@@ -114,7 +143,7 @@ export default function WithdrawPage() {
         <h1 style={styles.balanceAmount}>${balance.toFixed(2)}</h1>
       </div>
 
-      {/* Center Content */}
+      {/* Tasks */}
       <div style={styles.centerContent}>
         <button
           style={styles.taskBtn}
@@ -182,9 +211,7 @@ export default function WithdrawPage() {
             <p style={{ marginBottom: 20 }}>
               Withdraw is not yet available. Keep chatting to earn more credits!
             </p>
-            <button style={styles.closeBtn} onClick={() => setModalOpen(false)}>
-              Close
-            </button>
+            <button style={styles.closeBtn} onClick={() => setModalOpen(false)}>Close</button>
           </div>
         </div>
       )}
