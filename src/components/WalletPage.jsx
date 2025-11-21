@@ -121,26 +121,25 @@ export default function WalletPage() {
       )}
 
       {/* Transactions */}
-      <div style={styles.list}>
-        {filteredTransactions.length === 0 ? (
-          <p style={{ textAlign: "center", opacity: 0.5 }}>No transactions this month.</p>
-        ) : (
-          filteredTransactions.map((tx) => (
-            <div key={tx._id} style={styles.txRow} onClick={() => setDetails(tx)}>
-              <div style={styles.txLeft}>
-                <p style={styles.txType}>{tx.type}</p>
-                <span style={styles.txDate}>{formatDate(tx.createdAt || tx.date)}</span>
-              </div>
-              <div style={styles.txRight}>
-                <span style={{ ...styles.amount, color: tx.amount >= 0 ? "#2ecc71" : "#e74c3c" }}>
-                  {tx.amount >= 0 ? "+" : "-"}${Math.abs(tx.amount).toFixed(2)}
-                </span>
-                <span style={{ ...styles.statusBadge, background: statusColor[tx.status] || "#999" }}>{tx.status}</span>
-              </div>
-            </div>
-          ))
-        )}
+<div style={styles.list}>
+  {filteredTransactions.length === 0 ? (
+    <p style={{ textAlign: "center", opacity: 0.5, marginTop: 10 }}>No transactions this month.</p>
+  ) : (
+    filteredTransactions.map((tx) => (
+      <div key={tx._id} style={styles.txRowCompact} onClick={() => setDetails(tx)}>
+        <div style={styles.txLeftCompact}>
+          <p style={styles.txTypeCompact}>{tx.type}</p>
+          <span style={styles.txDateCompact}>{formatDate(tx.createdAt || tx.date)}</span>
+        </div>
+        <div style={styles.txRightCompact}>
+          <span style={{ ...styles.amount, color: tx.amount >= 0 ? "#2ecc71" : "#e74c3c" }}>
+            {tx.amount >= 0 ? "+" : "-"}${Math.abs(tx.amount).toFixed(2)}
+          </span>
+        </div>
       </div>
+    ))
+  )}
+</div>
 
       {/* Modal */}
       {details && (
