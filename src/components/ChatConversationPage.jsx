@@ -1,9 +1,24 @@
-// src/components/Chat/ChatConversationPage.jsx
 import React, { useEffect, useState, useRef, useContext } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { collection, query, orderBy, onSnapshot, addDoc, updateDoc, doc, serverTimestamp } from "firebase/firestore";
-import { auth } from "../firebaseConfig";
-import { ThemeContext } from "../../context/ThemeContext";
+import {
+  collection,
+  addDoc,
+  query,
+  orderBy,
+  onSnapshot,
+  serverTimestamp,
+  updateDoc,
+  doc,
+  getDoc,
+  arrayUnion,
+  arrayRemove,
+  deleteDoc,
+  limit as fsLimit,
+  getDocs,
+} from "firebase/firestore";
+
+import { db, auth } from "../firebaseConfig";
+import { ThemeContext } from "../context/ThemeContext";
 
 import ChatHeader from "./ChatHeader";
 import MessageItem from "./MessageItem";
