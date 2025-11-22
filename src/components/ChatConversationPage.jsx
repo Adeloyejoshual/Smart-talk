@@ -10,7 +10,6 @@ import {
   updateDoc,
   doc,
   getDoc,
-  arrayUnion,
   serverTimestamp,
   limit as fsLimit,
 } from "firebase/firestore";
@@ -20,6 +19,7 @@ import ChatHeader from "./Chat/ChatHeader";
 import MessageItem from "./Chat/MessageItem";
 import ChatInput from "./Chat/ChatInput";
 
+// -------------------- Helpers --------------------
 const COLORS = {
   primary: "#34B7F1",
   darkBg: "#0b0b0b",
@@ -33,6 +33,23 @@ const COLORS = {
   headerBlue: "#1877F2",
 };
 
+const formatDayLabel = (ts) => {
+  if (!ts) return "";
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  const now = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(now.getDate() - 1);
+
+  if (d.toDateString() === now.toDateString()) return "Today";
+  if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
+  return d.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: d.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
+  });
+};
+
+// -------------------- Main Component --------------------
 export default function ChatConversationPage() {
   const { chatId } = useParams();
   const navigate = useNavigate();
@@ -79,8 +96,7 @@ export default function ChatConversationPage() {
         }
 
         unsubChat = onSnapshot(cRef, (s) => {
-          if (s.exists())
-            setChatInfo((prev) => ({ ...(prev || {}), ...s.data() }));
+          if (s.exists()) setChatInfo((prev) => ({ ...(prev || {}), ...s.data() }));
         });
       } catch (e) {
         console.error("loadMeta error", e);
@@ -106,9 +122,10 @@ export default function ChatConversationPage() {
       const docs = snap.docs
         .map((d) => ({ id: d.id, ...d.data() }))
         .filter((m) => !(m.deletedFor?.includes(myUid)));
+
       setMessages(docs);
 
-      // mark incoming messages as delivered
+      // Mark incoming as delivered
       docs.forEach(async (m) => {
         if (m.senderId !== myUid && m.status === "sent") {
           await updateDoc(doc(db, "chats", chatId, "messages", m.id), {
@@ -117,10 +134,15 @@ export default function ChatConversationPage() {
         }
       });
 
-      if (isAtBottom) scrollToBottom();
+      // Scroll to last message on chat open
+      if (messagesRefEl.current && docs.length && !isAtBottom) {
+        endRef.current?.scrollIntoView({ behavior: "auto" });
+      } else if (isAtBottom) {
+        scrollToBottom();
+      }
     });
     return () => unsub();
-  }, [chatId, myUid, isAtBottom]);
+  }, [chatId, myUid]);
 
   // -------------------- Scroll detection --------------------
   useEffect(() => {
@@ -133,8 +155,8 @@ export default function ChatConversationPage() {
     return () => el.removeEventListener("scroll", onScroll);
   }, []);
 
-  const scrollToBottom = () => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  const scrollToBottom = (smooth = true) => {
+    endRef.current?.scrollIntoView({ behavior: smooth ? "smooth" : "auto" });
     setIsAtBottom(true);
   };
 
@@ -144,7 +166,6 @@ export default function ChatConversationPage() {
       return alert("You are blocked in this chat.");
     if (!text && selectedFiles.length === 0) return;
 
-    // Upload files
     for (let file of selectedFiles) {
       const tempId = Date.now() + "-" + file.name;
       setUploadProgress((prev) => ({ ...prev, [tempId]: 0 }));
@@ -182,7 +203,6 @@ export default function ChatConversationPage() {
       }
     }
 
-    // Send text
     if (text) {
       await addDoc(collection(db, "chats", chatId, "messages"), {
         senderId: myUid,
@@ -207,6 +227,18 @@ export default function ChatConversationPage() {
     setSelectedFiles((prev) => [...prev, ...files]);
   };
 
+  // -------------------- Group messages by day --------------------
+  const groupedMessages = [];
+  let lastDate = null;
+  messages.forEach((msg) => {
+    const msgDate = formatDayLabel(msg.createdAt);
+    if (msgDate !== lastDate) {
+      groupedMessages.push({ type: "day", label: msgDate });
+      lastDate = msgDate;
+    }
+    groupedMessages.push({ type: "msg", data: msg });
+  });
+
   return (
     <div
       style={{
@@ -215,6 +247,7 @@ export default function ChatConversationPage() {
         height: "100vh",
         backgroundColor: wallpaper || (isDark ? COLORS.darkBg : COLORS.lightBg),
         color: isDark ? COLORS.darkText : COLORS.lightText,
+        position: "relative",
       }}
     >
       <ChatHeader
@@ -226,23 +259,67 @@ export default function ChatConversationPage() {
         setHeaderMenuOpen={() => {}}
       />
 
-      <div ref={messagesRefEl} style={{ flex: 1, overflowY: "auto", padding: 8 }}>
-        {messages.map((m) => (
-          <MessageItem
-            key={m.id}
-            message={m}
-            myUid={myUid}
-            menuOpenFor={menuOpenFor}
-            setMenuOpenFor={setMenuOpenFor}
-            reactionFor={reactionFor}
-            setReactionFor={setReactionFor}
-            applyReaction={() => {}}
-            replyToMessage={(m) => setReplyTo(m)}
-            uploadProgress={uploadProgress}
-          />
-        ))}
+      {/* Messages */}
+      <div
+        ref={messagesRefEl}
+        style={{ flex: 1, overflowY: "auto", padding: 8, position: "relative" }}
+      >
+        {groupedMessages.map((item, idx) =>
+          item.type === "day" ? (
+            <div
+              key={`day-${idx}`}
+              style={{
+                textAlign: "center",
+                fontSize: 12,
+                color: COLORS.mutedText,
+                margin: "12px 0",
+              }}
+            >
+              {item.label}
+            </div>
+          ) : (
+            <MessageItem
+              key={item.data.id}
+              message={item.data}
+              myUid={myUid}
+              menuOpenFor={menuOpenFor}
+              setMenuOpenFor={setMenuOpenFor}
+              reactionFor={reactionFor}
+              setReactionFor={setReactionFor}
+              applyReaction={() => {}}
+              replyToMessage={(m) => setReplyTo(m)}
+              uploadProgress={uploadProgress}
+            />
+          )
+        )}
         <div ref={endRef} />
       </div>
+
+      {/* Scroll down arrow */}
+      {!isAtBottom && (
+        <button
+          onClick={() => scrollToBottom(false)}
+          style={{
+            position: "absolute",
+            bottom: 80,
+            right: 16,
+            backgroundColor: COLORS.primary,
+            border: "none",
+            borderRadius: "50%",
+            width: 40,
+            height: 40,
+            color: "#fff",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
+            zIndex: 50,
+          }}
+        >
+          ↓
+        </button>
+      )}
 
       <ChatInput
         text={text}
