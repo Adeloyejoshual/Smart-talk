@@ -1,22 +1,26 @@
 // src/components/WalletPage.jsx
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useContext } from "react";
 import { auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import { ThemeContext } from "../context/ThemeContext";
 
 export default function WalletPage() {
+  const { theme, wallpaper } = useContext(ThemeContext);
   const [user, setUser] = useState(null);
   const [balance, setBalance] = useState(0);
   const [transactions, setTransactions] = useState([]);
   const [selectedMonth, setSelectedMonth] = useState(new Date());
-  const [details, setDetails] = useState(null);
   const [loadingReward, setLoadingReward] = useState(false);
+  const [details, setDetails] = useState(null);
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
   const scrollRef = useRef();
+  const pickerRef = useRef();
   const navigate = useNavigate();
 
   const backend = "https://smart-talk-zlxe.onrender.com";
 
-  // AUTH + LOAD WALLET
+  // -------------------- Auth + Load Wallet --------------------
   useEffect(() => {
     const unsub = auth.onAuthStateChanged((u) => {
       if (u) {
@@ -27,32 +31,28 @@ export default function WalletPage() {
     return unsub;
   }, []);
 
-  // FETCH WALLET + TRANSACTIONS
   const loadWallet = async (uid) => {
     try {
       const token = await auth.currentUser.getIdToken(true);
       const res = await axios.get(`${backend}/api/wallet/${uid}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-
+      const sortedTx = (res.data.transactions || []).sort(
+        (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+      );
       setBalance(res.data.balance || 0);
-      setTransactions(res.data.transactions || []);
-      if (res.data.transactions?.length) {
-        setSelectedMonth(
-          new Date(res.data.transactions[0].createdAt || res.data.transactions[0].date)
-        );
-      }
+      setTransactions(sortedTx);
+      if (sortedTx.length) setSelectedMonth(new Date(sortedTx[0].createdAt));
     } catch (err) {
       console.error(err);
       alert("Failed to load wallet. Check console.");
     }
   };
 
-  // CLAIM DAILY REWARD
+  // -------------------- Daily Reward --------------------
   const handleDailyReward = async () => {
     if (!user) return;
     setLoadingReward(true);
-
     try {
       const token = await auth.currentUser.getIdToken(true);
       const res = await axios.post(
@@ -63,9 +63,10 @@ export default function WalletPage() {
 
       if (res.data.balance !== undefined) {
         setBalance(res.data.balance);
-        setTransactions(
-          (res.data.transactions || transactions)
-            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+        setTransactions((prev) =>
+          [res.data.txn, ...prev].sort(
+            (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+          )
         );
         alert("🎉 Daily reward claimed!");
       } else if (res.data.error?.toLowerCase().includes("already claimed")) {
@@ -81,7 +82,7 @@ export default function WalletPage() {
     }
   };
 
-  // FORMATTERS
+  // -------------------- Formatters --------------------
   const formatMonth = (date) =>
     date.toLocaleString("en-US", { month: "long", year: "numeric" });
 
@@ -93,36 +94,72 @@ export default function WalletPage() {
       minute: "2-digit",
     });
 
-  // FILTER TRANSACTIONS BY MONTH
-  const filteredTransactions = transactions.filter((t) => {
-    const d = new Date(t.createdAt || t.date);
-    return (
-      d.getMonth() === selectedMonth.getMonth() &&
-      d.getFullYear() === selectedMonth.getFullYear()
-    );
-  });
-
-  // UPDATE MONTH HEADER ON SCROLL
+  // -------------------- Scroll Header --------------------
   const handleScroll = () => {
     const scrollTop = scrollRef.current.scrollTop;
     const items = Array.from(scrollRef.current.children);
     for (let i = 0; i < items.length; i++) {
       if (items[i].offsetTop - scrollTop >= 0) {
-        const tx = filteredTransactions[i];
+        const tx = transactions[i];
         if (tx) setSelectedMonth(new Date(tx.createdAt || tx.date));
         break;
       }
     }
   };
 
+  // -------------------- Unique Months for Picker --------------------
+  const uniqueMonths = Array.from(
+    new Set(
+      transactions.map((tx) => {
+        const d = new Date(tx.createdAt || tx.date);
+        return new Date(d.getFullYear(), d.getMonth(), 1).toISOString();
+      })
+    )
+  )
+    .map((s) => new Date(s))
+    .sort((a, b) => b - a); // Latest first
+
+  // -------------------- Close Picker on Click Outside --------------------
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target)) {
+        setShowMonthPicker(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // -------------------- Filtered Transactions --------------------
+  const filteredTransactions = transactions.filter((tx) => {
+    const d = new Date(tx.createdAt || tx.date);
+    return (
+      d.getMonth() === selectedMonth.getMonth() &&
+      d.getFullYear() === selectedMonth.getFullYear()
+    );
+  });
+
   return (
-    <div style={styles.page}>
+    <div
+      style={{
+        ...styles.page,
+        backgroundColor: theme === "dark" ? "#000" : "#eef6ff",
+        color: theme === "dark" ? "#fff" : "#000",
+        backgroundImage: wallpaper ? `url(${wallpaper})` : "none",
+      }}
+    >
       <button onClick={() => navigate("/settings")} style={styles.backBtn}>
         ←
       </button>
       <h2 style={styles.title}>Wallet</h2>
 
-      <div style={styles.walletCard}>
+      {/* Wallet Card */}
+      <div
+        style={{
+          ...styles.walletCard,
+          backgroundColor: theme === "dark" ? "#111" : "#fff",
+        }}
+      >
         <p style={styles.balanceLabel}>Balance</p>
         <h1 style={styles.balanceAmount}>${balance.toFixed(2)}</h1>
 
@@ -135,32 +172,61 @@ export default function WalletPage() {
           </button>
         </div>
 
-        {/* Daily Check-In below Topup/Withdraw */}
-        <button
-          style={{ ...styles.roundBtn, background: "#ffd700", marginTop: 15 }}
-          onClick={handleDailyReward}
-          disabled={loadingReward}
-        >
-          {loadingReward ? "Processing..." : "Daily Reward"}
-        </button>
+        <div style={{ marginTop: 12 }}>
+          <button
+            style={{ ...styles.roundBtn, background: "#ffd700" }}
+            onClick={handleDailyReward}
+            disabled={loadingReward}
+          >
+            {loadingReward ? "Processing..." : "Daily Reward"}
+          </button>
+        </div>
       </div>
 
       {/* Sticky Month-Year Header */}
       <div style={styles.monthHeader}>
-        <span style={styles.monthText}>{formatMonth(selectedMonth)}</span>
+        <span>{formatMonth(selectedMonth)}</span>
+        <button
+          style={styles.monthArrow}
+          onClick={() => setShowMonthPicker(!showMonthPicker)}
+        >
+          ▼
+        </button>
       </div>
 
-      {/* Scrollable transactions */}
+      {/* Month Picker Dropdown */}
+      {showMonthPicker && (
+        <div style={styles.monthPicker} ref={pickerRef}>
+          {uniqueMonths.map((m, i) => (
+            <div
+              key={i}
+              style={styles.monthItem}
+              onClick={() => {
+                setSelectedMonth(m);
+                setShowMonthPicker(false);
+              }}
+            >
+              {formatMonth(m)}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Transactions List */}
       <div style={styles.list} ref={scrollRef} onScroll={handleScroll}>
         {filteredTransactions.length === 0 ? (
           <p style={{ textAlign: "center", opacity: 0.5, marginTop: 10 }}>
-            No transactions this month.
+            No transactions for this month.
           </p>
         ) : (
           filteredTransactions.map((tx) => (
             <div
               key={tx._id}
-              style={styles.txRowCompact}
+              style={{
+                ...styles.txRowCompact,
+                backgroundColor: theme === "dark" ? "#222" : "#fff",
+                color: theme === "dark" ? "#fff" : "#000",
+              }}
               onClick={() => setDetails(tx)}
             >
               <div style={styles.txLeftCompact}>
@@ -187,7 +253,13 @@ export default function WalletPage() {
       {/* Transaction Details Modal */}
       {details && (
         <div style={styles.modalOverlay}>
-          <div style={styles.modal}>
+          <div
+            style={{
+              ...styles.modal,
+              backgroundColor: theme === "dark" ? "#111" : "#fff",
+              color: theme === "dark" ? "#fff" : "#000",
+            }}
+          >
             <h3 style={{ marginBottom: 10 }}>Transaction Details</h3>
             <p>
               <b>Type:</b> {details.type}
@@ -204,7 +276,10 @@ export default function WalletPage() {
             <p>
               <b>Transaction ID:</b> {details._id}
             </p>
-            <button style={styles.closeBtn} onClick={() => setDetails(null)}>
+            <button
+              style={styles.closeBtn}
+              onClick={() => setDetails(null)}
+            >
               Close
             </button>
           </div>
@@ -214,23 +289,21 @@ export default function WalletPage() {
   );
 }
 
-// ================= STYLES =================
+// ===================== STYLES =====================
 const styles = {
-  page: { background: "#eef6ff", minHeight: "100vh", padding: 25, color: "#000" },
+  page: { minHeight: "100vh", padding: 25 },
   backBtn: {
     position: "absolute",
     top: 20,
     left: 20,
     padding: "10px 14px",
     borderRadius: "50%",
-    background: "#dce9ff",
     border: "none",
     cursor: "pointer",
     fontSize: 18,
   },
   title: { marginTop: 20, textAlign: "center", fontSize: 26 },
   walletCard: {
-    background: "#fff",
     padding: 20,
     borderRadius: 18,
     boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
@@ -242,27 +315,53 @@ const styles = {
   actionRow: { display: "flex", justifyContent: "center", gap: 15, marginTop: 15 },
   roundBtn: {
     padding: "12px 20px",
-    background: "#b3dcff",
     borderRadius: 30,
     border: "none",
     cursor: "pointer",
     fontWeight: "bold",
   },
   monthHeader: {
-    display: "flex",
-    justifyContent: "center",
-    marginTop: 25,
     position: "sticky",
     top: 0,
-    background: "#eef6ff",
+    backgroundColor: "transparent",
     padding: "10px 0",
-    zIndex: 5,
+    textAlign: "center",
     fontSize: 18,
     fontWeight: "bold",
+    zIndex: 5,
+    marginTop: 25,
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 6,
   },
-  list: { marginTop: 10, maxHeight: "50vh", overflowY: "auto" },
+  monthArrow: {
+    border: "none",
+    background: "#cfe3ff",
+    padding: "5px 10px",
+    borderRadius: 8,
+    cursor: "pointer",
+  },
+  monthPicker: {
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    boxShadow: "0 2px 10px rgba(0,0,0,0.1)",
+    position: "absolute",
+    top: 150,
+    left: "50%",
+    transform: "translateX(-50%)",
+    zIndex: 100,
+    maxHeight: 300,
+    overflowY: "auto",
+    width: 220,
+  },
+  monthItem: {
+    padding: 10,
+    cursor: "pointer",
+    borderBottom: "1px solid #eee",
+  },
+  list: { marginTop: 10, maxHeight: "50vh", overflowY: "auto", paddingTop: 5 },
   txRowCompact: {
-    background: "#fff",
     padding: "10px 12px",
     borderRadius: 10,
     marginBottom: 8,
@@ -283,23 +382,24 @@ const styles = {
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
+    zIndex: 1000,
   },
   modal: {
-    background: "#fff",
     padding: 25,
     borderRadius: 18,
     width: "85%",
     maxWidth: 380,
     boxShadow: "0 5px 18px rgba(0,0,0,0.15)",
+    zIndex: 1001,
   },
   closeBtn: {
     marginTop: 15,
     padding: "10px 15px",
-    background: "#3498db",
     borderRadius: 10,
     border: "none",
-    color: "#fff",
     cursor: "pointer",
     fontWeight: "bold",
+    backgroundColor: "#3498db",
+    color: "#fff",
   },
 };
