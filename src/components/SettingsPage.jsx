@@ -354,17 +354,55 @@ export default function SettingsPage() {
 
       <input ref={profileInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={onProfileFileChange} />
 
-      {/* ================= Wallet ================= */}
+      {/* ================= Wallet Section ================= */}
       <Section title="Wallet" isDark={isDark}>
-        <p>
+        <p style={{ fontSize: 16 }}>
           Balance: <strong style={{ color: isDark ? "#00e676" : "#007bff" }}>${balance.toFixed(2)}</strong>
         </p>
-        <button onClick={handleDailyCheckin} disabled={checkedInToday} style={{ ...btnStyle(checkedInToday ? "#666" : "#4CAF50"), opacity: checkedInToday ? 0.7 : 1 }}>
+
+        <button
+          onClick={handleDailyCheckin}
+          disabled={checkedInToday}
+          style={{
+            ...btnStyle(checkedInToday ? "#666" : "#4CAF50"),
+            opacity: checkedInToday ? 0.7 : 1,
+            marginBottom: 12,
+            width: "100%",
+          }}
+        >
           {checkedInToday ? "✅ Checked In Today" : "🧩 Daily Check-in (+$0.25)"}
         </button>
+
         <div style={{ marginTop: 10 }}>
-          <button onClick={() => navigate("/topup")} style={btnStyle("#007bff")}>💳 Top Up</button>
-          <button onClick={() => navigate("/withdrawal")} style={btnStyle("#28a745")}>💸 Withdraw</button>
+          <h4 style={{ marginBottom: 6 }}>Last 3 Transactions</h4>
+          {transactions.length === 0 ? (
+            <p style={{ fontSize: 14, opacity: 0.6 }}>No recent transactions.</p>
+          ) : (
+            transactions.slice(0, 3).map((tx) => (
+              <div
+                key={tx.id}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  padding: "6px 10px",
+                  marginBottom: 6,
+                  background: isDark ? "#3b3b3b" : "#f0f0f0",
+                  borderRadius: 8,
+                  fontSize: 14,
+                }}
+              >
+                <span>{tx.type}</span>
+                <span style={{ color: tx.amount >= 0 ? "#2ecc71" : "#e74c3c" }}>
+                  {tx.amount >= 0 ? "+" : "-"}${Math.abs(tx.amount).toFixed(2)}
+                </span>
+              </div>
+            ))
+          )}
+        </div>
+
+        <div style={{ marginTop: 12, display: "flex", gap: 10 }}>
+          <button onClick={() => navigate("/topup")} style={{ ...btnStyle("#007bff"), flex: 1 }}>💳 Top Up</button>
+          <button onClick={() => navigate("/withdrawal")} style={{ ...btnStyle("#28a745"), flex: 1 }}>💸 Withdraw</button>
         </div>
       </Section>
 
@@ -411,8 +449,20 @@ export default function SettingsPage() {
       {/* ================= Notifications ================= */}
       <Section title="Notifications" isDark={isDark}>
         <label><input type="checkbox" checked={notifications.push} onChange={() => setNotifications({ ...notifications, push: !notifications.push })}/> Push Notifications</label>
-        <label><input type="checkbox" checked={notifications.email} onChange={() => setNotifications({ ...notifications, email: !notifications.email })}/> Email Alerts</label>
-        <label><input type="checkbox" checked={notifications.sound} onChange={() => setNotifications({ ...notifications, sound: !notifications.sound })}/> Sounds</label>
+        <label>
+          <input
+            type="checkbox"
+            checked={notifications.email}
+            onChange={() => setNotifications({ ...notifications, email: !notifications.email })}
+          /> Email Alerts
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={notifications.sound}
+            onChange={() => setNotifications({ ...notifications, sound: !notifications.sound })}
+          /> Sounds
+        </label>
       </Section>
 
       {/* ================= About ================= */}
@@ -422,6 +472,7 @@ export default function SettingsPage() {
         <p>Terms of Service | Privacy Policy</p>
       </Section>
 
+      {/* ================= Logout Button ================= */}
       <div style={{ textAlign: "center", marginTop: 20 }}>
         <button onClick={handleLogout} style={btnStyle("#d32f2f")}>🚪 Logout</button>
       </div>
