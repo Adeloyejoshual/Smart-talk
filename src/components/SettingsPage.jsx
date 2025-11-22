@@ -32,7 +32,7 @@ export default function SettingsPage() {
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
 
-  const backend = "https://smart-talk-dqit.onrender.com";
+  const backend = "https://smart-talk-zlxe.onrender.com";
 
   // ===================== Load user & wallet =====================
   useEffect(() => {
