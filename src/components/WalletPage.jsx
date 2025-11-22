@@ -6,21 +6,21 @@ import axios from "axios";
 import { ThemeContext } from "../context/ThemeContext";
 
 export default function WalletPage() {
-  const { theme, wallpaper } = useContext(ThemeContext);
+  const { theme } = useContext(ThemeContext);
   const [user, setUser] = useState(null);
   const [balance, setBalance] = useState(0);
   const [transactions, setTransactions] = useState([]);
   const [selectedMonth, setSelectedMonth] = useState(new Date());
-  const [loadingReward, setLoadingReward] = useState(false);
-  const [details, setDetails] = useState(null);
   const [showMonthPicker, setShowMonthPicker] = useState(false);
+  const [details, setDetails] = useState(null);
+  const [loadingReward, setLoadingReward] = useState(false);
   const scrollRef = useRef();
-  const pickerRef = useRef();
+  const modalRef = useRef();
   const navigate = useNavigate();
 
   const backend = "https://smart-talk-zlxe.onrender.com";
 
-  // -------------------- Auth + Load Wallet --------------------
+  // AUTH + LOAD WALLET
   useEffect(() => {
     const unsub = auth.onAuthStateChanged((u) => {
       if (u) {
@@ -31,28 +31,32 @@ export default function WalletPage() {
     return unsub;
   }, []);
 
+  // FETCH WALLET + TRANSACTIONS
   const loadWallet = async (uid) => {
     try {
       const token = await auth.currentUser.getIdToken(true);
       const res = await axios.get(`${backend}/api/wallet/${uid}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const sortedTx = (res.data.transactions || []).sort(
-        (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
-      );
+
       setBalance(res.data.balance || 0);
-      setTransactions(sortedTx);
-      if (sortedTx.length) setSelectedMonth(new Date(sortedTx[0].createdAt));
+      setTransactions(res.data.transactions || []);
+      if (res.data.transactions?.length) {
+        setSelectedMonth(
+          new Date(res.data.transactions[0].createdAt || res.data.transactions[0].date)
+        );
+      }
     } catch (err) {
       console.error(err);
       alert("Failed to load wallet. Check console.");
     }
   };
 
-  // -------------------- Daily Reward --------------------
+  // CLAIM DAILY REWARD
   const handleDailyReward = async () => {
     if (!user) return;
     setLoadingReward(true);
+
     try {
       const token = await auth.currentUser.getIdToken(true);
       const res = await axios.post(
@@ -63,8 +67,8 @@ export default function WalletPage() {
 
       if (res.data.balance !== undefined) {
         setBalance(res.data.balance);
-        setTransactions((prev) =>
-          [res.data.txn, ...prev].sort(
+        setTransactions(
+          [res.data.txn, ...transactions].sort(
             (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
           )
         );
@@ -82,7 +86,7 @@ export default function WalletPage() {
     }
   };
 
-  // -------------------- Formatters --------------------
+  // FORMATTERS
   const formatMonth = (date) =>
     date.toLocaleString("en-US", { month: "long", year: "numeric" });
 
@@ -94,50 +98,56 @@ export default function WalletPage() {
       minute: "2-digit",
     });
 
-  // -------------------- Scroll Header --------------------
-  const handleScroll = () => {
-    const scrollTop = scrollRef.current.scrollTop;
-    const items = Array.from(scrollRef.current.children);
-    for (let i = 0; i < items.length; i++) {
-      if (items[i].offsetTop - scrollTop >= 0) {
-        const tx = transactions[i];
-        if (tx) setSelectedMonth(new Date(tx.createdAt || tx.date));
-        break;
-      }
-    }
-  };
-
-  // -------------------- Unique Months for Picker --------------------
-  const uniqueMonths = Array.from(
-    new Set(
-      transactions.map((tx) => {
-        const d = new Date(tx.createdAt || tx.date);
-        return new Date(d.getFullYear(), d.getMonth(), 1).toISOString();
-      })
-    )
-  )
-    .map((s) => new Date(s))
-    .sort((a, b) => b - a); // Latest first
-
-  // -------------------- Close Picker on Click Outside --------------------
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (pickerRef.current && !pickerRef.current.contains(e.target)) {
-        setShowMonthPicker(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  // -------------------- Filtered Transactions --------------------
-  const filteredTransactions = transactions.filter((tx) => {
-    const d = new Date(tx.createdAt || tx.date);
+  // FILTER TRANSACTIONS BY MONTH
+  const filteredTransactions = transactions.filter((t) => {
+    const d = new Date(t.createdAt || t.date);
     return (
       d.getMonth() === selectedMonth.getMonth() &&
       d.getFullYear() === selectedMonth.getFullYear()
     );
   });
+
+  // UNIQUE MONTHS
+  const activeMonths = Array.from(
+    new Set(
+      transactions.map((t) => {
+        const d = new Date(t.createdAt || t.date);
+        return new Date(d.getFullYear(), d.getMonth(), 1).toISOString();
+      })
+    )
+  ).map((s) => new Date(s));
+
+  // CLOSE MONTH PICKER ON OUTSIDE CLICK
+  useEffect(() => {
+    const handleClick = (e) => {
+      if (showMonthPicker && modalRef.current && !modalRef.current.contains(e.target)) {
+        setShowMonthPicker(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showMonthPicker]);
+
+  // DAILY REWARD CHECK
+  const todayStr = new Date().toISOString().split("T")[0];
+  const claimedToday = transactions.some(
+    (tx) =>
+      tx.type === "checkin" &&
+      new Date(tx.createdAt).toISOString().split("T")[0] === todayStr
+  );
+
+  // UPDATE MONTH ON SCROLL
+  const handleScroll = () => {
+    const scrollTop = scrollRef.current.scrollTop;
+    const items = Array.from(scrollRef.current.children);
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].offsetTop - scrollTop >= 0) {
+        const tx = filteredTransactions[i];
+        if (tx) setSelectedMonth(new Date(tx.createdAt || tx.date));
+        break;
+      }
+    }
+  };
 
   return (
     <div
@@ -145,7 +155,6 @@ export default function WalletPage() {
         ...styles.page,
         backgroundColor: theme === "dark" ? "#000" : "#eef6ff",
         color: theme === "dark" ? "#fff" : "#000",
-        backgroundImage: wallpaper ? `url(${wallpaper})` : "none",
       }}
     >
       <button onClick={() => navigate("/settings")} style={styles.backBtn}>
@@ -174,49 +183,62 @@ export default function WalletPage() {
 
         <div style={{ marginTop: 12 }}>
           <button
-            style={{ ...styles.roundBtn, background: "#ffd700" }}
+            style={{
+              ...styles.roundBtn,
+              background: claimedToday ? "#ccc" : "#ffd700",
+            }}
             onClick={handleDailyReward}
-            disabled={loadingReward}
+            disabled={claimedToday || loadingReward}
           >
-            {loadingReward ? "Processing..." : "Daily Reward"}
+            {claimedToday
+              ? "✅ Claimed Today"
+              : loadingReward
+              ? "Processing..."
+              : "Daily Reward"}
           </button>
         </div>
-      </div>
 
-      {/* Sticky Month-Year Header */}
-      <div style={styles.monthHeader}>
-        <span>{formatMonth(selectedMonth)}</span>
-        <button
-          style={styles.monthArrow}
-          onClick={() => setShowMonthPicker(!showMonthPicker)}
-        >
-          ▼
-        </button>
-      </div>
-
-      {/* Month Picker Dropdown */}
-      {showMonthPicker && (
-        <div style={styles.monthPicker} ref={pickerRef}>
-          {uniqueMonths.map((m, i) => (
-            <div
-              key={i}
-              style={styles.monthItem}
-              onClick={() => {
-                setSelectedMonth(m);
-                setShowMonthPicker(false);
-              }}
-            >
-              {formatMonth(m)}
-            </div>
-          ))}
+        {/* Month-Year */}
+        <div style={styles.monthHeader}>
+          <span style={styles.monthText}>{formatMonth(selectedMonth)}</span>
+          <button
+            style={styles.monthArrow}
+            onClick={() => setShowMonthPicker(!showMonthPicker)}
+          >
+            ▼
+          </button>
         </div>
-      )}
 
-      {/* Transactions List */}
-      <div style={styles.list} ref={scrollRef} onScroll={handleScroll}>
+        {showMonthPicker && (
+          <div style={styles.monthPicker} ref={modalRef}>
+            {activeMonths.map((d, i) => (
+              <div
+                key={i}
+                style={styles.monthItem}
+                onClick={() => {
+                  setSelectedMonth(d);
+                  setShowMonthPicker(false);
+                }}
+              >
+                {formatMonth(d)}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Transactions */}
+      <div
+        style={{
+          ...styles.list,
+          backgroundColor: theme === "dark" ? "#111" : "#fff",
+        }}
+        ref={scrollRef}
+        onScroll={handleScroll}
+      >
         {filteredTransactions.length === 0 ? (
           <p style={{ textAlign: "center", opacity: 0.5, marginTop: 10 }}>
-            No transactions for this month.
+            No transactions this month.
           </p>
         ) : (
           filteredTransactions.map((tx) => (
@@ -225,7 +247,6 @@ export default function WalletPage() {
               style={{
                 ...styles.txRowCompact,
                 backgroundColor: theme === "dark" ? "#222" : "#fff",
-                color: theme === "dark" ? "#fff" : "#000",
               }}
               onClick={() => setDetails(tx)}
             >
@@ -257,8 +278,8 @@ export default function WalletPage() {
             style={{
               ...styles.modal,
               backgroundColor: theme === "dark" ? "#111" : "#fff",
-              color: theme === "dark" ? "#fff" : "#000",
             }}
+            ref={modalRef}
           >
             <h3 style={{ marginBottom: 10 }}>Transaction Details</h3>
             <p>
@@ -276,10 +297,7 @@ export default function WalletPage() {
             <p>
               <b>Transaction ID:</b> {details._id}
             </p>
-            <button
-              style={styles.closeBtn}
-              onClick={() => setDetails(null)}
-            >
+            <button style={styles.closeBtn} onClick={() => setDetails(null)}>
               Close
             </button>
           </div>
@@ -289,7 +307,7 @@ export default function WalletPage() {
   );
 }
 
-// ===================== STYLES =====================
+// ================= STYLES =================
 const styles = {
   page: { minHeight: "100vh", padding: 25 },
   backBtn: {
@@ -321,46 +339,42 @@ const styles = {
     fontWeight: "bold",
   },
   monthHeader: {
-    position: "sticky",
-    top: 0,
-    backgroundColor: "transparent",
-    padding: "10px 0",
-    textAlign: "center",
-    fontSize: 18,
-    fontWeight: "bold",
-    zIndex: 5,
-    marginTop: 25,
     display: "flex",
     justifyContent: "center",
-    alignItems: "center",
     gap: 6,
+    marginTop: 25,
+    backgroundColor: "transparent",
+    padding: "5px 0",
+    position: "sticky",
+    top: 0,
+    zIndex: 5,
   },
+  monthText: { fontSize: 18, fontWeight: "bold" },
   monthArrow: {
     border: "none",
-    background: "#cfe3ff",
     padding: "5px 10px",
     borderRadius: 8,
     cursor: "pointer",
   },
   monthPicker: {
-    backgroundColor: "#fff",
+    background: "#fff",
     borderRadius: 14,
+    padding: 10,
     boxShadow: "0 2px 10px rgba(0,0,0,0.1)",
     position: "absolute",
-    top: 150,
+    top: 80,
     left: "50%",
     transform: "translateX(-50%)",
-    zIndex: 100,
-    maxHeight: 300,
+    zIndex: 10,
+  },
+  monthItem: { padding: 10, borderRadius: 10, cursor: "pointer" },
+  list: {
+    marginTop: 10,
+    maxHeight: "50vh",
     overflowY: "auto",
-    width: 220,
-  },
-  monthItem: {
+    borderRadius: 14,
     padding: 10,
-    cursor: "pointer",
-    borderBottom: "1px solid #eee",
   },
-  list: { marginTop: 10, maxHeight: "50vh", overflowY: "auto", paddingTop: 5 },
   txRowCompact: {
     padding: "10px 12px",
     borderRadius: 10,
@@ -382,7 +396,6 @@ const styles = {
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
-    zIndex: 1000,
   },
   modal: {
     padding: 25,
@@ -390,7 +403,6 @@ const styles = {
     width: "85%",
     maxWidth: 380,
     boxShadow: "0 5px 18px rgba(0,0,0,0.15)",
-    zIndex: 1001,
   },
   closeBtn: {
     marginTop: 15,
@@ -399,7 +411,7 @@ const styles = {
     border: "none",
     cursor: "pointer",
     fontWeight: "bold",
-    backgroundColor: "#3498db",
     color: "#fff",
+    backgroundColor: "#3498db",
   },
 };
