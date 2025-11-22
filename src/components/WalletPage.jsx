@@ -9,12 +9,9 @@ export default function WalletPage() {
   const [balance, setBalance] = useState(0);
   const [transactions, setTransactions] = useState([]);
   const [selectedMonth, setSelectedMonth] = useState(new Date());
-  const [showMonthPicker, setShowMonthPicker] = useState(false);
   const [details, setDetails] = useState(null);
   const [loadingReward, setLoadingReward] = useState(false);
-  const [checkedInToday, setCheckedInToday] = useState(false);
   const scrollRef = useRef();
-  const modalRef = useRef();
   const navigate = useNavigate();
 
   const backend = "https://smart-talk-zlxe.onrender.com";
@@ -40,59 +37,45 @@ export default function WalletPage() {
 
       setBalance(res.data.balance || 0);
       setTransactions(res.data.transactions || []);
-
-      // Set selected month to latest transaction
       if (res.data.transactions?.length) {
         setSelectedMonth(
           new Date(res.data.transactions[0].createdAt || res.data.transactions[0].date)
         );
       }
-
-      // Check if daily check-in exists today
-      const today = new Date();
-      const hasTodayCheckin = res.data.transactions.some((t) => {
-        if (t.type !== "checkin") return false;
-        const txDate = new Date(t.createdAt || t.date);
-        return (
-          txDate.getFullYear() === today.getFullYear() &&
-          txDate.getMonth() === today.getMonth() &&
-          txDate.getDate() === today.getDate()
-        );
-      });
-      setCheckedInToday(hasTodayCheckin);
-
     } catch (err) {
       console.error(err);
       alert("Failed to load wallet. Check console.");
     }
   };
 
-  // CLAIM DAILY REWARD VIA BACKEND
+  // CLAIM DAILY REWARD
   const handleDailyReward = async () => {
-    if (!user || checkedInToday) return;
+    if (!user) return;
     setLoadingReward(true);
 
     try {
       const token = await auth.currentUser.getIdToken(true);
       const res = await axios.post(
         `${backend}/api/wallet/daily`,
-        { amount: 0.25 },
+        {},
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      setBalance(res.data.balance);
-      setTransactions(prev => [res.data.txn, ...prev]); // prepend txn
-      setCheckedInToday(true);
-      alert("🎉 Daily reward claimed! +$0.25");
-
+      if (res.data.balance !== undefined) {
+        setBalance(res.data.balance);
+        setTransactions(
+          (res.data.transactions || transactions)
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+        );
+        alert("🎉 Daily reward claimed!");
+      } else if (res.data.error?.toLowerCase().includes("already claimed")) {
+        alert("✅ You already claimed today's reward!");
+      } else {
+        alert(res.data.error || "Failed to claim daily reward.");
+      }
     } catch (err) {
       console.error(err);
-      if (err.response?.data?.error === "Already claimed today") {
-        setCheckedInToday(true);
-        alert("✅ You already claimed today!");
-      } else {
-        alert("Failed to claim daily reward. Check console.");
-      }
+      alert("Failed to claim daily reward. Check console.");
     } finally {
       setLoadingReward(false);
     }
@@ -118,27 +101,6 @@ export default function WalletPage() {
       d.getFullYear() === selectedMonth.getFullYear()
     );
   });
-
-  // UNIQUE MONTHS FOR PICKER
-  const activeMonths = Array.from(
-    new Set(
-      transactions.map((t) => {
-        const d = new Date(t.createdAt || t.date);
-        return new Date(d.getFullYear(), d.getMonth(), 1).toISOString();
-      })
-    )
-  ).map((s) => new Date(s));
-
-  // CLOSE MONTH PICKER ON OUTSIDE CLICK
-  useEffect(() => {
-    const handleClick = (e) => {
-      if (showMonthPicker && modalRef.current && !modalRef.current.contains(e.target)) {
-        setShowMonthPicker(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [showMonthPicker]);
 
   // UPDATE MONTH HEADER ON SCROLL
   const handleScroll = () => {
@@ -171,51 +133,22 @@ export default function WalletPage() {
           <button style={styles.roundBtn} onClick={() => navigate("/withdraw")}>
             Withdraw
           </button>
-          <button
-            style={{
-              ...styles.roundBtn,
-              background: checkedInToday ? "#888" : "#ffd700",
-              cursor: checkedInToday ? "not-allowed" : "pointer",
-            }}
-            onClick={handleDailyReward}
-            disabled={loadingReward || checkedInToday}
-          >
-            {loadingReward
-              ? "Processing..."
-              : checkedInToday
-              ? "✅ Already Claimed Today"
-              : "Daily Reward (+$0.25)"}
-          </button>
         </div>
-      </div>
 
-      {/* Month Header */}
-      <div style={styles.monthHeader}>
-        <span style={styles.monthText}>{formatMonth(selectedMonth)}</span>
+        {/* Daily Check-In below Topup/Withdraw */}
         <button
-          style={styles.monthArrow}
-          onClick={() => setShowMonthPicker(!showMonthPicker)}
+          style={{ ...styles.roundBtn, background: "#ffd700", marginTop: 15 }}
+          onClick={handleDailyReward}
+          disabled={loadingReward}
         >
-          ▼
+          {loadingReward ? "Processing..." : "Daily Reward"}
         </button>
       </div>
 
-      {showMonthPicker && (
-        <div style={styles.monthPicker} ref={modalRef}>
-          {activeMonths.map((d, i) => (
-            <div
-              key={i}
-              style={styles.monthItem}
-              onClick={() => {
-                setSelectedMonth(d);
-                setShowMonthPicker(false);
-              }}
-            >
-              {formatMonth(d)}
-            </div>
-          ))}
-        </div>
-      )}
+      {/* Sticky Month-Year Header */}
+      <div style={styles.monthHeader}>
+        <span style={styles.monthText}>{formatMonth(selectedMonth)}</span>
+      </div>
 
       {/* Scrollable transactions */}
       <div style={styles.list} ref={scrollRef} onScroll={handleScroll}>
@@ -254,7 +187,7 @@ export default function WalletPage() {
       {/* Transaction Details Modal */}
       {details && (
         <div style={styles.modalOverlay}>
-          <div style={styles.modal} ref={modalRef}>
+          <div style={styles.modal}>
             <h3 style={{ marginBottom: 10 }}>Transaction Details</h3>
             <p>
               <b>Type:</b> {details.type}
@@ -318,34 +251,15 @@ const styles = {
   monthHeader: {
     display: "flex",
     justifyContent: "center",
-    gap: 6,
     marginTop: 25,
     position: "sticky",
     top: 0,
     background: "#eef6ff",
     padding: "10px 0",
     zIndex: 5,
+    fontSize: 18,
+    fontWeight: "bold",
   },
-  monthText: { fontSize: 18, fontWeight: "bold" },
-  monthArrow: {
-    border: "none",
-    background: "#cfe3ff",
-    padding: "5px 10px",
-    borderRadius: 8,
-    cursor: "pointer",
-  },
-  monthPicker: {
-    background: "#fff",
-    borderRadius: 14,
-    padding: 10,
-    boxShadow: "0 2px 10px rgba(0,0,0,0.1)",
-    position: "absolute",
-    top: 80,
-    left: "50%",
-    transform: "translateX(-50%)",
-    zIndex: 10,
-  },
-  monthItem: { padding: 10, borderRadius: 10, cursor: "pointer" },
   list: { marginTop: 10, maxHeight: "50vh", overflowY: "auto" },
   txRowCompact: {
     background: "#fff",
