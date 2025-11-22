@@ -1,6 +1,6 @@
 // src/components/Chat/MessageItem.jsx
 import React, { useState } from "react";
-import { doc, updateDoc, deleteDoc, arrayUnion, arrayRemove, getDoc } from "firebase/firestore";
+import { doc, updateDoc, deleteDoc, arrayUnion, getDoc } from "firebase/firestore";
 import { db } from "../../firebaseConfig";
 
 const COLORS = {
@@ -18,7 +18,7 @@ const COLORS = {
 const SPACING = { sm: 8, md: 12, borderRadius: 12 };
 const INLINE_REACTIONS = ["❤️", "😂", "👍", "😮", "😢"];
 
-export default function MessageItem({ message, myUid, chatId, onReply, onPin, onForward }) {
+export default function MessageItem({ message, myUid, chatId, onReply, onPin, onForward, uploadingPct }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [reactionFor, setReactionFor] = useState(false);
 
@@ -72,7 +72,15 @@ export default function MessageItem({ message, myUid, chatId, onReply, onPin, on
 
   // -------------------- Render --------------------
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: isMine ? "flex-end" : "flex-start", marginBottom: SPACING.sm, position: "relative" }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: isMine ? "flex-end" : "flex-start",
+        marginBottom: SPACING.sm,
+        position: "relative",
+      }}
+    >
       <div
         style={{
           maxWidth: "70%",
@@ -88,7 +96,15 @@ export default function MessageItem({ message, myUid, chatId, onReply, onPin, on
       >
         {/* Reply preview */}
         {message.replyTo && (
-          <div style={{ fontSize: 12, color: COLORS.edited, borderLeft: `3px solid ${COLORS.mutedText}`, paddingLeft: 4, marginBottom: 4 }}>
+          <div
+            style={{
+              fontSize: 12,
+              color: COLORS.edited,
+              borderLeft: `3px solid ${COLORS.mutedText}`,
+              paddingLeft: 4,
+              marginBottom: 4,
+            }}
+          >
             {message.replyTo.text || message.replyTo.mediaType}
           </div>
         )}
@@ -99,11 +115,29 @@ export default function MessageItem({ message, myUid, chatId, onReply, onPin, on
         {/* Media */}
         {message.mediaUrl && (
           <div style={{ marginTop: 4 }}>
-            {message.mediaType === "image" && <img src={message.mediaUrl} alt="" style={{ maxWidth: "100%", borderRadius: SPACING.borderRadius }} />}
-            {message.mediaType === "video" && <video src={message.mediaUrl} controls style={{ maxWidth: "100%", borderRadius: SPACING.borderRadius }} />}
+            {message.mediaType === "image" && (
+              <img src={message.mediaUrl} alt="" style={{ maxWidth: "100%", borderRadius: SPACING.borderRadius }} />
+            )}
+            {message.mediaType === "video" && (
+              <video src={message.mediaUrl} controls style={{ maxWidth: "100%", borderRadius: SPACING.borderRadius }} />
+            )}
             {message.mediaType === "audio" && <audio src={message.mediaUrl} controls />}
-            {message.mediaType === "pdf" && <a href={message.mediaUrl} target="_blank" rel="noreferrer">{message.fileName || "PDF Document"}</a>}
+            {message.mediaType === "pdf" && (
+              <a href={message.mediaUrl} target="_blank" rel="noreferrer">
+                {message.fileName || "File"}
+              </a>
+            )}
+            {message.mediaType && !["image","video","audio","pdf"].includes(message.mediaType) && (
+              <a href={message.mediaUrl} target="_blank" rel="noreferrer">
+                {message.fileName || "File"}
+              </a>
+            )}
           </div>
+        )}
+
+        {/* Upload progress */}
+        {uploadingPct != null && (
+          <div style={{ marginTop: 4, fontSize: 10, color: COLORS.mutedText }}>Uploading: {uploadingPct}%</div>
         )}
 
         {/* Time & status */}
@@ -115,7 +149,10 @@ export default function MessageItem({ message, myUid, chatId, onReply, onPin, on
         {Object.keys(message.reactions || {}).length > 0 && (
           <div style={{ position: "absolute", bottom: -12, right: -12, display: "flex", gap: 2 }}>
             {Object.values(message.reactions).map((r, i) => r && (
-              <span key={i} style={{ backgroundColor: COLORS.reactionBg, color: "#fff", borderRadius: 8, padding: "0 4px", fontSize: 10 }}>
+              <span
+                key={i}
+                style={{ backgroundColor: COLORS.reactionBg, color: "#fff", borderRadius: 8, padding: "0 4px", fontSize: 10 }}
+              >
                 {r}
               </span>
             ))}
@@ -125,16 +162,26 @@ export default function MessageItem({ message, myUid, chatId, onReply, onPin, on
 
       {/* Message menu */}
       {menuOpen && (
-        <div style={{ position: "absolute", top: -SPACING.md * 3, right: 0, background: COLORS.lightCard, border: `1px solid ${COLORS.grayBorder}`, borderRadius: SPACING.borderRadius, zIndex: 10 }}>
-          <button style={{ padding: 6, width: "100%", border: "none", background: "transparent", cursor: "pointer" }} onClick={() => onReply(message)}>Reply</button>
-          <button style={{ padding: 6, width: "100%", border: "none", background: "transparent", cursor: "pointer" }} onClick={toggleReactionPicker}>React</button>
-          {isMine && <button style={{ padding: 6, width: "100%", border: "none", background: "transparent", cursor: "pointer" }} onClick={editMessage}>Edit</button>}
-          {isMine && <button style={{ padding: 6, width: "100%", border: "none", background: "transparent", cursor: "pointer" }} onClick={deleteForEveryone}>Delete for Everyone</button>}
-          <button style={{ padding: 6, width: "100%", border: "none", background: "transparent", cursor: "pointer" }} onClick={deleteForMe}>Delete for Me</button>
-          <button style={{ padding: 6, width: "100%", border: "none", background: "transparent", cursor: "pointer" }} onClick={() => onForward(message)}>Forward</button>
-          <button style={{ padding: 6, width: "100%", border: "none", background: "transparent", cursor: "pointer" }} onClick={() => onPin(message)}>Pin</button>
-          <button style={{ padding: 6, width: "100%", border: "none", background: "transparent", cursor: "pointer" }} onClick={copyMessage}>Copy</button>
-          <button style={{ padding: 6, width: "100%", border: "none", background: "transparent", cursor: "pointer" }} onClick={() => setMenuOpen(false)}>Close</button>
+        <div
+          style={{
+            position: "absolute",
+            top: -SPACING.md * 3,
+            right: 0,
+            background: COLORS.lightCard,
+            border: `1px solid ${COLORS.grayBorder}`,
+            borderRadius: SPACING.borderRadius,
+            zIndex: 10,
+          }}
+        >
+          <button onClick={() => onReply(message)} style={{ padding: 6, width: "100%", border: "none", background: "transparent", cursor: "pointer" }}>Reply</button>
+          <button onClick={toggleReactionPicker} style={{ padding: 6, width: "100%", border: "none", background: "transparent", cursor: "pointer" }}>React</button>
+          {isMine && <button onClick={editMessage} style={{ padding: 6, width: "100%", border: "none", background: "transparent", cursor: "pointer" }}>Edit</button>}
+          {isMine && <button onClick={deleteForEveryone} style={{ padding: 6, width: "100%", border: "none", background: "transparent", cursor: "pointer" }}>Delete for Everyone</button>}
+          <button onClick={deleteForMe} style={{ padding: 6, width: "100%", border: "none", background: "transparent", cursor: "pointer" }}>Delete for Me</button>
+          <button onClick={() => onForward(message)} style={{ padding: 6, width: "100%", border: "none", background: "transparent", cursor: "pointer" }}>Forward</button>
+          <button onClick={() => onPin(message)} style={{ padding: 6, width: "100%", border: "none", background: "transparent", cursor: "pointer" }}>Pin</button>
+          <button onClick={copyMessage} style={{ padding: 6, width: "100%", border: "none", background: "transparent", cursor: "pointer" }}>Copy</button>
+          <button onClick={() => setMenuOpen(false)} style={{ padding: 6, width: "100%", border: "none", background: "transparent", cursor: "pointer" }}>Close</button>
         </div>
       )}
 
@@ -142,10 +189,12 @@ export default function MessageItem({ message, myUid, chatId, onReply, onPin, on
       {reactionFor && (
         <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
           {INLINE_REACTIONS.map((r, i) => (
-            <span key={i} style={{ cursor: "pointer", fontSize: 14 }} onClick={() => applyReaction(r)}>{r}</span>
+            <span key={i} style={{ cursor: "pointer", fontSize: 14 }} onClick={() => applyReaction(r)}>
+              {r}
+            </span>
           ))}
         </div>
       )}
     </div>
   );
-            }
+      }
