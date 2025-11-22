@@ -1,4 +1,3 @@
-// src/components/Chat/MessageItem.jsx
 import React, { useState } from "react";
 import { doc, updateDoc, deleteDoc, arrayUnion, getDoc } from "firebase/firestore";
 import { db } from "../../firebaseConfig";
@@ -112,28 +111,12 @@ export default function MessageItem({ message, myUid, chatId, onReply, onPin, on
         {/* Text */}
         {message.text && <div>{message.text}</div>}
 
-        {/* Media */}
+        {/* File / Media */}
         {message.mediaUrl && (
           <div style={{ marginTop: 4 }}>
-            {message.mediaType === "image" && (
-              <img src={message.mediaUrl} alt="" style={{ maxWidth: "100%", borderRadius: SPACING.borderRadius }} />
-            )}
-            {message.mediaType === "video" && (
-              <video src={message.mediaUrl} controls style={{ maxWidth: "100%", borderRadius: SPACING.borderRadius }} />
-            )}
-            {message.mediaType === "audio" && (
-              <audio src={message.mediaUrl} controls style={{ width: "100%" }} />
-            )}
-            {message.mediaType === "pdf" && (
-              <a href={message.mediaUrl} target="_blank" rel="noreferrer">
-                {message.fileName || "File"}
-              </a>
-            )}
-            {message.mediaType && !["image","video","audio","pdf"].includes(message.mediaType) && (
-              <a href={message.mediaUrl} target="_blank" rel="noreferrer">
-                {message.fileName || "File"}
-              </a>
-            )}
+            <a href={message.mediaUrl} target="_blank" rel="noreferrer" style={{ textDecoration: "underline", color: isMine ? "#fff" : "#007bff" }}>
+              {message.fileName || "File"}
+            </a>
           </div>
         )}
 
