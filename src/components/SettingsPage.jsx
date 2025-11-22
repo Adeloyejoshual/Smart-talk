@@ -1,127 +1,122 @@
 // src/components/SettingsPage.jsx
-import React, { useEffect, useState, useRef, useContext } from "react";
+import React, { useEffect, useState, useContext, useRef } from "react";
 import { auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
 import { ThemeContext } from "../context/ThemeContext";
-
-const launchConfetti = () => {
-  const duration = 1.5 * 1000;
-  const animationEnd = Date.now() + duration;
-
-  const interval = setInterval(() => {
-    const timeLeft = animationEnd - Date.now();
-    if (timeLeft <= 0) return clearInterval(interval);
-
-    const particleCount = 30 * (timeLeft / duration);
-    for (let i = 0; i < particleCount; i++) {
-      const el = document.createElement("div");
-      el.style.position = "fixed";
-      el.style.width = "6px";
-      el.style.height = "6px";
-      el.style.background = ["#FFD700", "#FF69B4", "#00e676", "#00b0ff"][Math.floor(Math.random() * 4)];
-      el.style.borderRadius = "50%";
-      el.style.left = Math.random() * window.innerWidth + "px";
-      el.style.top = "0px";
-      el.style.pointerEvents = "none";
-      el.style.transition = "all 1.5s linear";
-      document.body.appendChild(el);
-
-      requestAnimationFrame(() => {
-        el.style.transform = `translateY(${window.innerHeight}px) rotate(${Math.random() * 720}deg)`;
-        el.style.opacity = 0;
-      });
-
-      setTimeout(() => document.body.removeChild(el), duration);
-    }
-  }, 250);
-};
+import axios from "axios";
 
 export default function SettingsPage() {
   const { theme, wallpaper, updateSettings } = useContext(ThemeContext);
   const [user, setUser] = useState(null);
-  const [profile, setProfile] = useState({ name: "", bio: "", profilePic: "", email: "" });
   const [balance, setBalance] = useState(0);
   const [transactions, setTransactions] = useState([]);
-  const [dailyClaimed, setDailyClaimed] = useState(false);
-  const [loadingReward, setLoadingReward] = useState(false);
-
   const [newTheme, setNewTheme] = useState(theme);
   const [newWallpaper, setNewWallpaper] = useState(wallpaper || "");
+  const [checkedInToday, setCheckedInToday] = useState(false);
+  const [language, setLanguage] = useState("English");
+  const [fontSize, setFontSize] = useState("Medium");
+  const [layout, setLayout] = useState("Default");
+  const [notifications, setNotifications] = useState({
+    push: true,
+    email: true,
+    sound: false,
+  });
+  const [profileData, setProfileData] = useState({
+    name: "",
+    bio: "",
+    profilePic: "",
+    email: "",
+  });
+  const [loadingReward, setLoadingReward] = useState(false);
 
-  const fileInputRef = useRef();
   const navigate = useNavigate();
+  const fileInputRef = useRef(null);
+
   const backend = "https://smart-talk-dqit.onrender.com";
 
-  // Fetch user info and wallet
+  // ===================== Load user & wallet =====================
   useEffect(() => {
-    const unsub = auth.onAuthStateChanged(async (u) => {
-      if (!u) return navigate("/");
-      setUser(u);
+    const unsub = auth.onAuthStateChanged(async (userAuth) => {
+      if (!userAuth) return;
+      setUser(userAuth);
 
       try {
-        const token = await auth.currentUser.getIdToken(true);
-        const res = await fetch(`${backend}/api/wallet/${u.uid}`, {
+        const token = await userAuth.getIdToken(true);
+        const res = await axios.get(`${backend}/api/wallet/${userAuth.uid}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        const data = await res.json();
 
-        setBalance(data.balance || 0);
-        setTransactions(data.transactions?.slice(0, 5) || []);
+        setBalance(res.data.balance || 0);
+        setTransactions(res.data.transactions || []);
 
-        // Check if daily reward claimed today
-        const today = new Date().toISOString().split("T")[0];
-        if (data.transactions?.some(t => t.type === "checkin" && (new Date(t.createdAt).toISOString().split("T")[0] === today))) {
-          setDailyClaimed(true);
+        // last daily reward
+        const lastClaim = res.data.lastDailyClaim
+          ? new Date(res.data.lastDailyClaim)
+          : null;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        if (lastClaim) {
+          lastClaim.setHours(0, 0, 0, 0);
+          setCheckedInToday(lastClaim.getTime() === today.getTime());
         }
 
-        if (data.profile) setProfile(data.profile);
-        else setProfile({ name: "", bio: "", profilePic: "", email: u.email });
-
+        // Profile data
+        if (res.data.profile) {
+          const data = res.data.profile;
+          setProfileData({
+            name: data.name || "",
+            bio: data.bio || "",
+            profilePic: data.profilePic || "",
+            email: data.email || userAuth.email,
+          });
+          if (data.preferences) {
+            setLanguage(data.preferences.language || "English");
+            setFontSize(data.preferences.fontSize || "Medium");
+            setLayout(data.preferences.layout || "Default");
+            setNewTheme(data.preferences.theme || "light");
+            setNewWallpaper(
+              data.preferences.wallpaper || wallpaper || ""
+            );
+          }
+        }
       } catch (err) {
-        console.error("Failed to load wallet:", err);
+        console.error(err);
       }
     });
-
     return () => unsub();
   }, []);
 
-  // Daily reward
+  // ===================== Daily Reward =====================
   const handleDailyReward = async () => {
-    if (!user || dailyClaimed) return;
+    if (!user) return;
     setLoadingReward(true);
     try {
       const token = await auth.currentUser.getIdToken(true);
-      const amount = 0.25;
+      const res = await axios.post(
+        `${backend}/api/wallet/daily`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
 
-      const res = await fetch(`${backend}/api/wallet/daily`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ amount }),
-      });
-
-      const data = await res.json();
-
-      if (data.balance !== undefined) {
-        setBalance(data.balance);
-        setTransactions(prev => [data.txn, ...prev].slice(0, 5));
-        setDailyClaimed(true);
-        launchConfetti();
-        alert(`🎉 Daily reward $${amount} claimed!`);
-      } else if (data.error && data.error.toLowerCase().includes("already claimed")) {
-        setDailyClaimed(true);
+      if (res.data.balance !== undefined) {
+        setBalance(res.data.balance);
+        setCheckedInToday(true);
+        alert("🎉 Daily reward claimed! +$0.25");
+      } else if (res.data.error?.toLowerCase().includes("already claimed")) {
+        setCheckedInToday(true);
         alert("✅ You already claimed today's reward!");
       } else {
-        alert(data.error || "Failed to claim daily reward.");
+        alert(res.data.error || "Failed to claim daily reward.");
       }
     } catch (err) {
       console.error(err);
-      alert("Failed to claim daily reward.");
+      alert("Failed to claim daily reward. Check console.");
     } finally {
       setLoadingReward(false);
     }
   };
 
-  // Theme & wallpaper handlers
+  // ===================== Profile helpers =====================
   const handleWallpaperClick = () => fileInputRef.current.click();
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -137,85 +132,383 @@ export default function SettingsPage() {
     if (!user) return;
     try {
       const token = await auth.currentUser.getIdToken(true);
-      await fetch(`${backend}/api/user/preferences`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ theme: newTheme, wallpaper: newWallpaper || null }),
-      });
+      await axios.post(
+        `${backend}/api/preferences`,
+        {
+          language,
+          fontSize,
+          layout,
+          theme: newTheme,
+          wallpaper: newWallpaper || null,
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
       updateSettings(newTheme, newWallpaper);
-      alert("✅ Preferences saved!");
+      alert("✅ Preferences saved successfully!");
     } catch (err) {
       console.error(err);
       alert("Failed to save preferences.");
     }
   };
 
+  const isDark = newTheme === "dark";
+  const displayName = profileData.name || "No Name";
   const getInitials = (name) => {
     if (!name) return "NA";
-    const parts = name.trim().split(" ");
-    return parts.length > 1 ? (parts[0][0] + parts[1][0]).toUpperCase() : parts[0][0].toUpperCase();
+    const names = name.trim().split(" ").filter(Boolean);
+    if (names.length === 0) return "NA";
+    if (names.length === 1) return names[0][0].toUpperCase();
+    return (names[0][0] + names[1][0]).toUpperCase();
   };
 
-  const isDark = newTheme === "dark";
-  if (!user) return <p>Loading...</p>;
+  if (!user) return <p>Loading user...</p>;
 
+  // ===================== JSX =====================
   return (
-    <div style={{ padding: 20, minHeight: "100vh", background: isDark ? "#1c1c1c" : "#f8f8f8", color: isDark ? "#fff" : "#000" }}>
-      <button onClick={() => navigate("/chat")} style={{ position: "absolute", top: 20, left: 20 }}>⬅</button>
-      <h2>⚙️ Settings</h2>
+    <div
+      style={{
+        padding: 20,
+        minHeight: "100vh",
+        background: isDark ? "#1c1c1c" : "#f8f8f8",
+        color: isDark ? "#fff" : "#000",
+      }}
+    >
+      {/* Back button */}
+      <button
+        onClick={() => navigate("/chat")}
+        style={{
+          position: "absolute",
+          top: 20,
+          left: 20,
+          background: isDark ? "#555" : "#e0e0e0",
+          border: "none",
+          borderRadius: "50%",
+          padding: 8,
+          cursor: "pointer",
+        }}
+      >
+        ⬅
+      </button>
 
-      {/* Profile */}
-      <div style={{ display: "flex", alignItems: "center", padding: 15, background: isDark ? "#2b2b2b" : "#fff", borderRadius: 12, marginBottom: 20 }}>
-        {profile.profilePic ? (
-          <img src={profile.profilePic} alt="Profile" style={{ width: 70, height: 70, borderRadius: "50%", marginRight: 15 }} />
+      <h2 style={{ textAlign: "center", marginBottom: 20 }}>⚙️ Settings</h2>
+
+      {/* ================= Profile Card ================= */}
+      <div
+        onClick={() => navigate("/edit-profile")}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          cursor: "pointer",
+          background: isDark ? "#2b2b2b" : "#fff",
+          padding: 15,
+          borderRadius: 12,
+          boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
+        }}
+      >
+        {profileData.profilePic ? (
+          <img
+            src={profileData.profilePic}
+            alt="Profile"
+            style={{
+              width: 70,
+              height: 70,
+              borderRadius: "50%",
+              objectFit: "cover",
+              marginRight: 15,
+            }}
+          />
         ) : (
-          <div style={{ width: 70, height: 70, borderRadius: "50%", background: "#007bff", color: "#fff", display: "flex", justifyContent: "center", alignItems: "center", fontSize: 24, fontWeight: "bold", marginRight: 15 }}>
-            {getInitials(profile.name)}
+          <div
+            style={{
+              width: 70,
+              height: 70,
+              borderRadius: "50%",
+              background: "#007bff",
+              color: "#fff",
+              fontWeight: "bold",
+              fontSize: 24,
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              marginRight: 15,
+            }}
+          >
+            {getInitials(displayName)}
           </div>
         )}
         <div>
-          <p style={{ margin: 0, fontWeight: "600" }}>{profile.name || "No Name"}</p>
-          <p style={{ margin: 0, fontSize: 14, color: isDark ? "#ccc" : "#555" }}>{profile.bio || "No bio yet"}</p>
-          <p style={{ margin: 0, fontSize: 12, color: isDark ? "#aaa" : "#888" }}>{profile.email}</p>
+          <p style={{ margin: 0, fontWeight: "600", fontSize: 16 }}>
+            {displayName}
+          </p>
+          <p style={{ margin: 0, fontSize: 14, color: isDark ? "#ccc" : "#555" }}>
+            {profileData.bio || "No bio yet — click to edit"}
+          </p>
+          <p style={{ margin: 0, fontSize: 12, color: isDark ? "#aaa" : "#888" }}>
+            {profileData.email}
+          </p>
         </div>
       </div>
 
-      {/* Wallet */}
-      <div style={{ background: isDark ? "#2b2b2b" : "#fff", padding: 20, borderRadius: 12, marginBottom: 20 }}>
-        <p>Balance: <strong>${balance.toFixed(2)}</strong></p>
-        <button onClick={handleDailyReward} disabled={dailyClaimed || loadingReward}>
-          {dailyClaimed ? "✅ Daily Reward Claimed" : "🧩 Daily Reward (+$0.25)"}
+      {/* ================= Wallet Section ================= */}
+      <Section title="Wallet" isDark={isDark}>
+        <div
+          onClick={() => navigate("/wallet")}
+          style={{ cursor: "pointer", marginBottom: 10 }}
+        >
+          <p style={{ margin: 0 }}>
+            Balance:{" "}
+            <strong style={{ color: isDark ? "#00e676" : "#007bff" }}>
+              ${balance.toFixed(2)}
+            </strong>
+          </p>
+        </div>
+
+        <button
+          onClick={handleDailyReward}
+          disabled={loadingReward || checkedInToday}
+          style={{
+            ...btnStyle(checkedInToday ? "#666" : "#4CAF50"),
+            opacity: checkedInToday ? 0.7 : 1,
+            marginBottom: 15,
+            width: "100%",
+          }}
+        >
+          {loadingReward
+            ? "Processing..."
+            : checkedInToday
+            ? "✅ Checked In Today"
+            : "🧩 Daily Reward (+$0.25)"}
         </button>
 
-        <h4>Recent Transactions</h4>
-        {transactions.length === 0 ? <p>No transactions yet</p> :
-          transactions.map(tx => (
-            <div key={tx._id || tx.txnId} style={{ display: "flex", justifyContent: "space-between", padding: 5, borderBottom: "1px solid #888" }}>
-              <span>{tx.type}</span>
-              <span style={{ color: tx.amount >= 0 ? "green" : "red" }}>{tx.amount >= 0 ? "+" : "-"}${Math.abs(tx.amount).toFixed(2)}</span>
-            </div>
-          ))
-        }
-      </div>
+        <div>
+          <h4 style={{ marginBottom: 8 }}>Last 3 Transactions</h4>
+          {transactions.length === 0 ? (
+            <p style={{ fontSize: 14, opacity: 0.6 }}>No recent transactions.</p>
+          ) : (
+            transactions
+              .slice(0, 3)
+              .map((tx) => (
+                <div
+                  key={tx._id || tx.id}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    padding: "6px 10px",
+                    marginBottom: 6,
+                    background: isDark ? "#3b3b3b" : "#f0f0f0",
+                    borderRadius: 8,
+                    fontSize: 14,
+                  }}
+                >
+                  <span>{tx.type}</span>
+                  <span style={{ color: tx.amount >= 0 ? "#2ecc71" : "#e74c3c" }}>
+                    {tx.amount >= 0 ? "+" : "-"}${Math.abs(tx.amount).toFixed(2)}
+                  </span>
+                </div>
+              ))
+          )}
+        </div>
+      </Section>
 
-      {/* Theme & Wallpaper */}
-      <div style={{ background: isDark ? "#2b2b2b" : "#fff", padding: 20, borderRadius: 12 }}>
-        <h3>Theme & Wallpaper</h3>
-        <select value={newTheme} onChange={e => setNewTheme(e.target.value)}>
+      {/* ================= Preferences ================= */}
+      <Section title="User Preferences" isDark={isDark}>
+        <label>Language:</label>
+        <select
+          value={language}
+          onChange={(e) => setLanguage(e.target.value)}
+          style={selectStyle(isDark)}
+        >
+          <option>English</option>
+          <option>French</option>
+          <option>Spanish</option>
+          <option>Arabic</option>
+        </select>
+
+        <label>Font Size:</label>
+        <select
+          value={fontSize}
+          onChange={(e) => setFontSize(e.target.value)}
+          style={selectStyle(isDark)}
+        >
+          <option>Small</option>
+          <option>Medium</option>
+          <option>Large</option>
+        </select>
+
+        <label>Layout:</label>
+        <select
+          value={layout}
+          onChange={(e) => setLayout(e.target.value)}
+          style={selectStyle(isDark)}
+        >
+          <option>Default</option>
+          <option>Compact</option>
+          <option>Spacious</option>
+        </select>
+      </Section>
+
+      {/* ================= Theme & Wallpaper ================= */}
+      <Section title="Theme & Wallpaper" isDark={isDark}>
+        <select
+          value={newTheme}
+          onChange={(e) => setNewTheme(e.target.value)}
+          style={selectStyle(isDark)}
+        >
           <option value="light">🌞 Light</option>
           <option value="dark">🌙 Dark</option>
         </select>
 
-        <div onClick={handleWallpaperClick} style={{ width: "100%", height: 150, marginTop: 10, border: "2px solid #555", borderRadius: 10, backgroundSize: "cover", backgroundPosition: "center", backgroundImage: newWallpaper ? `url(${newWallpaper})` : "none", display: "flex", justifyContent: "center", alignItems: "center", cursor: "pointer" }}>
-          {newWallpaper ? "Wallpaper Selected" : "🌈 Wallpaper Preview"}
+        <div
+          onClick={handleWallpaperClick}
+          style={{
+            ...previewBox,
+            backgroundImage: newWallpaper ? `url(${newWallpaper})` : "none",
+            cursor: "pointer",
+          }}
+        >
+          <p>{newWallpaper ? "Wallpaper Selected" : "🌈 Wallpaper Preview"}</p>
         </div>
-        {newWallpaper && <button onClick={removeWallpaper} style={{ marginTop: 10, background: "#d32f2f", color: "#fff", padding: 8 }}>Remove Wallpaper</button>}
-        <input type="file" accept="image/*" ref={fileInputRef} style={{ display: "none" }} onChange={handleFileChange} />
-        <button onClick={handleSavePreferences} style={{ marginTop: 10, background: "#007bff", color: "#fff", padding: 10 }}>💾 Save Preferences</button>
-      </div>
 
-      {/* Logout */}
-      <button onClick={async () => { await auth.signOut(); navigate("/"); }} style={{ marginTop: 20, background: "#e53935", color: "#fff", padding: 12, borderRadius: 12 }}>🚪 Logout</button>
+        {newWallpaper && (
+          <button
+            onClick={removeWallpaper}
+            style={{ ...btnStyle("#d32f2f"), marginTop: 10 }}
+          >
+            Remove Wallpaper
+          </button>
+        )}
+
+        <input
+          type="file"
+          accept="image/*"
+          ref={fileInputRef}
+          style={{ display: "none" }}
+          onChange={handleFileChange}
+        />
+
+        <button
+          onClick={handleSavePreferences}
+          style={{ ...btnStyle("#007bff"), marginTop: 15, borderRadius: 20 }}
+        >
+          💾 Save Preferences
+        </button>
+      </Section>
+
+      {/* ================= Notifications ================= */}
+      <Section title="Notifications" isDark={isDark}>
+        <label>
+          <input
+            type="checkbox"
+            checked={notifications.push}
+            onChange={() =>
+              setNotifications({ ...notifications, push: !notifications.push })
+            }
+          />
+          Push Notifications
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={notifications.email}
+            onChange={() =>
+              setNotifications({ ...notifications, email: !notifications.email })
+            }
+          />
+          Email Alerts
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={notifications.sound}
+            onChange={() =>
+              setNotifications({ ...notifications, sound: !notifications.sound })
+            }
+          />
+          Sounds
+        </label>
+      </Section>
+
+      {/* ================= About ================= */}
+      <Section title="About" isDark={isDark}>
+        <p>Version 1.0.0</p>
+        <p>© 2025 Hahala App</p>
+        <p>Terms of Service | Privacy Policy</p>
+      </Section>
+
+      {/* ================= Logout ================= */}
+      <div style={{ marginTop: 40, textAlign: "center" }}>
+        <button
+          onClick={async () => {
+            await auth.signOut();
+            navigate("/");
+          }}
+          style={{
+            padding: "12px 25px",
+            background: "#e53935",
+            color: "#fff",
+            border: "none",
+            borderRadius: 12,
+            cursor: "pointer",
+            fontWeight: "bold",
+            fontSize: 16,
+          }}
+        >
+          🚪 Logout
+        </button>
+      </div>
     </div>
   );
 }
+
+// ================= Section Wrapper =================
+function Section({ title, children, isDark }) {
+  return (
+    <div
+      style={{
+        background: isDark ? "#2b2b2b" : "#fff",
+        padding: 20,
+        borderRadius: 12,
+        marginTop: 25,
+        boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
+      }}
+    >
+      <h3 style={{ marginBottom: 12 }}>{title}</h3>
+      {children}
+    </div>
+  );
+}
+
+// ================= Reusable Styles =================
+const btnStyle = (bg) => ({
+  marginRight: 8,
+  padding: "10px 15px",
+  background: bg,
+  color: "#fff",
+  border: "none",
+  borderRadius: 8,
+  cursor: "pointer",
+  fontWeight: "bold",
+});
+
+const selectStyle = (isDark) => ({
+  width: "100%",
+  padding: 8,
+  marginBottom: 10,
+  borderRadius: 6,
+  background: isDark ? "#222" : "#fafafa",
+  color: isDark ? "#fff" : "#000",
+  border: "1px solid #666",
+});
+
+const previewBox = {
+  width: "100%",
+  height: 150,
+  borderRadius: 10,
+  border: "2px solid #555",
+  marginTop: 15,
+  display: "flex",
+  justifyContent: "center",
+  alignItems: "center",
+  backgroundSize: "cover",
+  backgroundPosition: "center",
+};
