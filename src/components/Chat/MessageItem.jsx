@@ -1,5 +1,5 @@
 // src/components/Chat/MessageItem.jsx
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 
 const SPACING = { sm: 8, lg: 14, borderRadius: 12 };
 const COLORS = {
@@ -30,8 +30,12 @@ export default function MessageItem({
   deleteMessageForMe,
   forwardMessage,
   pinMessage,
+  uploadProgress, // optional
 }) {
   const [swipeStartX, setSwipeStartX] = useState(null);
+  const menuRef = useRef(null);
+  const reactionRef = useRef(null);
+
   const isMine = message.senderId === myUid;
   const showMenu = menuOpenFor === message.id;
   const showReactionPicker = reactionFor === message.id;
@@ -42,6 +46,7 @@ export default function MessageItem({
     return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   };
 
+  // Swipe to reply
   const handleTouchStart = () => {
     setSwipeStartX(null);
     setTimeout(() => setMenuOpenFor(message.id), 500);
@@ -57,6 +62,23 @@ export default function MessageItem({
     if (endX != null && swipeStartX - endX > 80) replyToMessage(message);
     setSwipeStartX(null);
   };
+
+  // Close menu/reaction on click outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(e.target) &&
+        reactionRef.current &&
+        !reactionRef.current.contains(e.target)
+      ) {
+        setMenuOpenFor(null);
+        setReactionFor(null);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [setMenuOpenFor, setReactionFor]);
 
   return (
     <div
@@ -84,6 +106,7 @@ export default function MessageItem({
           color: isMine ? "#fff" : isDark ? COLORS.darkText : COLORS.lightText,
           cursor: "pointer",
           wordBreak: "break-word",
+          position: "relative",
         }}
       >
         {/* Reply preview */}
@@ -106,7 +129,7 @@ export default function MessageItem({
 
         {/* Media */}
         {message.mediaUrl && (
-          <div style={{ marginTop: 4 }}>
+          <div style={{ marginTop: 4, position: "relative" }}>
             {message.mediaType === "image" && (
               <img
                 src={message.mediaUrl}
@@ -126,6 +149,21 @@ export default function MessageItem({
               <a href={message.mediaUrl} target="_blank" rel="noreferrer">
                 {message.fileName || "PDF Document"}
               </a>
+            )}
+
+            {/* Upload progress */}
+            {uploadProgress?.[message.tempId] != null && (
+              <div
+                style={{
+                  position: "absolute",
+                  bottom: 0,
+                  left: 0,
+                  width: `${uploadProgress[message.tempId]}%`,
+                  height: 4,
+                  background: COLORS.primary,
+                  borderRadius: 2,
+                }}
+              />
             )}
           </div>
         )}
@@ -177,6 +215,7 @@ export default function MessageItem({
         {/* Menu */}
         {showMenu && (
           <div
+            ref={menuRef}
             style={{
               position: "absolute",
               top: -SPACING.lg,
@@ -184,7 +223,9 @@ export default function MessageItem({
               background: COLORS.lightCard,
               border: `1px solid ${COLORS.grayBorder}`,
               borderRadius: SPACING.borderRadius,
-              zIndex: 10,
+              zIndex: 50,
+              minWidth: 120,
+              boxShadow: "0 2px 10px rgba(0,0,0,0.15)",
             }}
           >
             <button
@@ -200,7 +241,10 @@ export default function MessageItem({
               React
             </button>
             {isMine && (
-              <button style={{ padding: 8, border: "none", background: "transparent", width: "100%", textAlign: "left" }} onClick={() => editMessage(message)}>
+              <button
+                style={{ padding: 8, border: "none", background: "transparent", width: "100%", textAlign: "left" }}
+                onClick={() => editMessage(message)}
+              >
                 Edit
               </button>
             )}
@@ -242,6 +286,7 @@ export default function MessageItem({
         {/* Inline reaction picker */}
         {showReactionPicker && (
           <div
+            ref={reactionRef}
             style={{
               position: "absolute",
               bottom: -28,
@@ -251,6 +296,7 @@ export default function MessageItem({
               background: COLORS.lightCard,
               borderRadius: SPACING.borderRadius,
               padding: "2px 4px",
+              boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
             }}
           >
             {INLINE_REACTIONS.map((r, i) => (
