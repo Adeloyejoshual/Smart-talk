@@ -12,7 +12,7 @@ import {
   getDoc,
   limit as fsLimit,
 } from "firebase/firestore";
-import { db, auth } from "../firebaseConfig";
+import { db } from "../firebaseConfig";
 import { ThemeContext } from "../context/ThemeContext";
 import ChatHeader from "./Chat/ChatHeader";
 import MessageItem from "./Chat/MessageItem";
@@ -30,13 +30,6 @@ const COLORS = {
 
 const SPACING = { sm: 8, md: 12, borderRadius: 12 };
 
-// -------------------- Helpers --------------------
-const fmtTime = (ts) => {
-  if (!ts) return "";
-  const d = ts.toDate ? ts.toDate() : new Date(ts);
-  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-};
-
 export default function ChatConversationPage({ user }) {
   const { chatId } = useParams();
   const navigate = useNavigate();
@@ -46,12 +39,14 @@ export default function ChatConversationPage({ user }) {
 
   const messagesRefEl = useRef(null);
   const endRef = useRef(null);
+  const audioInputRef = useRef(null);
 
   const [chatInfo, setChatInfo] = useState(null);
   const [friendInfo, setFriendInfo] = useState(null);
   const [messages, setMessages] = useState([]);
   const [loadingMsgs, setLoadingMsgs] = useState(true);
   const [text, setText] = useState("");
+  const [uploadingPct, setUploadingPct] = useState(null);
 
   // -------------------- Load chat & friend --------------------
   useEffect(() => {
@@ -112,7 +107,7 @@ export default function ChatConversationPage({ user }) {
     return () => unsub();
   }, [chatId, myUid]);
 
-  // -------------------- Send message --------------------
+  // -------------------- Send text --------------------
   const sendTextMessage = async () => {
     if (!text.trim()) return;
     try {
@@ -128,6 +123,46 @@ export default function ChatConversationPage({ user }) {
     } catch (e) {
       console.error(e);
       alert("Failed to send");
+    }
+  };
+
+  // -------------------- Upload audio to Cloudinary --------------------
+  const handleAudioUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("upload_preset", "YOUR_CLOUDINARY_PRESET"); // <-- replace with your preset
+
+    try {
+      setUploadingPct(0);
+      const res = await fetch(
+        "https://api.cloudinary.com/v1_1/YOUR_CLOUD_NAME/auto/upload", // <-- replace with your Cloud name
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+      const data = await res.json();
+      if (!data.secure_url) throw new Error("Upload failed");
+
+      // Send audio message
+      await addDoc(collection(db, "chats", chatId, "messages"), {
+        senderId: myUid,
+        mediaUrl: data.secure_url,
+        mediaType: "audio",
+        fileName: file.name,
+        createdAt: serverTimestamp(),
+        status: "sent",
+        reactions: {},
+      });
+      setUploadingPct(null);
+      endRef.current?.scrollIntoView({ behavior: "smooth" });
+    } catch (err) {
+      console.error(err);
+      alert("Audio upload failed");
+      setUploadingPct(null);
     }
   };
 
@@ -173,6 +208,7 @@ export default function ChatConversationPage({ user }) {
             onReply={handleReply}
             onPin={handlePin}
             onForward={handleForward}
+            uploadingPct={uploadingPct}
           />
         ))}
 
@@ -187,6 +223,7 @@ export default function ChatConversationPage({ user }) {
           gap: SPACING.sm,
           borderTop: `1px solid ${COLORS.grayBorder}`,
           background: isDark ? COLORS.darkCard : COLORS.lightCard,
+          alignItems: "center",
         }}
       >
         <input
@@ -204,6 +241,19 @@ export default function ChatConversationPage({ user }) {
           }}
           onKeyDown={(e) => e.key === "Enter" && sendTextMessage()}
         />
+        <input
+          type="file"
+          accept="audio/*"
+          ref={audioInputRef}
+          style={{ display: "none" }}
+          onChange={handleAudioUpload}
+        />
+        <button
+          onClick={() => audioInputRef.current.click()}
+          style={{ fontSize: 18, background: "transparent", border: "none" }}
+        >
+          🎤
+        </button>
         <button
           onClick={sendTextMessage}
           style={{ fontSize: 18, background: "transparent", border: "none" }}
