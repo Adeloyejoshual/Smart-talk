@@ -14,8 +14,8 @@ import {
   arrayUnion,
   arrayRemove,
   deleteDoc,
-  limit as fsLimit,
   getDocs,
+  limit as fsLimit,
 } from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
 import { ThemeContext } from "../context/ThemeContext";
@@ -27,64 +27,43 @@ const fmtTime = (ts) => {
   return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 };
 
-const dayLabel = (ts) => {
-  if (!ts) return "";
-  const d = ts.toDate ? ts.toDate() : new Date(ts);
-  const now = new Date();
-  const yesterday = new Date();
-  yesterday.setDate(now.getDate() - 1);
-  if (d.toDateString() === now.toDateString()) return "Today";
-  if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
-  return d.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: d.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
-  });
-};
-
 const detectFileType = (file) => {
   if (!file?.type) return "file";
-  const t = file.type;
-  if (t.startsWith("image/")) return "image";
-  if (t.startsWith("video/")) return "video";
-  if (t.startsWith("audio/")) return "audio";
-  if (t === "application/pdf") return "pdf";
+  if (file.type.startsWith("image/")) return "image";
+  if (file.type.startsWith("video/")) return "video";
+  if (file.type.startsWith("audio/")) return "audio";
+  if (file.type === "application/pdf") return "pdf";
   return "file";
 };
 
 const uploadToCloudinary = async (file, onProgress) => {
-  try {
-    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
-    const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
-    if (!cloudName || !uploadPreset) throw new Error("Cloudinary env not set");
+  const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+  const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+  if (!cloudName || !uploadPreset) throw new Error("Cloudinary env not set");
 
-    const fd = new FormData();
-    fd.append("file", file);
-    fd.append("upload_preset", uploadPreset);
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("upload_preset", uploadPreset);
 
-    return await new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open("POST", `https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`);
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded * 100) / e.total));
-      };
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) resolve(JSON.parse(xhr.responseText).secure_url);
-        else reject(new Error("Cloudinary upload failed"));
-      };
-      xhr.onerror = () => reject(new Error("Network error"));
-      xhr.send(fd);
-    });
-  } catch (err) {
-    throw err;
-  }
+  return await new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded * 100) / e.total));
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve(JSON.parse(xhr.responseText).secure_url);
+      else reject(new Error("Cloudinary upload failed"));
+    };
+    xhr.onerror = () => reject(new Error("Network error"));
+    xhr.send(fd);
+  });
 };
 
 // -------------------- Constants --------------------
 const INLINE_REACTIONS = ["❤️", "😂", "👍", "😮", "😢"];
 const COLORS = {
   primary: "#34B7F1",
-  primaryDark: "#007bff",
   headerBlue: "#1877F2",
   lightBg: "#f5f5f5",
   darkBg: "#0b0b0b",
@@ -130,11 +109,10 @@ export default function ChatConversationPage() {
   const [replyTo, setReplyTo] = useState(null);
   const [menuOpenFor, setMenuOpenFor] = useState(null);
   const [reactionFor, setReactionFor] = useState(null);
-  const [emojiPickerFor, setEmojiPickerFor] = useState(null);
-  const [isAtBottom, setIsAtBottom] = useState(true);
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recorderAvailable, setRecorderAvailable] = useState(false);
-  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  const [isAtBottom, setIsAtBottom] = useState(true);
 
   // -------------------- Load chat & friend --------------------
   useEffect(() => {
@@ -170,12 +148,11 @@ export default function ChatConversationPage() {
     setLoadingMsgs(true);
 
     const q = query(collection(db, "chats", chatId, "messages"), orderBy("createdAt", "asc"), fsLimit(2000));
-
     const unsub = onSnapshot(q, async (snap) => {
       const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((m) => !(m.deletedFor?.includes(myUid)));
       setMessages(docs);
 
-      // Mark incoming messages as delivered
+      // mark as delivered
       const updatePromises = docs
         .filter((m) => m.senderId !== myUid && m.status === "sent")
         .map((m) => updateDoc(doc(db, "chats", chatId, "messages", m.id), { status: "delivered" }));
@@ -188,11 +165,10 @@ export default function ChatConversationPage() {
     return () => unsub();
   }, [chatId, myUid, isAtBottom]);
 
-  // -------------------- Scroll detection --------------------
+  // -------------------- Scroll --------------------
   useEffect(() => {
     const el = messagesRefEl.current;
     if (!el) return;
-
     const onScroll = () => setIsAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 80);
     el.addEventListener("scroll", onScroll);
     return () => el.removeEventListener("scroll", onScroll);
@@ -203,38 +179,21 @@ export default function ChatConversationPage() {
     setIsAtBottom(true);
   };
 
-  // -------------------- Visibility: Mark seen --------------------
-  useEffect(() => {
-    const onVisibility = async () => {
-      if (document.visibilityState !== "visible") return;
-      const lastIncoming = [...messages].reverse().find((m) => m.senderId !== myUid);
-      if (lastIncoming && lastIncoming.status !== "seen") {
-        await updateDoc(doc(db, "chats", chatId, "messages", lastIncoming.id), { status: "seen" });
-      }
-    };
-    document.addEventListener("visibilitychange", onVisibility);
-    onVisibility();
-    return () => document.removeEventListener("visibilitychange", onVisibility);
-  }, [messages, chatId, myUid]);
-
-  // -------------------- File select & preview --------------------
+  // -------------------- Send text or media --------------------
   const onFilesSelected = (e) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
-
     const newPreviews = files.map((f) => ({
       url: f.type.startsWith("image/") || f.type.startsWith("video/") ? URL.createObjectURL(f) : null,
       type: detectFileType(f),
       name: f.name,
       file: f,
     }));
-
     setSelectedFiles((prev) => [...prev, ...files]);
     setPreviews((prev) => [...prev, ...newPreviews]);
     setSelectedPreviewIndex((prev) => (prev >= 0 ? prev : 0));
   };
 
-  // -------------------- Send message --------------------
   const sendTextMessage = async () => {
     if ((chatInfo?.blockedBy || []).includes(myUid)) return alert("You are blocked in this chat.");
 
@@ -256,30 +215,16 @@ export default function ChatConversationPage() {
             status: "uploading",
             reactions: {},
           };
-
           const mRef = await addDoc(collection(db, "chats", chatId, "messages"), placeholder);
           const messageId = mRef.id;
           setUploadingIds((prev) => ({ ...prev, [messageId]: 0 }));
 
           const url = await uploadToCloudinary(file, (pct) => setUploadingIds((prev) => ({ ...prev, [messageId]: pct })));
+          await updateDoc(doc(db, "chats", chatId, "messages", messageId), { mediaUrl: url, status: "sent", sentAt: serverTimestamp() });
 
-          await updateDoc(doc(db, "chats", chatId, "messages", messageId), {
-            mediaUrl: url,
-            status: "sent",
-            sentAt: serverTimestamp(),
-          });
-
-          setTimeout(() => setUploadingIds((prev) => {
-            const copy = { ...prev };
-            delete copy[messageId];
-            return copy;
-          }), 200);
-
-        } catch (err) {
-          console.error("upload error:", err);
-        }
+          setTimeout(() => setUploadingIds((prev) => { const c = { ...prev }; delete c[messageId]; return c; }), 200);
+        } catch (err) { console.error(err); }
       }
-
       return;
     }
 
@@ -294,19 +239,14 @@ export default function ChatConversationPage() {
           status: "sent",
           reactions: {},
         };
-
         if (replyTo) {
           payload.replyTo = { id: replyTo.id, text: replyTo.text || (replyTo.mediaType || "media"), senderId: replyTo.senderId };
           setReplyTo(null);
         }
-
         await addDoc(collection(db, "chats", chatId, "messages"), payload);
         setText("");
         scrollToBottom();
-      } catch (e) {
-        console.error(e);
-        alert("Failed to send message");
-      }
+      } catch (e) { console.error(e); alert("Failed to send message"); }
     }
   };
 
@@ -315,47 +255,30 @@ export default function ChatConversationPage() {
 
   const startRecording = async () => {
     if (!recorderAvailable) return alert("Recording not supported");
-
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mr = new MediaRecorder(stream);
       recorderChunksRef.current = [];
-
       mr.ondataavailable = (ev) => ev.data.size && recorderChunksRef.current.push(ev.data);
-
       mr.onstop = async () => {
         const blob = new Blob(recorderChunksRef.current, { type: "audio/webm" });
         const placeholder = { senderId: myUid, text: "", mediaUrl: "", mediaType: "audio", createdAt: serverTimestamp(), status: "uploading", reactions: {} };
-
-        try {
-          const mRef = await addDoc(collection(db, "chats", chatId, "messages"), placeholder);
-          const messageId = mRef.id;
-          setUploadingIds((prev) => ({ ...prev, [messageId]: 0 }));
-
-          const url = await uploadToCloudinary(blob, (pct) => setUploadingIds((prev) => ({ ...prev, [messageId]: pct })));
-
-          await updateDoc(doc(db, "chats", chatId, "messages", messageId), { mediaUrl: url, status: "sent", sentAt: serverTimestamp() });
-
-          setTimeout(() => setUploadingIds((prev) => { const c = { ...prev }; delete c[messageId]; return c; }), 200);
-        } catch (err) {
-          console.error("voice upload failed", err);
-        }
+        const mRef = await addDoc(collection(db, "chats", chatId, "messages"), placeholder);
+        const messageId = mRef.id;
+        setUploadingIds((prev) => ({ ...prev, [messageId]: 0 }));
+        const url = await uploadToCloudinary(blob, (pct) => setUploadingIds((prev) => ({ ...prev, [messageId]: pct })));
+        await updateDoc(doc(db, "chats", chatId, "messages", messageId), { mediaUrl: url, status: "sent", sentAt: serverTimestamp() });
+        setTimeout(() => setUploadingIds((prev) => { const c = { ...prev }; delete c[messageId]; return c; }), 200);
       };
-
       mr.start();
       recorderRef.current = mr;
       setRecording(true);
-    } catch (err) {
-      console.error(err);
-      alert("Could not start recording");
-    }
+    } catch (err) { console.error(err); alert("Could not start recording"); }
   };
 
   const stopRecording = () => {
-    try {
-      recorderRef.current?.stop();
-      recorderRef.current?.stream?.getTracks().forEach((t) => t.stop());
-    } catch {}
+    recorderRef.current?.stop();
+    recorderRef.current?.stream?.getTracks().forEach((t) => t.stop());
     setRecording(false);
     recorderRef.current = null;
   };
@@ -383,12 +306,12 @@ export default function ChatConversationPage() {
   const pinMessage = async (m) => { await updateDoc(doc(db, "chats", chatId), { pinnedMessageId: m.id, pinnedMessageText: m.text || (m.mediaType || "") }); setMenuOpenFor(null); alert("Pinned"); };
   const replyToMessage = (m) => { setReplyTo(m); setMenuOpenFor(null); };
 
-  // -------------------- Touch handlers --------------------
+  // -------------------- Touch --------------------
   const handleMsgTouchStart = (m) => { longPressTimer.current = setTimeout(() => setMenuOpenFor(m.id), 500); swipeStartX.current = null; };
   const handleMsgTouchMove = (ev) => { if (!swipeStartX.current && ev.touches?.[0]) swipeStartX.current = ev.touches[0].clientX; };
   const handleMsgTouchEnd = (m, e) => { clearTimeout(longPressTimer.current); if (!swipeStartX.current) return; const endX = e.changedTouches?.[0]?.clientX; if (endX == null) return; if (swipeStartX.current - endX > 80) replyToMessage(m); swipeStartX.current = null; };
 
-  // -------------------- Click outside to close menus --------------------
+  // -------------------- Click outside --------------------
   const handleClickOutside = useCallback((e) => {
     const menuEl = menuOpenFor && document.getElementById(`msg-menu-${menuOpenFor}`);
     if (menuEl && !menuEl.contains(e.target)) setMenuOpenFor(null);
@@ -397,37 +320,13 @@ export default function ChatConversationPage() {
   }, [menuOpenFor, reactionFor, headerMenuOpen]);
 
   useEffect(() => {
-    document.removeEventListener("mousedown", handleClickOutside);
-    document.removeEventListener("touchstart", handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("touchstart", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("touchstart", handleClickOutside);
+    };
   }, [handleClickOutside]);
-
-  // -------------------- Header actions --------------------
-  const clearChat = async () => {
-    if (!confirm("Clear chat?")) return;
-    const snap = await getDocs(query(collection(db, "chats", chatId, "messages"), orderBy("createdAt", "asc")));
-    for (const d of snap.docs) try { await deleteDoc(d.ref); } catch {}
-    setHeaderMenuOpen(false);
-    alert("Chat cleared.");
-  };
-
-  const toggleBlock = async () => {
-    if (!chatInfo) return;
-    const chatRef = doc(db, "chats", chatId);
-    const blockedBy = chatInfo.blockedBy || [];
-    if (blockedBy.includes(myUid)) {
-      await updateDoc(chatRef, { blockedBy: arrayRemove(myUid) });
-      setChatInfo(prev => ({ ...prev, blockedBy: blockedBy.filter(u => u !== myUid) }));
-      alert("Unblocked user.");
-    } else {
-      await updateDoc(chatRef, { blockedBy: arrayUnion(myUid) });
-      setChatInfo(prev => ({ ...prev, blockedBy: [...blockedBy, myUid] }));
-      alert("Blocked user.");
-    }
-    setHeaderMenuOpen(false);
-  };
-
-  const startVoiceCall = () => navigate(`/voicecall/${chatId}`);
-  const startVideoCall = () => navigate(`/videocall/${chatId}`);
 
   // -------------------- Render message --------------------
   const renderMessage = (m) => {
@@ -462,15 +361,7 @@ export default function ChatConversationPage() {
           }}
         >
           {m.replyTo && (
-            <div
-              style={{
-                fontSize: 12,
-                color: COLORS.edited,
-                borderLeft: `3px solid ${COLORS.mutedText}`,
-                paddingLeft: 4,
-                marginBottom: 4,
-              }}
-            >
+            <div style={{ fontSize: 12, color: COLORS.edited, borderLeft: `3px solid ${COLORS.mutedText}`, paddingLeft: 4, marginBottom: 4 }}>
               {m.replyTo.text || m.replyTo.mediaType}
             </div>
           )}
@@ -579,20 +470,44 @@ export default function ChatConversationPage() {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: SPACING.sm, background: COLORS.headerBlue, color: "#fff", position: "sticky", top: 0, zIndex: 100 }}>
         <div style={{ display: "flex", alignItems: "center", gap: SPACING.sm, cursor: "pointer" }} onClick={() => navigate(-1)}>
           <span style={{ fontWeight: "bold", fontSize: 18 }}>←</span>
-          <div>
-            <div>{friendInfo?.displayName || "Unknown"}</div>
-            <div style={{ fontSize: 12 }}>{friendInfo?.online ? "Online" : friendInfo?.lastSeen ? `Last seen ${fmtTime(friendInfo.lastSeen)}` : ""}</div>
-          </div>
+          {friendInfo && (
+            <>
+              {friendInfo.photoURL && <img src={friendInfo.photoURL} alt="friend" style={{ width: 36, height: 36, borderRadius: "50%" }} />}
+              <div>
+                <div>{friendInfo.displayName || "Unknown"}</div>
+                <div style={{ fontSize: 12 }}>{friendInfo.online ? "Online" : friendInfo.lastSeen ? `Last seen ${fmtTime(friendInfo.lastSeen)}` : ""}</div>
+              </div>
+            </>
+          )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: SPACING.sm }}>
-          <button onClick={startVoiceCall}>📞</button>
-          <button onClick={startVideoCall}>🎥</button>
+          <button onClick={() => navigate(`/voicecall/${chatId}`)}>📞</button>
+          <button onClick={() => navigate(`/videocall/${chatId}`)}>🎥</button>
           <div style={{ position: "relative" }}>
             <button onClick={() => setHeaderMenuOpen(prev => !prev)}>⋮</button>
             {headerMenuOpen && (
               <div id="header-menu" style={{ position: "absolute", top: 24, right: 0, background: COLORS.lightCard, border: `1px solid ${COLORS.grayBorder}`, borderRadius: SPACING.borderRadius, zIndex: 200 }}>
-                <button style={menuBtnStyle} onClick={clearChat}>Clear Chat</button>
-                <button style={menuBtnStyle} onClick={toggleBlock}>{chatInfo?.blockedBy?.includes(myUid) ? "Unblock" : "Block"}</button>
+                <button style={menuBtnStyle} onClick={async () => {
+                  if (!confirm("Clear chat?")) return;
+                  const snap = await getDocs(query(collection(db, "chats", chatId, "messages"), orderBy("createdAt", "asc")));
+                  for (const d of snap.docs) try { await deleteDoc(d.ref); } catch {}
+                  setHeaderMenuOpen(false); alert("Chat cleared.");
+                }}>Clear Chat</button>
+                <button style={menuBtnStyle} onClick={async () => {
+                  if (!chatInfo) return;
+                  const chatRef = doc(db, "chats", chatId);
+                  const blockedBy = chatInfo.blockedBy || [];
+                  if (blockedBy.includes(myUid)) {
+                    await updateDoc(chatRef, { blockedBy: arrayRemove(myUid) });
+                    setChatInfo(prev => ({ ...prev, blockedBy: blockedBy.filter(u => u !== myUid) }));
+                    alert("Unblocked user.");
+                  } else {
+                    await updateDoc(chatRef, { blockedBy: arrayUnion(myUid) });
+                    setChatInfo(prev => ({ ...prev, blockedBy: [...blockedBy, myUid] }));
+                    alert("Blocked user.");
+                  }
+                  setHeaderMenuOpen(false);
+                }}>{chatInfo?.blockedBy?.includes(myUid) ? "Unblock" : "Block"}</button>
                 <button style={menuBtnStyle} onClick={() => alert("Report clicked")}>Report</button>
               </div>
             )}
@@ -602,7 +517,7 @@ export default function ChatConversationPage() {
 
       {/* Messages */}
       <div ref={messagesRefEl} style={{ flex: 1, overflowY: "auto", padding: SPACING.sm }}>
-        {messages.map((m) => renderMessage(m))}
+        {messages.map(renderMessage)}
         <div ref={endRef} />
       </div>
 
@@ -625,14 +540,7 @@ export default function ChatConversationPage() {
         />
         <input type="file" multiple style={{ display: "none" }} id="file-input" onChange={onFilesSelected} />
         <button onClick={() => document.getElementById("file-input").click()}>📎</button>
-        <button
-          onMouseDown={holdStart}
-          onMouseUp={holdEnd}
-          onTouchStart={holdStart}
-          onTouchEnd={holdEnd}
-        >
-          {recording ? "⏹️" : "🎤"}
-        </button>
+        <button onMouseDown={holdStart} onMouseUp={holdEnd} onTouchStart={holdStart} onTouchEnd={holdEnd}>{recording ? "⏹️" : "🎤"}</button>
         <button onClick={sendTextMessage}>➡️</button>
       </div>
     </div>
