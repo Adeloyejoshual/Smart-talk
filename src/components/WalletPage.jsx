@@ -16,9 +16,9 @@ export default function WalletPage() {
   const modalRef = useRef();
   const navigate = useNavigate();
 
-  const backend = "https://smart-talk-zlxe.onrender.com";
+  const backend = "https://smart-talk-dqit.onrender.com";
 
-  // AUTH
+  // ---------------- AUTH ----------------
   useEffect(() => {
     const unsub = auth.onAuthStateChanged(async (u) => {
       if (!u) return navigate("/");
@@ -28,7 +28,7 @@ export default function WalletPage() {
     return unsub;
   }, []);
 
-  // FETCH WALLET + TRANSACTIONS FROM BACKEND
+  // ---------------- LOAD WALLET ----------------
   const loadWallet = async (uid) => {
     try {
       const token = await auth.currentUser.getIdToken(true);
@@ -39,18 +39,18 @@ export default function WalletPage() {
       setBalance(res.data.balance || 0);
       setTransactions(res.data.transactions || []);
 
-      if (res.data.transactions.length) {
+      if (res.data.transactions.length)
         setSelectedMonth(new Date(res.data.transactions[0].createdAt));
-      }
     } catch (err) {
       console.error("Failed to load wallet:", err);
     }
   };
 
-  // CLAIM DAILY REWARD
+  // ---------------- CLAIM DAILY REWARD ----------------
   const handleDailyReward = async () => {
     if (!user) return;
     setLoadingReward(true);
+
     try {
       const token = await auth.currentUser.getIdToken(true);
       const rewardAmount = 0.25;
@@ -62,13 +62,15 @@ export default function WalletPage() {
       );
 
       if (res.data.balance !== undefined) {
+        // success
         setBalance(res.data.balance);
         setTransactions((prev) => [res.data.txn, ...prev].slice(0, 3));
         alert(`🎉 Daily reward $${rewardAmount} claimed!`);
-      } else if (res.data.error && res.data.error.toLowerCase().includes("already claimed")) {
+      } else if (res.data.error?.toLowerCase().includes("already claimed")) {
         alert("✅ You already claimed today's reward!");
       } else {
-        alert(res.data.error || "Failed to claim daily reward.");
+        console.error(res.data);
+        alert("Failed to claim daily reward. Check console.");
       }
     } catch (err) {
       console.error(err);
@@ -78,7 +80,7 @@ export default function WalletPage() {
     }
   };
 
-  // FORMATTERS
+  // ---------------- FORMATTERS ----------------
   const formatMonth = (date) =>
     date.toLocaleString("en-US", { month: "long", year: "numeric" });
 
@@ -90,7 +92,7 @@ export default function WalletPage() {
       minute: "2-digit",
     });
 
-  // FILTER TRANSACTIONS BY MONTH
+  // ---------------- FILTER TRANSACTIONS ----------------
   const filteredTransactions = transactions.filter((t) => {
     const d = new Date(t.createdAt);
     return (
@@ -99,7 +101,6 @@ export default function WalletPage() {
     );
   });
 
-  // UNIQUE MONTHS FOR PICKER
   const activeMonths = Array.from(
     new Set(
       transactions.map((t) => {
@@ -109,14 +110,10 @@ export default function WalletPage() {
     )
   ).map((s) => new Date(s));
 
-  // CLOSE MONTH PICKER ON OUTSIDE CLICK
+  // ---------------- OUTSIDE CLICK ----------------
   useEffect(() => {
     const handleClick = (e) => {
-      if (
-        showMonthPicker &&
-        modalRef.current &&
-        !modalRef.current.contains(e.target)
-      ) {
+      if (showMonthPicker && modalRef.current && !modalRef.current.contains(e.target)) {
         setShowMonthPicker(false);
       }
     };
@@ -180,7 +177,7 @@ export default function WalletPage() {
         </div>
       )}
 
-      {/* Scrollable transactions */}
+      {/* Transactions */}
       <div style={styles.list} ref={scrollRef}>
         {filteredTransactions.length === 0 ? (
           <p style={{ textAlign: "center", opacity: 0.5, marginTop: 10 }}>
@@ -214,7 +211,7 @@ export default function WalletPage() {
         )}
       </div>
 
-      {/* Transaction Details Modal */}
+      {/* Transaction Details */}
       {details && (
         <div style={styles.modalOverlay}>
           <div style={styles.modal} ref={modalRef}>
@@ -244,9 +241,7 @@ export default function WalletPage() {
   );
 }
 
-// ======================================================
-// STYLING
-// ======================================================
+// ================= STYLES =================
 const styles = {
   page: { background: "#eef6ff", minHeight: "100vh", padding: 25, color: "#000" },
   backBtn: {
