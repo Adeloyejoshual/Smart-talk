@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useRef, useContext } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { collection, query, orderBy, onSnapshot, addDoc, updateDoc, doc, serverTimestamp } from "firebase/firestore";
-import { db, auth } from "../../firebaseConfig";
+import { auth } from "../firebaseConfig";
 import { ThemeContext } from "../../context/ThemeContext";
 
 import ChatHeader from "./ChatHeader";
