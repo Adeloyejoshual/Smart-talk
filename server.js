@@ -5,15 +5,14 @@ import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import admin from "firebase-admin";
-import Stripe from "stripe";
 import mongoose from "mongoose";
-import fetch from "node-fetch";
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
+
 app.use(cors());
 app.use(express.json());
 
@@ -30,11 +29,6 @@ if (!admin.apps.length) {
   });
   console.log("🔥 Firebase Admin initialized");
 }
-
-// -----------------------------
-// Stripe
-// -----------------------------
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // -----------------------------
 // MongoDB
@@ -87,12 +81,10 @@ const verifyFirebaseToken = async (req, res, next) => {
   try {
     const raw = req.headers.authorization || "";
     const token = raw.startsWith("Bearer ") ? raw.split(" ")[1] : null;
-
     if (!token) return res.status(401).json({ error: "Missing token" });
 
     const decoded = await admin.auth().verifyIdToken(token);
     req.authUID = decoded.uid;
-
     next();
   } catch (err) {
     console.error("❌ Firebase Auth Error:", err.message);
@@ -101,19 +93,16 @@ const verifyFirebaseToken = async (req, res, next) => {
 };
 
 // -----------------------------
-// Daily Check-In (0.25 or any amount)
+// Daily Reward Endpoint ($0.25)
 // -----------------------------
 app.post("/api/wallet/daily", verifyFirebaseToken, async (req, res) => {
   try {
-    const { amount } = req.body; // Example: 0.25
+    const amount = 0.25; // fixed daily reward
     const uid = req.authUID;
-
     const today = new Date().toISOString().split("T")[0];
 
     let wallet = await Wallet.findOne({ uid });
-
-    if (!wallet)
-      wallet = await Wallet.create({ uid, balance: 0, lastCheckIn: null });
+    if (!wallet) wallet = await Wallet.create({ uid, balance: 0, lastCheckIn: null });
 
     if (wallet.lastCheckIn === today)
       return res.status(400).json({ error: "Already claimed today" });
@@ -124,7 +113,6 @@ app.post("/api/wallet/daily", verifyFirebaseToken, async (req, res) => {
     session.startTransaction();
 
     try {
-      // Save transaction
       const [txn] = await Transaction.create(
         [
           {
@@ -139,7 +127,6 @@ app.post("/api/wallet/daily", verifyFirebaseToken, async (req, res) => {
         { session }
       );
 
-      // Update wallet
       await Wallet.findOneAndUpdate(
         { uid },
         { $set: { lastCheckIn: today }, $inc: { balance: amount } },
@@ -149,7 +136,7 @@ app.post("/api/wallet/daily", verifyFirebaseToken, async (req, res) => {
       await session.commitTransaction();
       session.endSession();
 
-      res.json({ success: true, balance: newBalance, txn });
+      res.json({ success: true, balance: newBalance, txn, lastDailyClaim: today });
     } catch (err) {
       await session.abortTransaction();
       throw err;
@@ -166,19 +153,16 @@ app.post("/api/wallet/daily", verifyFirebaseToken, async (req, res) => {
 app.get("/api/wallet/:uid", verifyFirebaseToken, async (req, res) => {
   try {
     const { uid } = req.params;
-
     if (req.authUID !== uid)
       return res.status(403).json({ error: "Forbidden" });
 
-    const transactions = await Transaction.find({ uid }).sort({
-      createdAt: -1,
-    });
-
     const wallet = await Wallet.findOne({ uid });
+    const transactions = await Transaction.find({ uid }).sort({ createdAt: -1 });
 
     res.json({
       balance: wallet?.balance || 0,
       transactions,
+      lastDailyClaim: wallet?.lastCheckIn || null,
     });
   } catch (err) {
     console.error("Wallet error:", err);
@@ -194,15 +178,13 @@ app.post("/api/wallet/withdraw", verifyFirebaseToken, async (req, res) => {
     const { amount, destination } = req.body;
     const uid = req.authUID;
 
-    if (!amount || amount <= 0)
-      return res.status(400).json({ error: "Bad amount" });
+    if (!amount || amount <= 0) return res.status(400).json({ error: "Bad amount" });
 
     const wallet = await Wallet.findOne({ uid });
     if (!wallet || wallet.balance < amount)
       return res.status(400).json({ error: "Insufficient funds" });
 
     const newBalance = wallet.balance - amount;
-
     const session = await mongoose.startSession();
     session.startTransaction();
 
@@ -239,7 +221,7 @@ app.post("/api/wallet/withdraw", verifyFirebaseToken, async (req, res) => {
 });
 
 // -----------------------------
-// Frontend (React Build)
+// Serve Frontend (React Build)
 // -----------------------------
 app.use(express.static(path.join(__dirname, "dist")));
 app.get("*", (req, res) =>
