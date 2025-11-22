@@ -12,6 +12,7 @@ export default function WalletPage() {
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   const [details, setDetails] = useState(null);
   const [loadingReward, setLoadingReward] = useState(false);
+  const [checkedInToday, setCheckedInToday] = useState(false);
   const scrollRef = useRef();
   const modalRef = useRef();
   const navigate = useNavigate();
@@ -29,7 +30,7 @@ export default function WalletPage() {
     return unsub;
   }, []);
 
-  // FETCH WALLET + TRANSACTIONS FROM BACKEND
+  // FETCH WALLET + TRANSACTIONS
   const loadWallet = async (uid) => {
     try {
       const token = await auth.currentUser.getIdToken(true);
@@ -39,11 +40,27 @@ export default function WalletPage() {
 
       setBalance(res.data.balance || 0);
       setTransactions(res.data.transactions || []);
+
+      // Set selected month to latest transaction
       if (res.data.transactions?.length) {
         setSelectedMonth(
           new Date(res.data.transactions[0].createdAt || res.data.transactions[0].date)
         );
       }
+
+      // Check if daily check-in exists today
+      const today = new Date();
+      const hasTodayCheckin = res.data.transactions.some((t) => {
+        if (t.type !== "checkin") return false;
+        const txDate = new Date(t.createdAt || t.date);
+        return (
+          txDate.getFullYear() === today.getFullYear() &&
+          txDate.getMonth() === today.getMonth() &&
+          txDate.getDate() === today.getDate()
+        );
+      });
+      setCheckedInToday(hasTodayCheckin);
+
     } catch (err) {
       console.error(err);
       alert("Failed to load wallet. Check console.");
@@ -52,32 +69,30 @@ export default function WalletPage() {
 
   // CLAIM DAILY REWARD VIA BACKEND
   const handleDailyReward = async () => {
-    if (!user) return;
+    if (!user || checkedInToday) return;
     setLoadingReward(true);
 
     try {
       const token = await auth.currentUser.getIdToken(true);
       const res = await axios.post(
         `${backend}/api/wallet/daily`,
-        {},
+        { amount: 0.25 },
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      if (res.data.balance !== undefined) {
-        setBalance(res.data.balance);
-        setTransactions(
-          (res.data.transactions || transactions)
-            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-        );
-        alert("🎉 Daily reward claimed!");
-      } else if (res.data.error?.toLowerCase().includes("already claimed")) {
-        alert("✅ You already claimed today's reward!");
-      } else {
-        alert(res.data.error || "Failed to claim daily reward.");
-      }
+      setBalance(res.data.balance);
+      setTransactions(prev => [res.data.txn, ...prev]); // prepend txn
+      setCheckedInToday(true);
+      alert("🎉 Daily reward claimed! +$0.25");
+
     } catch (err) {
       console.error(err);
-      alert("Failed to claim daily reward. Check console.");
+      if (err.response?.data?.error === "Already claimed today") {
+        setCheckedInToday(true);
+        alert("✅ You already claimed today!");
+      } else {
+        alert("Failed to claim daily reward. Check console.");
+      }
     } finally {
       setLoadingReward(false);
     }
@@ -157,11 +172,19 @@ export default function WalletPage() {
             Withdraw
           </button>
           <button
-            style={{ ...styles.roundBtn, background: "#ffd700" }}
+            style={{
+              ...styles.roundBtn,
+              background: checkedInToday ? "#888" : "#ffd700",
+              cursor: checkedInToday ? "not-allowed" : "pointer",
+            }}
             onClick={handleDailyReward}
-            disabled={loadingReward}
+            disabled={loadingReward || checkedInToday}
           >
-            {loadingReward ? "Processing..." : "Daily Reward"}
+            {loadingReward
+              ? "Processing..."
+              : checkedInToday
+              ? "✅ Already Claimed Today"
+              : "Daily Reward (+$0.25)"}
           </button>
         </div>
       </div>
