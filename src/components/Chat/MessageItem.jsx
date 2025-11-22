@@ -30,7 +30,7 @@ export default function MessageItem({
   deleteMessageForMe,
   forwardMessage,
   pinMessage,
-  uploadProgress, // optional
+  uploadProgress,
 }) {
   const [swipeStartX, setSwipeStartX] = useState(null);
   const menuRef = useRef(null);
@@ -46,7 +46,6 @@ export default function MessageItem({
     return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   };
 
-  // Swipe to reply
   const handleTouchStart = () => {
     setSwipeStartX(null);
     setTimeout(() => setMenuOpenFor(message.id), 500);
@@ -79,6 +78,22 @@ export default function MessageItem({
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [setMenuOpenFor, setReactionFor]);
+
+  // WhatsApp-style status icon
+  const renderStatus = () => {
+    if (!isMine) return null;
+    // message.status: "sent", "delivered", "seen"
+    switch (message.status) {
+      case "sent":
+        return "✓"; // single check
+      case "delivered":
+        return "✓✓"; // double gray check
+      case "seen":
+        return <span style={{ color: "#34B7F1" }}>✓✓</span>; // double blue check
+      default:
+        return null;
+    }
+  };
 
   return (
     <div
@@ -175,10 +190,14 @@ export default function MessageItem({
             color: COLORS.mutedText,
             marginTop: 2,
             textAlign: "right",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "flex-end",
+            gap: 4,
           }}
         >
           {message.edited && "(edited)"} {fmtTime(message.createdAt)}{" "}
-          {isMine && message.status ? `• ${message.status}` : ""}
+          {isMine && renderStatus()}
         </div>
 
         {/* Reactions */}
@@ -229,56 +248,30 @@ export default function MessageItem({
             }}
           >
             <button
-              style={{ padding: 8, border: "none", background: "transparent", cursor: "pointer", width: "100%", textAlign: "left" }}
+              style={{
+                padding: 8,
+                border: "none",
+                background: "transparent",
+                cursor: "pointer",
+                width: "100%",
+                textAlign: "left",
+              }}
               onClick={() => replyToMessage(message)}
             >
               Reply
             </button>
             <button
-              style={{ padding: 8, border: "none", background: "transparent", cursor: "pointer", width: "100%", textAlign: "left" }}
+              style={{
+                padding: 8,
+                border: "none",
+                background: "transparent",
+                cursor: "pointer",
+                width: "100%",
+                textAlign: "left",
+              }}
               onClick={() => setReactionFor(message.id)}
             >
               React
-            </button>
-            {isMine && (
-              <button
-                style={{ padding: 8, border: "none", background: "transparent", width: "100%", textAlign: "left" }}
-                onClick={() => editMessage(message)}
-              >
-                Edit
-              </button>
-            )}
-            {isMine && (
-              <button
-                style={{ padding: 8, border: "none", background: "transparent", width: "100%", textAlign: "left" }}
-                onClick={() => deleteMessageForEveryone(message.id)}
-              >
-                Delete for Everyone
-              </button>
-            )}
-            <button
-              style={{ padding: 8, border: "none", background: "transparent", width: "100%", textAlign: "left" }}
-              onClick={() => deleteMessageForMe(message.id)}
-            >
-              Delete for Me
-            </button>
-            <button
-              style={{ padding: 8, border: "none", background: "transparent", width: "100%", textAlign: "left" }}
-              onClick={() => forwardMessage(message)}
-            >
-              Forward
-            </button>
-            <button
-              style={{ padding: 8, border: "none", background: "transparent", width: "100%", textAlign: "left" }}
-              onClick={() => pinMessage(message)}
-            >
-              Pin
-            </button>
-            <button
-              style={{ padding: 8, border: "none", background: "transparent", width: "100%", textAlign: "left" }}
-              onClick={() => setMenuOpenFor(null)}
-            >
-              Close
             </button>
           </div>
         )}
