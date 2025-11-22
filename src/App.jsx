@@ -29,7 +29,7 @@ export default function App() {
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [user, setUser] = useState(null);
 
-  // Listen for auth changes and set presence
+  // Listen for auth changes + presence
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((u) => {
       setUser(u);
@@ -40,6 +40,7 @@ export default function App() {
         return () => cleanupPresence && cleanupPresence();
       }
     });
+
     return () => unsubscribe();
   }, []);
 
@@ -82,9 +83,11 @@ export default function App() {
             ST
           </span>
         </div>
+
         <p style={{ marginTop: 16, fontSize: 15, opacity: 0.8 }}>
           SmartTalk is starting…
         </p>
+
         <style>
           {`
             @keyframes gradientShift {
@@ -108,54 +111,62 @@ export default function App() {
         <Router>
           <Routes>
             {/* Public Route */}
-            <Route path="/" element={user ? <ChatPage /> : <HomePage />} />
+            <Route
+              path="/"
+              element={user ? <ChatPage user={user} /> : <HomePage />}
+            />
 
-            {/* Protected Routes */}
+            {/* Protected Pages */}
             <Route
               path="/chat"
               element={
                 <ProtectedRoute>
-                  <ChatPage />
+                  <ChatPage user={user} />
                 </ProtectedRoute>
               }
             />
+
             <Route
               path="/chat/:chatId"
               element={
                 <ProtectedRoute>
-                  <ChatConversationPage />
+                  <ChatConversationPage user={user} />
                 </ProtectedRoute>
               }
             />
+
             <Route
               path="/call"
               element={
                 <ProtectedRoute>
-                  <CallPage />
+                  <CallPage user={user} />
                 </ProtectedRoute>
               }
             />
+
             <Route
               path="/settings"
               element={
                 <ProtectedRoute>
-                  <SettingsPage />
+                  <SettingsPage user={user} />
                 </ProtectedRoute>
               }
             />
+
             <Route
               path="/edit-profile"
               element={
                 <ProtectedRoute>
-                  <EditProfilePage />
+                  <EditProfilePage user={user} />
                 </ProtectedRoute>
               }
             />
+
             <Route
               path="/history"
               element={
                 <ProtectedRoute>
-                  <CallHistoryPage />
+                  <CallHistoryPage user={user} />
                 </ProtectedRoute>
               }
             />
@@ -165,23 +176,25 @@ export default function App() {
               path="/wallet"
               element={
                 <ProtectedRoute>
-                  <WalletPage />
+                  <WalletPage user={user} />
                 </ProtectedRoute>
               }
             />
+
             <Route
               path="/topup"
               element={
                 <ProtectedRoute>
-                  <TopUpPage />
+                  <TopUpPage user={user} />
                 </ProtectedRoute>
               }
             />
+
             <Route
               path="/withdraw"
               element={
                 <ProtectedRoute>
-                  <WithdrawPage />
+                  <WithdrawPage user={user} />
                 </ProtectedRoute>
               }
             />
@@ -191,27 +204,26 @@ export default function App() {
               path="/profile/:uid"
               element={
                 <ProtectedRoute>
-                  <UserProfile />
+                  <UserProfile currentUser={user} />
                 </ProtectedRoute>
               }
             />
 
-            {/* Voice Call */}
+            {/* Calls */}
             <Route
               path="/voicecall/:uid"
               element={
                 <ProtectedRoute>
-                  <VoiceCallPage />
+                  <VoiceCallPage user={user} />
                 </ProtectedRoute>
               }
             />
 
-            {/* Video Call */}
             <Route
               path="/videocall/:uid"
               element={
                 <ProtectedRoute>
-                  <VideoCallPage />
+                  <VideoCallPage user={user} />
                 </ProtectedRoute>
               }
             />
