@@ -1,12 +1,12 @@
-// src/components/Chat/ImagePreviewModal.jsx
 import React, { useState } from "react";
-import { X, FileText, Video, Image as ImageIcon } from "lucide-react";
+import { X, FileText } from "lucide-react";
 
 export default function ImagePreviewModal({
   files,
   onRemove,
   onSend,
   onCancel,
+  onAddFiles, // new prop
   isDark,
 }) {
   const [activeIndex, setActiveIndex] = useState(0);
@@ -101,7 +101,9 @@ export default function ImagePreviewModal({
             }}
           >
             <FileText size={60} color="#fff" />
-            <p style={{ color: "#fff" }}>{activeFile.name}</p>
+            <p style={{ color: "#fff", wordBreak: "break-word", textAlign: "center" }}>
+              {activeFile.name}
+            </p>
           </div>
         )}
       </div>
@@ -116,6 +118,27 @@ export default function ImagePreviewModal({
           marginTop: 10,
         }}
       >
+        {/* Add + button */}
+        <div
+          onClick={onAddFiles}
+          style={{
+            width: 80,
+            height: 80,
+            borderRadius: 10,
+            background: "rgba(255,255,255,0.2)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            fontSize: 32,
+            fontWeight: "bold",
+            color: "#fff",
+            cursor: "pointer",
+            flexShrink: 0,
+          }}
+        >
+          +
+        </div>
+
         {files.map((file, i) => {
           const thumbUrl = URL.createObjectURL(file);
           const isImg = file.type.startsWith("image/");
@@ -138,7 +161,6 @@ export default function ImagePreviewModal({
                 flexShrink: 0,
               }}
             >
-              {/* Preview types */}
               {isImg && (
                 <img
                   src={thumbUrl}
