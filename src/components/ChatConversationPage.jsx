@@ -11,11 +11,9 @@ import {
   doc,
   getDoc,
   arrayUnion,
-  arrayRemove,
+  serverTimestamp,
   deleteDoc,
   limit as fsLimit,
-  getDocs,
-  serverTimestamp,
 } from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
 import { ThemeContext } from "../context/ThemeContext";
@@ -81,7 +79,6 @@ export default function ChatConversationPage() {
   const [reactionFor, setReactionFor] = useState(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [recording, setRecording] = useState(false);
-  const [recorderAvailable, setRecorderAvailable] = useState(false);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
 
   // -------------------- Load chat & friend (live) --------------------
@@ -108,7 +105,8 @@ export default function ChatConversationPage() {
         }
 
         unsubChat = onSnapshot(cRef, (s) => {
-          if (s.exists()) setChatInfo((prev) => ({ ...(prev || {}), ...s.data() }));
+          if (s.exists())
+            setChatInfo((prev) => ({ ...(prev || {}), ...s.data() }));
         });
       } catch (e) {
         console.error("loadMeta error", e);
@@ -126,14 +124,26 @@ export default function ChatConversationPage() {
   useEffect(() => {
     if (!chatId) return;
     setLoadingMsgs(true);
-    const q = query(collection(db, "chats", chatId, "messages"), orderBy("createdAt", "asc"), fsLimit(2000));
+    const q = query(
+      collection(db, "chats", chatId, "messages"),
+      orderBy("createdAt", "asc"),
+      fsLimit(2000)
+    );
     const unsub = onSnapshot(q, (snap) => {
-      const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((m) => !(m.deletedFor?.includes(myUid)));
+      const docs = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((m) => !(m.deletedFor?.includes(myUid)));
       setMessages(docs);
+
+      // mark incoming messages as delivered
       docs.forEach(async (m) => {
-        if (m.senderId !== myUid && m.status === "sent")
-          await updateDoc(doc(db, "chats", chatId, "messages", m.id), { status: "delivered" });
+        if (m.senderId !== myUid && m.status === "sent") {
+          await updateDoc(doc(db, "chats", chatId, "messages", m.id), {
+            status: "delivered",
+          });
+        }
       });
+
       setLoadingMsgs(false);
       if (isAtBottom) endRef.current?.scrollIntoView({ behavior: "smooth" });
     });
@@ -158,9 +168,68 @@ export default function ChatConversationPage() {
 
   // -------------------- Send message --------------------
   const sendTextMessage = async () => {
-    if (!chatInfo || (chatInfo.blockedBy || []).includes(myUid)) return alert("You are blocked in this chat.");
-    // handle files & text here (same logic as before)
-    alert("Send logic handled inside ChatConversationPage"); // placeholder
+    if (!chatInfo || (chatInfo.blockedBy || []).includes(myUid))
+      return alert("You are blocked in this chat.");
+    if (!text && selectedFiles.length === 0) return;
+
+    const newMessages = [];
+
+    // upload files first
+    for (let file of selectedFiles) {
+      const tempId = Date.now() + "-" + file.name;
+      setUploadingIds((prev) => ({ ...prev, [tempId]: true }));
+
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("upload_preset", "0HoyRB6wC0eba-Cbat0nhiIRoa8");
+      formData.append("folder", "chatImages");
+
+      try {
+        const res = await fetch(
+          "https://api.cloudinary.com/v1_1/dtp8wg4e1/image/upload",
+          { method: "POST", body: formData }
+        );
+        const data = await res.json();
+        const fileURL = data.secure_url;
+
+        const msgRef = await addDoc(collection(db, "chats", chatId, "messages"), {
+          senderId: myUid,
+          text: "",
+          mediaUrl: fileURL,
+          mediaType: "image",
+          status: "sent",
+          createdAt: serverTimestamp(),
+          replyTo: replyTo?.id || null,
+        });
+
+        newMessages.push(msgRef.id);
+        setUploadingIds((prev) => {
+          const { [tempId]: _, ...rest } = prev;
+          return rest;
+        });
+      } catch (e) {
+        console.error("File upload error:", e);
+      }
+    }
+
+    // send text message
+    if (text) {
+      const msgRef = await addDoc(collection(db, "chats", chatId, "messages"), {
+        senderId: myUid,
+        text: text,
+        mediaUrl: null,
+        mediaType: null,
+        status: "sent",
+        createdAt: serverTimestamp(),
+        replyTo: replyTo?.id || null,
+      });
+      newMessages.push(msgRef.id);
+    }
+
+    setText("");
+    setSelectedFiles([]);
+    setReplyTo(null);
+    scrollToBottom();
   };
 
   // -------------------- File select --------------------
@@ -171,7 +240,15 @@ export default function ChatConversationPage() {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh", backgroundColor: wallpaper || (isDark ? COLORS.darkBg : COLORS.lightBg), color: isDark ? COLORS.darkText : COLORS.lightText }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100vh",
+        backgroundColor: wallpaper || (isDark ? COLORS.darkBg : COLORS.lightBg),
+        color: isDark ? COLORS.darkText : COLORS.lightText,
+      }}
+    >
       {/* Header */}
       <ChatHeader
         chatInfo={chatInfo}
