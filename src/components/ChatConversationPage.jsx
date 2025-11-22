@@ -19,7 +19,6 @@ import ChatHeader from "./Chat/ChatHeader";
 import MessageItem from "./Chat/MessageItem";
 import ChatInput from "./Chat/ChatInput";
 
-// -------------------- Helpers --------------------
 const COLORS = {
   primary: "#34B7F1",
   darkBg: "#0b0b0b",
@@ -30,7 +29,6 @@ const COLORS = {
   grayBorder: "rgba(0,0,0,0.06)",
   darkCard: "#1b1b1b",
   lightCard: "#fff",
-  headerBlue: "#1877F2",
 };
 
 const formatDayLabel = (ts) => {
@@ -49,7 +47,6 @@ const formatDayLabel = (ts) => {
   });
 };
 
-// -------------------- Main Component --------------------
 export default function ChatConversationPage() {
   const { chatId } = useParams();
   const navigate = useNavigate();
@@ -70,7 +67,9 @@ export default function ChatConversationPage() {
   const [menuOpenFor, setMenuOpenFor] = useState(null);
   const [reactionFor, setReactionFor] = useState(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
+  const [newMsgCount, setNewMsgCount] = useState(0);
   const [recording, setRecording] = useState(false);
+  const [showScrollDown, setShowScrollDown] = useState(false);
 
   // -------------------- Load chat & friend --------------------
   useEffect(() => {
@@ -96,7 +95,8 @@ export default function ChatConversationPage() {
         }
 
         unsubChat = onSnapshot(cRef, (s) => {
-          if (s.exists()) setChatInfo((prev) => ({ ...(prev || {}), ...s.data() }));
+          if (s.exists())
+            setChatInfo((prev) => ({ ...(prev || {}), ...s.data() }));
         });
       } catch (e) {
         console.error("loadMeta error", e);
@@ -118,10 +118,22 @@ export default function ChatConversationPage() {
       orderBy("createdAt", "asc"),
       fsLimit(2000)
     );
+
     const unsub = onSnapshot(q, (snap) => {
       const docs = snap.docs
         .map((d) => ({ id: d.id, ...d.data() }))
         .filter((m) => !(m.deletedFor?.includes(myUid)));
+
+      // Count new messages if not at bottom
+      if (!isAtBottom) {
+        const incoming = docs.filter(
+          (m) => m.senderId !== myUid && !m.read
+        ).length;
+        setNewMsgCount(incoming);
+        setShowScrollDown(incoming > 0);
+        // Auto-hide scroll down after 5s
+        setTimeout(() => setShowScrollDown(false), 5000);
+      }
 
       setMessages(docs);
 
@@ -141,15 +153,18 @@ export default function ChatConversationPage() {
         scrollToBottom();
       }
     });
+
     return () => unsub();
-  }, [chatId, myUid]);
+  }, [chatId, myUid, isAtBottom]);
 
   // -------------------- Scroll detection --------------------
   useEffect(() => {
     const el = messagesRefEl.current;
     if (!el) return;
     const onScroll = () => {
-      setIsAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 80);
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+      setIsAtBottom(atBottom);
+      if (atBottom) setNewMsgCount(0);
     };
     el.addEventListener("scroll", onScroll);
     return () => el.removeEventListener("scroll", onScroll);
@@ -158,6 +173,8 @@ export default function ChatConversationPage() {
   const scrollToBottom = (smooth = true) => {
     endRef.current?.scrollIntoView({ behavior: smooth ? "smooth" : "auto" });
     setIsAtBottom(true);
+    setNewMsgCount(0);
+    setShowScrollDown(false);
   };
 
   // -------------------- Send message --------------------
@@ -259,7 +276,6 @@ export default function ChatConversationPage() {
         setHeaderMenuOpen={() => {}}
       />
 
-      {/* Messages */}
       <div
         ref={messagesRefEl}
         style={{ flex: 1, overflowY: "auto", padding: 8, position: "relative" }}
@@ -295,29 +311,46 @@ export default function ChatConversationPage() {
         <div ref={endRef} />
       </div>
 
-      {/* Scroll down arrow */}
-      {!isAtBottom && (
+      {/* Scroll down button */}
+      {showScrollDown && !isAtBottom && (
         <button
-          onClick={() => scrollToBottom(false)}
+          onClick={() => scrollToBottom()}
           style={{
             position: "absolute",
             bottom: 80,
             right: 16,
-            backgroundColor: COLORS.primary,
-            border: "none",
+            width: 44,
+            height: 44,
             borderRadius: "50%",
-            width: 40,
-            height: 40,
+            backgroundColor: COLORS.primary,
             color: "#fff",
+            border: "none",
             cursor: "pointer",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
+            boxShadow: "0 2px 6px rgba(0,0,0,0.3)",
             zIndex: 50,
           }}
         >
           ↓
+          {newMsgCount > 0 && (
+            <span
+              style={{
+                position: "absolute",
+                top: -6,
+                right: -6,
+                backgroundColor: "red",
+                color: "#fff",
+                fontSize: 12,
+                fontWeight: "bold",
+                borderRadius: "50%",
+                padding: "2px 6px",
+              }}
+            >
+              {newMsgCount}
+            </span>
+          )}
         </button>
       )}
 
