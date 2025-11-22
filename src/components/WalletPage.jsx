@@ -16,7 +16,7 @@ export default function WalletPage() {
   const modalRef = useRef();
   const navigate = useNavigate();
 
-  const backend = "https://smart-talk-dqit.onrender.com";
+  const backend = "https://smart-talk-zlxe.onrender.com";
 
   // AUTH + LOAD WALLET
   useEffect(() => {
