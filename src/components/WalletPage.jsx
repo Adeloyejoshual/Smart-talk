@@ -14,7 +14,7 @@ export default function WalletPage() {
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   const [details, setDetails] = useState(null);
   const [loadingReward, setLoadingReward] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [claimedToday, setClaimedToday] = useState(false);
   const scrollRef = useRef();
   const modalRef = useRef();
   const navigate = useNavigate();
@@ -32,7 +32,7 @@ export default function WalletPage() {
     return unsub;
   }, []);
 
-  // LOAD WALLET
+  // FETCH WALLET + TRANSACTIONS FROM BACKEND
   const loadWallet = async (uid) => {
     try {
       const token = await auth.currentUser.getIdToken(true);
@@ -42,6 +42,16 @@ export default function WalletPage() {
 
       setBalance(res.data.balance || 0);
       setTransactions(res.data.transactions || []);
+
+      // Check if daily reward already claimed
+      const today = new Date().toISOString().split("T")[0];
+      const hasClaimed = res.data.transactions.some(
+        (t) =>
+          t.type === "checkin" &&
+          new Date(t.createdAt).toISOString().split("T")[0] === today
+      );
+      setClaimedToday(hasClaimed);
+
       if (res.data.transactions?.length) {
         setSelectedMonth(
           new Date(res.data.transactions[0].createdAt || res.data.transactions[0].date)
@@ -53,9 +63,9 @@ export default function WalletPage() {
     }
   };
 
-  // CLAIM DAILY REWARD
+  // CLAIM DAILY REWARD VIA BACKEND
   const handleDailyReward = async () => {
-    if (!user) return;
+    if (!user || claimedToday) return;
     setLoadingReward(true);
 
     try {
@@ -69,12 +79,41 @@ export default function WalletPage() {
       if (res.data.balance !== undefined) {
         setBalance(res.data.balance);
         setTransactions(
-          (res.data.transactions || transactions).sort(
+          [res.data.txn, ...transactions].sort(
             (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
           )
         );
-        alert("🎉 Daily reward claimed!");
+        setClaimedToday(true);
+
+        // Animate daily reward claim
+        const rewardEl = document.createElement("div");
+        rewardEl.innerText = "+$0.25 Daily Reward!";
+        rewardEl.style.position = "fixed";
+        rewardEl.style.top = "50%";
+        rewardEl.style.left = "50%";
+        rewardEl.style.transform = "translate(-50%, -50%)";
+        rewardEl.style.padding = "20px 30px";
+        rewardEl.style.background = "#ffd700";
+        rewardEl.style.color = "#000";
+        rewardEl.style.fontSize = "20px";
+        rewardEl.style.borderRadius = "12px";
+        rewardEl.style.boxShadow = "0 4px 15px rgba(0,0,0,0.3)";
+        rewardEl.style.zIndex = 9999;
+        rewardEl.style.opacity = 0;
+        rewardEl.style.transition = "all 0.8s ease-out";
+        document.body.appendChild(rewardEl);
+
+        setTimeout(() => {
+          rewardEl.style.opacity = 1;
+          rewardEl.style.transform = "translate(-50%, -80%)";
+        }, 100);
+        setTimeout(() => {
+          rewardEl.style.opacity = 0;
+          rewardEl.style.transform = "translate(-50%, -120%)";
+        }, 1200);
+        setTimeout(() => document.body.removeChild(rewardEl), 2000);
       } else if (res.data.error?.toLowerCase().includes("already claimed")) {
+        setClaimedToday(true);
         alert("✅ You already claimed today's reward!");
       } else {
         alert(res.data.error || "Failed to claim daily reward.");
@@ -116,11 +155,7 @@ export default function WalletPage() {
         return new Date(d.getFullYear(), d.getMonth(), 1).toISOString();
       })
     )
-  )
-    .map((s) => new Date(s))
-    .filter((d) =>
-      formatMonth(d).toLowerCase().includes(searchTerm.toLowerCase())
-    );
+  ).map((s) => new Date(s));
 
   // CLOSE MONTH PICKER ON OUTSIDE CLICK
   useEffect(() => {
@@ -146,16 +181,11 @@ export default function WalletPage() {
     }
   };
 
-  // CHECK IF DAILY REWARD ALREADY CLAIMED
-  const alreadyClaimed = transactions.some(
-    (t) => t.type === "checkin" && formatDate(t.createdAt).split(",")[0] === formatDate(new Date()).split(",")[0]
-  );
-
   return (
     <div
       style={{
         ...styles.page,
-        backgroundColor: theme === "dark" ? "#111" : "#eef6ff",
+        background: theme === "dark" ? "#121212" : "#eef6ff",
         color: theme === "dark" ? "#fff" : "#000",
       }}
     >
@@ -169,76 +199,63 @@ export default function WalletPage() {
         <h1 style={styles.balanceAmount}>${balance.toFixed(2)}</h1>
 
         <div style={styles.actionRow}>
-          <button style={styles.roundBtn} onClick={() => navigate("/topup")}>
+          <button
+            style={{
+              ...styles.roundBtn,
+              background: theme === "dark"
+                ? "linear-gradient(135deg,#6b73ff,#000dff)"
+                : "linear-gradient(135deg,#56ccf2,#2f80ed)",
+              color: "#fff",
+            }}
+            onClick={() => navigate("/topup")}
+          >
             Top-Up
           </button>
-          <button style={styles.roundBtn} onClick={() => navigate("/withdraw")}>
+          <button
+            style={{
+              ...styles.roundBtn,
+              background: theme === "dark"
+                ? "linear-gradient(135deg,#ff416c,#ff4b2b)"
+                : "linear-gradient(135deg,#ff7e5f,#feb47b)",
+              color: "#fff",
+            }}
+            onClick={() => navigate("/withdraw")}
+          >
             Withdraw
           </button>
         </div>
 
-        {/* Daily Reward under buttons */}
         <div style={{ marginTop: 15 }}>
           <button
             style={{
               ...styles.roundBtn,
-              background: alreadyClaimed ? "#ccc" : "#ffd700",
-              cursor: alreadyClaimed ? "not-allowed" : "pointer",
+              width: "100%",
+              background: claimedToday
+                ? "#ccc"
+                : "linear-gradient(135deg,#fbd72b,#ffd700)",
+              color: claimedToday ? "#555" : "#000",
             }}
-            disabled={loadingReward || alreadyClaimed}
             onClick={handleDailyReward}
+            disabled={loadingReward || claimedToday}
           >
             {loadingReward
               ? "Processing..."
-              : alreadyClaimed
+              : claimedToday
               ? "Already Claimed"
               : "Daily Reward"}
           </button>
         </div>
-
-        {/* Month-Year header */}
-        <div style={styles.monthHeader}>
-          <span style={styles.monthText}>{formatMonth(selectedMonth)}</span>
-          <button
-            style={styles.monthArrow}
-            onClick={() => setShowMonthPicker(!showMonthPicker)}
-          >
-            ▼
-          </button>
-
-          {showMonthPicker && (
-            <div style={styles.monthPicker} ref={modalRef}>
-              <input
-                type="text"
-                placeholder="Search month/year"
-                style={styles.searchInput}
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-              <div style={{ maxHeight: 200, overflowY: "auto" }}>
-                {activeMonths.map((d, i) => (
-                  <div
-                    key={i}
-                    style={styles.monthItem}
-                    onClick={() => {
-                      setSelectedMonth(d);
-                      setShowMonthPicker(false);
-                    }}
-                  >
-                    {formatMonth(d)}
-                  </div>
-                ))}
-                {activeMonths.length === 0 && (
-                  <div style={{ padding: 10, color: "#888" }}>No months found</div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
       </div>
 
-      {/* Transactions list */}
-      <div style={styles.list} ref={scrollRef} onScroll={handleScroll}>
+      {/* Month/Year Header */}
+      <div style={styles.monthHeaderSticky}>{formatMonth(selectedMonth)}</div>
+
+      {/* Scrollable transactions */}
+      <div
+        style={styles.list}
+        ref={scrollRef}
+        onScroll={handleScroll}
+      >
         {filteredTransactions.length === 0 ? (
           <p style={{ textAlign: "center", opacity: 0.5, marginTop: 10 }}>
             No transactions this month.
@@ -310,7 +327,6 @@ const styles = {
     left: 20,
     padding: "10px 14px",
     borderRadius: "50%",
-    background: "#dce9ff",
     border: "none",
     cursor: "pointer",
     fontSize: 18,
@@ -323,49 +339,28 @@ const styles = {
     boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
     marginTop: 20,
     textAlign: "center",
-    position: "relative",
   },
   balanceLabel: { opacity: 0.6 },
   balanceAmount: { fontSize: 36, margin: "10px 0" },
-  actionRow: { display: "flex", justifyContent: "center", gap: 15, marginTop: 15 },
+  actionRow: { display: "flex", justifyContent: "center", gap: 15 },
   roundBtn: {
     padding: "12px 20px",
     borderRadius: 30,
     border: "none",
-    fontWeight: "bold",
-  },
-  monthHeader: {
-    display: "flex",
-    justifyContent: "center",
-    gap: 6,
-    marginTop: 25,
-    position: "relative",
-    backgroundColor: "transparent",
-    padding: "5px 0",
-    zIndex: 5,
-  },
-  monthText: { fontSize: 18, fontWeight: "bold" },
-  monthArrow: {
-    border: "none",
-    background: "#cfe3ff",
-    padding: "5px 10px",
-    borderRadius: 8,
     cursor: "pointer",
+    fontWeight: "bold",
+    transition: "all 0.3s",
   },
-  monthPicker: {
-    background: "#fff",
-    borderRadius: 14,
-    padding: 10,
-    boxShadow: "0 2px 10px rgba(0,0,0,0.1)",
-    position: "absolute",
-    top: "100%",
-    left: "50%",
-    transform: "translateX(-50%)",
-    zIndex: 10,
-    width: 200,
+  monthHeaderSticky: {
+    position: "sticky",
+    top: 15,
+    fontSize: 20,
+    fontWeight: "bold",
+    background: "transparent",
+    textAlign: "center",
+    marginTop: 25,
+    zIndex: 2,
   },
-  monthItem: { padding: 10, borderRadius: 10, cursor: "pointer" },
-  searchInput: { width: "100%", padding: 6, marginBottom: 6, borderRadius: 6, border: "1px solid #ccc" },
   list: { marginTop: 10, maxHeight: "50vh", overflowY: "auto" },
   txRowCompact: {
     background: "#fff",
