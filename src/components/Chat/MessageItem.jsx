@@ -121,7 +121,9 @@ export default function MessageItem({ message, myUid, chatId, onReply, onPin, on
             {message.mediaType === "video" && (
               <video src={message.mediaUrl} controls style={{ maxWidth: "100%", borderRadius: SPACING.borderRadius }} />
             )}
-            {message.mediaType === "audio" && <audio src={message.mediaUrl} controls />}
+            {message.mediaType === "audio" && (
+              <audio src={message.mediaUrl} controls style={{ width: "100%" }} />
+            )}
             {message.mediaType === "pdf" && (
               <a href={message.mediaUrl} target="_blank" rel="noreferrer">
                 {message.fileName || "File"}
@@ -197,4 +199,4 @@ export default function MessageItem({ message, myUid, chatId, onReply, onPin, on
       )}
     </div>
   );
-      }
+}
