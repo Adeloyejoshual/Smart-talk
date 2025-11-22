@@ -1,4 +1,4 @@
-// src/components/ChatConversationPage.jsx
+// src/components/Chat/ChatConversationPage.jsx
 import React, { useEffect, useState, useRef, useContext } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
@@ -12,7 +12,6 @@ import {
   getDoc,
   arrayUnion,
   serverTimestamp,
-  deleteDoc,
   limit as fsLimit,
 } from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
@@ -21,29 +20,6 @@ import ChatHeader from "./Chat/ChatHeader";
 import MessageItem from "./Chat/MessageItem";
 import ChatInput from "./Chat/ChatInput";
 
-// -------------------- Helpers --------------------
-const fmtTime = (ts) => {
-  if (!ts) return "";
-  const d = ts.toDate ? ts.toDate() : new Date(ts);
-  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-};
-
-const dayLabel = (ts) => {
-  if (!ts) return "";
-  const d = ts.toDate ? ts.toDate() : new Date(ts);
-  const now = new Date();
-  const yesterday = new Date();
-  yesterday.setDate(now.getDate() - 1);
-  if (d.toDateString() === now.toDateString()) return "Today";
-  if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
-  return d.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: d.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
-  });
-};
-
-// -------------------- Constants --------------------
 const COLORS = {
   primary: "#34B7F1",
   darkBg: "#0b0b0b",
@@ -70,18 +46,16 @@ export default function ChatConversationPage() {
   const [chatInfo, setChatInfo] = useState(null);
   const [friendInfo, setFriendInfo] = useState(null);
   const [messages, setMessages] = useState([]);
-  const [loadingMsgs, setLoadingMsgs] = useState(true);
   const [text, setText] = useState("");
   const [selectedFiles, setSelectedFiles] = useState([]);
-  const [uploadingIds, setUploadingIds] = useState({});
+  const [uploadProgress, setUploadProgress] = useState({});
   const [replyTo, setReplyTo] = useState(null);
   const [menuOpenFor, setMenuOpenFor] = useState(null);
   const [reactionFor, setReactionFor] = useState(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [recording, setRecording] = useState(false);
-  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
 
-  // -------------------- Load chat & friend (live) --------------------
+  // -------------------- Load chat & friend --------------------
   useEffect(() => {
     if (!chatId) return;
     let unsubChat = null;
@@ -123,7 +97,6 @@ export default function ChatConversationPage() {
   // -------------------- Messages realtime --------------------
   useEffect(() => {
     if (!chatId) return;
-    setLoadingMsgs(true);
     const q = query(
       collection(db, "chats", chatId, "messages"),
       orderBy("createdAt", "asc"),
@@ -144,8 +117,7 @@ export default function ChatConversationPage() {
         }
       });
 
-      setLoadingMsgs(false);
-      if (isAtBottom) endRef.current?.scrollIntoView({ behavior: "smooth" });
+      if (isAtBottom) scrollToBottom();
     });
     return () => unsub();
   }, [chatId, myUid, isAtBottom]);
@@ -172,12 +144,10 @@ export default function ChatConversationPage() {
       return alert("You are blocked in this chat.");
     if (!text && selectedFiles.length === 0) return;
 
-    const newMessages = [];
-
-    // upload files first
+    // Upload files
     for (let file of selectedFiles) {
       const tempId = Date.now() + "-" + file.name;
-      setUploadingIds((prev) => ({ ...prev, [tempId]: true }));
+      setUploadProgress((prev) => ({ ...prev, [tempId]: 0 }));
 
       const formData = new FormData();
       formData.append("file", file);
@@ -192,7 +162,7 @@ export default function ChatConversationPage() {
         const data = await res.json();
         const fileURL = data.secure_url;
 
-        const msgRef = await addDoc(collection(db, "chats", chatId, "messages"), {
+        await addDoc(collection(db, "chats", chatId, "messages"), {
           senderId: myUid,
           text: "",
           mediaUrl: fileURL,
@@ -200,10 +170,10 @@ export default function ChatConversationPage() {
           status: "sent",
           createdAt: serverTimestamp(),
           replyTo: replyTo?.id || null,
+          tempId,
         });
 
-        newMessages.push(msgRef.id);
-        setUploadingIds((prev) => {
+        setUploadProgress((prev) => {
           const { [tempId]: _, ...rest } = prev;
           return rest;
         });
@@ -212,18 +182,17 @@ export default function ChatConversationPage() {
       }
     }
 
-    // send text message
+    // Send text
     if (text) {
-      const msgRef = await addDoc(collection(db, "chats", chatId, "messages"), {
+      await addDoc(collection(db, "chats", chatId, "messages"), {
         senderId: myUid,
-        text: text,
+        text,
         mediaUrl: null,
         mediaType: null,
         status: "sent",
         createdAt: serverTimestamp(),
         replyTo: replyTo?.id || null,
       });
-      newMessages.push(msgRef.id);
     }
 
     setText("");
@@ -232,7 +201,6 @@ export default function ChatConversationPage() {
     scrollToBottom();
   };
 
-  // -------------------- File select --------------------
   const onFilesSelected = (e) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
@@ -249,44 +217,40 @@ export default function ChatConversationPage() {
         color: isDark ? COLORS.darkText : COLORS.lightText,
       }}
     >
-      {/* Header */}
       <ChatHeader
         chatInfo={chatInfo}
         friendInfo={friendInfo}
         myUid={myUid}
         navigate={navigate}
-        headerMenuOpen={headerMenuOpen}
-        setHeaderMenuOpen={setHeaderMenuOpen}
-        clearChat={() => alert("Clear Chat")}
-        toggleBlock={() => alert("Block toggle")}
+        headerMenuOpen={false}
+        setHeaderMenuOpen={() => {}}
       />
 
-      {/* Messages */}
       <div ref={messagesRefEl} style={{ flex: 1, overflowY: "auto", padding: 8 }}>
         {messages.map((m) => (
           <MessageItem
             key={m.id}
             message={m}
             myUid={myUid}
-            chatId={chatId}
-            setMenuOpenFor={setMenuOpenFor}
             menuOpenFor={menuOpenFor}
-            setReactionFor={setReactionFor}
+            setMenuOpenFor={setMenuOpenFor}
             reactionFor={reactionFor}
+            setReactionFor={setReactionFor}
+            applyReaction={() => {}}
             replyToMessage={(m) => setReplyTo(m)}
-            scrollToBottom={scrollToBottom}
+            uploadProgress={uploadProgress}
           />
         ))}
         <div ref={endRef} />
       </div>
 
-      {/* Input bar */}
       <ChatInput
         text={text}
         setText={setText}
         sendTextMessage={sendTextMessage}
-        onFilesSelected={onFilesSelected}
         selectedFiles={selectedFiles}
+        setSelectedFiles={setSelectedFiles}
+        onFilesSelected={onFilesSelected}
         holdStart={() => {}}
         holdEnd={() => {}}
         recording={recording}
