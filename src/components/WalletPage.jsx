@@ -14,6 +14,7 @@ export default function WalletPage() {
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   const [details, setDetails] = useState(null);
   const [loadingReward, setLoadingReward] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
   const scrollRef = useRef();
   const modalRef = useRef();
   const navigate = useNavigate();
@@ -31,7 +32,7 @@ export default function WalletPage() {
     return unsub;
   }, []);
 
-  // FETCH WALLET + TRANSACTIONS
+  // LOAD WALLET
   const loadWallet = async (uid) => {
     try {
       const token = await auth.currentUser.getIdToken(true);
@@ -61,14 +62,14 @@ export default function WalletPage() {
       const token = await auth.currentUser.getIdToken(true);
       const res = await axios.post(
         `${backend}/api/wallet/daily`,
-        {},
+        { amount: 0.25 },
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
       if (res.data.balance !== undefined) {
         setBalance(res.data.balance);
         setTransactions(
-          [res.data.txn, ...transactions].sort(
+          (res.data.transactions || transactions).sort(
             (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
           )
         );
@@ -107,7 +108,7 @@ export default function WalletPage() {
     );
   });
 
-  // UNIQUE MONTHS
+  // UNIQUE MONTHS FOR PICKER
   const activeMonths = Array.from(
     new Set(
       transactions.map((t) => {
@@ -115,7 +116,11 @@ export default function WalletPage() {
         return new Date(d.getFullYear(), d.getMonth(), 1).toISOString();
       })
     )
-  ).map((s) => new Date(s));
+  )
+    .map((s) => new Date(s))
+    .filter((d) =>
+      formatMonth(d).toLowerCase().includes(searchTerm.toLowerCase())
+    );
 
   // CLOSE MONTH PICKER ON OUTSIDE CLICK
   useEffect(() => {
@@ -128,15 +133,7 @@ export default function WalletPage() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [showMonthPicker]);
 
-  // DAILY REWARD CHECK
-  const todayStr = new Date().toISOString().split("T")[0];
-  const claimedToday = transactions.some(
-    (tx) =>
-      tx.type === "checkin" &&
-      new Date(tx.createdAt).toISOString().split("T")[0] === todayStr
-  );
-
-  // UPDATE MONTH ON SCROLL
+  // UPDATE MONTH HEADER ON SCROLL
   const handleScroll = () => {
     const scrollTop = scrollRef.current.scrollTop;
     const items = Array.from(scrollRef.current.children);
@@ -149,11 +146,16 @@ export default function WalletPage() {
     }
   };
 
+  // CHECK IF DAILY REWARD ALREADY CLAIMED
+  const alreadyClaimed = transactions.some(
+    (t) => t.type === "checkin" && formatDate(t.createdAt).split(",")[0] === formatDate(new Date()).split(",")[0]
+  );
+
   return (
     <div
       style={{
         ...styles.page,
-        backgroundColor: theme === "dark" ? "#000" : "#eef6ff",
+        backgroundColor: theme === "dark" ? "#111" : "#eef6ff",
         color: theme === "dark" ? "#fff" : "#000",
       }}
     >
@@ -162,13 +164,7 @@ export default function WalletPage() {
       </button>
       <h2 style={styles.title}>Wallet</h2>
 
-      {/* Wallet Card */}
-      <div
-        style={{
-          ...styles.walletCard,
-          backgroundColor: theme === "dark" ? "#111" : "#fff",
-        }}
-      >
+      <div style={styles.walletCard}>
         <p style={styles.balanceLabel}>Balance</p>
         <h1 style={styles.balanceAmount}>${balance.toFixed(2)}</h1>
 
@@ -181,24 +177,26 @@ export default function WalletPage() {
           </button>
         </div>
 
-        <div style={{ marginTop: 12 }}>
+        {/* Daily Reward under buttons */}
+        <div style={{ marginTop: 15 }}>
           <button
             style={{
               ...styles.roundBtn,
-              background: claimedToday ? "#ccc" : "#ffd700",
+              background: alreadyClaimed ? "#ccc" : "#ffd700",
+              cursor: alreadyClaimed ? "not-allowed" : "pointer",
             }}
+            disabled={loadingReward || alreadyClaimed}
             onClick={handleDailyReward}
-            disabled={claimedToday || loadingReward}
           >
-            {claimedToday
-              ? "✅ Claimed Today"
-              : loadingReward
+            {loadingReward
               ? "Processing..."
+              : alreadyClaimed
+              ? "Already Claimed"
               : "Daily Reward"}
           </button>
         </div>
 
-        {/* Month-Year */}
+        {/* Month-Year header */}
         <div style={styles.monthHeader}>
           <span style={styles.monthText}>{formatMonth(selectedMonth)}</span>
           <button
@@ -207,35 +205,40 @@ export default function WalletPage() {
           >
             ▼
           </button>
-        </div>
 
-        {showMonthPicker && (
-          <div style={styles.monthPicker} ref={modalRef}>
-            {activeMonths.map((d, i) => (
-              <div
-                key={i}
-                style={styles.monthItem}
-                onClick={() => {
-                  setSelectedMonth(d);
-                  setShowMonthPicker(false);
-                }}
-              >
-                {formatMonth(d)}
+          {showMonthPicker && (
+            <div style={styles.monthPicker} ref={modalRef}>
+              <input
+                type="text"
+                placeholder="Search month/year"
+                style={styles.searchInput}
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+              <div style={{ maxHeight: 200, overflowY: "auto" }}>
+                {activeMonths.map((d, i) => (
+                  <div
+                    key={i}
+                    style={styles.monthItem}
+                    onClick={() => {
+                      setSelectedMonth(d);
+                      setShowMonthPicker(false);
+                    }}
+                  >
+                    {formatMonth(d)}
+                  </div>
+                ))}
+                {activeMonths.length === 0 && (
+                  <div style={{ padding: 10, color: "#888" }}>No months found</div>
+                )}
               </div>
-            ))}
-          </div>
-        )}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Transactions */}
-      <div
-        style={{
-          ...styles.list,
-          backgroundColor: theme === "dark" ? "#111" : "#fff",
-        }}
-        ref={scrollRef}
-        onScroll={handleScroll}
-      >
+      {/* Transactions list */}
+      <div style={styles.list} ref={scrollRef} onScroll={handleScroll}>
         {filteredTransactions.length === 0 ? (
           <p style={{ textAlign: "center", opacity: 0.5, marginTop: 10 }}>
             No transactions this month.
@@ -244,10 +247,7 @@ export default function WalletPage() {
           filteredTransactions.map((tx) => (
             <div
               key={tx._id}
-              style={{
-                ...styles.txRowCompact,
-                backgroundColor: theme === "dark" ? "#222" : "#fff",
-              }}
+              style={styles.txRowCompact}
               onClick={() => setDetails(tx)}
             >
               <div style={styles.txLeftCompact}>
@@ -274,13 +274,7 @@ export default function WalletPage() {
       {/* Transaction Details Modal */}
       {details && (
         <div style={styles.modalOverlay}>
-          <div
-            style={{
-              ...styles.modal,
-              backgroundColor: theme === "dark" ? "#111" : "#fff",
-            }}
-            ref={modalRef}
-          >
+          <div style={styles.modal} ref={modalRef}>
             <h3 style={{ marginBottom: 10 }}>Transaction Details</h3>
             <p>
               <b>Type:</b> {details.type}
@@ -316,17 +310,20 @@ const styles = {
     left: 20,
     padding: "10px 14px",
     borderRadius: "50%",
+    background: "#dce9ff",
     border: "none",
     cursor: "pointer",
     fontSize: 18,
   },
   title: { marginTop: 20, textAlign: "center", fontSize: 26 },
   walletCard: {
+    background: "#fff",
     padding: 20,
     borderRadius: 18,
     boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
     marginTop: 20,
     textAlign: "center",
+    position: "relative",
   },
   balanceLabel: { opacity: 0.6 },
   balanceAmount: { fontSize: 36, margin: "10px 0" },
@@ -335,7 +332,6 @@ const styles = {
     padding: "12px 20px",
     borderRadius: 30,
     border: "none",
-    cursor: "pointer",
     fontWeight: "bold",
   },
   monthHeader: {
@@ -343,15 +339,15 @@ const styles = {
     justifyContent: "center",
     gap: 6,
     marginTop: 25,
+    position: "relative",
     backgroundColor: "transparent",
     padding: "5px 0",
-    position: "sticky",
-    top: 0,
     zIndex: 5,
   },
   monthText: { fontSize: 18, fontWeight: "bold" },
   monthArrow: {
     border: "none",
+    background: "#cfe3ff",
     padding: "5px 10px",
     borderRadius: 8,
     cursor: "pointer",
@@ -362,20 +358,17 @@ const styles = {
     padding: 10,
     boxShadow: "0 2px 10px rgba(0,0,0,0.1)",
     position: "absolute",
-    top: 80,
+    top: "100%",
     left: "50%",
     transform: "translateX(-50%)",
     zIndex: 10,
+    width: 200,
   },
   monthItem: { padding: 10, borderRadius: 10, cursor: "pointer" },
-  list: {
-    marginTop: 10,
-    maxHeight: "50vh",
-    overflowY: "auto",
-    borderRadius: 14,
-    padding: 10,
-  },
+  searchInput: { width: "100%", padding: 6, marginBottom: 6, borderRadius: 6, border: "1px solid #ccc" },
+  list: { marginTop: 10, maxHeight: "50vh", overflowY: "auto" },
   txRowCompact: {
+    background: "#fff",
     padding: "10px 12px",
     borderRadius: 10,
     marginBottom: 8,
@@ -398,6 +391,7 @@ const styles = {
     alignItems: "center",
   },
   modal: {
+    background: "#fff",
     padding: 25,
     borderRadius: 18,
     width: "85%",
@@ -407,11 +401,11 @@ const styles = {
   closeBtn: {
     marginTop: 15,
     padding: "10px 15px",
+    background: "#3498db",
     borderRadius: 10,
     border: "none",
+    color: "#fff",
     cursor: "pointer",
     fontWeight: "bold",
-    color: "#fff",
-    backgroundColor: "#3498db",
   },
 };
