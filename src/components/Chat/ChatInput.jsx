@@ -1,96 +1,77 @@
-// src/components/Chat/ChatInput.jsx
-import React, { useState, useRef } from "react";
-import { Paperclip, Send } from "lucide-react";
-import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
-import { db, auth } from "../../firebaseConfig";
-import ImagePreviewModal from "./ImagePreviewModal";
+import React, { useRef } from "react";
 
-export default function ChatInput({ chatId, onSendMessage }) {
-  const [text, setText] = useState("");
-  const [file, setFile] = useState(null);
-  const typingTimeout = useRef(null);
+const SPACING = { sm: 8, borderRadius: 12 };
 
-  const handleTyping = async (e) => {
-    setText(e.target.value);
-
-    // Notify Firestore user is typing
-    await updateDoc(doc(db, "chats", chatId), {
-      [`typing.${auth.currentUser.uid}`]: true,
-    });
-
-    clearTimeout(typingTimeout.current);
-    typingTimeout.current = setTimeout(async () => {
-      await updateDoc(doc(db, "chats", chatId), {
-        [`typing.${auth.currentUser.uid}`]: false,
-      });
-    }, 2000);
-  };
-
-  const handleSend = async () => {
-    if (!text && !file) return;
-    let fileURL = null;
-
-    if (file) {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("upload_preset", "0HoyRB6wC0eba-Cbat0nhiIRoa8");
-      formData.append("folder", "chatImages");
-
-      const res = await fetch(
-        `https://api.cloudinary.com/v1_1/dtp8wg4e1/image/upload`,
-        { method: "POST", body: formData }
-      );
-      const data = await res.json();
-      fileURL = data.secure_url;
-      setFile(null);
-    }
-
-    await onSendMessage(text, fileURL);
-    setText("");
-
-    // stop typing indicator
-    await updateDoc(doc(db, "chats", chatId), {
-      [`typing.${auth.currentUser.uid}`]: false,
-    });
-  };
+export default function ChatInput({
+  text,
+  setText,
+  sendTextMessage,
+  onFilesSelected,
+  selectedFiles,
+  holdStart,
+  holdEnd,
+  recording,
+  isDark,
+}) {
+  const fileInputRef = useRef(null);
 
   return (
-    <>
-      <div className="flex items-center px-3 py-2 bg-white dark:bg-gray-900 sticky bottom-0">
-        <label className="p-2 cursor-pointer">
-          <Paperclip className="text-gray-500 w-5 h-5" />
-          <input
-            type="file"
-            hidden
-            onChange={(e) => setFile(e.target.files[0])}
-          />
-        </label>
-
-        <input
-          type="text"
-          className="flex-1 px-3 py-2 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none"
-          placeholder="Type a message..."
-          value={text}
-          onChange={handleTyping}
-          onKeyDown={(e) => e.key === "Enter" && handleSend()}
-        />
-
-        <button
-          onClick={handleSend}
-          className="p-2 ml-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full"
-        >
-          <Send className="w-5 h-5" />
-        </button>
-      </div>
-
-      <ImagePreviewModal
-        file={file}
-        onCancel={() => setFile(null)}
-        onSend={(f) => {
-          setFile(f);
-          handleSend();
+    <div
+      style={{
+        padding: SPACING.sm,
+        display: "flex",
+        alignItems: "center",
+        gap: SPACING.sm,
+        borderTop: `1px solid rgba(0,0,0,0.06)`,
+        background: isDark ? "#1b1b1b" : "#fff",
+        position: "sticky",
+        bottom: 0,
+        zIndex: 20,
+      }}
+    >
+      {/* Text input */}
+      <input
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder="Type a message"
+        style={{
+          flex: 1,
+          padding: SPACING.sm,
+          borderRadius: SPACING.borderRadius,
+          border: `1px solid rgba(0,0,0,0.06)`,
+          outline: "none",
+          background: isDark ? "#0b0b0b" : "#fff",
+          color: isDark ? "#fff" : "#000",
         }}
+        onKeyDown={(e) => e.key === "Enter" && sendTextMessage()}
       />
-    </>
+
+      {/* File input */}
+      <input
+        type="file"
+        multiple
+        style={{ display: "none" }}
+        ref={fileInputRef}
+        onChange={onFilesSelected}
+      />
+      <button
+        onClick={() => fileInputRef.current.click()}
+        style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 18 }}
+      >
+        📎
+      </button>
+
+      {/* Send / Record button */}
+      <button
+        onMouseDown={holdStart}
+        onMouseUp={holdEnd}
+        onTouchStart={holdStart}
+        onTouchEnd={holdEnd}
+        onClick={sendTextMessage}
+        style={{ fontSize: 18, background: "transparent", border: "none" }}
+      >
+        {recording ? "🔴" : "📩"}
+      </button>
+    </div>
   );
 }
