@@ -1,6 +1,9 @@
 // src/components/Chat/MessageItem.jsx
 import React, { useState, useRef, useEffect } from "react";
 import MediaViewer from "./MediaViewer";
+import MessageActionModal from "./MessageActionModal";
+import { doc, updateDoc, arrayUnion } from "firebase/firestore";
+import { db } from "../../firebaseConfig";
 
 const SPACING = { xs: 4, sm: 6, md: 8, borderRadius: 14 };
 const COLORS = {
@@ -14,14 +17,14 @@ const COLORS = {
   shadow: "rgba(0,0,0,0.12)",
 };
 
-const INLINE_REACTIONS = ["❤️", "😂", "👍", "😮", "😢"];
-
 export default function MessageItem({
   message,
   myUid,
+  chatId,
   isDark = false,
   uploadProgress = {},
   setActiveMessageForHeader = () => {},
+  replyToMessage = () => {},
   handleMsgTouchStart = () => {},
   handleMsgTouchMove = () => {},
   handleMsgTouchEnd = () => {},
@@ -39,6 +42,8 @@ export default function MessageItem({
   const [viewerOpen, setViewerOpen] = useState(false);
   const [showFullText, setShowFullText] = useState(false);
   const [collapsedHeight, setCollapsedHeight] = useState(0);
+  const [actionModalVisible, setActionModalVisible] = useState(false);
+  const [longPressTimer, setLongPressTimer] = useState(null);
 
   const bubbleBg = isMine
     ? isDark
@@ -52,6 +57,8 @@ export default function MessageItem({
   const progressKey = message.tempId || message.id;
   const progressPct = uploadProgress?.[progressKey];
 
+  const maxPreviewLength = 250; // threshold for collapsed message
+
   useEffect(() => {
     if (textRef.current) {
       const fullHeight = textRef.current.scrollHeight;
@@ -62,6 +69,7 @@ export default function MessageItem({
 
   const handleMediaLoad = () => setLoadingMedia(false);
 
+  // ---------------- Media Preview ----------------
   const renderMediaPreview = () => {
     if (!message.mediaUrl) return null;
     const isPreviewable = ["image", "video"].includes(message.mediaType);
@@ -124,6 +132,7 @@ export default function MessageItem({
     );
   };
 
+  // ---------------- Status ----------------
   const renderStatus = () => {
     if (!isMine) return null;
     switch (message.status) {
@@ -138,7 +147,19 @@ export default function MessageItem({
     }
   };
 
-  const maxPreviewLength = 120;
+  // ---------------- Long Press ----------------
+  const handleTouchStart = () => {
+    const timer = setTimeout(() => {
+      setActionModalVisible(true);
+      setActiveMessageForHeader(message);
+    }, 600); // long press threshold
+    setLongPressTimer(timer);
+  };
+
+  const handleTouchEnd = () => {
+    clearTimeout(longPressTimer);
+    handleMsgTouchEnd(message);
+  };
 
   return (
     <div
@@ -152,24 +173,20 @@ export default function MessageItem({
         paddingRight: isMine ? 0 : 30,
       }}
     >
-      {/* Reactions above the bubble */}
+      {/* Reactions above bubble */}
       {message.reactions?.length > 0 && (
         <div style={{ display: "flex", gap: 4, marginBottom: 2 }}>
           {message.reactions.map((r, i) => (
-            <span key={i} style={{ fontSize: 14 }}>{r}</span>
+            <span key={i} style={{ fontSize: 14 }}>{r.emoji || r}</span>
           ))}
         </div>
       )}
 
       <div
         ref={bubbleRef}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          setActiveMessageForHeader(message); // Trigger header actions
-        }}
-        onTouchStart={() => handleMsgTouchStart(message)}
+        onTouchStart={handleTouchStart}
         onTouchMove={handleMsgTouchMove}
-        onTouchEnd={(e) => handleMsgTouchEnd(message, e)}
+        onTouchEnd={handleTouchEnd}
         style={{
           display: "inline-block",
           maxWidth: "78%",
@@ -195,7 +212,13 @@ export default function MessageItem({
               transition: "max-height 0.25s ease",
             }}
           >
-            {message.text}
+            {showFullText
+              ? message.text
+              : message.text.length > maxPreviewLength
+              ? `${message.text.slice(0, maxPreviewLength)}... (${message.text.length} chars)`
+              : message.text
+            }
+            {message.edited && <span style={{ fontSize: 10, opacity: 0.7, marginLeft: 4 }}>(edited)</span>}
           </div>
         )}
 
@@ -257,6 +280,40 @@ export default function MessageItem({
           {isMine && <div>{renderStatus()}</div>}
         </div>
       </div>
+
+      {/* Action Modal */}
+      <MessageActionModal
+        visible={actionModalVisible}
+        onClose={() => setActionModalVisible(false)}
+        onEdit={async () => {
+          const newText = prompt("Edit your message", message.text);
+          if (newText !== null && newText !== message.text) {
+            await updateDoc(doc(db, "chats", chatId, "messages", message.id), {
+              text: newText,
+              edited: true,
+              updatedAt: new Date(),
+            });
+          }
+          setActionModalVisible(false);
+        }}
+        onReply={() => {
+          replyToMessage(message);
+          setActionModalVisible(false);
+        }}
+        onCopy={() => {
+          navigator.clipboard.writeText(message.text || "");
+          setActionModalVisible(false);
+        }}
+        onReact={() => {
+          const emoji = prompt("Enter emoji reaction"); // replace later with emoji picker
+          if (!emoji) return;
+          updateDoc(doc(db, "chats", chatId, "messages", message.id), {
+            reactions: arrayUnion({ emoji, uid: myUid }),
+          });
+          setActionModalVisible(false);
+        }}
+        isDark={isDark}
+      />
 
       <style>
         {`
