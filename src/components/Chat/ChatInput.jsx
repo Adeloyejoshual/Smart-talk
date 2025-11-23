@@ -7,7 +7,7 @@ export default function ChatInput({
   text,
   setText,
   sendTextMessage,
-  sendMediaMessage,       // <-- IMPORTANT: add this from ChatConversationPage
+  sendMediaMessage,       // <-- Upload & send media files
   selectedFiles,
   setSelectedFiles,
   holdStart,
@@ -23,15 +23,15 @@ export default function ChatInput({
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
 
-    // limit max files
+    // Limit max files
     const newFiles = [...selectedFiles, ...files].slice(0, 30);
     setSelectedFiles(newFiles);
 
     setShowPreview(true);
-
-    e.target.value = null; // reset picker
+    e.target.value = null; // reset input
   };
 
+  // Remove a file from selection
   const handleRemoveFile = (index) => {
     setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
   };
@@ -42,17 +42,19 @@ export default function ChatInput({
 
     setShowPreview(false);
 
-    // CALL upload function from ChatConversationPage
+    // Upload & send media files
     await sendMediaMessage(selectedFiles);
 
     setSelectedFiles([]);
   };
 
+  // Cancel preview modal
   const handleCancelPreview = () => {
     setSelectedFiles([]);
     setShowPreview(false);
   };
 
+  // Add more files from preview modal
   const handleAddMoreFiles = () => {
     fileInputRef.current.click();
   };
@@ -72,7 +74,7 @@ export default function ChatInput({
           zIndex: 20,
         }}
       >
-        {/* Hidden File Picker */}
+        {/* Hidden file input */}
         <input
           type="file"
           multiple
@@ -83,17 +85,12 @@ export default function ChatInput({
 
         <button
           onClick={() => fileInputRef.current.click()}
-          style={{
-            background: "transparent",
-            border: "none",
-            cursor: "pointer",
-            fontSize: 18,
-          }}
+          style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 18 }}
         >
           <Paperclip />
         </button>
 
-        {/* Text Input */}
+        {/* Text input */}
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -123,14 +120,14 @@ export default function ChatInput({
         </button>
       </div>
 
-      {/* Preview */}
+      {/* Image/Video preview modal */}
       {showPreview && selectedFiles.length > 0 && (
         <ImagePreviewModal
           files={selectedFiles}
           onRemove={handleRemoveFile}
-          onSend={handleSendFromPreview}   // <-- FIXED
+          onSend={handleSendFromPreview}  // Send selected media
           onCancel={handleCancelPreview}
-          onAddFiles={handleAddMoreFiles}
+          onAddFiles={handleAddMoreFiles} // Add more files
         />
       )}
     </>
