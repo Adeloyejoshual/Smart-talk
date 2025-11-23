@@ -1,8 +1,8 @@
 // src/components/Chat/MessageItem.jsx
 import React, { useState, useRef, useEffect } from "react";
-import MediaViewer from "./MediaViewer"; // full-screen preview component
+import MediaViewer from "./MediaViewer";
 
-const SPACING = { xs: 6, sm: 10, md: 14, borderRadius: 18 };
+const SPACING = { xs: 4, sm: 6, md: 8, borderRadius: 14 };
 const COLORS = {
   myBlue: "#007AFF",
   myBlueDark: "#0066dd",
@@ -14,24 +14,10 @@ const COLORS = {
   shadow: "rgba(0,0,0,0.12)",
 };
 
-const INLINE_REACTIONS = ["❤️", "😂", "👍", "😮", "😢"];
-
 export default function MessageItem({
   message,
   myUid,
   isDark = false,
-  menuOpenFor,
-  setMenuOpenFor,
-  reactionFor,
-  setReactionFor,
-  applyReaction = async () => {},
-  replyToMessage = () => {},
-  editMessage = () => {},
-  deleteMessageForEveryone = () => {},
-  deleteMessageForMe = () => {},
-  forwardMessage = () => {},
-  pinMessage = () => {},
-  copyMessageText = () => {},
   uploadProgress = {},
   handleMsgTouchStart = () => {},
   handleMsgTouchMove = () => {},
@@ -43,38 +29,14 @@ export default function MessageItem({
   },
 }) {
   const isMine = message.senderId === myUid;
-  const showMenu = menuOpenFor === message.id;
-  const showReactionPicker = reactionFor === message.id;
-
   const bubbleRef = useRef(null);
-  const menuRef = useRef(null);
-  const reactionRef = useRef(null);
+  const textRef = useRef(null);
 
   const [loadingMedia, setLoadingMedia] = useState(true);
   const [viewerOpen, setViewerOpen] = useState(false);
-
-  useEffect(() => {
-    function onDocClick(e) {
-      const target = e.target;
-      if (
-        menuRef.current &&
-        !menuRef.current.contains(target) &&
-        reactionRef.current &&
-        !reactionRef.current.contains(target) &&
-        bubbleRef.current &&
-        !bubbleRef.current.contains(target)
-      ) {
-        setMenuOpenFor(null);
-        setReactionFor(null);
-      }
-    }
-    document.addEventListener("mousedown", onDocClick);
-    document.addEventListener("touchstart", onDocClick);
-    return () => {
-      document.removeEventListener("mousedown", onDocClick);
-      document.removeEventListener("touchstart", onDocClick);
-    };
-  }, [setMenuOpenFor, setReactionFor]);
+  const [showFullText, setShowFullText] = useState(false);
+  const [textHeight, setTextHeight] = useState("auto");
+  const [collapsedHeight, setCollapsedHeight] = useState(0);
 
   const bubbleBg = isMine
     ? isDark
@@ -84,28 +46,18 @@ export default function MessageItem({
     ? COLORS.otherBubbleDark
     : COLORS.otherBubble;
 
-  const textColor = isMine
-    ? COLORS.textLight
-    : isDark
-    ? COLORS.textLight
-    : COLORS.textDark;
-
+  const textColor = isMine ? COLORS.textLight : isDark ? COLORS.textLight : COLORS.textDark;
   const progressKey = message.tempId || message.id;
   const progressPct = uploadProgress?.[progressKey];
 
-  const renderStatus = () => {
-    if (!isMine) return null;
-    switch (message.status) {
-      case "sent":
-        return <span style={{ opacity: 0.9 }}>Sent</span>;
-      case "delivered":
-        return <span style={{ opacity: 0.9 }}>Delivered</span>;
-      case "seen":
-        return <span style={{ color: COLORS.myBlue, fontWeight: 600 }}>Seen</span>;
-      default:
-        return null;
+  useEffect(() => {
+    if (textRef.current) {
+      const fullHeight = textRef.current.scrollHeight;
+      const previewHeight = 60; // default preview height
+      setCollapsedHeight(Math.min(fullHeight, previewHeight));
+      setTextHeight(showFullText ? fullHeight : Math.min(fullHeight, previewHeight));
     }
-  };
+  }, [showFullText, message.text]);
 
   const handleMediaLoad = () => setLoadingMedia(false);
 
@@ -116,11 +68,12 @@ export default function MessageItem({
     const mediaStyle = {
       display: "block",
       width: "100%",
-      height: "auto",
+      maxHeight: 250,
       borderRadius: 12,
       objectFit: "cover",
       cursor: isPreviewable ? "pointer" : "default",
       position: "relative",
+      marginTop: SPACING.xs,
     };
 
     return (
@@ -150,8 +103,8 @@ export default function MessageItem({
               top: "50%",
               left: "50%",
               transform: "translate(-50%, -50%)",
-              width: 36,
-              height: 36,
+              width: 28,
+              height: 28,
               borderRadius: "50%",
               border: `3px solid ${isDark ? "#fff" : "#007AFF"}`,
               borderTopColor: "transparent",
@@ -170,6 +123,22 @@ export default function MessageItem({
     );
   };
 
+  const renderStatus = () => {
+    if (!isMine) return null;
+    switch (message.status) {
+      case "sent":
+        return <span style={{ opacity: 0.8, fontSize: 11 }}>Sent</span>;
+      case "delivered":
+        return <span style={{ opacity: 0.8, fontSize: 11 }}>Delivered</span>;
+      case "seen":
+        return <span style={{ color: COLORS.myBlue, fontWeight: 600, fontSize: 11 }}>Seen</span>;
+      default:
+        return null;
+    }
+  };
+
+  const maxPreviewLength = 120;
+
   return (
     <div
       style={{
@@ -177,10 +146,9 @@ export default function MessageItem({
         flexDirection: "column",
         alignItems: isMine ? "flex-end" : "flex-start",
         marginBottom: SPACING.md,
-        gap: 6,
-        position: "relative",
-        paddingLeft: isMine ? 40 : 0,
-        paddingRight: isMine ? 0 : 40,
+        gap: SPACING.xs,
+        paddingLeft: isMine ? 30 : 0,
+        paddingRight: isMine ? 0 : 30,
       }}
     >
       <div
@@ -197,13 +165,39 @@ export default function MessageItem({
           color: textColor,
           wordBreak: "break-word",
           position: "relative",
-          boxShadow: `0 6px 18px ${COLORS.shadow}`,
+          boxShadow: `0 4px 10px ${COLORS.shadow}`,
         }}
       >
+        {/* Message text */}
         {message.text && (
-          <div style={{ fontSize: 15, lineHeight: 1.35, whiteSpace: "pre-wrap" }}>
+          <div
+            ref={textRef}
+            style={{
+              fontSize: 14,
+              lineHeight: 1.4,
+              whiteSpace: "pre-wrap",
+              overflow: "hidden",
+              maxHeight: textHeight,
+              transition: "max-height 0.25s ease",
+            }}
+          >
             {message.text}
           </div>
+        )}
+
+        {/* Read more toggle */}
+        {message.text && message.text.length > maxPreviewLength && (
+          <span
+            onClick={() => setShowFullText((prev) => !prev)}
+            style={{
+              color: isMine ? "#fff" : "#007AFF",
+              fontWeight: 600,
+              cursor: "pointer",
+              fontSize: 13,
+            }}
+          >
+            {showFullText ? "Show less" : "Read more"}
+          </span>
         )}
 
         {renderMediaPreview()}
@@ -212,10 +206,10 @@ export default function MessageItem({
           <div
             style={{
               width: "100%",
-              height: 6,
+              height: 5,
               background: "rgba(255,255,255,0.12)",
-              borderRadius: 6,
-              marginTop: 8,
+              borderRadius: 5,
+              marginTop: SPACING.xs,
             }}
           >
             <div
@@ -223,23 +217,23 @@ export default function MessageItem({
                 width: `${progressPct}%`,
                 height: "100%",
                 background: isMine ? "rgba(255,255,255,0.9)" : COLORS.myBlue,
-                borderRadius: 6,
+                borderRadius: 5,
                 transition: "width .2s",
               }}
             />
           </div>
         )}
 
-        {/* Time & Status */}
+        {/* Time & status */}
         <div
           style={{
             display: "flex",
             alignItems: "center",
             justifyContent: "flex-end",
-            gap: 8,
-            marginTop: 8,
-            fontSize: 11,
-            color: isMine ? "rgba(255,255,255,0.85)" : COLORS.muted,
+            gap: 6,
+            marginTop: SPACING.xs,
+            fontSize: 10,
+            color: isMine ? "rgba(255,255,255,0.8)" : COLORS.muted,
           }}
         >
           <div>{fmtTime(message.createdAt)}</div>
