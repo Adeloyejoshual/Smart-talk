@@ -26,9 +26,6 @@ const COLORS = {
   lightText: "#000",
   darkText: "#fff",
   mutedText: "#888",
-  grayBorder: "rgba(0,0,0,0.06)",
-  darkCard: "#1b1b1b",
-  lightCard: "#fff",
 };
 
 const formatDayLabel = (ts) => {
@@ -67,9 +64,8 @@ export default function ChatConversationPage() {
   const [menuOpenFor, setMenuOpenFor] = useState(null);
   const [reactionFor, setReactionFor] = useState(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
-  const [newMsgCount, setNewMsgCount] = useState(0);
-  const [recording, setRecording] = useState(false);
   const [showScrollDown, setShowScrollDown] = useState(false);
+  const [recording, setRecording] = useState(false);
 
   // -------------------- Load chat & friend --------------------
   useEffect(() => {
@@ -95,8 +91,7 @@ export default function ChatConversationPage() {
         }
 
         unsubChat = onSnapshot(cRef, (s) => {
-          if (s.exists())
-            setChatInfo((prev) => ({ ...(prev || {}), ...s.data() }));
+          if (s.exists()) setChatInfo((prev) => ({ ...(prev || {}), ...s.data() }));
         });
       } catch (e) {
         console.error("loadMeta error", e);
@@ -113,6 +108,7 @@ export default function ChatConversationPage() {
   // -------------------- Messages realtime --------------------
   useEffect(() => {
     if (!chatId) return;
+
     const q = query(
       collection(db, "chats", chatId, "messages"),
       orderBy("createdAt", "asc"),
@@ -123,16 +119,6 @@ export default function ChatConversationPage() {
       const docs = snap.docs
         .map((d) => ({ id: d.id, ...d.data() }))
         .filter((m) => !(m.deletedFor?.includes(myUid)));
-
-      // Count new messages if not at bottom
-      if (!isAtBottom) {
-        const incoming = docs.filter(
-          (m) => m.senderId !== myUid && !m.read
-        ).length;
-        setNewMsgCount(incoming);
-        setShowScrollDown(incoming > 0);
-        setTimeout(() => setShowScrollDown(false), 5000);
-      }
 
       setMessages(docs);
 
@@ -145,7 +131,12 @@ export default function ChatConversationPage() {
         }
       });
 
-      if (isAtBottom) scrollToBottom();
+      // Auto show scroll-down if not at bottom
+      if (messagesRefEl.current && !isAtBottom) {
+        setShowScrollDown(true);
+      } else {
+        scrollToBottom();
+      }
     });
 
     return () => unsub();
@@ -155,11 +146,13 @@ export default function ChatConversationPage() {
   useEffect(() => {
     const el = messagesRefEl.current;
     if (!el) return;
+
     const onScroll = () => {
       const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
       setIsAtBottom(atBottom);
-      if (atBottom) setNewMsgCount(0);
+      if (atBottom) setShowScrollDown(false);
     };
+
     el.addEventListener("scroll", onScroll);
     return () => el.removeEventListener("scroll", onScroll);
   }, []);
@@ -167,59 +160,20 @@ export default function ChatConversationPage() {
   const scrollToBottom = (smooth = true) => {
     endRef.current?.scrollIntoView({ behavior: smooth ? "smooth" : "auto" });
     setIsAtBottom(true);
-    setNewMsgCount(0);
     setShowScrollDown(false);
   };
 
-  // -------------------- Send Text Message --------------------
+  // -------------------- Send messages --------------------
   const sendTextMessage = async () => {
-    if (!text.trim() && selectedFiles.length === 0) return;
     if (!chatInfo || (chatInfo.blockedBy || []).includes(myUid))
       return alert("You are blocked in this chat.");
+    if (!text && selectedFiles.length === 0) return;
 
-    if (text.trim()) {
-      await addDoc(collection(db, "chats", chatId, "messages"), {
-        senderId: myUid,
-        text: text.trim(),
-        mediaUrl: null,
-        mediaType: null,
-        status: "sent",
-        createdAt: serverTimestamp(),
-        replyTo: replyTo?.id || null,
-      });
-      setText("");
-      setReplyTo(null);
-      scrollToBottom();
-    }
-  };
-
-  // -------------------- Send Media Message --------------------
-  const sendMediaMessage = async (files) => {
-    if (!chatInfo || (chatInfo.blockedBy || []).includes(myUid))
-      return alert("You are blocked in this chat.");
-
-    for (const file of files) {
+    // Upload selected files
+    for (let file of selectedFiles) {
       const tempId = Date.now() + "-" + file.name;
+      setUploadProgress((prev) => ({ ...prev, [tempId]: 0 }));
 
-      // 1️⃣ Optimistic UI
-      const tempMessage = {
-        tempId,
-        senderId: myUid,
-        text: "",
-        mediaUrl: URL.createObjectURL(file),
-        mediaType: file.type.startsWith("image/")
-          ? "image"
-          : file.type.startsWith("video/")
-          ? "video"
-          : "file",
-        fileName: file.name,
-        status: "sending",
-        createdAt: new Date(),
-      };
-
-      setMessages((prev) => [...prev, tempMessage]);
-
-      // 2️⃣ Upload
       const formData = new FormData();
       formData.append("file", file);
       formData.append("upload_preset", "0HoyRB6wC0eba-Cbat0nhiIRoa8");
@@ -233,43 +187,49 @@ export default function ChatConversationPage() {
         const data = await res.json();
         const fileURL = data.secure_url;
 
-        const docRef = await addDoc(
-          collection(db, "chats", chatId, "messages"),
-          {
-            senderId: myUid,
-            text: "",
-            mediaUrl: fileURL,
-            mediaType: "image",
-            status: "sent",
-            createdAt: serverTimestamp(),
-          }
-        );
+        await addDoc(collection(db, "chats", chatId, "messages"), {
+          senderId: myUid,
+          text: "",
+          mediaUrl: fileURL,
+          mediaType: "image",
+          status: "sent",
+          createdAt: serverTimestamp(),
+          replyTo: replyTo?.id || null,
+          tempId,
+        });
 
-        // 3️⃣ Update temp message
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.tempId === tempId
-              ? { ...m, mediaUrl: fileURL, status: "sent", id: docRef.id }
-              : m
-          )
-        );
-      } catch (err) {
-        console.error("Upload failed", err);
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.tempId === tempId ? { ...m, status: "failed" } : m
-          )
-        );
+        setUploadProgress((prev) => {
+          const { [tempId]: _, ...rest } = prev;
+          return rest;
+        });
+      } catch (e) {
+        console.error("File upload error:", e);
       }
     }
 
+    // Send text
+    if (text) {
+      await addDoc(collection(db, "chats", chatId, "messages"), {
+        senderId: myUid,
+        text,
+        mediaUrl: null,
+        mediaType: null,
+        status: "sent",
+        createdAt: serverTimestamp(),
+        replyTo: replyTo?.id || null,
+      });
+    }
+
+    setText("");
+    setSelectedFiles([]);
+    setReplyTo(null);
     scrollToBottom();
   };
 
   const onFilesSelected = (e) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
-    setSelectedFiles((prev) => [...prev, ...files]);
+    setSelectedFiles((prev) => [...prev, ...files].slice(0, 30));
   };
 
   // -------------------- Group messages by day --------------------
@@ -323,9 +283,10 @@ export default function ChatConversationPage() {
             </div>
           ) : (
             <MessageItem
-              key={item.data.id || item.data.tempId}
+              key={item.data.id}
               message={item.data}
               myUid={myUid}
+              isDark={isDark}
               menuOpenFor={menuOpenFor}
               setMenuOpenFor={setMenuOpenFor}
               reactionFor={reactionFor}
@@ -339,10 +300,9 @@ export default function ChatConversationPage() {
         <div ref={endRef} />
       </div>
 
-      {/* Scroll down button */}
       {showScrollDown && !isAtBottom && (
         <button
-          onClick={() => scrollToBottom()}
+          onClick={scrollToBottom}
           style={{
             position: "absolute",
             bottom: 80,
@@ -362,23 +322,6 @@ export default function ChatConversationPage() {
           }}
         >
           ↓
-          {newMsgCount > 0 && (
-            <span
-              style={{
-                position: "absolute",
-                top: -6,
-                right: -6,
-                backgroundColor: "red",
-                color: "#fff",
-                fontSize: 12,
-                fontWeight: "bold",
-                borderRadius: "50%",
-                padding: "2px 6px",
-              }}
-            >
-              {newMsgCount}
-            </span>
-          )}
         </button>
       )}
 
@@ -386,7 +329,6 @@ export default function ChatConversationPage() {
         text={text}
         setText={setText}
         sendTextMessage={sendTextMessage}
-        sendMediaMessage={sendMediaMessage} // <-- NEW
         selectedFiles={selectedFiles}
         setSelectedFiles={setSelectedFiles}
         onFilesSelected={onFilesSelected}
