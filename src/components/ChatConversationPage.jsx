@@ -131,7 +131,6 @@ export default function ChatConversationPage() {
         ).length;
         setNewMsgCount(incoming);
         setShowScrollDown(incoming > 0);
-        // Auto-hide scroll down after 5s
         setTimeout(() => setShowScrollDown(false), 5000);
       }
 
@@ -146,12 +145,7 @@ export default function ChatConversationPage() {
         }
       });
 
-      // Scroll to last message on chat open
-      if (messagesRefEl.current && docs.length && !isAtBottom) {
-        endRef.current?.scrollIntoView({ behavior: "auto" });
-      } else if (isAtBottom) {
-        scrollToBottom();
-      }
+      if (isAtBottom) scrollToBottom();
     });
 
     return () => unsub();
@@ -177,16 +171,55 @@ export default function ChatConversationPage() {
     setShowScrollDown(false);
   };
 
-  // -------------------- Send message --------------------
+  // -------------------- Send Text Message --------------------
   const sendTextMessage = async () => {
+    if (!text.trim() && selectedFiles.length === 0) return;
     if (!chatInfo || (chatInfo.blockedBy || []).includes(myUid))
       return alert("You are blocked in this chat.");
-    if (!text && selectedFiles.length === 0) return;
 
-    for (let file of selectedFiles) {
+    if (text.trim()) {
+      await addDoc(collection(db, "chats", chatId, "messages"), {
+        senderId: myUid,
+        text: text.trim(),
+        mediaUrl: null,
+        mediaType: null,
+        status: "sent",
+        createdAt: serverTimestamp(),
+        replyTo: replyTo?.id || null,
+      });
+      setText("");
+      setReplyTo(null);
+      scrollToBottom();
+    }
+  };
+
+  // -------------------- Send Media Message --------------------
+  const sendMediaMessage = async (files) => {
+    if (!chatInfo || (chatInfo.blockedBy || []).includes(myUid))
+      return alert("You are blocked in this chat.");
+
+    for (const file of files) {
       const tempId = Date.now() + "-" + file.name;
-      setUploadProgress((prev) => ({ ...prev, [tempId]: 0 }));
 
+      // 1️⃣ Optimistic UI
+      const tempMessage = {
+        tempId,
+        senderId: myUid,
+        text: "",
+        mediaUrl: URL.createObjectURL(file),
+        mediaType: file.type.startsWith("image/")
+          ? "image"
+          : file.type.startsWith("video/")
+          ? "video"
+          : "file",
+        fileName: file.name,
+        status: "sending",
+        createdAt: new Date(),
+      };
+
+      setMessages((prev) => [...prev, tempMessage]);
+
+      // 2️⃣ Upload
       const formData = new FormData();
       formData.append("file", file);
       formData.append("upload_preset", "0HoyRB6wC0eba-Cbat0nhiIRoa8");
@@ -200,41 +233,36 @@ export default function ChatConversationPage() {
         const data = await res.json();
         const fileURL = data.secure_url;
 
-        await addDoc(collection(db, "chats", chatId, "messages"), {
-          senderId: myUid,
-          text: "",
-          mediaUrl: fileURL,
-          mediaType: "image",
-          status: "sent",
-          createdAt: serverTimestamp(),
-          replyTo: replyTo?.id || null,
-          tempId,
-        });
+        const docRef = await addDoc(
+          collection(db, "chats", chatId, "messages"),
+          {
+            senderId: myUid,
+            text: "",
+            mediaUrl: fileURL,
+            mediaType: "image",
+            status: "sent",
+            createdAt: serverTimestamp(),
+          }
+        );
 
-        setUploadProgress((prev) => {
-          const { [tempId]: _, ...rest } = prev;
-          return rest;
-        });
-      } catch (e) {
-        console.error("File upload error:", e);
+        // 3️⃣ Update temp message
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.tempId === tempId
+              ? { ...m, mediaUrl: fileURL, status: "sent", id: docRef.id }
+              : m
+          )
+        );
+      } catch (err) {
+        console.error("Upload failed", err);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.tempId === tempId ? { ...m, status: "failed" } : m
+          )
+        );
       }
     }
 
-    if (text) {
-      await addDoc(collection(db, "chats", chatId, "messages"), {
-        senderId: myUid,
-        text,
-        mediaUrl: null,
-        mediaType: null,
-        status: "sent",
-        createdAt: serverTimestamp(),
-        replyTo: replyTo?.id || null,
-      });
-    }
-
-    setText("");
-    setSelectedFiles([]);
-    setReplyTo(null);
     scrollToBottom();
   };
 
@@ -295,7 +323,7 @@ export default function ChatConversationPage() {
             </div>
           ) : (
             <MessageItem
-              key={item.data.id}
+              key={item.data.id || item.data.tempId}
               message={item.data}
               myUid={myUid}
               menuOpenFor={menuOpenFor}
@@ -358,6 +386,7 @@ export default function ChatConversationPage() {
         text={text}
         setText={setText}
         sendTextMessage={sendTextMessage}
+        sendMediaMessage={sendMediaMessage} // <-- NEW
         selectedFiles={selectedFiles}
         setSelectedFiles={setSelectedFiles}
         onFilesSelected={onFilesSelected}
