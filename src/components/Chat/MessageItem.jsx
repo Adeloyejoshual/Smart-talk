@@ -2,6 +2,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import MediaViewer from "./MediaViewer";
 import MessageActionModal from "./MessageActionModal";
+import EmojiPicker from "./EmojiPicker";
 import { doc, updateDoc, arrayUnion } from "firebase/firestore";
 import { db } from "../../firebaseConfig";
 
@@ -45,6 +46,10 @@ export default function MessageItem({
   const [actionModalVisible, setActionModalVisible] = useState(false);
   const [longPressTimer, setLongPressTimer] = useState(null);
 
+  // emoji picker state
+  const [pickerVisible, setPickerVisible] = useState(false);
+  const [pickerPosition, setPickerPosition] = useState({ top: 0, left: 0 });
+
   const bubbleBg = isMine
     ? isDark
       ? COLORS.myBlueDark
@@ -57,7 +62,7 @@ export default function MessageItem({
   const progressKey = message.tempId || message.id;
   const progressPct = uploadProgress?.[progressKey];
 
-  const maxPreviewLength = 250; // threshold for collapsed message
+  const maxPreviewLength = 250;
 
   useEffect(() => {
     if (textRef.current) {
@@ -152,13 +157,30 @@ export default function MessageItem({
     const timer = setTimeout(() => {
       setActionModalVisible(true);
       setActiveMessageForHeader(message);
-    }, 600); // long press threshold
+    }, 600);
     setLongPressTimer(timer);
   };
 
   const handleTouchEnd = () => {
     clearTimeout(longPressTimer);
     handleMsgTouchEnd(message);
+  };
+
+  const handleReactClick = () => {
+    if (!bubbleRef.current) return;
+    const rect = bubbleRef.current.getBoundingClientRect();
+    const top = rect.top - 250 > 0 ? rect.top - 260 : rect.bottom + 8;
+    const left = rect.left;
+    setPickerPosition({ top: top + window.scrollY, left: left + window.scrollX });
+    setPickerVisible(true);
+    setActionModalVisible(false);
+  };
+
+  const handleEmojiSelect = async (emoji) => {
+    await updateDoc(doc(db, "chats", chatId, "messages", message.id), {
+      reactions: arrayUnion({ emoji, uid: myUid }),
+    });
+    setPickerVisible(false);
   };
 
   return (
@@ -171,6 +193,7 @@ export default function MessageItem({
         gap: SPACING.xs,
         paddingLeft: isMine ? 30 : 0,
         paddingRight: isMine ? 0 : 30,
+        position: "relative",
       }}
     >
       {/* Reactions above bubble */}
@@ -199,7 +222,6 @@ export default function MessageItem({
           boxShadow: `0 4px 10px ${COLORS.shadow}`,
         }}
       >
-        {/* Message text */}
         {message.text && (
           <div
             ref={textRef}
@@ -222,7 +244,6 @@ export default function MessageItem({
           </div>
         )}
 
-        {/* Read more toggle */}
         {message.text && message.text.length > maxPreviewLength && (
           <span
             onClick={() => setShowFullText((prev) => !prev)}
@@ -304,16 +325,18 @@ export default function MessageItem({
           navigator.clipboard.writeText(message.text || "");
           setActionModalVisible(false);
         }}
-        onReact={() => {
-          const emoji = prompt("Enter emoji reaction"); // replace later with emoji picker
-          if (!emoji) return;
-          updateDoc(doc(db, "chats", chatId, "messages", message.id), {
-            reactions: arrayUnion({ emoji, uid: myUid }),
-          });
-          setActionModalVisible(false);
-        }}
+        onReact={handleReactClick}
         isDark={isDark}
       />
+
+      {/* Emoji Picker */}
+      {pickerVisible && (
+        <EmojiPicker
+          position={pickerPosition}
+          onSelect={handleEmojiSelect}
+          onClose={() => setPickerVisible(false)}
+        />
+      )}
 
       <style>
         {`
