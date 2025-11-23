@@ -1,5 +1,6 @@
 // src/components/Chat/MessageItem.jsx
 import React, { useState, useRef, useEffect } from "react";
+import MediaViewer from "./MediaViewer"; // full-screen preview component
 
 const SPACING = { xs: 6, sm: 10, md: 14, borderRadius: 18 };
 const COLORS = {
@@ -10,7 +11,6 @@ const COLORS = {
   textLight: "#ffffff",
   textDark: "#0b0b0b",
   muted: "#8b8b8b",
-  reactionBg: "#111",
   shadow: "rgba(0,0,0,0.12)",
 };
 
@@ -51,6 +51,7 @@ export default function MessageItem({
   const reactionRef = useRef(null);
 
   const [loadingMedia, setLoadingMedia] = useState(true);
+  const [viewerOpen, setViewerOpen] = useState(false);
 
   useEffect(() => {
     function onDocClick(e) {
@@ -106,9 +107,7 @@ export default function MessageItem({
     }
   };
 
-  const handleMediaLoad = () => {
-    setLoadingMedia(false);
-  };
+  const handleMediaLoad = () => setLoadingMedia(false);
 
   const renderMediaPreview = () => {
     if (!message.mediaUrl) return null;
@@ -125,16 +124,14 @@ export default function MessageItem({
     };
 
     return (
-      <div
-        style={{ position: "relative" }}
-        onClick={() => window.open(message.mediaUrl, "_blank")}
-      >
+      <div>
         {message.mediaType === "image" && (
           <img
             src={message.mediaUrl}
             alt={message.fileName || "image"}
             style={mediaStyle}
             onLoad={handleMediaLoad}
+            onClick={() => setViewerOpen(true)}
           />
         )}
         {message.mediaType === "video" && (
@@ -143,6 +140,7 @@ export default function MessageItem({
             controls
             style={mediaStyle}
             onLoadedData={handleMediaLoad}
+            onClick={() => setViewerOpen(true)}
           />
         )}
         {loadingMedia && isPreviewable && (
@@ -159,6 +157,13 @@ export default function MessageItem({
               borderTopColor: "transparent",
               animation: "spin 1s linear infinite",
             }}
+          />
+        )}
+        {viewerOpen && (
+          <MediaViewer
+            media={message.mediaUrl}
+            type={message.mediaType}
+            onClose={() => setViewerOpen(false)}
           />
         )}
       </div>
@@ -178,7 +183,6 @@ export default function MessageItem({
         paddingRight: isMine ? 0 : 40,
       }}
     >
-      {/* Bubble */}
       <div
         ref={bubbleRef}
         onTouchStart={() => handleMsgTouchStart(message)}
