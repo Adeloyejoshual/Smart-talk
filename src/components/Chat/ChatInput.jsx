@@ -1,13 +1,13 @@
 // src/components/Chat/ChatInput.jsx
 import React, { useState, useRef } from "react";
-import { Paperclip, Send, X } from "lucide-react";
+import { Paperclip, Send } from "lucide-react";
 import ImagePreviewModal from "./ImagePreviewModal";
 
 export default function ChatInput({
   text,
   setText,
   sendTextMessage,
-  onFilesSelected,
+  sendMediaMessage,       // <-- IMPORTANT: add this from ChatConversationPage
   selectedFiles,
   setSelectedFiles,
   holdStart,
@@ -18,33 +18,43 @@ export default function ChatInput({
   const fileInputRef = useRef(null);
   const [showPreview, setShowPreview] = useState(false);
 
+  // Handle file selection
   const handleFileChange = (e) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
 
-    // Limit total files to 30
+    // limit max files
     const newFiles = [...selectedFiles, ...files].slice(0, 30);
     setSelectedFiles(newFiles);
 
-    // Open preview modal
     setShowPreview(true);
 
-    // reset input
-    e.target.value = null;
+    e.target.value = null; // reset picker
   };
 
   const handleRemoveFile = (index) => {
     setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
+  // Send button inside preview modal
   const handleSendFromPreview = async () => {
+    if (!selectedFiles.length) return;
+
     setShowPreview(false);
-    await sendTextMessage(); // ChatConversationPage handles uploading & sending
+
+    // CALL upload function from ChatConversationPage
+    await sendMediaMessage(selectedFiles);
+
+    setSelectedFiles([]);
   };
 
   const handleCancelPreview = () => {
+    setSelectedFiles([]);
     setShowPreview(false);
-    setSelectedFiles([]); // discard files
+  };
+
+  const handleAddMoreFiles = () => {
+    fileInputRef.current.click();
   };
 
   return (
@@ -62,7 +72,7 @@ export default function ChatInput({
           zIndex: 20,
         }}
       >
-        {/* File input */}
+        {/* Hidden File Picker */}
         <input
           type="file"
           multiple
@@ -70,6 +80,7 @@ export default function ChatInput({
           ref={fileInputRef}
           onChange={handleFileChange}
         />
+
         <button
           onClick={() => fileInputRef.current.click()}
           style={{
@@ -82,7 +93,7 @@ export default function ChatInput({
           <Paperclip />
         </button>
 
-        {/* Text input */}
+        {/* Text Input */}
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -112,13 +123,14 @@ export default function ChatInput({
         </button>
       </div>
 
-      {/* Preview Modal */}
+      {/* Preview */}
       {showPreview && selectedFiles.length > 0 && (
         <ImagePreviewModal
           files={selectedFiles}
           onRemove={handleRemoveFile}
-          onSend={handleSendFromPreview}
+          onSend={handleSendFromPreview}   // <-- FIXED
           onCancel={handleCancelPreview}
+          onAddFiles={handleAddMoreFiles}
         />
       )}
     </>
