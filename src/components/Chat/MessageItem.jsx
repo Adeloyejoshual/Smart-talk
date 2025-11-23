@@ -35,7 +35,6 @@ export default function MessageItem({
   const [loadingMedia, setLoadingMedia] = useState(true);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [showFullText, setShowFullText] = useState(false);
-  const [textHeight, setTextHeight] = useState("auto");
   const [collapsedHeight, setCollapsedHeight] = useState(0);
 
   const bubbleBg = isMine
@@ -53,11 +52,10 @@ export default function MessageItem({
   useEffect(() => {
     if (textRef.current) {
       const fullHeight = textRef.current.scrollHeight;
-      const previewHeight = 60; // default preview height
+      const previewHeight = 60;
       setCollapsedHeight(Math.min(fullHeight, previewHeight));
-      setTextHeight(showFullText ? fullHeight : Math.min(fullHeight, previewHeight));
     }
-  }, [showFullText, message.text]);
+  }, [message.text]);
 
   const handleMediaLoad = () => setLoadingMedia(false);
 
@@ -77,7 +75,7 @@ export default function MessageItem({
     };
 
     return (
-      <div>
+      <div style={{ position: "relative" }}>
         {message.mediaType === "image" && (
           <img
             src={message.mediaUrl}
@@ -177,7 +175,7 @@ export default function MessageItem({
               lineHeight: 1.4,
               whiteSpace: "pre-wrap",
               overflow: "hidden",
-              maxHeight: textHeight,
+              maxHeight: showFullText ? "none" : collapsedHeight,
               transition: "max-height 0.25s ease",
             }}
           >
@@ -194,6 +192,8 @@ export default function MessageItem({
               fontWeight: 600,
               cursor: "pointer",
               fontSize: 13,
+              display: "inline-block",
+              marginTop: 2,
             }}
           >
             {showFullText ? "Show less" : "Read more"}
@@ -202,6 +202,7 @@ export default function MessageItem({
 
         {renderMediaPreview()}
 
+        {/* Upload progress */}
         {typeof progressPct === "number" && progressPct >= 0 && progressPct < 100 && (
           <div
             style={{
