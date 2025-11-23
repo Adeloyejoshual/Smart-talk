@@ -61,13 +61,12 @@ export default function ChatConversationPage() {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [uploadProgress, setUploadProgress] = useState({});
   const [replyTo, setReplyTo] = useState(null);
-  const [menuOpenFor, setMenuOpenFor] = useState(null);
-  const [reactionFor, setReactionFor] = useState(null);
+  const [activeMessageForHeader, setActiveMessageForHeader] = useState(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [showScrollDown, setShowScrollDown] = useState(false);
   const [recording, setRecording] = useState(false);
 
-  // -------------------- Load chat & friend --------------------
+  // Load chat & friend info
   useEffect(() => {
     if (!chatId) return;
     let unsubChat = null;
@@ -105,7 +104,7 @@ export default function ChatConversationPage() {
     };
   }, [chatId, myUid]);
 
-  // -------------------- Messages realtime --------------------
+  // Messages realtime
   useEffect(() => {
     if (!chatId) return;
 
@@ -131,18 +130,18 @@ export default function ChatConversationPage() {
         }
       });
 
-      // Auto show scroll-down if not at bottom
+      // Auto scroll
       if (messagesRefEl.current && !isAtBottom) {
         setShowScrollDown(true);
       } else {
-        scrollToBottom();
+        scrollToBottom(false);
       }
     });
 
     return () => unsub();
   }, [chatId, myUid, isAtBottom]);
 
-  // -------------------- Scroll detection --------------------
+  // Scroll detection
   useEffect(() => {
     const el = messagesRefEl.current;
     if (!el) return;
@@ -163,13 +162,13 @@ export default function ChatConversationPage() {
     setShowScrollDown(false);
   };
 
-  // -------------------- Send messages --------------------
+  // Send messages
   const sendTextMessage = async () => {
     if (!chatInfo || (chatInfo.blockedBy || []).includes(myUid))
       return alert("You are blocked in this chat.");
     if (!text && selectedFiles.length === 0) return;
 
-    // Upload selected files
+    // Upload files
     for (let file of selectedFiles) {
       const tempId = Date.now() + "-" + file.name;
       setUploadProgress((prev) => ({ ...prev, [tempId]: 0 }));
@@ -232,7 +231,7 @@ export default function ChatConversationPage() {
     setSelectedFiles((prev) => [...prev, ...files].slice(0, 30));
   };
 
-  // -------------------- Group messages by day --------------------
+  // Group messages by day
   const groupedMessages = [];
   let lastDate = null;
   messages.forEach((msg) => {
@@ -243,6 +242,23 @@ export default function ChatConversationPage() {
     }
     groupedMessages.push({ type: "msg", data: msg });
   });
+
+  // -------------------- Message action callbacks --------------------
+  const handleReply = (msg) => setReplyTo(msg);
+  const handleEdit = (msg) => setText(msg.text || "");
+  const handleForward = (msg) => alert("Forward feature pending");
+  const handleDelete = async (msg) => {
+    if (!confirm("Delete this message?")) return;
+    try {
+      await updateDoc(doc(db, "chats", chatId, "messages", msg.id), {
+        deletedFor: arrayUnion(myUid),
+      });
+      setActiveMessageForHeader(null);
+    } catch (e) {
+      console.error("Delete message error", e);
+    }
+  };
+  const handlePin = (msg) => alert("Pin feature pending");
 
   return (
     <div
@@ -259,9 +275,13 @@ export default function ChatConversationPage() {
         chatInfo={chatInfo}
         friendInfo={friendInfo}
         myUid={myUid}
-        navigate={navigate}
-        headerMenuOpen={false}
-        setHeaderMenuOpen={() => {}}
+        activeMessageForHeader={activeMessageForHeader}
+        setActiveMessageForHeader={setActiveMessageForHeader}
+        onReply={handleReply}
+        onEdit={handleEdit}
+        onForward={handleForward}
+        onDelete={handleDelete}
+        onPin={handlePin}
       />
 
       <div
@@ -287,13 +307,10 @@ export default function ChatConversationPage() {
               message={item.data}
               myUid={myUid}
               isDark={isDark}
-              menuOpenFor={menuOpenFor}
-              setMenuOpenFor={setMenuOpenFor}
-              reactionFor={reactionFor}
-              setReactionFor={setReactionFor}
-              applyReaction={() => {}}
-              replyToMessage={(m) => setReplyTo(m)}
               uploadProgress={uploadProgress}
+              replyToMessage={handleReply}
+              handleMsgTouchStart={(m) => setActiveMessageForHeader(m)}
+              handleMsgTouchEnd={() => {}}
             />
           )
         )}
