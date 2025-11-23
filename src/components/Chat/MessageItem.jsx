@@ -14,11 +14,14 @@ const COLORS = {
   shadow: "rgba(0,0,0,0.12)",
 };
 
+const INLINE_REACTIONS = ["❤️", "😂", "👍", "😮", "😢"];
+
 export default function MessageItem({
   message,
   myUid,
   isDark = false,
   uploadProgress = {},
+  setActiveMessageForHeader = () => {},
   handleMsgTouchStart = () => {},
   handleMsgTouchMove = () => {},
   handleMsgTouchEnd = () => {},
@@ -149,8 +152,21 @@ export default function MessageItem({
         paddingRight: isMine ? 0 : 30,
       }}
     >
+      {/* Reactions above the bubble */}
+      {message.reactions?.length > 0 && (
+        <div style={{ display: "flex", gap: 4, marginBottom: 2 }}>
+          {message.reactions.map((r, i) => (
+            <span key={i} style={{ fontSize: 14 }}>{r}</span>
+          ))}
+        </div>
+      )}
+
       <div
         ref={bubbleRef}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setActiveMessageForHeader(message); // Trigger header actions
+        }}
         onTouchStart={() => handleMsgTouchStart(message)}
         onTouchMove={handleMsgTouchMove}
         onTouchEnd={(e) => handleMsgTouchEnd(message, e)}
