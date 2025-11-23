@@ -1,8 +1,9 @@
 // src/components/Chat/EmojiPicker.jsx
-import React, { useState, useRef, useEffect } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
-const QUICK_REACTIONS = ["❤️", "😂", "👍", "😮", "😢", "🔥", "👏"];
-const ALL_EMOJIS = [
+const QUICK = ["❤️", "😂", "👍", "😮", "😢", "🔥", "👏"];
+
+const ALL = [
   "🤔","❤️‍🔥","❤️","👍","👎","🔥","🥰","👏",
   "😁","🍿","😱","🤬","😔","🎉","🤩","🤢",
   "💩","🙏","👌","🕊️","🤡","😐","😏","😍",
@@ -15,19 +16,19 @@ const ALL_EMOJIS = [
   "💫","✨","⚡","🔥","❄️","☃️","💥","🌪️"
 ];
 
-export default function EmojiPicker({ onSelect, style, onClose }) {
+export default function EmojiPicker({ onSelect, onClose, position }) {
   const [showAll, setShowAll] = useState(false);
   const pickerRef = useRef(null);
 
-  // Close when clicking outside
+  // close when clicking outside
   useEffect(() => {
-    const handleClickOutside = (e) => {
+    const close = (e) => {
       if (pickerRef.current && !pickerRef.current.contains(e.target)) {
         onClose?.();
       }
     };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
   }, [onClose]);
 
   return (
@@ -35,87 +36,82 @@ export default function EmojiPicker({ onSelect, style, onClose }) {
       ref={pickerRef}
       style={{
         position: "absolute",
-        display: "flex",
-        flexDirection: "column",
-        gap: 6,
-        padding: 6,
+        top: position?.top ?? -60,
+        left: position?.left ?? 0,
         background: "#fff",
-        borderRadius: 20,
-        boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-        zIndex: 1000,
+        borderRadius: 22,
+        padding: 8,
+        boxShadow: "0 8px 20px rgba(0,0,0,0.20)",
+        zIndex: 2000,
         width: showAll ? "90vw" : "auto",
-        maxWidth: 320,
-        ...style,
+        maxWidth: 340,
       }}
     >
-      {/* Quick reactions row */}
-      <div style={{ display: "flex", gap: 6, justifyContent: "center", overflowX: "auto", paddingBottom: 4 }}>
-        {QUICK_REACTIONS.map((emoji) => (
-          <button
-            key={emoji}
-            onClick={() => onSelect(emoji)}
+      {/* QUICK reactions */}
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          overflowX: "auto",
+          paddingBottom: 5,
+        }}
+      >
+        {QUICK.map((e) => (
+          <span
+            key={e}
+            onClick={() => onSelect(e)}
             style={{
-              fontSize: 22,
-              border: "none",
-              background: "transparent",
-              cursor: "pointer",
+              fontSize: 24,
               padding: 4,
-              flex: "0 0 auto",
+              cursor: "pointer",
             }}
           >
-            {emoji}
-          </button>
+            {e}
+          </span>
         ))}
 
-        {/* Show all toggle */}
-        <button
-          onClick={() => setShowAll((prev) => !prev)}
+        {/* Toggle full emoji list */}
+        <span
+          onClick={() => setShowAll((x) => !x)}
           style={{
-            fontSize: 18,
-            border: "none",
-            background: "#f0f0f0",
+            width: 30,
+            height: 30,
             borderRadius: "50%",
-            width: 28,
-            height: 28,
+            background: "#eee",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
             cursor: "pointer",
-            flex: "0 0 auto",
           }}
-          title="More"
         >
           +
-        </button>
+        </span>
       </div>
 
-      {/* All emojis grid */}
+      {/* ALL emojis */}
       {showAll && (
         <div
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(auto-fill, minmax(32px, 1fr))",
-            gap: 6,
-            padding: 6,
-            maxHeight: "50vh",
+            gap: 8,
+            maxHeight: "45vh",
             overflowY: "auto",
-            touchAction: "pan-y", // allows smooth swipe scrolling on mobile
+            padding: 6,
+            touchAction: "pan-y",
           }}
         >
-          {ALL_EMOJIS.map((emoji) => (
-            <button
-              key={emoji}
-              onClick={() => onSelect(emoji)}
-              style={{
-                fontSize: 24,
-                border: "none",
-                background: "transparent",
-                cursor: "pointer",
-                padding: 4,
-              }}
+          {ALL.map((e) => (
+            <span
+              key={e}
+              onClick={() => onSelect(e)}
+              style={{ fontSize: 26, cursor: "pointer" }}
             >
-              {emoji}
-            </button>
+              {e}
+            </span>
           ))}
         </div>
       )}
     </div>
   );
-        }
+}
