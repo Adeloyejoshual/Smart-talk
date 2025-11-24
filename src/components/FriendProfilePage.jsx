@@ -1,440 +1,202 @@
 // src/components/FriendProfilePage.jsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useContext } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import QRCode from "qrcode";
-import { db, auth } from "../firebaseConfig";
-import {
-  doc,
-  getDoc,
-  collection,
-  query,
-  where,
-  onSnapshot,
-  updateDoc,
-  arrayUnion,
-  arrayRemove,
-} from "firebase/firestore";
+import { auth, db } from "../firebaseConfig";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { ThemeContext } from "../context/ThemeContext";
 
+// -----------------------------
+// UTILITY FUNCTIONS
+// -----------------------------
+const stringToColor = (str) => {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const c = (hash & 0x00ffffff).toString(16).toUpperCase();
+  return "#" + "00000".substring(0, 6 - c.length) + c;
+};
+
+// Updated initials logic
+const getInitials = (name) => {
+  if (!name) return "NA";
+  const parts = name.trim().split(" ");
+  if (parts.length === 1) return parts[0][0].toUpperCase(); // single word → first letter
+  return (parts[0][0] + parts[1][0]).toUpperCase(); // first two words → initials
+};
+
+const formatLastSeen = (ts) => {
+  if (!ts) return "Last seen unavailable";
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  const now = new Date();
+
+  const options = { hour: "numeric", minute: "numeric", hour12: true };
+  const time = d.toLocaleTimeString(undefined, options);
+
+  if (d.toDateString() === now.toDateString()) return `Last seen: Today at ${time}`;
+  const yesterday = new Date();
+  yesterday.setDate(now.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return `Last seen: Yesterday at ${time}`;
+
+  const dateOptions =
+    d.getFullYear() !== now.getFullYear()
+      ? { month: "long", day: "numeric", year: "numeric" }
+      : { month: "long", day: "numeric" };
+
+  return `Last seen: ${d.toLocaleDateString(undefined, dateOptions)} at ${time}`;
+};
+
+// -----------------------------
+// COMPONENT
+// -----------------------------
 export default function FriendProfilePage() {
   const { uid } = useParams();
   const navigate = useNavigate();
-  const myUid = auth.currentUser?.uid;
+  const { theme } = useContext(ThemeContext);
+  const isDark = theme === "dark";
 
-  const [friend, setFriend] = useState(null);
-  const [mutualFriends, setMutualFriends] = useState([]);
-  const [sharedPhotos, setSharedPhotos] = useState([]);
-  const [sharedDocs, setSharedDocs] = useState([]);
-  const [sharedAudio, setSharedAudio] = useState([]);
-  const [sharedLinks, setSharedLinks] = useState([]);
-  const [typing, setTyping] = useState(false);
-  const [qrCode, setQrCode] = useState("");
-  const [isBlocked, setIsBlocked] = useState(false);
+  const currentUser = auth.currentUser;
+
   const [loading, setLoading] = useState(true);
+  const [friend, setFriend] = useState({
+    displayName: "",
+    email: "",
+    about: "",
+    photoURL: "",
+    lastSeen: null,
+    blockedBy: [],
+  });
 
-  const COLORS = {
-    headerBlue: "#0047ff",
-    textLight: "#fff",
-    lightCard: "#f2f4f8",
-  };
+  const [actionLoading, setActionLoading] = useState(false);
 
-  // Fetch profile
+  // -----------------------------
+  // LOAD FRIEND DATA
+  // -----------------------------
   useEffect(() => {
-    const load = async () => {
+    async function loadFriend() {
       const ref = doc(db, "users", uid);
       const snap = await getDoc(ref);
-      if (snap.exists()) setFriend({ id: uid, ...snap.data() });
-
+      if (snap.exists()) setFriend(snap.data());
       setLoading(false);
-    };
-    load();
+    }
+    loadFriend();
   }, [uid]);
 
-  // Live last seen update + typing status
-  useEffect(() => {
-    if (!uid) return;
+  // -----------------------------
+  // ACTIONS
+  // -----------------------------
+  const toggleBlock = async () => {
+    if (!currentUser) return;
+    setActionLoading(true);
+    try {
+      const ref = doc(db, "users", uid);
+      const isBlocked = friend.blockedBy?.includes(currentUser.uid);
 
-    const ref = doc(db, "users", uid);
-    return onSnapshot(ref, (snap) => {
-      setFriend((prev) => ({ id: uid, ...snap.data() }));
-      setTyping(snap.data()?.typing || false);
-    });
-  }, [uid]);
-
-  // Mutual friends
-  useEffect(() => {
-    if (!friend) return;
-
-    const q = query(collection(db, "users"));
-    return onSnapshot(q, (snapshot) => {
-      const allUsers = [];
-      snapshot.forEach((s) => allUsers.push({ id: s.id, ...s.data() }));
-
-      const mine = allUsers.find((u) => u.id === myUid)?.friends || [];
-      const theirs = friend.friends || [];
-
-      const mutual = allUsers.filter((u) => mine.includes(u.id) && theirs.includes(u.id));
-      setMutualFriends(mutual);
-    });
-  }, [friend]);
-
-  // Shared media + docs + audio + links
-  useEffect(() => {
-    if (!uid || !myUid) return;
-
-    const q = query(
-      collection(db, "messages"),
-      where("participants", "array-contains", myUid)
-    );
-
-    return onSnapshot(q, (snapshot) => {
-      const photos = [];
-      const docs = [];
-      const audio = [];
-      const links = [];
-
-      snapshot.forEach((snap) => {
-        const msg = snap.data();
-
-        if (!msg.participants?.includes(uid)) return;
-
-        if (msg.photoURL) photos.push(msg.photoURL);
-        if (msg.fileURL && msg.fileType?.startsWith("doc")) docs.push(msg.fileURL);
-        if (msg.fileURL && msg.fileType?.startsWith("audio")) audio.push(msg.fileURL);
-        if (msg.link) links.push(msg.link);
+      await updateDoc(ref, {
+        blockedBy: isBlocked
+          ? friend.blockedBy.filter((id) => id !== currentUser.uid)
+          : [...(friend.blockedBy || []), currentUser.uid],
       });
 
-      setSharedPhotos(photos);
-      setSharedDocs(docs);
-      setSharedAudio(audio);
-      setSharedLinks(links);
-    });
-  }, [uid, myUid]);
+      setFriend((f) => ({
+        ...f,
+        blockedBy: isBlocked
+          ? f.blockedBy.filter((id) => id !== currentUser.uid)
+          : [...(f.blockedBy || []), currentUser.uid],
+      }));
+    } catch (err) {
+      console.error(err);
+      alert("Failed to update block status.");
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
-  // Block / Unblock
-  const toggleBlock = async () => {
-    const q = query(
-      collection(db, "chats"),
-      where("members", "array-contains", myUid)
+  const sendMessage = () => {
+    navigate(`/chat/${[currentUser.uid, uid].sort().join("_")}`);
+  };
+
+  const reportUser = () => {
+    alert(`You reported ${friend.displayName || "this user"}.`);
+  };
+
+  if (loading) {
+    return (
+      <div
+        className={`flex h-screen items-center justify-center ${
+          isDark ? "bg-black text-white" : "bg-white text-black"
+        }`}
+      >
+        Loading profile…
+      </div>
     );
+  }
 
-    const snap = await getDocs(q);
-
-    snap.forEach(async (s) => {
-      const data = s.data();
-      if (data.members.includes(uid)) {
-        const ref = doc(db, "chats", s.id);
-
-        await updateDoc(ref, {
-          blockedBy: isBlocked ? arrayRemove(myUid) : arrayUnion(myUid),
-        });
-      }
-    });
-  };
-
-  // Add friend
-  const addFriend = async () => {
-    await updateDoc(doc(db, "users", myUid), {
-      friends: arrayUnion(uid),
-    });
-  };
-
-  // Remove friend
-  const removeFriend = async () => {
-    await updateDoc(doc(db, "users", myUid), {
-      friends: arrayRemove(uid),
-    });
-  };
-
-  // QR code generator
-  useEffect(() => {
-    if (!friend) return;
-
-    QRCode.toDataURL(`https://yourapp.com/UserProfilePage/${uid}`).then((url) =>
-      setQrCode(url)
-    );
-  }, [friend]);
-
-  if (loading) return <div style={{ padding: 20 }}>Loading…</div>;
+  const isBlocked = friend.blockedBy?.includes(currentUser.uid);
 
   return (
-    <div style={{ height: "100vh", overflowY: "auto", background: COLORS.lightCard }}>
-      {/* HEADER */}
-      <div
-        style={{
-          height: 56,
-          background: COLORS.headerBlue,
-          color: "#fff",
-          display: "flex",
-          alignItems: "center",
-          padding: "0 12px",
-          gap: 12,
-        }}
-      >
-        <button
-          onClick={() => navigate(-1)}
-          style={{ background: "transparent", border: "none", color: "#fff", fontSize: 18 }}
-        >
+    <div className={`${isDark ? "bg-black text-white" : "bg-white text-black"} min-h-screen p-4`}>
+      {/* BACK */}
+      <div className="flex items-center gap-3 mb-6">
+        <button onClick={() => navigate(-1)} className="text-2xl font-bold">
           ←
         </button>
-
-        <div style={{ fontSize: 18, fontWeight: 600 }}>{friend.name}</div>
+        <h2 className="text-xl font-semibold">Profile</h2>
       </div>
 
       {/* PROFILE PICTURE */}
-      <div style={{ textAlign: "center", padding: "20px 0" }}>
+      <div
+        className="w-32 h-32 rounded-full mb-4 flex items-center justify-center border border-gray-700 overflow-hidden mx-auto"
+        style={{
+          backgroundColor: friend.photoURL
+            ? "transparent"
+            : stringToColor(uid || friend.displayName || "NA"),
+        }}
+      >
         {friend.photoURL ? (
-          <img
-            src={friend.photoURL}
-            style={{ width: 110, height: 110, borderRadius: "50%", objectFit: "cover" }}
-          />
+          <img src={friend.photoURL} alt="Profile" className="w-full h-full object-cover" />
         ) : (
-          <div
-            style={{
-              width: 110,
-              height: 110,
-              borderRadius: "50%",
-              background: COLORS.headerBlue,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "#fff",
-              fontSize: 40,
-              fontWeight: "bold",
-              margin: "auto",
-            }}
-          >
-            {friend.name[0].toUpperCase()}
-          </div>
+          <span className="text-white font-bold" style={{ fontSize: "3rem" }}>
+            {getInitials(friend.displayName)}
+          </span>
         )}
+      </div>
 
-        <h2>{friend.name}</h2>
-        <p style={{ opacity: 0.7 }}>
-          {typing
-            ? "Typing…"
-            : friend.online
-            ? "Online"
-            : friend.lastSeen
-            ? `Last seen: ${new Date(
-                friend.lastSeen.toDate ? friend.lastSeen.toDate() : friend.lastSeen
-              ).toLocaleString()}`
-            : "Offline"}
-        </p>
+      {/* NAME / ABOUT / LAST SEEN */}
+      <div className="text-center mb-4">
+        <h2 className="text-2xl font-semibold">{friend.displayName}</h2>
+        <p className="text-gray-400 text-sm mt-1">{friend.about || "No bio added."}</p>
+        <p className="text-gray-500 text-xs mt-2">{formatLastSeen(friend.lastSeen)}</p>
       </div>
 
       {/* ACTION BUTTONS */}
-      <div style={{ padding: 16 }}>
+      <div className="flex flex-col gap-3 max-w-sm mx-auto mt-4">
         <button
-          onClick={() => navigate(`/Chat/${uid}`)}
-          style={{
-            width: "100%",
-            background: COLORS.headerBlue,
-            color: "#fff",
-            padding: 12,
-            borderRadius: 10,
-            border: "none",
-            marginBottom: 12,
-          }}
+          onClick={sendMessage}
+          className="bg-blue-600 text-white py-2 rounded-lg font-semibold hover:bg-blue-700 transition"
         >
-          Message
+          Send Message
         </button>
-
-        <button
-          onClick={() =>
-            navigate("/VoiceCallPage", { state: { friendId: uid } })
-          }
-          style={{
-            width: "100%",
-            background: "#0a9",
-            padding: 12,
-            borderRadius: 10,
-            marginBottom: 12,
-            border: "none",
-            color: "#fff",
-          }}
-        >
-          Voice Call
-        </button>
-
-        <button
-          onClick={() =>
-            navigate("/VideoCallPage", { state: { friendId: uid } })
-          }
-          style={{
-            width: "100%",
-            background: "#f60",
-            padding: 12,
-            borderRadius: 10,
-            marginBottom: 12,
-            border: "none",
-            color: "#fff",
-          }}
-        >
-          Video Call
-        </button>
-
-        {/* FRIEND / BLOCK BUTTONS */}
-        {friend.friends?.includes(myUid) ? (
-          <button
-            onClick={removeFriend}
-            style={{
-              width: "100%",
-              background: "#777",
-              padding: 12,
-              borderRadius: 10,
-              border: "none",
-              color: "#fff",
-              marginBottom: 12,
-            }}
-          >
-            Remove Friend
-          </button>
-        ) : (
-          <button
-            onClick={addFriend}
-            style={{
-              width: "100%",
-              background: "#222",
-              padding: 12,
-              borderRadius: 10,
-              border: "none",
-              color: "#fff",
-              marginBottom: 12,
-            }}
-          >
-            Add Friend
-          </button>
-        )}
 
         <button
           onClick={toggleBlock}
-          style={{
-            width: "100%",
-            background: isBlocked ? "#444" : "crimson",
-            padding: 12,
-            borderRadius: 10,
-            border: "none",
-            color: "#fff",
-          }}
+          className={`py-2 rounded-lg font-semibold transition ${
+            isBlocked
+              ? "bg-green-600 text-white hover:bg-green-700"
+              : "bg-red-600 text-white hover:bg-red-700"
+          }`}
+          disabled={actionLoading}
         >
-          {isBlocked ? "Unblock" : "Block"}
+          {isBlocked ? "Unblock User" : "Block User"}
+        </button>
+
+        <button
+          onClick={reportUser}
+          className="bg-gray-600 text-white py-2 rounded-lg font-semibold hover:bg-gray-700 transition"
+        >
+          Report User
         </button>
       </div>
-
-      {/* ABOUT */}
-      {friend.about && (
-        <div style={{ padding: "0 16px 20px" }}>
-          <h3>About</h3>
-          <p style={{ opacity: 0.7 }}>{friend.about}</p>
-        </div>
-      )}
-
-      {/* MUTUAL FRIENDS */}
-      <div style={{ padding: "0 16px 20px" }}>
-        <h3>Mutual Friends ({mutualFriends.length})</h3>
-        <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingTop: 8 }}>
-          {mutualFriends.map((u) => (
-            <div key={u.id} style={{ textAlign: "center", width: 60 }}>
-              {u.photoURL ? (
-                <img
-                  src={u.photoURL}
-                  style={{ width: 50, height: 50, borderRadius: "50%" }}
-                />
-              ) : (
-                <div
-                  style={{
-                    width: 50,
-                    height: 50,
-                    borderRadius: "50%",
-                    background: COLORS.headerBlue,
-                    color: "#fff",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontWeight: "bold",
-                  }}
-                >
-                  {u.name[0].toUpperCase()}
-                </div>
-              )}
-              <p style={{ fontSize: 12 }}>{u.name}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* SHARED PHOTOS */}
-      <div style={{ padding: "0 16px 20px" }}>
-        <h3>Shared Photos</h3>
-        <MediaGrid list={sharedPhotos} />
-      </div>
-
-      {/* SHARED DOCUMENTS */}
-      <div style={{ padding: "0 16px 20px" }}>
-        <h3>Shared Documents</h3>
-        <FileList list={sharedDocs} />
-      </div>
-
-      {/* SHARED AUDIO */}
-      <div style={{ padding: "0 16px 20px" }}>
-        <h3>Shared Audio</h3>
-        <FileList list={sharedAudio} />
-      </div>
-
-      {/* SHARED LINKS */}
-      <div style={{ padding: "0 16px 20px" }}>
-        <h3>Shared Links</h3>
-        <LinkList list={sharedLinks} />
-      </div>
-
-      {/* QR CODE SHARE */}
-      <div style={{ padding: 16 }}>
-        <h3>Share Profile</h3>
-        <img src={qrCode} style={{ width: 150, height: 150 }} />
-      </div>
     </div>
-  );
-}
-
-// Small components
-function MediaGrid({ list }) {
-  if (!list.length) return <p style={{ opacity: 0.6 }}>No media.</p>;
-  return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 6 }}>
-      {list.map((m, i) => (
-        <img
-          key={i}
-          src={m}
-          style={{ width: "100%", height: 100, objectFit: "cover", borderRadius: 6 }}
-        />
-      ))}
-    </div>
-  );
-}
-
-function FileList({ list }) {
-  if (!list.length) return <p style={{ opacity: 0.6 }}>No files.</p>;
-  return (
-    <ul>
-      {list.map((url, i) => (
-        <li key={i} style={{ margin: "6px 0" }}>
-          <a href={url} target="_blank" rel="noopener noreferrer">
-            {url.split("/").pop()}
-          </a>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function LinkList({ list }) {
-  if (!list.length) return <p style={{ opacity: 0.6 }}>No links.</p>;
-  return (
-    <ul>
-      {list.map((l, i) => (
-        <li key={i} style={{ margin: "6px 0" }}>
-          <a href={l} target="_blank" rel="noopener noreferrer">{l}</a>
-        </li>
-      ))}
-    </ul>
   );
 }
