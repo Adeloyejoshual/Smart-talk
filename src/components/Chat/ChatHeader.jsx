@@ -2,7 +2,9 @@
 import React, { useContext, useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { ThemeContext } from "../../context/ThemeContext";
-import { usePopup } from "../../context/PopupContext"; // global popup hook
+import { usePopup } from "../../context/PopupContext";
+import { doc, updateDoc, collection, getDocs, deleteDoc } from "firebase/firestore";
+import { db } from "../../firebaseConfig";
 
 const COLORS = {
   headerBlue: "#1877F2",
@@ -21,7 +23,7 @@ const btnStyle = {
 export default function ChatHeader({ chatInfo, friendInfo }) {
   const navigate = useNavigate();
   const { theme } = useContext(ThemeContext);
-  const { showPopup } = usePopup(); // popup context
+  const { showPopup } = usePopup();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
 
@@ -38,7 +40,6 @@ export default function ChatHeader({ chatInfo, friendInfo }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Toast helper
   const triggerToast = (msg) => {
     setToast(msg);
     setTimeout(() => setToast(null), 2300);
@@ -46,12 +47,37 @@ export default function ChatHeader({ chatInfo, friendInfo }) {
 
   const handleMenuClick = () => setMenuOpen((prev) => !prev);
 
-  const handleBlock = () => {
-    triggerToast(chatInfo?.blockedBy?.includes(friendInfo?.id) ? "User unblocked" : "User blocked");
+  // ----- ACTIONS -----
+  const handleBlock = async () => {
+    if (!chatInfo?.id || !friendInfo?.id) return;
+
+    const chatRef = doc(db, "chats", chatInfo.id);
+    const blockedBy = chatInfo.blockedBy || [];
+    let newBlocked;
+
+    if (blockedBy.includes(friendInfo.id)) {
+      // Unblock
+      newBlocked = blockedBy.filter((id) => id !== friendInfo.id);
+      triggerToast("User unblocked");
+    } else {
+      // Block
+      newBlocked = [...blockedBy, friendInfo.id];
+      triggerToast("User blocked");
+    }
+
+    await updateDoc(chatRef, { blockedBy: newBlocked });
     setMenuOpen(false);
   };
 
-  const handleClearChat = () => {
+  const handleClearChat = async () => {
+    if (!chatInfo?.id) return;
+
+    const messagesRef = collection(db, "chats", chatInfo.id, "messages");
+    const snap = await getDocs(messagesRef);
+
+    const batchDeletes = snap.docs.map((d) => deleteDoc(d.ref));
+    await Promise.all(batchDeletes);
+
     triggerToast("Chat cleared!");
     setMenuOpen(false);
   };
@@ -103,12 +129,9 @@ export default function ChatHeader({ chatInfo, friendInfo }) {
             {friendInfo?.online
               ? "Online"
               : friendInfo?.lastSeen
-              ? `Last seen: ${new Date(friendInfo.lastSeen?.toDate ? friendInfo.lastSeen.toDate() : friendInfo.lastSeen).toLocaleString([], {
-                  month: "short",
-                  day: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}`
+              ? `Last seen: ${new Date(
+                  friendInfo.lastSeen?.toDate ? friendInfo.lastSeen.toDate() : friendInfo.lastSeen
+                ).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`
               : "Last seen unavailable"}
           </div>
         </div>
