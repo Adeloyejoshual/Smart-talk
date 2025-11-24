@@ -6,6 +6,8 @@ import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import admin from "firebase-admin";
 import mongoose from "mongoose";
+import fs from "fs";
+import B2 from "backblaze-b2";
 
 dotenv.config();
 
@@ -216,6 +218,40 @@ app.post("/api/wallet/withdraw", verifyFirebaseToken, async (req, res) => {
     }
   } catch (err) {
     console.error("Withdraw error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// -----------------------------
+// Backblaze B2 Integration
+// -----------------------------
+const b2 = new B2({
+  accountId: process.env.B2_KEY_ID,
+  applicationKey: process.env.B2_APPLICATION_KEY,
+});
+
+await b2.authorize();
+console.log("🔥 Backblaze B2 authorized");
+
+// Upload file endpoint
+app.post("/api/upload", verifyFirebaseToken, async (req, res) => {
+  try {
+    const { filePath, fileName } = req.body; // filePath on server or base64 etc.
+    if (!filePath || !fileName) return res.status(400).json({ error: "Missing file data" });
+
+    const fileBuffer = fs.readFileSync(filePath); // adjust if using multipart/form-data
+
+    const uploadRes = await b2.uploadFile({
+      bucketId: process.env.B2_BUCKET_ID,
+      fileName: `uploads/${Date.now()}_${fileName}`,
+      data: fileBuffer,
+    });
+
+    const downloadUrl = `https://f001.backblazeb2.com/file/${process.env.B2_BUCKET_NAME}/${uploadRes.data.fileName}`;
+
+    res.json({ success: true, fileName: uploadRes.data.fileName, url: downloadUrl });
+  } catch (err) {
+    console.error("B2 Upload Error:", err);
     res.status(500).json({ error: err.message });
   }
 });
