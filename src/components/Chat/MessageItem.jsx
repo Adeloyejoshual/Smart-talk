@@ -1,9 +1,8 @@
-// src/components/Chat/MessageItem.jsx
 import React, { useRef } from "react";
 import { doc, updateDoc, arrayUnion } from "firebase/firestore";
 import { db } from "../../firebaseConfig";
 
-const SPACING = { xs: 4, sm: 6, md: 8, borderRadius: 16 };
+const SPACING = { borderRadius: 16 };
 const COLORS = {
   myBlue: "#007AFF",
   myBlueDark: "#0066dd",
@@ -20,15 +19,15 @@ export default function MessageItem({
   myUid,
   chatId,
   isDark = false,
-  uploadProgress = {},
   replyToMessage = () => {},
   handleMsgTouchStart = () => {},
   handleMsgTouchEnd = () => {},
   fmtTime = () => "",
-  showPopup, // Popup context
+  showPopup,
 }) {
   const isMine = message.senderId === myUid;
   const bubbleRef = useRef(null);
+  const longPressTimer = useRef(null);
 
   const bubbleBg = isMine
     ? isDark
@@ -40,60 +39,53 @@ export default function MessageItem({
 
   const textColor = isMine ? COLORS.textLight : isDark ? COLORS.textLight : COLORS.textDark;
 
-  // --- Long press / menu ---
-  const handleLongPress = () => {
-    if (!bubbleRef.current || !showPopup) return;
+  // --- Long Press ---
+  const startLongPress = () => {
+    longPressTimer.current = setTimeout(() => {
+      if (!bubbleRef.current || !showPopup) return;
 
-    const rect = bubbleRef.current.getBoundingClientRect();
-    showPopup({
-      position: {
-        top: rect.top + window.scrollY - 60, // show above bubble
-        left: rect.left + rect.width / 2,
-      },
-      options: [
-        {
-          label: "Reply",
-          action: () => replyToMessage(message),
-        },
-        {
-          label: "Edit",
-          action: async () => {
-            const t = prompt("Edit message", message.text);
-            if (t !== null && t !== message.text) {
+      const rect = bubbleRef.current.getBoundingClientRect();
+      showPopup({
+        position: { top: rect.top + window.scrollY - 60, left: rect.left + rect.width / 2 },
+        options: [
+          { label: "Reply", action: () => replyToMessage(message) },
+          {
+            label: "Edit",
+            action: async () => {
+              const t = prompt("Edit message", message.text);
+              if (t !== null && t !== message.text) {
+                await updateDoc(doc(db, "chats", chatId, "messages", message.id), {
+                  text: t,
+                  edited: true,
+                });
+              }
+            },
+          },
+          {
+            label: "Delete",
+            action: async () => {
+              if (!confirm("Delete this message?")) return;
               await updateDoc(doc(db, "chats", chatId, "messages", message.id), {
-                text: t,
-                edited: true,
+                deletedFor: arrayUnion(myUid),
               });
-            }
+            },
           },
-        },
-        {
-          label: "Delete",
-          action: async () => {
-            if (!confirm("Delete this message?")) return;
-            await updateDoc(doc(db, "chats", chatId, "messages", message.id), {
-              deletedFor: arrayUnion(myUid),
-            });
-          },
-        },
-        {
-          label: "React",
-          action: () => handleReactionClick(),
-        },
-      ],
-    });
+          { label: "React", action: handleReactionClick },
+        ],
+      });
+    }, 600); // long press duration
   };
 
-  // --- Reaction Picker (quick emojis above bubble) ---
+  const cancelLongPress = () => {
+    clearTimeout(longPressTimer.current);
+  };
+
+  // --- Reactions ---
   const handleReactionClick = () => {
     if (!bubbleRef.current || !showPopup) return;
     const rect = bubbleRef.current.getBoundingClientRect();
-
     showPopup({
-      position: {
-        top: rect.top + window.scrollY - 50, // show above bubble
-        left: rect.left + rect.width / 2,
-      },
+      position: { top: rect.top + window.scrollY - 50, left: rect.left + rect.width / 2 },
       options: [
         { label: "👍", action: () => addReaction("👍") },
         { label: "❤️", action: () => addReaction("❤️") },
@@ -111,35 +103,29 @@ export default function MessageItem({
     });
   };
 
-  // --- Media rendering ---
-  const renderMedia = () => {
-    if (!message.mediaUrl) return null;
-    const style = { width: "100%", maxHeight: 260, borderRadius: 12, marginTop: 6 };
-    return message.mediaType === "image" ? (
-      <img src={message.mediaUrl} alt="" style={style} />
-    ) : (
-      <video src={message.mediaUrl} style={style} controls />
-    );
-  };
-
   return (
     <div
       style={{
         display: "flex",
         flexDirection: "column",
         alignItems: isMine ? "flex-end" : "flex-start",
-        marginBottom: SPACING.md,
+        marginBottom: 8,
         paddingLeft: isMine ? 30 : 0,
         paddingRight: isMine ? 0 : 30,
       }}
-      onTouchStart={() => handleMsgTouchStart(message)}
+      onTouchStart={() => {
+        handleMsgTouchStart(message);
+        startLongPress();
+      }}
       onTouchEnd={() => {
         handleMsgTouchEnd(message);
-        handleLongPress();
+        cancelLongPress(); // prevent immediate popup disappearance
       }}
+      onMouseDown={startLongPress} // desktop support
+      onMouseUp={cancelLongPress}
       onContextMenu={(e) => {
         e.preventDefault();
-        handleLongPress();
+        startLongPress();
       }}
     >
       <div
@@ -161,8 +147,6 @@ export default function MessageItem({
           </div>
         )}
 
-        {renderMedia()}
-
         {/* Timestamp */}
         <div
           style={{
@@ -178,7 +162,7 @@ export default function MessageItem({
         </div>
       </div>
 
-      {/* Reactions under bubble */}
+      {/* Reactions below */}
       {message.reactions?.length > 0 && (
         <div
           style={{
@@ -192,10 +176,7 @@ export default function MessageItem({
           {message.reactions.map((r, i) => (
             <span key={i}>{r.emoji}</span>
           ))}
-          <span
-            style={{ cursor: "pointer", opacity: 0.6 }}
-            onClick={handleReactionClick}
-          >
+          <span style={{ cursor: "pointer", opacity: 0.6 }} onClick={handleReactionClick}>
             +
           </span>
         </div>
