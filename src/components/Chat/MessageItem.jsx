@@ -6,13 +6,13 @@ import { doc, updateDoc, arrayUnion } from "firebase/firestore";
 import { db } from "../../firebaseConfig";
 
 const SPACING = { borderRadius: 16 };
+const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "👏"];
 
 export default function MessageItem({
   message,
   myUid,
   chatId,
   isDark = false,
-  uploadProgress = {},
   replyToMessage = () => {},
   handleMsgTouchMove = () => {},
   handleMsgTouchEnd = () => {},
@@ -24,45 +24,38 @@ export default function MessageItem({
   const [actionModalVisible, setActionModalVisible] = useState(false);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [pickerPosition, setPickerPosition] = useState({ top: 0, left: 0 });
-  const [hovered, setHovered] = useState(false);
-
-  const longPressTimer = useRef(null);
 
   const bubbleBg = isMine ? "#dcf8c6" : isDark ? "#262626" : "#fff";
   const textColor = isMine ? "#000" : "#000";
 
-  // --- Long Press ---
   const handleTouchStart = () => {
-    longPressTimer.current = setTimeout(openActionMenu, 550);
+    bubbleRef.current && setTimeout(openActionMenu, 550);
   };
-  const handleTouchEnd = () => {
-    clearTimeout(longPressTimer.current);
-    handleMsgTouchEnd(message);
-  };
+  const handleTouchEnd = () => handleMsgTouchEnd(message);
   const openActionMenu = () => setActionModalVisible(true);
 
-  // --- Reaction Picker ---
-  const handleReactClick = () => {
+  // Send emoji reaction
+  const sendReaction = async (emoji) => {
+    await updateDoc(doc(db, "chats", chatId, "messages", message.id), {
+      reactions: arrayUnion({ emoji, uid: myUid }),
+    });
+  };
+
+  // Quick emoji tap
+  const handleQuickEmoji = (emoji) => sendReaction(emoji);
+
+  // Open full picker
+  const handleOpenPicker = () => {
     if (!bubbleRef.current) return;
     const rect = bubbleRef.current.getBoundingClientRect();
     const showAbove = rect.top > window.innerHeight / 2;
-
     setPickerPosition({
       top: window.scrollY + (showAbove ? rect.top - 70 : rect.bottom + 10),
       left: window.scrollX + rect.left + rect.width * 0.3,
     });
     setPickerVisible(true);
-    setActionModalVisible(false);
   };
 
-  const handleEmojiSelect = async (emoji) => {
-    await updateDoc(doc(db, "chats", chatId, "messages", message.id), {
-      reactions: arrayUnion({ emoji, uid: myUid }),
-    });
-    setPickerVisible(false);
-  };
-
-  // --- Media ---
   const renderMedia = () => {
     if (!message.mediaUrl) return null;
     const style = {
@@ -85,7 +78,7 @@ export default function MessageItem({
   const bubbleStyle = {
     display: "inline-flex",
     flexDirection: "column",
-    maxWidth: "72%", // max width for long messages
+    maxWidth: "72%",
     alignSelf: isMine ? "flex-end" : "flex-start",
     backgroundColor: bubbleBg,
     color: textColor,
@@ -96,20 +89,18 @@ export default function MessageItem({
     position: "relative",
     wordBreak: "break-word",
     cursor: "pointer",
-    transition: "all 0.2s ease",
     whiteSpace: "pre-wrap",
   };
 
   const textStyle = { fontSize: 15, lineHeight: 1.4 };
   const timeStyle = {
     fontSize: 10,
-    opacity: hovered ? 0.8 : 0.5,
+    opacity: 0.5,
     alignSelf: "flex-end",
     marginTop: 4,
     display: "flex",
     gap: 4,
     fontStyle: message.edited ? "italic" : "normal",
-    transition: "opacity 0.2s ease",
   };
 
   return (
@@ -123,6 +114,25 @@ export default function MessageItem({
         paddingRight: isMine ? 0 : 30,
       }}
     >
+      {/* Quick emoji reactions above bubble */}
+      <div style={{ display: "flex", gap: 6, marginBottom: 4 }}>
+        {QUICK_EMOJIS.map((e) => (
+          <span
+            key={e}
+            style={{ fontSize: 18, cursor: "pointer" }}
+            onClick={() => handleQuickEmoji(e)}
+          >
+            {e}
+          </span>
+        ))}
+        <span
+          style={{ fontSize: 18, cursor: "pointer" }}
+          onClick={handleOpenPicker}
+        >
+          ➕
+        </span>
+      </div>
+
       {/* Bubble */}
       <div
         ref={bubbleRef}
@@ -130,28 +140,43 @@ export default function MessageItem({
         onTouchStart={handleTouchStart}
         onTouchMove={handleMsgTouchMove}
         onTouchEnd={handleTouchEnd}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
       >
         {message.text && <div style={textStyle}>{message.text}</div>}
         {renderMedia()}
-        {/* Timestamp + Edited */}
+        {/* Timestamp inside bubble */}
         <div style={timeStyle}>
           <span>{fmtTime(message.createdAt)}</span>
           {message.edited && <span>edited</span>}
         </div>
       </div>
 
-      {/* Reactions */}
+      {/* Reactions under bubble */}
       {message.reactions?.length > 0 && (
-        <div style={{ display: "flex", gap: 4, marginTop: 2, fontSize: 18 }}>
+        <div
+          style={{
+            display: "flex",
+            gap: 4,
+            marginTop: 2,
+            fontSize: 18,
+            flexWrap: "wrap",
+          }}
+        >
           {message.reactions.map((r, i) => (
             <span key={i}>{r.emoji}</span>
           ))}
         </div>
       )}
 
-      {/* Action Modal */}
+      {/* Full emoji picker */}
+      {pickerVisible && (
+        <EmojiPicker
+          position={pickerPosition}
+          onSelect={sendReaction}
+          onClose={() => setPickerVisible(false)}
+        />
+      )}
+
+      {/* Action modal */}
       {actionModalVisible && (
         <MessageActionModal
           visible={actionModalVisible}
@@ -176,17 +201,8 @@ export default function MessageItem({
           }}
           onDelete={() => {}}
           onForward={() => {}}
-          onReact={handleReactClick}
+          onReact={handleOpenPicker}
           isDark={isDark}
-        />
-      )}
-
-      {/* Emoji Picker */}
-      {pickerVisible && (
-        <EmojiPicker
-          position={pickerPosition}
-          onSelect={handleEmojiSelect}
-          onClose={() => setPickerVisible(false)}
         />
       )}
     </div>
