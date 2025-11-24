@@ -28,6 +28,7 @@ const COLORS = {
   mutedText: "#888",
 };
 
+// Format date labels
 const formatDayLabel = (ts) => {
   if (!ts) return "";
   const d = ts.toDate ? ts.toDate() : new Date(ts);
@@ -44,6 +45,7 @@ const formatDayLabel = (ts) => {
   });
 };
 
+// Format timestamp to hh:mm AM/PM
 export const fmtTime = (ts) => {
   if (!ts) return "";
   const d = ts.toDate ? ts.toDate() : new Date(ts);
@@ -179,13 +181,14 @@ export default function ChatConversationPage() {
   };
 
   // -----------------------------
-  // Upload files to B2 (documents)
+  // Upload documents / audio to B2
   // -----------------------------
-  const uploadFilesToB2 = async (files) => {
-    const uploadedFiles = [];
+  const uploadToB2 = async (files) => {
+    const uploaded = [];
     for (let file of files) {
       const tempId = Date.now() + "-" + file.name;
       setUploadProgress((prev) => ({ ...prev, [tempId]: 0 }));
+
       try {
         const token = await auth.currentUser.getIdToken();
         const formData = new FormData();
@@ -199,11 +202,11 @@ export default function ChatConversationPage() {
         const data = await res.json();
         if (!data.url) throw new Error("Upload failed");
 
-        uploadedFiles.push({
+        uploaded.push({
           tempId,
           fileName: file.name,
           url: data.url,
-          mediaType: "file",
+          mediaType: file.type.startsWith("audio") ? "audio" : "file",
         });
 
         setUploadProgress((prev) => {
@@ -212,42 +215,33 @@ export default function ChatConversationPage() {
         });
       } catch (err) {
         console.error("B2 upload error:", err);
-        triggerToast("Failed to upload file: " + file.name);
+        triggerToast("Failed to upload: " + file.name);
       }
     }
-    return uploadedFiles;
+    return uploaded;
   };
 
   // -----------------------------
-  // Send text + media
+  // Upload images/videos to Cloudinary
   // -----------------------------
-  const sendTextMessage = async () => {
-    if (!text && selectedFiles.length === 0) return;
-
-    // 1️⃣ Separate images/videos and documents
-    const docFiles = selectedFiles.filter((f) => !f.type.startsWith("image") && !f.type.startsWith("video"));
-    const mediaFiles = selectedFiles.filter((f) => f.type.startsWith("image") || f.type.startsWith("video"));
-
-    // 2️⃣ Upload documents to B2
-    const uploadedDocs = await uploadFilesToB2(docFiles);
-
-    // 3️⃣ Upload images/videos to Cloudinary
-    const uploadedMedia = [];
-    for (let file of mediaFiles) {
+  const uploadToCloudinary = async (files) => {
+    const uploaded = [];
+    for (let file of files) {
       const tempId = Date.now() + "-" + file.name;
       setUploadProgress((prev) => ({ ...prev, [tempId]: 0 }));
+
       try {
         const formData = new FormData();
         formData.append("file", file);
         formData.append("upload_preset", "your_cloudinary_preset");
 
-        const res = await fetch(`https://api.cloudinary.com/v1_1/${process.env.REACT_APP_CLOUDINARY_NAME}/upload`, {
-          method: "POST",
-          body: formData,
-        });
-
+        const res = await fetch(
+          `https://api.cloudinary.com/v1_1/${process.env.REACT_APP_CLOUDINARY_NAME}/upload`,
+          { method: "POST", body: formData }
+        );
         const data = await res.json();
-        uploadedMedia.push({
+
+        uploaded.push({
           tempId,
           fileName: file.name,
           url: data.secure_url,
@@ -263,10 +257,30 @@ export default function ChatConversationPage() {
         triggerToast("Failed to upload media: " + file.name);
       }
     }
+    return uploaded;
+  };
 
-    // 4️⃣ Combine all uploaded files
-    const allUploads = [...uploadedDocs, ...uploadedMedia];
+  // -----------------------------
+  // Send message (text + media)
+  // -----------------------------
+  const sendTextMessage = async () => {
+    if (!text && selectedFiles.length === 0) return;
 
+    // Split files
+    const b2Files = selectedFiles.filter(
+      (f) => !f.type.startsWith("image") && !f.type.startsWith("video")
+    );
+    const cloudFiles = selectedFiles.filter(
+      (f) => f.type.startsWith("image") || f.type.startsWith("video")
+    );
+
+    // Upload files
+    const uploadedB2 = await uploadToB2(b2Files);
+    const uploadedCloud = await uploadToCloudinary(cloudFiles);
+
+    const allUploads = [...uploadedB2, ...uploadedCloud];
+
+    // Save uploaded files in Firestore
     for (let item of allUploads) {
       await addDoc(collection(db, "chats", chatId, "messages"), {
         senderId: myUid,
@@ -281,7 +295,7 @@ export default function ChatConversationPage() {
       });
     }
 
-    // 5️⃣ Optional text message
+    // Save text message
     if (text) {
       await addDoc(collection(db, "chats", chatId, "messages"), {
         senderId: myUid,
