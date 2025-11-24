@@ -1,22 +1,11 @@
 // src/components/Chat/MessageItem.jsx
 import React, { useState, useRef } from "react";
-import MediaViewer from "./MediaViewer";
 import MessageActionModal from "./MessageActionModal";
 import EmojiPicker from "./EmojiPicker";
 import { doc, updateDoc, arrayUnion } from "firebase/firestore";
 import { db } from "../../firebaseConfig";
 
-const SPACING = { xs: 4, sm: 6, md: 8, borderRadius: 14 };
-const COLORS = {
-  myBlue: "#007AFF",
-  myBlueDark: "#0066dd",
-  otherBubble: "#f1f0f0",
-  otherBubbleDark: "#262626",
-  textLight: "#ffffff",
-  textDark: "#0b0b0b",
-  muted: "#8b8b8b",
-  shadow: "rgba(0,0,0,0.12)",
-};
+const SPACING = { borderRadius: 16 };
 
 export default function MessageItem({
   message,
@@ -35,35 +24,26 @@ export default function MessageItem({
   const [actionModalVisible, setActionModalVisible] = useState(false);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [pickerPosition, setPickerPosition] = useState({ top: 0, left: 0 });
+  const [hovered, setHovered] = useState(false);
 
   const longPressTimer = useRef(null);
 
-  const bubbleBg = isMine
-    ? isDark
-      ? COLORS.myBlueDark
-      : COLORS.myBlue
-    : isDark
-    ? COLORS.otherBubbleDark
-    : COLORS.otherBubble;
+  const bubbleBg = isMine ? "#dcf8c6" : isDark ? "#262626" : "#fff";
+  const textColor = isMine ? "#000" : "#000";
 
-  const textColor = isMine ? COLORS.textLight : isDark ? COLORS.textLight : COLORS.textDark;
-
-  // --- Long Press Detection ---
+  // --- Long Press ---
   const handleTouchStart = () => {
     longPressTimer.current = setTimeout(openActionMenu, 550);
   };
-
-  const openActionMenu = () => setActionModalVisible(true);
-
   const handleTouchEnd = () => {
     clearTimeout(longPressTimer.current);
     handleMsgTouchEnd(message);
   };
+  const openActionMenu = () => setActionModalVisible(true);
 
-  // --- Reaction Picker Position ---
+  // --- Reaction Picker ---
   const handleReactClick = () => {
     if (!bubbleRef.current) return;
-
     const rect = bubbleRef.current.getBoundingClientRect();
     const showAbove = rect.top > window.innerHeight / 2;
 
@@ -71,12 +51,10 @@ export default function MessageItem({
       top: window.scrollY + (showAbove ? rect.top - 70 : rect.bottom + 10),
       left: window.scrollX + rect.left + rect.width * 0.3,
     });
-
     setPickerVisible(true);
     setActionModalVisible(false);
   };
 
-  // --- Send Reaction ---
   const handleEmojiSelect = async (emoji) => {
     await updateDoc(doc(db, "chats", chatId, "messages", message.id), {
       reactions: arrayUnion({ emoji, uid: myUid }),
@@ -84,22 +62,54 @@ export default function MessageItem({
     setPickerVisible(false);
   };
 
-  // --- Media Viewer ---
+  // --- Media ---
   const renderMedia = () => {
     if (!message.mediaUrl) return null;
-    const mediaStyle = {
+    const style = {
       width: "100%",
+      maxWidth: "72vw",
       maxHeight: 260,
       borderRadius: 12,
       display: "block",
       marginTop: 6,
       cursor: "pointer",
+      objectFit: "cover",
     };
     return message.mediaType === "image" ? (
-      <img src={message.mediaUrl} alt="" style={mediaStyle} onClick={() => setViewerOpen(true)} />
+      <img src={message.mediaUrl} alt="" style={style} />
     ) : (
-      <video src={message.mediaUrl} style={mediaStyle} controls onClick={() => setViewerOpen(true)} />
+      <video src={message.mediaUrl} style={style} controls />
     );
+  };
+
+  const bubbleStyle = {
+    display: "inline-flex",
+    flexDirection: "column",
+    maxWidth: "72%", // max width for long messages
+    alignSelf: isMine ? "flex-end" : "flex-start",
+    backgroundColor: bubbleBg,
+    color: textColor,
+    borderRadius: SPACING.borderRadius,
+    padding: "8px 12px",
+    margin: "4px 0",
+    boxShadow: "0 1px 2px rgba(0,0,0,0.12)",
+    position: "relative",
+    wordBreak: "break-word",
+    cursor: "pointer",
+    transition: "all 0.2s ease",
+    whiteSpace: "pre-wrap",
+  };
+
+  const textStyle = { fontSize: 15, lineHeight: 1.4 };
+  const timeStyle = {
+    fontSize: 10,
+    opacity: hovered ? 0.8 : 0.5,
+    alignSelf: "flex-end",
+    marginTop: 4,
+    display: "flex",
+    gap: 4,
+    fontStyle: message.edited ? "italic" : "normal",
+    transition: "opacity 0.2s ease",
   };
 
   return (
@@ -108,56 +118,31 @@ export default function MessageItem({
         display: "flex",
         flexDirection: "column",
         alignItems: isMine ? "flex-end" : "flex-start",
-        marginBottom: SPACING.md,
-        position: "relative",
+        marginBottom: 8,
         paddingLeft: isMine ? 30 : 0,
         paddingRight: isMine ? 0 : 30,
       }}
     >
-      {/* MAIN BUBBLE */}
+      {/* Bubble */}
       <div
         ref={bubbleRef}
+        style={bubbleStyle}
         onTouchStart={handleTouchStart}
         onTouchMove={handleMsgTouchMove}
         onTouchEnd={handleTouchEnd}
-        style={{
-          maxWidth: "78%",
-          background: bubbleBg,
-          padding: "8px 12px",
-          borderRadius: SPACING.borderRadius,
-          color: textColor,
-          boxShadow: `0 4px 10px ${COLORS.shadow}`,
-          position: "relative",
-          wordBreak: "break-word",
-        }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
       >
-        {message.text && (
-          <div style={{ fontSize: 15, whiteSpace: "pre-wrap", lineHeight: 1.38 }}>
-            {message.text}
-          </div>
-        )}
-
+        {message.text && <div style={textStyle}>{message.text}</div>}
         {renderMedia()}
-
-        {/* Timestamp inside bubble */}
-        <div
-          style={{
-            fontSize: 10,
-            opacity: 0.6,
-            position: "absolute",
-            bottom: 4,
-            right: 8,
-            display: "flex",
-            alignItems: "center",
-            gap: 4,
-          }}
-        >
+        {/* Timestamp + Edited */}
+        <div style={timeStyle}>
           <span>{fmtTime(message.createdAt)}</span>
-          {message.edited && <span style={{ fontStyle: "italic", opacity: 0.6 }}>edited</span>}
+          {message.edited && <span>edited</span>}
         </div>
       </div>
 
-      {/* Reactions under bubble */}
+      {/* Reactions */}
       {message.reactions?.length > 0 && (
         <div style={{ display: "flex", gap: 4, marginTop: 2, fontSize: 18 }}>
           {message.reactions.map((r, i) => (
@@ -166,7 +151,7 @@ export default function MessageItem({
         </div>
       )}
 
-      {/* ACTION MENU */}
+      {/* Action Modal */}
       {actionModalVisible && (
         <MessageActionModal
           visible={actionModalVisible}
@@ -196,7 +181,7 @@ export default function MessageItem({
         />
       )}
 
-      {/* EMOJI PICKER */}
+      {/* Emoji Picker */}
       {pickerVisible && (
         <EmojiPicker
           position={pickerPosition}
