@@ -10,7 +10,6 @@ import {
   updateDoc,
   doc,
   serverTimestamp,
-  arrayUnion,
   limit as fsLimit,
 } from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
@@ -76,7 +75,9 @@ export default function ChatConversationPage() {
   const [showScrollDown, setShowScrollDown] = useState(false);
   const [toast, setToast] = useState(null);
 
+  // -----------------------------
   // Load chat & friend info
+  // -----------------------------
   useEffect(() => {
     if (!chatId) return;
     let unsubChat = null;
@@ -114,7 +115,9 @@ export default function ChatConversationPage() {
     };
   }, [chatId, myUid]);
 
+  // -----------------------------
   // Messages realtime
+  // -----------------------------
   useEffect(() => {
     if (!chatId) return;
 
@@ -140,17 +143,16 @@ export default function ChatConversationPage() {
         }
       });
 
-      if (messagesRefEl.current && !isAtBottom) {
-        setShowScrollDown(true);
-      } else {
-        scrollToBottom(false);
-      }
+      if (messagesRefEl.current && !isAtBottom) setShowScrollDown(true);
+      else scrollToBottom(false);
     });
 
     return () => unsub();
   }, [chatId, myUid, isAtBottom]);
 
+  // -----------------------------
   // Scroll detection
+  // -----------------------------
   useEffect(() => {
     const el = messagesRefEl.current;
     if (!el) return;
@@ -177,15 +179,13 @@ export default function ChatConversationPage() {
   };
 
   // -----------------------------
-  // Send B2 files/documents only
+  // Upload files to B2 (documents)
   // -----------------------------
-  const sendFilesToB2 = async () => {
-    if (selectedFiles.length === 0) return;
-
-    for (let file of selectedFiles) {
+  const uploadFilesToB2 = async (files) => {
+    const uploadedFiles = [];
+    for (let file of files) {
       const tempId = Date.now() + "-" + file.name;
       setUploadProgress((prev) => ({ ...prev, [tempId]: 0 }));
-
       try {
         const token = await auth.currentUser.getIdToken();
         const formData = new FormData();
@@ -196,46 +196,92 @@ export default function ChatConversationPage() {
           headers: { Authorization: `Bearer ${token}` },
           body: formData,
         });
-
         const data = await res.json();
         if (!data.url) throw new Error("Upload failed");
 
-        await addDoc(collection(db, "chats", chatId, "messages"), {
-          senderId: myUid,
-          text: "",
-          mediaUrl: data.url,
-          mediaType: "file",
-          fileName: file.name,
-          status: "sent",
-          createdAt: serverTimestamp(),
-          replyTo: replyTo?.id || null,
+        uploadedFiles.push({
           tempId,
+          fileName: file.name,
+          url: data.url,
+          mediaType: "file",
         });
 
         setUploadProgress((prev) => {
           const { [tempId]: _, ...rest } = prev;
           return rest;
         });
-      } catch (e) {
-        console.error("B2 File upload error:", e);
+      } catch (err) {
+        console.error("B2 upload error:", err);
         triggerToast("Failed to upload file: " + file.name);
       }
     }
-
-    setSelectedFiles([]);
-    setReplyTo(null);
+    return uploadedFiles;
   };
 
   // -----------------------------
-  // Send text message + B2 files
+  // Send text + media
   // -----------------------------
   const sendTextMessage = async () => {
     if (!text && selectedFiles.length === 0) return;
 
-    // Send files first
-    await sendFilesToB2();
+    // 1️⃣ Separate images/videos and documents
+    const docFiles = selectedFiles.filter((f) => !f.type.startsWith("image") && !f.type.startsWith("video"));
+    const mediaFiles = selectedFiles.filter((f) => f.type.startsWith("image") || f.type.startsWith("video"));
 
-    // Optional text message
+    // 2️⃣ Upload documents to B2
+    const uploadedDocs = await uploadFilesToB2(docFiles);
+
+    // 3️⃣ Upload images/videos to Cloudinary
+    const uploadedMedia = [];
+    for (let file of mediaFiles) {
+      const tempId = Date.now() + "-" + file.name;
+      setUploadProgress((prev) => ({ ...prev, [tempId]: 0 }));
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("upload_preset", "your_cloudinary_preset");
+
+        const res = await fetch(`https://api.cloudinary.com/v1_1/${process.env.REACT_APP_CLOUDINARY_NAME}/upload`, {
+          method: "POST",
+          body: formData,
+        });
+
+        const data = await res.json();
+        uploadedMedia.push({
+          tempId,
+          fileName: file.name,
+          url: data.secure_url,
+          mediaType: file.type.startsWith("image") ? "image" : "video",
+        });
+
+        setUploadProgress((prev) => {
+          const { [tempId]: _, ...rest } = prev;
+          return rest;
+        });
+      } catch (err) {
+        console.error("Cloudinary upload error:", err);
+        triggerToast("Failed to upload media: " + file.name);
+      }
+    }
+
+    // 4️⃣ Combine all uploaded files
+    const allUploads = [...uploadedDocs, ...uploadedMedia];
+
+    for (let item of allUploads) {
+      await addDoc(collection(db, "chats", chatId, "messages"), {
+        senderId: myUid,
+        text: "",
+        mediaUrl: item.url,
+        mediaType: item.mediaType,
+        fileName: item.fileName,
+        status: "sent",
+        createdAt: serverTimestamp(),
+        replyTo: replyTo?.id || null,
+        tempId: item.tempId,
+      });
+    }
+
+    // 5️⃣ Optional text message
     if (text) {
       await addDoc(collection(db, "chats", chatId, "messages"), {
         senderId: myUid,
@@ -249,6 +295,8 @@ export default function ChatConversationPage() {
       setText("");
     }
 
+    setSelectedFiles([]);
+    setReplyTo(null);
     scrollToBottom();
   };
 
@@ -258,7 +306,9 @@ export default function ChatConversationPage() {
     setSelectedFiles((prev) => [...prev, ...files].slice(0, 30));
   };
 
+  // -----------------------------
   // Group messages by day
+  // -----------------------------
   const groupedMessages = [];
   let lastDate = null;
   messages.forEach((msg) => {
@@ -291,12 +341,7 @@ export default function ChatConversationPage() {
           item.type === "day" ? (
             <div
               key={`day-${idx}`}
-              style={{
-                textAlign: "center",
-                fontSize: 12,
-                color: COLORS.mutedText,
-                margin: "12px 0",
-              }}
+              style={{ textAlign: "center", fontSize: 12, color: COLORS.mutedText, margin: "12px 0" }}
             >
               {item.label}
             </div>
