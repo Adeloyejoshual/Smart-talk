@@ -35,7 +35,7 @@
     "node-fetch": "^3.3.2",
     "react-sortablejs": "^6.1.4",
     "sortablejs": "^1.15.0",
-    "backblaze-b2": "^2.0.0"
+    "backblaze-b2": "^1.7.1"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",
