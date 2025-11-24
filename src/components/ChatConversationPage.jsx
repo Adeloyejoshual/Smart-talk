@@ -11,10 +11,12 @@ import {
   doc,
   getDoc,
   serverTimestamp,
+  arrayUnion,
   limit as fsLimit,
 } from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
 import { ThemeContext } from "../context/ThemeContext";
+import { usePopup } from "../context/PopupContext";
 import ChatHeader from "./Chat/ChatHeader";
 import MessageItem from "./Chat/MessageItem";
 import ChatInput from "./Chat/ChatInput";
@@ -53,6 +55,7 @@ export default function ChatConversationPage() {
 
   const messagesRefEl = useRef(null);
   const endRef = useRef(null);
+  const { showPopup, closePopup } = usePopup();
 
   const [chatInfo, setChatInfo] = useState(null);
   const [friendInfo, setFriendInfo] = useState(null);
@@ -311,6 +314,7 @@ export default function ChatConversationPage() {
               replyToMessage={handleReply}
               handleMsgTouchStart={(m) => setActiveMessageForHeader(m)}
               handleMsgTouchEnd={() => {}}
+              showPopup={showPopup} // pass popup for actions
             />
           )
         )}
