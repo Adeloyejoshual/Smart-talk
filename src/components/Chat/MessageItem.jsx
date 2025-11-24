@@ -28,6 +28,7 @@ export default function MessageItem({
   const isMine = message.senderId === myUid;
   const bubbleRef = useRef(null);
   const longPressTimer = useRef(null);
+  const audioRef = useRef(null);
 
   const bubbleBg = isMine
     ? isDark
@@ -52,6 +53,7 @@ export default function MessageItem({
           {
             label: "Edit",
             action: async () => {
+              if (!message.text) return; // skip if audio/file
               const t = prompt("Edit message", message.text);
               if (t !== null && t !== message.text) {
                 await updateDoc(doc(db, "chats", chatId, "messages", message.id), {
@@ -73,12 +75,10 @@ export default function MessageItem({
           { label: "React", action: handleReactionClick },
         ],
       });
-    }, 600); // long press duration
+    }, 600);
   };
 
-  const cancelLongPress = () => {
-    clearTimeout(longPressTimer.current);
-  };
+  const cancelLongPress = () => clearTimeout(longPressTimer.current);
 
   // --- Reactions ---
   const handleReactionClick = () => {
@@ -119,9 +119,9 @@ export default function MessageItem({
       }}
       onTouchEnd={() => {
         handleMsgTouchEnd(message);
-        cancelLongPress(); // prevent immediate popup disappearance
+        cancelLongPress();
       }}
-      onMouseDown={startLongPress} // desktop support
+      onMouseDown={startLongPress}
       onMouseUp={cancelLongPress}
       onContextMenu={(e) => {
         e.preventDefault();
@@ -141,10 +141,21 @@ export default function MessageItem({
           wordBreak: "break-word",
         }}
       >
+        {/* Text message */}
         {message.text && (
           <div style={{ fontSize: 15, whiteSpace: "pre-wrap", lineHeight: 1.4 }}>
             {message.text}
           </div>
+        )}
+
+        {/* Audio / Voice Note */}
+        {message.mediaType === "audio" && message.mediaUrl && (
+          <audio
+            ref={audioRef}
+            controls
+            style={{ width: "100%", marginTop: message.text ? 6 : 0 }}
+            src={message.mediaUrl}
+          />
         )}
 
         {/* Timestamp */}
@@ -162,17 +173,9 @@ export default function MessageItem({
         </div>
       </div>
 
-      {/* Reactions below */}
+      {/* Reactions */}
       {message.reactions?.length > 0 && (
-        <div
-          style={{
-            display: "flex",
-            gap: 4,
-            marginTop: 4,
-            fontSize: 18,
-            flexWrap: "wrap",
-          }}
-        >
+        <div style={{ display: "flex", gap: 4, marginTop: 4, fontSize: 18, flexWrap: "wrap" }}>
           {message.reactions.map((r, i) => (
             <span key={i}>{r.emoji}</span>
           ))}
