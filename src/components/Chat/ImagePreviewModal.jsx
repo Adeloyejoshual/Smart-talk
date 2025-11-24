@@ -6,7 +6,7 @@ export default function ImagePreviewModal({
   onRemove,
   onSend,
   onCancel,
-  onAddFiles, // new prop
+  onAddFiles,
   isDark,
 }) {
   const [activeIndex, setActiveIndex] = useState(0);
@@ -14,9 +14,10 @@ export default function ImagePreviewModal({
   const activeFile = files[activeIndex];
   const activeUrl = URL.createObjectURL(activeFile);
 
-  const isActiveImage = activeFile.type.startsWith("image/");
-  const isActiveVideo = activeFile.type.startsWith("video/");
-  const isDoc = !isActiveImage && !isActiveVideo;
+  const isImage = activeFile.type.startsWith("image/");
+  const isVideo = activeFile.type.startsWith("video/");
+  const isAudio = activeFile.type.startsWith("audio/");
+  const isDoc = !isImage && !isVideo && !isAudio;
 
   return (
     <div
@@ -62,27 +63,26 @@ export default function ImagePreviewModal({
           maxHeight: "70vh",
         }}
       >
-        {isActiveImage && (
+        {isImage && (
           <img
             src={activeUrl}
-            style={{
-              maxWidth: "90%",
-              maxHeight: "90%",
-              borderRadius: 12,
-              objectFit: "contain",
-            }}
+            style={{ maxWidth: "90%", maxHeight: "90%", borderRadius: 12, objectFit: "contain" }}
           />
         )}
 
-        {isActiveVideo && (
+        {isVideo && (
           <video
             src={activeUrl}
             controls
-            style={{
-              maxWidth: "90%",
-              maxHeight: "90%",
-              borderRadius: 12,
-            }}
+            style={{ maxWidth: "90%", maxHeight: "90%", borderRadius: 12 }}
+          />
+        )}
+
+        {isAudio && (
+          <audio
+            src={activeUrl}
+            controls
+            style={{ width: "80%", outline: "none" }}
           />
         )}
 
@@ -141,9 +141,10 @@ export default function ImagePreviewModal({
 
         {files.map((file, i) => {
           const thumbUrl = URL.createObjectURL(file);
-          const isImg = file.type.startsWith("image/");
-          const isVid = file.type.startsWith("video/");
-          const isDocFile = !isImg && !isVid;
+          const thumbIsImg = file.type.startsWith("image/");
+          const thumbIsVid = file.type.startsWith("video/");
+          const thumbIsAudio = file.type.startsWith("audio/");
+          const thumbIsDoc = !thumbIsImg && !thumbIsVid && !thumbIsAudio;
 
           return (
             <div
@@ -161,21 +162,23 @@ export default function ImagePreviewModal({
                 flexShrink: 0,
               }}
             >
-              {isImg && (
-                <img
-                  src={thumbUrl}
-                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                />
+              {thumbIsImg && <img src={thumbUrl} style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
+              {thumbIsVid && <video src={thumbUrl} style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
+              {thumbIsAudio && (
+                <div
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    display: "flex",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    fontSize: 28,
+                  }}
+                >
+                  🎵
+                </div>
               )}
-
-              {isVid && (
-                <video
-                  src={thumbUrl}
-                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                />
-              )}
-
-              {isDocFile && (
+              {thumbIsDoc && (
                 <div
                   style={{
                     width: "100%",
@@ -218,14 +221,7 @@ export default function ImagePreviewModal({
       </div>
 
       {/* Action Buttons */}
-      <div
-        style={{
-          display: "flex",
-          gap: 15,
-          justifyContent: "center",
-          marginTop: 20,
-        }}
-      >
+      <div style={{ display: "flex", gap: 15, justifyContent: "center", marginTop: 20 }}>
         <button
           onClick={onCancel}
           style={{
