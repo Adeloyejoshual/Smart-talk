@@ -1,5 +1,5 @@
 // src/components/Chat/MessageItem.jsx
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef } from "react";
 import MediaViewer from "./MediaViewer";
 import MessageActionModal from "./MessageActionModal";
 import EmojiPicker from "./EmojiPicker";
@@ -50,14 +50,10 @@ export default function MessageItem({
 
   // --- Long Press Detection ---
   const handleTouchStart = () => {
-    longPressTimer.current = setTimeout(() => {
-      openActionMenu();
-    }, 550);
+    longPressTimer.current = setTimeout(openActionMenu, 550);
   };
 
-  const openActionMenu = () => {
-    setActionModalVisible(true);
-  };
+  const openActionMenu = () => setActionModalVisible(true);
 
   const handleTouchEnd = () => {
     clearTimeout(longPressTimer.current);
@@ -80,7 +76,7 @@ export default function MessageItem({
     setActionModalVisible(false);
   };
 
-  // --- Reaction Send ---
+  // --- Send Reaction ---
   const handleEmojiSelect = async (emoji) => {
     await updateDoc(doc(db, "chats", chatId, "messages", message.id), {
       reactions: arrayUnion({ emoji, uid: myUid }),
@@ -97,26 +93,12 @@ export default function MessageItem({
       borderRadius: 12,
       display: "block",
       marginTop: 6,
+      cursor: "pointer",
     };
-    return (
-      <div>
-        {message.mediaType === "image" && (
-          <img
-            src={message.mediaUrl}
-            style={mediaStyle}
-            onClick={() => setViewerOpen(true)}
-            alt=""
-          />
-        )}
-        {message.mediaType === "video" && (
-          <video
-            src={message.mediaUrl}
-            controls
-            style={mediaStyle}
-            onClick={() => setViewerOpen(true)}
-          />
-        )}
-      </div>
+    return message.mediaType === "image" ? (
+      <img src={message.mediaUrl} alt="" style={mediaStyle} onClick={() => setViewerOpen(true)} />
+    ) : (
+      <video src={message.mediaUrl} style={mediaStyle} controls onClick={() => setViewerOpen(true)} />
     );
   };
 
@@ -132,24 +114,6 @@ export default function MessageItem({
         paddingRight: isMine ? 0 : 30,
       }}
     >
-      {/* REACTIONS UNDER BUBBLE (Fixed) */}
-      {message.reactions?.length > 0 && (
-        <div
-          style={{
-            display: "flex",
-            gap: 4,
-            marginBottom: 3,
-            paddingLeft: 4,
-            paddingRight: 4,
-            fontSize: 18,
-          }}
-        >
-          {message.reactions.map((r, i) => (
-            <span key={i}>{r.emoji}</span>
-          ))}
-        </div>
-      )}
-
       {/* MAIN BUBBLE */}
       <div
         ref={bubbleRef}
@@ -175,18 +139,32 @@ export default function MessageItem({
 
         {renderMedia()}
 
-        {/* Time */}
+        {/* Timestamp inside bubble */}
         <div
           style={{
             fontSize: 10,
-            opacity: 0.7,
-            marginTop: 4,
-            textAlign: "right",
+            opacity: 0.6,
+            position: "absolute",
+            bottom: 4,
+            right: 8,
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
           }}
         >
-          {fmtTime(message.createdAt)}
+          <span>{fmtTime(message.createdAt)}</span>
+          {message.edited && <span style={{ fontStyle: "italic", opacity: 0.6 }}>edited</span>}
         </div>
       </div>
+
+      {/* Reactions under bubble */}
+      {message.reactions?.length > 0 && (
+        <div style={{ display: "flex", gap: 4, marginTop: 2, fontSize: 18 }}>
+          {message.reactions.map((r, i) => (
+            <span key={i}>{r.emoji}</span>
+          ))}
+        </div>
+      )}
 
       {/* ACTION MENU */}
       {actionModalVisible && (
