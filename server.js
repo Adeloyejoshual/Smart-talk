@@ -8,13 +8,13 @@ import admin from "firebase-admin";
 import mongoose from "mongoose";
 import fs from "fs";
 import B2 from "backblaze-b2";
+import multer from "multer";
 
 dotenv.config();
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const app = express();
 
+const app = express();
 app.use(cors());
 app.use(express.json());
 
@@ -36,14 +36,13 @@ if (!admin.apps.length) {
 // MongoDB
 // -----------------------------
 mongoose.set("strictQuery", true);
-
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => console.log("🟢 MongoDB Connected"))
   .catch((err) => console.error("❌ MongoDB Error:", err));
 
 // -----------------------------
-// Database Models
+// Models
 // -----------------------------
 const transactionSchema = new mongoose.Schema(
   {
@@ -61,7 +60,6 @@ const transactionSchema = new mongoose.Schema(
   },
   { versionKey: false }
 );
-
 const Transaction = mongoose.model("Transaction", transactionSchema);
 
 const walletSchema = new mongoose.Schema({
@@ -69,15 +67,13 @@ const walletSchema = new mongoose.Schema({
   balance: { type: Number, default: 0 },
   lastCheckIn: { type: String, default: null },
 });
-
 const Wallet = mongoose.model("Wallet", walletSchema);
 
-// Utility
 const generateTxnId = () =>
   `txn_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 
 // -----------------------------
-// Token Verification Middleware
+// Firebase Auth Middleware
 // -----------------------------
 const verifyFirebaseToken = async (req, res, next) => {
   try {
@@ -95,22 +91,21 @@ const verifyFirebaseToken = async (req, res, next) => {
 };
 
 // -----------------------------
-// Daily Reward Endpoint ($0.25)
+// Wallet Endpoints
 // -----------------------------
 app.post("/api/wallet/daily", verifyFirebaseToken, async (req, res) => {
   try {
-    const amount = 0.25; // fixed daily reward
+    const amount = 0.25;
     const uid = req.authUID;
     const today = new Date().toISOString().split("T")[0];
 
     let wallet = await Wallet.findOne({ uid });
-    if (!wallet) wallet = await Wallet.create({ uid, balance: 0, lastCheckIn: null });
+    if (!wallet) wallet = await Wallet.create({ uid, balance: 0 });
 
     if (wallet.lastCheckIn === today)
       return res.status(400).json({ error: "Already claimed today" });
 
     const newBalance = wallet.balance + amount;
-
     const session = await mongoose.startSession();
     session.startTransaction();
 
@@ -129,9 +124,9 @@ app.post("/api/wallet/daily", verifyFirebaseToken, async (req, res) => {
         { session }
       );
 
-      await Wallet.findOneAndUpdate(
+      await Wallet.updateOne(
         { uid },
-        { $set: { lastCheckIn: today }, $inc: { balance: amount } },
+        { $inc: { balance: amount }, $set: { lastCheckIn: today } },
         { session }
       );
 
@@ -149,14 +144,10 @@ app.post("/api/wallet/daily", verifyFirebaseToken, async (req, res) => {
   }
 });
 
-// -----------------------------
-// Wallet History
-// -----------------------------
 app.get("/api/wallet/:uid", verifyFirebaseToken, async (req, res) => {
   try {
     const { uid } = req.params;
-    if (req.authUID !== uid)
-      return res.status(403).json({ error: "Forbidden" });
+    if (req.authUID !== uid) return res.status(403).json({ error: "Forbidden" });
 
     const wallet = await Wallet.findOne({ uid });
     const transactions = await Transaction.find({ uid }).sort({ createdAt: -1 });
@@ -172,9 +163,6 @@ app.get("/api/wallet/:uid", verifyFirebaseToken, async (req, res) => {
   }
 });
 
-// -----------------------------
-// Withdraw
-// -----------------------------
 app.post("/api/wallet/withdraw", verifyFirebaseToken, async (req, res) => {
   try {
     const { amount, destination } = req.body;
@@ -192,7 +180,6 @@ app.post("/api/wallet/withdraw", verifyFirebaseToken, async (req, res) => {
 
     try {
       await Wallet.updateOne({ uid }, { $inc: { balance: -amount } }, { session });
-
       const [txn] = await Transaction.create(
         [
           {
@@ -229,27 +216,27 @@ const b2 = new B2({
   accountId: process.env.B2_KEY_ID,
   applicationKey: process.env.B2_APPLICATION_KEY,
 });
-
 await b2.authorize();
 console.log("🔥 Backblaze B2 authorized");
 
-// Upload file endpoint
-app.post("/api/upload", verifyFirebaseToken, async (req, res) => {
+const upload = multer({ storage: multer.memoryStorage() });
+
+app.post("/api/upload-b2", verifyFirebaseToken, upload.single("file"), async (req, res) => {
   try {
-    const { filePath, fileName } = req.body; // filePath on server or base64 etc.
-    if (!filePath || !fileName) return res.status(400).json({ error: "Missing file data" });
+    const file = req.file;
+    if (!file) return res.status(400).json({ error: "No file uploaded" });
 
-    const fileBuffer = fs.readFileSync(filePath); // adjust if using multipart/form-data
-
+    const uploadUrlResp = await b2.getUploadUrl({ bucketId: process.env.B2_BUCKET_ID });
     const uploadRes = await b2.uploadFile({
-      bucketId: process.env.B2_BUCKET_ID,
-      fileName: `uploads/${Date.now()}_${fileName}`,
-      data: fileBuffer,
+      uploadUrl: uploadUrlResp.data.uploadUrl,
+      uploadAuthToken: uploadUrlResp.data.authorizationToken,
+      fileName: `uploads/${Date.now()}_${file.originalname}`,
+      data: file.buffer,
+      mime: file.mimetype,
     });
 
-    const downloadUrl = `https://f001.backblazeb2.com/file/${process.env.B2_BUCKET_NAME}/${uploadRes.data.fileName}`;
-
-    res.json({ success: true, fileName: uploadRes.data.fileName, url: downloadUrl });
+    const downloadUrl = `https://f002.backblazeb2.com/file/${process.env.B2_BUCKET_NAME}/${uploadRes.data.fileName}`;
+    res.json({ success: true, url: downloadUrl, fileName: file.originalname });
   } catch (err) {
     console.error("B2 Upload Error:", err);
     res.status(500).json({ error: err.message });
@@ -257,13 +244,10 @@ app.post("/api/upload", verifyFirebaseToken, async (req, res) => {
 });
 
 // -----------------------------
-// Serve Frontend (React Build)
+// Serve Frontend
 // -----------------------------
 app.use(express.static(path.join(__dirname, "dist")));
-app.get("*", (req, res) =>
-  res.sendFile(path.join(__dirname, "dist/index.html"))
-);
+app.get("*", (req, res) => res.sendFile(path.join(__dirname, "dist/index.html")));
 
-// -----------------------------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
