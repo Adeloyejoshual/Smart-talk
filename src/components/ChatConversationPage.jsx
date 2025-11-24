@@ -60,7 +60,7 @@ export default function ChatConversationPage() {
   const { chatId } = useParams();
   const navigate = useNavigate();
   const { theme, wallpaper } = useContext(ThemeContext);
-  const { showPopup, closePopup } = usePopup(); // popup context
+  const { showPopup } = usePopup();
   const isDark = theme === "dark";
   const myUid = auth.currentUser?.uid;
 
@@ -77,7 +77,7 @@ export default function ChatConversationPage() {
   const [activeMessageForHeader, setActiveMessageForHeader] = useState(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [showScrollDown, setShowScrollDown] = useState(false);
-  const [recording, setRecording] = useState(false);
+  const [toast, setToast] = useState(null);
 
   // Load chat & friend info
   useEffect(() => {
@@ -174,9 +174,15 @@ export default function ChatConversationPage() {
     setShowScrollDown(false);
   };
 
+  // Show toast
+  const triggerToast = (message) => {
+    setToast(message);
+    setTimeout(() => setToast(null), 2300);
+  };
+
+  // Send message
   const sendTextMessage = async () => {
-    if (!chatInfo || (chatInfo.blockedBy || []).includes(myUid))
-      return alert("You are blocked in this chat.");
+    if (!chatInfo || (chatInfo.blockedBy || []).includes(myUid)) return triggerToast("You are blocked in this chat.");
     if (!text && selectedFiles.length === 0) return;
 
     for (let file of selectedFiles) {
@@ -189,10 +195,7 @@ export default function ChatConversationPage() {
       formData.append("folder", "chatImages");
 
       try {
-        const res = await fetch(
-          "https://api.cloudinary.com/v1_1/dtp8wg4e1/image/upload",
-          { method: "POST", body: formData }
-        );
+        const res = await fetch("https://api.cloudinary.com/v1_1/dtp8wg4e1/image/upload", { method: "POST", body: formData });
         const data = await res.json();
         const fileURL = data.secure_url;
 
@@ -254,19 +257,18 @@ export default function ChatConversationPage() {
 
   const handleReply = (msg) => setReplyTo(msg);
   const handleEdit = (msg) => setText(msg.text || "");
-  const handleForward = (msg) => alert("Forward feature pending");
+  const handleForward = (msg) => triggerToast("Forward feature pending");
   const handleDelete = async (msg) => {
     if (!confirm("Delete this message?")) return;
     try {
       await updateDoc(doc(db, "chats", chatId, "messages", msg.id), {
         deletedFor: arrayUnion(myUid),
       });
-      setActiveMessageForHeader(null);
     } catch (e) {
       console.error("Delete message error", e);
     }
   };
-  const handlePin = (msg) => alert("Pin feature pending");
+  const handlePin = (msg) => triggerToast("Pin feature pending");
 
   return (
     <div
@@ -283,30 +285,12 @@ export default function ChatConversationPage() {
         chatInfo={chatInfo}
         friendInfo={friendInfo}
         myUid={myUid}
-        activeMessageForHeader={activeMessageForHeader}
-        setActiveMessageForHeader={setActiveMessageForHeader}
-        onReply={handleReply}
-        onEdit={handleEdit}
-        onForward={handleForward}
-        onDelete={handleDelete}
-        onPin={handlePin}
       />
 
-      <div
-        ref={messagesRefEl}
-        style={{ flex: 1, overflowY: "auto", padding: 8, position: "relative" }}
-      >
+      <div ref={messagesRefEl} style={{ flex: 1, overflowY: "auto", padding: 8, position: "relative" }}>
         {groupedMessages.map((item, idx) =>
           item.type === "day" ? (
-            <div
-              key={`day-${idx}`}
-              style={{
-                textAlign: "center",
-                fontSize: 12,
-                color: COLORS.mutedText,
-                margin: "12px 0",
-              }}
-            >
+            <div key={`day-${idx}`} style={{ textAlign: "center", fontSize: 12, color: COLORS.mutedText, margin: "12px 0" }}>
               {item.label}
             </div>
           ) : (
@@ -321,7 +305,7 @@ export default function ChatConversationPage() {
               handleMsgTouchStart={(m) => setActiveMessageForHeader(m)}
               handleMsgTouchEnd={() => {}}
               fmtTime={fmtTime}
-              showPopup={showPopup} // <--- popup integration
+              showPopup={showPopup}
             />
           )
         )}
@@ -362,9 +346,31 @@ export default function ChatConversationPage() {
         onFilesSelected={onFilesSelected}
         holdStart={() => {}}
         holdEnd={() => {}}
-        recording={recording}
+        recording={false}
         isDark={isDark}
       />
+
+      {toast && (
+        <div
+          style={{
+            position: "absolute",
+            top: 65,
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: isDark ? "#333" : "#222",
+            color: "#fff",
+            padding: "10px 20px",
+            borderRadius: 20,
+            boxShadow: "0 2px 10px rgba(0,0,0,0.3)",
+            opacity: 0.95,
+            transition: "all 0.3s ease-in-out",
+            zIndex: 999,
+            pointerEvents: "none",
+          }}
+        >
+          {toast}
+        </div>
+      )}
     </div>
   );
 }
