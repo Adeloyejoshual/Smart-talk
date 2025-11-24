@@ -46,7 +46,6 @@ const formatDayLabel = (ts) => {
   });
 };
 
-// Professional timestamp formatter like WhatsApp/Telegram
 export const fmtTime = (ts) => {
   if (!ts) return "";
   const d = ts.toDate ? ts.toDate() : new Date(ts);
@@ -61,7 +60,7 @@ export default function ChatConversationPage() {
   const { chatId } = useParams();
   const navigate = useNavigate();
   const { theme, wallpaper } = useContext(ThemeContext);
-  const { showPopup } = usePopup();
+  const { showPopup, closePopup } = usePopup(); // popup context
   const isDark = theme === "dark";
   const myUid = auth.currentUser?.uid;
 
@@ -322,7 +321,7 @@ export default function ChatConversationPage() {
               handleMsgTouchStart={(m) => setActiveMessageForHeader(m)}
               handleMsgTouchEnd={() => {}}
               fmtTime={fmtTime}
-              showPopup={showPopup}
+              showPopup={showPopup} // <--- popup integration
             />
           )
         )}
