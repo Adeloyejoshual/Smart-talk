@@ -46,16 +46,27 @@ const formatDayLabel = (ts) => {
   });
 };
 
+// Professional timestamp formatter like WhatsApp/Telegram
+export const fmtTime = (ts) => {
+  if (!ts) return "";
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  const hours = d.getHours();
+  const minutes = d.getMinutes().toString().padStart(2, "0");
+  const ampm = hours >= 12 ? "PM" : "AM";
+  const hour12 = hours % 12 || 12;
+  return `${hour12}:${minutes} ${ampm}`;
+};
+
 export default function ChatConversationPage() {
   const { chatId } = useParams();
   const navigate = useNavigate();
   const { theme, wallpaper } = useContext(ThemeContext);
+  const { showPopup } = usePopup();
   const isDark = theme === "dark";
   const myUid = auth.currentUser?.uid;
 
   const messagesRefEl = useRef(null);
   const endRef = useRef(null);
-  const { showPopup, closePopup } = usePopup();
 
   const [chatInfo, setChatInfo] = useState(null);
   const [friendInfo, setFriendInfo] = useState(null);
@@ -133,7 +144,6 @@ export default function ChatConversationPage() {
         }
       });
 
-      // Auto scroll
       if (messagesRefEl.current && !isAtBottom) {
         setShowScrollDown(true);
       } else {
@@ -165,13 +175,11 @@ export default function ChatConversationPage() {
     setShowScrollDown(false);
   };
 
-  // Send messages
   const sendTextMessage = async () => {
     if (!chatInfo || (chatInfo.blockedBy || []).includes(myUid))
       return alert("You are blocked in this chat.");
     if (!text && selectedFiles.length === 0) return;
 
-    // Upload files
     for (let file of selectedFiles) {
       const tempId = Date.now() + "-" + file.name;
       setUploadProgress((prev) => ({ ...prev, [tempId]: 0 }));
@@ -209,7 +217,6 @@ export default function ChatConversationPage() {
       }
     }
 
-    // Send text
     if (text) {
       await addDoc(collection(db, "chats", chatId, "messages"), {
         senderId: myUid,
@@ -246,7 +253,6 @@ export default function ChatConversationPage() {
     groupedMessages.push({ type: "msg", data: msg });
   });
 
-  // -------------------- Message action callbacks --------------------
   const handleReply = (msg) => setReplyTo(msg);
   const handleEdit = (msg) => setText(msg.text || "");
   const handleForward = (msg) => alert("Forward feature pending");
@@ -309,12 +315,14 @@ export default function ChatConversationPage() {
               key={item.data.id}
               message={item.data}
               myUid={myUid}
+              chatId={chatId}
               isDark={isDark}
               uploadProgress={uploadProgress}
               replyToMessage={handleReply}
               handleMsgTouchStart={(m) => setActiveMessageForHeader(m)}
               handleMsgTouchEnd={() => {}}
-              showPopup={showPopup} // pass popup for actions
+              fmtTime={fmtTime}
+              showPopup={showPopup}
             />
           )
         )}
