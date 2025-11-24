@@ -1,6 +1,6 @@
 // src/components/Chat/ChatConversationPage.jsx
 import React, { useEffect, useState, useRef, useContext } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import {
   collection,
   addDoc,
@@ -9,7 +9,6 @@ import {
   onSnapshot,
   updateDoc,
   doc,
-  getDoc,
   serverTimestamp,
   arrayUnion,
   limit as fsLimit,
@@ -58,7 +57,6 @@ export const fmtTime = (ts) => {
 
 export default function ChatConversationPage() {
   const { chatId } = useParams();
-  const navigate = useNavigate();
   const { theme, wallpaper } = useContext(ThemeContext);
   const { showPopup } = usePopup();
   const isDark = theme === "dark";
@@ -74,7 +72,6 @@ export default function ChatConversationPage() {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [uploadProgress, setUploadProgress] = useState({});
   const [replyTo, setReplyTo] = useState(null);
-  const [activeMessageForHeader, setActiveMessageForHeader] = useState(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [showScrollDown, setShowScrollDown] = useState(false);
   const [toast, setToast] = useState(null);
@@ -174,36 +171,41 @@ export default function ChatConversationPage() {
     setShowScrollDown(false);
   };
 
-  // Show toast
   const triggerToast = (message) => {
     setToast(message);
     setTimeout(() => setToast(null), 2300);
   };
 
-  // Send message
-  const sendTextMessage = async () => {
-    if (!chatInfo || (chatInfo.blockedBy || []).includes(myUid)) return triggerToast("You are blocked in this chat.");
-    if (!text && selectedFiles.length === 0) return;
+  // -----------------------------
+  // Send B2 files/documents only
+  // -----------------------------
+  const sendFilesToB2 = async () => {
+    if (selectedFiles.length === 0) return;
 
     for (let file of selectedFiles) {
       const tempId = Date.now() + "-" + file.name;
       setUploadProgress((prev) => ({ ...prev, [tempId]: 0 }));
 
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("upload_preset", "0HoyRB6wC0eba-Cbat0nhiIRoa8");
-      formData.append("folder", "chatImages");
-
       try {
-        const res = await fetch("https://api.cloudinary.com/v1_1/dtp8wg4e1/image/upload", { method: "POST", body: formData });
+        const token = await auth.currentUser.getIdToken();
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const res = await fetch("/api/upload-b2", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData,
+        });
+
         const data = await res.json();
-        const fileURL = data.secure_url;
+        if (!data.url) throw new Error("Upload failed");
 
         await addDoc(collection(db, "chats", chatId, "messages"), {
           senderId: myUid,
           text: "",
-          mediaUrl: fileURL,
-          mediaType: "image",
+          mediaUrl: data.url,
+          mediaType: "file",
+          fileName: file.name,
           status: "sent",
           createdAt: serverTimestamp(),
           replyTo: replyTo?.id || null,
@@ -215,10 +217,25 @@ export default function ChatConversationPage() {
           return rest;
         });
       } catch (e) {
-        console.error("File upload error:", e);
+        console.error("B2 File upload error:", e);
+        triggerToast("Failed to upload file: " + file.name);
       }
     }
 
+    setSelectedFiles([]);
+    setReplyTo(null);
+  };
+
+  // -----------------------------
+  // Send text message + B2 files
+  // -----------------------------
+  const sendTextMessage = async () => {
+    if (!text && selectedFiles.length === 0) return;
+
+    // Send files first
+    await sendFilesToB2();
+
+    // Optional text message
     if (text) {
       await addDoc(collection(db, "chats", chatId, "messages"), {
         senderId: myUid,
@@ -229,11 +246,9 @@ export default function ChatConversationPage() {
         createdAt: serverTimestamp(),
         replyTo: replyTo?.id || null,
       });
+      setText("");
     }
 
-    setText("");
-    setSelectedFiles([]);
-    setReplyTo(null);
     scrollToBottom();
   };
 
@@ -255,21 +270,6 @@ export default function ChatConversationPage() {
     groupedMessages.push({ type: "msg", data: msg });
   });
 
-  const handleReply = (msg) => setReplyTo(msg);
-  const handleEdit = (msg) => setText(msg.text || "");
-  const handleForward = (msg) => triggerToast("Forward feature pending");
-  const handleDelete = async (msg) => {
-    if (!confirm("Delete this message?")) return;
-    try {
-      await updateDoc(doc(db, "chats", chatId, "messages", msg.id), {
-        deletedFor: arrayUnion(myUid),
-      });
-    } catch (e) {
-      console.error("Delete message error", e);
-    }
-  };
-  const handlePin = (msg) => triggerToast("Pin feature pending");
-
   return (
     <div
       style={{
@@ -281,16 +281,23 @@ export default function ChatConversationPage() {
         position: "relative",
       }}
     >
-      <ChatHeader
-        chatInfo={chatInfo}
-        friendInfo={friendInfo}
-        myUid={myUid}
-      />
+      <ChatHeader chatInfo={chatInfo} friendInfo={friendInfo} myUid={myUid} />
 
-      <div ref={messagesRefEl} style={{ flex: 1, overflowY: "auto", padding: 8, position: "relative" }}>
+      <div
+        ref={messagesRefEl}
+        style={{ flex: 1, overflowY: "auto", padding: 8, position: "relative" }}
+      >
         {groupedMessages.map((item, idx) =>
           item.type === "day" ? (
-            <div key={`day-${idx}`} style={{ textAlign: "center", fontSize: 12, color: COLORS.mutedText, margin: "12px 0" }}>
+            <div
+              key={`day-${idx}`}
+              style={{
+                textAlign: "center",
+                fontSize: 12,
+                color: COLORS.mutedText,
+                margin: "12px 0",
+              }}
+            >
               {item.label}
             </div>
           ) : (
@@ -301,9 +308,7 @@ export default function ChatConversationPage() {
               chatId={chatId}
               isDark={isDark}
               uploadProgress={uploadProgress}
-              replyToMessage={handleReply}
-              handleMsgTouchStart={(m) => setActiveMessageForHeader(m)}
-              handleMsgTouchEnd={() => {}}
+              replyToMessage={setReplyTo}
               fmtTime={fmtTime}
               showPopup={showPopup}
             />
@@ -314,7 +319,7 @@ export default function ChatConversationPage() {
 
       {showScrollDown && !isAtBottom && (
         <button
-          onClick={scrollToBottom}
+          onClick={() => scrollToBottom()}
           style={{
             position: "absolute",
             bottom: 80,
