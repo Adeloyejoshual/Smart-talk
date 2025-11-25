@@ -1,9 +1,11 @@
 // src/App.jsx
-import React, { useEffect, useState, useContext } from "react";
+import React, { useEffect, useState } from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import { ThemeProvider, ThemeContext } from "./context/ThemeContext";
+import { ThemeProvider } from "./context/ThemeContext";
 import { WalletProvider } from "./context/WalletContext";
 import { auth, setUserPresence } from "./firebaseConfig";
+
+// Global Popup
 import { PopupProvider } from "./context/PopupContext";
 
 // Pages
@@ -27,19 +29,16 @@ import ProtectedRoute from "./components/ProtectedRoute";
 export default function App() {
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [user, setUser] = useState(null);
-  const [fadeOut, setFadeOut] = useState(false);
-
-  const { theme, wallpaper } = useContext(ThemeContext);
-  const isDark = theme === "dark";
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((u) => {
       setUser(u);
-      if (u) setUserPresence(u.uid);
+      setTimeout(() => setCheckingAuth(false), 800);
 
-      // Fade out splash
-      setTimeout(() => setFadeOut(true), 500);
-      setTimeout(() => setCheckingAuth(false), 1300);
+      if (u) {
+        const cleanupPresence = setUserPresence(u.uid);
+        return () => cleanupPresence && cleanupPresence();
+      }
     });
 
     return () => unsubscribe();
@@ -50,21 +49,14 @@ export default function App() {
       <div
         style={{
           height: "100vh",
-          width: "100%",
           display: "flex",
-          alignItems: "center",
           justifyContent: "center",
-          background: wallpaper
-            ? `url(${wallpaper}) center/cover no-repeat`
-            : isDark
-            ? "#050505"
-            : "#fafafa",
-          opacity: fadeOut ? 0 : 1,
-          transition: "opacity 0.8s ease",
-          pointerEvents: fadeOut ? "none" : "auto",
+          alignItems: "center",
+          background: "#000",
+          flexDirection: "column",
+          color: "#fff",
         }}
       >
-        {/* LoeChat Logo Circle */}
         <div
           style={{
             width: 120,
@@ -73,54 +65,39 @@ export default function App() {
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            position: "relative",
-            background: "linear-gradient(135deg, #1E6FFB, #0047B3)",
-            backgroundSize: "300% 300%",
+            background:
+              "linear-gradient(135deg, #3b82f6, #8b5cf6, #06b6d4, #2563eb)",
             animation:
-              "gradientShift 5s ease infinite, pulseGlow 2.2s ease-in-out infinite",
-            boxShadow: "0 0 40px 6px rgba(30,111,251,0.45)",
+              "gradientShift 5s ease infinite, pulseGlow 2s ease-in-out infinite",
+            backgroundSize: "300% 300%",
           }}
         >
-          {/* Spinner */}
-          <div
+          <span
             style={{
-              position: "absolute",
-              width: "100%",
-              height: "100%",
-              borderRadius: "50%",
-              border: "4px solid rgba(255,255,255,0.2)",
-              borderTop: "4px solid rgba(255,255,255,0.9)",
-              animation: "spin 1.4s linear infinite",
+              fontSize: 36,
+              fontWeight: "bold",
+              color: "#fff",
+              textShadow: "0 0 12px rgba(255,255,255,0.8)",
             }}
-          />
-
-          {/* Logo */}
-          <img
-            src={require("./assets/loechat-logo.png")}
-            alt="LoeChat Logo"
-            style={{
-              width: 70,
-              height: 70,
-              objectFit: "contain",
-              zIndex: 2,
-            }}
-          />
+          >
+            ST
+          </span>
         </div>
+
+        <p style={{ marginTop: 16, fontSize: 15, opacity: 0.8 }}>
+          SmartTalk is starting…
+        </p>
 
         <style>
           {`
-            @keyframes spin {
-              0% { transform: rotate(0deg); }
-              100% { transform: rotate(360deg); }
-            }
             @keyframes gradientShift {
               0% { background-position: 0% 50%; }
               50% { background-position: 100% 50%; }
               100% { background-position: 0% 50%; }
             }
             @keyframes pulseGlow {
-              0%, 100% { box-shadow: 0 0 30px 5px rgba(30,111,251,0.35); transform: scale(1); }
-              50% { box-shadow: 0 0 55px 8px rgba(30,111,251,0.6); transform: scale(1.05); }
+              0%, 100% { transform: scale(1); filter: brightness(1); }
+              50% { transform: scale(1.05); filter: brightness(1.3); }
             }
           `}
         </style>
@@ -134,11 +111,13 @@ export default function App() {
         <PopupProvider>
           <Router>
             <Routes>
+              {/* Public Route */}
               <Route
                 path="/"
                 element={user ? <ChatPage user={user} /> : <HomePage />}
               />
 
+              {/* Protected Pages */}
               <Route
                 path="/chat"
                 element={
@@ -156,6 +135,7 @@ export default function App() {
                 }
               />
 
+              {/* Calls */}
               <Route
                 path="/voicecall/:uid"
                 element={
@@ -173,6 +153,7 @@ export default function App() {
                 }
               />
 
+              {/* Settings / Profile / Wallet */}
               <Route
                 path="/settings"
                 element={
@@ -222,6 +203,7 @@ export default function App() {
                 }
               />
 
+              {/* User Profile */}
               <Route
                 path="/profile/:uid"
                 element={
