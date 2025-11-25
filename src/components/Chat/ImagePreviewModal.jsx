@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { X } from "lucide-react";
 
 export default function ImagePreviewModal({
@@ -10,11 +10,23 @@ export default function ImagePreviewModal({
   isDark,
 }) {
   const [activeIndex, setActiveIndex] = useState(0);
+  const [activeUrl, setActiveUrl] = useState("");
 
   // Only images/videos
   const mediaFiles = files.filter(f => f.type.startsWith("image/") || f.type.startsWith("video/"));
   const activeFile = mediaFiles[activeIndex];
-  const activeUrl = activeFile ? URL.createObjectURL(activeFile) : null;
+
+  // Update activeUrl whenever activeFile changes
+  useEffect(() => {
+    if (!activeFile) return;
+
+    const url = URL.createObjectURL(activeFile);
+    setActiveUrl(url);
+
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+  }, [activeFile]);
 
   const isImage = activeFile?.type.startsWith("image/");
   const isVideo = activeFile?.type.startsWith("video/");
@@ -65,8 +77,20 @@ export default function ImagePreviewModal({
           maxHeight: "70vh",
         }}
       >
-        {isImage && <img src={activeUrl} style={{ maxWidth: "90%", maxHeight: "90%", borderRadius: 12, objectFit: "contain" }} />}
-        {isVideo && <video src={activeUrl} controls style={{ maxWidth: "90%", maxHeight: "90%", borderRadius: 12 }} />}
+        {isImage && (
+          <img
+            src={activeUrl}
+            alt="preview"
+            style={{ maxWidth: "90%", maxHeight: "90%", borderRadius: 12, objectFit: "contain" }}
+          />
+        )}
+        {isVideo && (
+          <video
+            src={activeUrl}
+            controls
+            style={{ maxWidth: "90%", maxHeight: "90%", borderRadius: 12 }}
+          />
+        )}
       </div>
 
       {/* Thumbnail Selector */}
@@ -113,7 +137,7 @@ export default function ImagePreviewModal({
                 flexShrink: 0,
               }}
             >
-              {thumbIsImg && <img src={thumbUrl} style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
+              {thumbIsImg && <img src={thumbUrl} alt="thumb" style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
               {thumbIsVid && <video src={thumbUrl} style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
 
               {/* Remove Button */}
