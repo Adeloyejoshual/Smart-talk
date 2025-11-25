@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { X, FileText } from "lucide-react";
+import { X } from "lucide-react";
 
 export default function ImagePreviewModal({
   files,
@@ -11,13 +11,15 @@ export default function ImagePreviewModal({
 }) {
   const [activeIndex, setActiveIndex] = useState(0);
 
-  const activeFile = files[activeIndex];
-  const activeUrl = URL.createObjectURL(activeFile);
+  // Only images/videos
+  const mediaFiles = files.filter(f => f.type.startsWith("image/") || f.type.startsWith("video/"));
+  const activeFile = mediaFiles[activeIndex];
+  const activeUrl = activeFile ? URL.createObjectURL(activeFile) : null;
 
-  const isImage = activeFile.type.startsWith("image/");
-  const isVideo = activeFile.type.startsWith("video/");
-  const isAudio = activeFile.type.startsWith("audio/");
-  const isDoc = !isImage && !isVideo && !isAudio;
+  const isImage = activeFile?.type.startsWith("image/");
+  const isVideo = activeFile?.type.startsWith("video/");
+
+  if (!activeFile) return null;
 
   return (
     <div
@@ -63,61 +65,12 @@ export default function ImagePreviewModal({
           maxHeight: "70vh",
         }}
       >
-        {isImage && (
-          <img
-            src={activeUrl}
-            style={{ maxWidth: "90%", maxHeight: "90%", borderRadius: 12, objectFit: "contain" }}
-          />
-        )}
-
-        {isVideo && (
-          <video
-            src={activeUrl}
-            controls
-            style={{ maxWidth: "90%", maxHeight: "90%", borderRadius: 12 }}
-          />
-        )}
-
-        {isAudio && (
-          <audio
-            src={activeUrl}
-            controls
-            style={{ width: "80%", outline: "none" }}
-          />
-        )}
-
-        {isDoc && (
-          <div
-            style={{
-              width: 180,
-              height: 180,
-              borderRadius: 16,
-              background: "rgba(255,255,255,0.1)",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 12,
-            }}
-          >
-            <FileText size={60} color="#fff" />
-            <p style={{ color: "#fff", wordBreak: "break-word", textAlign: "center" }}>
-              {activeFile.name}
-            </p>
-          </div>
-        )}
+        {isImage && <img src={activeUrl} style={{ maxWidth: "90%", maxHeight: "90%", borderRadius: 12, objectFit: "contain" }} />}
+        {isVideo && <video src={activeUrl} controls style={{ maxWidth: "90%", maxHeight: "90%", borderRadius: 12 }} />}
       </div>
 
       {/* Thumbnail Selector */}
-      <div
-        style={{
-          display: "flex",
-          gap: 10,
-          overflowX: "auto",
-          paddingBottom: 10,
-          marginTop: 10,
-        }}
-      >
+      <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 10, marginTop: 10 }}>
         {/* Add + button */}
         <div
           onClick={onAddFiles}
@@ -139,12 +92,10 @@ export default function ImagePreviewModal({
           +
         </div>
 
-        {files.map((file, i) => {
+        {mediaFiles.map((file, i) => {
           const thumbUrl = URL.createObjectURL(file);
           const thumbIsImg = file.type.startsWith("image/");
           const thumbIsVid = file.type.startsWith("video/");
-          const thumbIsAudio = file.type.startsWith("audio/");
-          const thumbIsDoc = !thumbIsImg && !thumbIsVid && !thumbIsAudio;
 
           return (
             <div
@@ -164,33 +115,6 @@ export default function ImagePreviewModal({
             >
               {thumbIsImg && <img src={thumbUrl} style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
               {thumbIsVid && <video src={thumbUrl} style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
-              {thumbIsAudio && (
-                <div
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    display: "flex",
-                    justifyContent: "center",
-                    alignItems: "center",
-                    fontSize: 28,
-                  }}
-                >
-                  🎵
-                </div>
-              )}
-              {thumbIsDoc && (
-                <div
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    display: "flex",
-                    justifyContent: "center",
-                    alignItems: "center",
-                  }}
-                >
-                  <FileText size={40} color="#fff" />
-                </div>
-              )}
 
               {/* Remove Button */}
               <button
@@ -247,7 +171,7 @@ export default function ImagePreviewModal({
             fontWeight: "bold",
           }}
         >
-          Send {files.length > 1 ? `(${files.length})` : ""}
+          Send {mediaFiles.length > 1 ? `(${mediaFiles.length})` : ""}
         </button>
       </div>
     </div>
