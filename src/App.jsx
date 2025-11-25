@@ -10,15 +10,16 @@ import { PopupProvider } from "./context/PopupContext";
 import HomePage from "./components/HomePage";
 import ChatPage from "./components/ChatPage";
 import ChatConversationPage from "./components/ChatConversationPage";
+import CallPage from "./components/CallPage";
+import SettingsPage from "./components/SettingsPage";
+import CallHistoryPage from "./components/CallHistoryPage";
+import WithdrawPage from "./components/WithdrawPage";
+import TopUpPage from "./components/TopUpPage";
+import UserProfile from "./components/UserProfile";
 import VoiceCallPage from "./components/VoiceCallPage";
 import VideoCallPage from "./components/VideoCallPage";
-import SettingsPage from "./components/SettingsPage";
 import EditProfilePage from "./components/EditProfilePage";
-import CallHistoryPage from "./components/CallHistoryPage";
 import WalletPage from "./components/WalletPage";
-import TopUpPage from "./components/TopUpPage";
-import WithdrawPage from "./components/WithdrawPage";
-import UserProfile from "./components/UserProfile";
 
 // Components
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -36,7 +37,8 @@ export default function App() {
       setUser(u);
       if (u) setUserPresence(u.uid);
 
-      setTimeout(() => setFadeOut(true), 500); // fade-out animation
+      // Fade out splash
+      setTimeout(() => setFadeOut(true), 500);
       setTimeout(() => setCheckingAuth(false), 1300);
     });
 
@@ -62,7 +64,7 @@ export default function App() {
           pointerEvents: fadeOut ? "none" : "auto",
         }}
       >
-        {/* Logo Circle */}
+        {/* LoeChat Logo Circle */}
         <div
           style={{
             width: 120,
@@ -92,7 +94,7 @@ export default function App() {
             }}
           />
 
-          {/* Theme-aware Logo */}
+          {/* Logo */}
           <img
             src={require("./assets/loechat-logo.png")}
             alt="LoeChat Logo"
@@ -101,9 +103,6 @@ export default function App() {
               height: 70,
               objectFit: "contain",
               zIndex: 2,
-              filter: isDark
-                ? "drop-shadow(0 0 8px rgba(255,255,255,0.6))"
-                : "brightness(0) saturate(100%) invert(0.1) drop-shadow(0 0 4px rgba(0,0,0,0.4))",
             }}
           />
         </div>
@@ -135,13 +134,11 @@ export default function App() {
         <PopupProvider>
           <Router>
             <Routes>
-              {/* Public Route */}
               <Route
                 path="/"
                 element={user ? <ChatPage user={user} /> : <HomePage />}
               />
 
-              {/* Protected Pages */}
               <Route
                 path="/chat"
                 element={
@@ -158,6 +155,7 @@ export default function App() {
                   </ProtectedRoute>
                 }
               />
+
               <Route
                 path="/voicecall/:uid"
                 element={
@@ -174,6 +172,7 @@ export default function App() {
                   </ProtectedRoute>
                 }
               />
+
               <Route
                 path="/settings"
                 element={
@@ -222,6 +221,7 @@ export default function App() {
                   </ProtectedRoute>
                 }
               />
+
               <Route
                 path="/profile/:uid"
                 element={
