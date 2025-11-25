@@ -1,16 +1,36 @@
 // src/components/HomePage.jsx
-import React from "react";
+import React, { useContext } from "react";
 import { Link } from "react-router-dom";
+import { ThemeContext } from "../context/ThemeContext";
 
 export default function HomePage() {
+  const { theme, wallpaper } = useContext(ThemeContext);
+
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen text-center bg-gray-100">
-      <h1 className="text-3xl font-bold mb-6">Welcome to SmartTalk</h1>
+    <div
+      className={`flex flex-col items-center justify-center min-h-screen text-center transition-all duration-300 ${
+        theme === "dark" ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-900"
+      }`}
+      style={{
+        backgroundImage: wallpaper ? `url(${wallpaper})` : "none",
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+      }}
+    >
+      <h1 className="text-4xl font-bold mb-8">Welcome to LoeChat</h1>
+
       <div className="space-x-4">
-        <Link to="/register" className="bg-blue-500 text-white px-4 py-2 rounded">
+        <Link
+          to="/register"
+          className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg transition"
+        >
           Register
         </Link>
-        <Link to="/login" className="bg-green-500 text-white px-4 py-2 rounded">
+
+        <Link
+          to="/login"
+          className="bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-lg transition"
+        >
           Login
         </Link>
       </div>
