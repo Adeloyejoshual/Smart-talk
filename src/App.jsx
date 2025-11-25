@@ -72,15 +72,11 @@ export default function App() {
             alignItems: "center",
             justifyContent: "center",
             position: "relative",
-            background: isDark
-              ? "linear-gradient(135deg, #1E6FFB, #0047B3)" // dark mode
-              : "linear-gradient(135deg, #6BA8FF, #A3C7FF)", // light mode
+            background: "linear-gradient(135deg, #1E6FFB, #0047B3)",
             backgroundSize: "300% 300%",
             animation:
               "gradientShift 5s ease infinite, pulseGlow 2.2s ease-in-out infinite",
-            boxShadow: isDark
-              ? "0 0 40px 6px rgba(30,111,251,0.45)"
-              : "0 0 35px 5px rgba(107,168,255,0.5)",
+            boxShadow: "0 0 40px 6px rgba(30,111,251,0.45)",
           }}
         >
           {/* Spinner */}
