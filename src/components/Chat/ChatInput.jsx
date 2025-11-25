@@ -1,4 +1,3 @@
-// src/components/Chat/ChatInput.jsx
 import React, { useState, useRef } from "react";
 import { Paperclip, Send, Mic } from "lucide-react";
 import ImagePreviewModal from "./ImagePreviewModal";
@@ -17,7 +16,6 @@ export default function ChatInput({
   const [recording, setRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState(null);
   const [audioChunks, setAudioChunks] = useState([]);
-  const [voiceNote, setVoiceNote] = useState(null); // Voice note file for preview
 
   // -----------------------------
   // File selection
@@ -25,32 +23,36 @@ export default function ChatInput({
   const handleFileChange = (e) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
-    setSelectedFiles([...selectedFiles, ...files].slice(0, 30));
-    setShowPreview(true);
+
+    // Only images/videos go to preview
+    const mediaFiles = files.filter(f => f.type.startsWith("image/") || f.type.startsWith("video/"));
+    const otherFiles = files.filter(f => !f.type.startsWith("image/") && !f.type.startsWith("video/"));
+
+    if (mediaFiles.length) {
+      setSelectedFiles([...selectedFiles, ...mediaFiles].slice(0, 30));
+      setShowPreview(true);
+    }
+
+    // Other files (docs/audio) send immediately
+    if (otherFiles.length) sendMediaMessage(otherFiles);
+
     e.target.value = null;
   };
 
   const handleRemoveFile = (index) => {
-    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleSendFromPreview = async () => {
-    // Send images/videos/files
     if (selectedFiles.length) {
       await sendMediaMessage(selectedFiles);
       setSelectedFiles([]);
-    }
-    // Send voice note
-    if (voiceNote) {
-      await sendMediaMessage([voiceNote]);
-      setVoiceNote(null);
     }
     setShowPreview(false);
   };
 
   const handleCancelPreview = () => {
     setSelectedFiles([]);
-    setVoiceNote(null);
     setShowPreview(false);
   };
 
@@ -65,13 +67,16 @@ export default function ChatInput({
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
       const chunks = [];
+
       recorder.ondataavailable = (e) => chunks.push(e.data);
-      recorder.onstop = () => {
+      recorder.onstop = async () => {
         const audioBlob = new Blob(chunks, { type: "audio/webm" });
         const audioFile = new File([audioBlob], `voice-${Date.now()}.webm`, { type: "audio/webm" });
-        setVoiceNote(audioFile);
-        setShowPreview(true); // Open preview modal
+
+        // Send automatically when user releases
+        await sendMediaMessage([audioFile]);
       };
+
       recorder.start();
       setRecording(true);
       setMediaRecorder(recorder);
@@ -141,18 +146,15 @@ export default function ChatInput({
         </button>
       </div>
 
-      {/* Preview modal for images/videos/files/voice note */}
-      {showPreview && (selectedFiles.length > 0 || voiceNote) && (
+      {/* Preview modal for images/videos only */}
+      {showPreview && selectedFiles.length > 0 && (
         <ImagePreviewModal
           files={selectedFiles}
-          voiceNote={voiceNote ? URL.createObjectURL(voiceNote) : null} // Pass audio URL
-          onRemove={(index) => {
-            if (voiceNote && index === -1) setVoiceNote(null); // Remove voice note
-            else handleRemoveFile(index);
-          }}
+          onRemove={handleRemoveFile}
           onSend={handleSendFromPreview}
           onCancel={handleCancelPreview}
           onAddFiles={handleAddMoreFiles}
+          isDark={isDark}
         />
       )}
     </>
