@@ -25,25 +25,19 @@ import ProtectedRoute from "./components/ProtectedRoute";
 
 // Loading Screen Component
 function LoadingScreen() {
-  const { theme, wallpaper } = useContext(ThemeContext);
+  const { theme } = useContext(ThemeContext);
   const isDark = theme === "dark";
 
   return (
     <div
       style={{
         height: "100vh",
-        width: "100%",
         display: "flex",
-        alignItems: "center",
         justifyContent: "center",
-        background: wallpaper
-          ? `url(${wallpaper}) center/cover no-repeat`
-          : isDark
-          ? "#050505"
-          : "#fafafa",
+        alignItems: "center",
+        background: isDark ? "#000" : "#fafafa",
       }}
     >
-      {/* Logo Circle */}
       <div
         style={{
           width: 120,
@@ -52,53 +46,28 @@ function LoadingScreen() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          position: "relative",
           background: isDark
-            ? "linear-gradient(135deg, #1E6FFB, #0047B3)"
+            ? "linear-gradient(135deg, #3b82f6, #8b5cf6, #06b6d4, #2563eb)"
             : "linear-gradient(135deg, #f97316, #facc15, #22c55e, #3b82f6)",
           backgroundSize: "300% 300%",
           animation:
-            "gradientShift 5s ease infinite, pulseGlow 2.2s ease-in-out infinite",
-          boxShadow: isDark
-            ? "0 0 40px 6px rgba(30,111,251,0.45)"
-            : "0 0 40px 6px rgba(255,200,50,0.45)",
+            "gradientShift 5s ease infinite, pulseGlow 2s ease-in-out infinite",
         }}
       >
-        {/* Spinner */}
-        <div
+        <span
           style={{
-            position: "absolute",
-            width: "100%",
-            height: "100%",
-            borderRadius: "50%",
-            border: "4px solid rgba(255,255,255,0.2)",
-            borderTop: "4px solid rgba(255,255,255,0.9)",
-            animation: "spin 1.4s linear infinite",
+            fontSize: 36,
+            fontWeight: "bold",
+            color: "#fff",
+            textShadow: "0 0 12px rgba(255,255,255,0.8)",
           }}
-        />
-
-        {/* Theme-aware Logo */}
-        <img
-          src={require("./assets/loechat-logo.png")}
-          alt="LoeChat Logo"
-          style={{
-            width: 70,
-            height: 70,
-            objectFit: "contain",
-            zIndex: 2,
-            filter: isDark
-              ? "drop-shadow(0 0 8px rgba(255,255,255,0.6))"
-              : "brightness(0) saturate(100%) invert(0.1) drop-shadow(0 0 4px rgba(0,0,0,0.4))",
-          }}
-        />
+        >
+          LC
+        </span>
       </div>
 
       <style>
         {`
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
           @keyframes gradientShift {
             0% { background-position: 0% 50%; }
             50% { background-position: 100% 50%; }
@@ -123,7 +92,7 @@ export default function App() {
       setUser(u);
       if (u) setUserPresence(u.uid);
 
-      setTimeout(() => setCheckingAuth(false), 1300); // show loading for at least 1.3s
+      setTimeout(() => setCheckingAuth(false), 800);
     });
 
     return () => unsubscribe();
@@ -144,7 +113,7 @@ export default function App() {
                   element={user ? <ChatPage user={user} /> : <HomePage />}
                 />
 
-                {/* Protected Pages */}
+                {/* Protected Routes */}
                 <Route
                   path="/chat"
                   element={
