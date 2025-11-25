@@ -4,49 +4,46 @@ import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { ThemeProvider, ThemeContext } from "./context/ThemeContext";
 import { WalletProvider } from "./context/WalletContext";
 import { auth, setUserPresence } from "./firebaseConfig";
-
-// Global Popup
 import { PopupProvider } from "./context/PopupContext";
 
 // Pages
 import HomePage from "./components/HomePage";
 import ChatPage from "./components/ChatPage";
 import ChatConversationPage from "./components/ChatConversationPage";
-import CallPage from "./components/CallPage";
-import SettingsPage from "./components/SettingsPage";
-import CallHistoryPage from "./components/CallHistoryPage";
-import WithdrawPage from "./components/WithdrawPage";
-import TopUpPage from "./components/TopUpPage";
-import UserProfile from "./components/UserProfile";
 import VoiceCallPage from "./components/VoiceCallPage";
 import VideoCallPage from "./components/VideoCallPage";
+import SettingsPage from "./components/SettingsPage";
 import EditProfilePage from "./components/EditProfilePage";
+import CallHistoryPage from "./components/CallHistoryPage";
 import WalletPage from "./components/WalletPage";
+import TopUpPage from "./components/TopUpPage";
+import WithdrawPage from "./components/WithdrawPage";
+import UserProfile from "./components/UserProfile";
 
 // Components
 import ProtectedRoute from "./components/ProtectedRoute";
 
+// Loading Screen Component
 function LoadingScreen() {
-  const { theme } = useContext(ThemeContext);
-
-  const background = theme === "dark" ? "#000" : "#f5f5f5";
-  const gradient =
-    theme === "dark"
-      ? "linear-gradient(135deg, #3b82f6, #8b5cf6, #06b6d4, #2563eb)"
-      : "linear-gradient(135deg, #f97316, #facc15, #22c55e, #3b82f6)"; // lighter vibrant colors for light mode
+  const { theme, wallpaper } = useContext(ThemeContext);
+  const isDark = theme === "dark";
 
   return (
     <div
       style={{
         height: "100vh",
+        width: "100%",
         display: "flex",
-        justifyContent: "center",
         alignItems: "center",
-        background,
-        flexDirection: "column",
-        color: theme === "dark" ? "#fff" : "#000",
+        justifyContent: "center",
+        background: wallpaper
+          ? `url(${wallpaper}) center/cover no-repeat`
+          : isDark
+          ? "#050505"
+          : "#fafafa",
       }}
     >
+      {/* Logo Circle */}
       <div
         style={{
           width: 120,
@@ -55,35 +52,61 @@ function LoadingScreen() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: gradient,
-          animation:
-            "gradientShift 5s ease infinite, pulseGlow 2s ease-in-out infinite",
+          position: "relative",
+          background: isDark
+            ? "linear-gradient(135deg, #1E6FFB, #0047B3)"
+            : "linear-gradient(135deg, #f97316, #facc15, #22c55e, #3b82f6)",
           backgroundSize: "300% 300%",
+          animation:
+            "gradientShift 5s ease infinite, pulseGlow 2.2s ease-in-out infinite",
+          boxShadow: isDark
+            ? "0 0 40px 6px rgba(30,111,251,0.45)"
+            : "0 0 40px 6px rgba(255,200,50,0.45)",
         }}
       >
-        <span
+        {/* Spinner */}
+        <div
           style={{
-            fontSize: 28,
-            fontWeight: "bold",
-            color: "#fff",
-            textShadow: "0 0 12px rgba(255,255,255,0.8)",
-            textAlign: "center",
+            position: "absolute",
+            width: "100%",
+            height: "100%",
+            borderRadius: "50%",
+            border: "4px solid rgba(255,255,255,0.2)",
+            borderTop: "4px solid rgba(255,255,255,0.9)",
+            animation: "spin 1.4s linear infinite",
           }}
-        >
-          LoeChat
-        </span>
+        />
+
+        {/* Theme-aware Logo */}
+        <img
+          src={require("./assets/loechat-logo.png")}
+          alt="LoeChat Logo"
+          style={{
+            width: 70,
+            height: 70,
+            objectFit: "contain",
+            zIndex: 2,
+            filter: isDark
+              ? "drop-shadow(0 0 8px rgba(255,255,255,0.6))"
+              : "brightness(0) saturate(100%) invert(0.1) drop-shadow(0 0 4px rgba(0,0,0,0.4))",
+          }}
+        />
       </div>
 
       <style>
         {`
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
           @keyframes gradientShift {
             0% { background-position: 0% 50%; }
             50% { background-position: 100% 50%; }
             100% { background-position: 0% 50%; }
           }
           @keyframes pulseGlow {
-            0%, 100% { transform: scale(1); filter: brightness(1); }
-            50% { transform: scale(1.05); filter: brightness(1.3); }
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
           }
         `}
       </style>
@@ -98,136 +121,123 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((u) => {
       setUser(u);
-      setTimeout(() => setCheckingAuth(false), 800);
+      if (u) setUserPresence(u.uid);
 
-      if (u) {
-        const cleanupPresence = setUserPresence(u.uid);
-        return () => cleanupPresence && cleanupPresence();
-      }
+      setTimeout(() => setCheckingAuth(false), 1300); // show loading for at least 1.3s
     });
 
     return () => unsubscribe();
   }, []);
 
-  if (checkingAuth) {
-    return (
-      <ThemeProvider>
-        <LoadingScreen />
-      </ThemeProvider>
-    );
-  }
-
   return (
     <ThemeProvider>
-      <WalletProvider>
-        <PopupProvider>
-          <Router>
-            <Routes>
-              {/* Public Route */}
-              <Route
-                path="/"
-                element={user ? <ChatPage user={user} /> : <HomePage />}
-              />
+      {checkingAuth ? (
+        <LoadingScreen />
+      ) : (
+        <WalletProvider>
+          <PopupProvider>
+            <Router>
+              <Routes>
+                {/* Public Route */}
+                <Route
+                  path="/"
+                  element={user ? <ChatPage user={user} /> : <HomePage />}
+                />
 
-              {/* Protected Pages */}
-              <Route
-                path="/chat"
-                element={
-                  <ProtectedRoute>
-                    <ChatPage user={user} />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/chat/:chatId"
-                element={
-                  <ProtectedRoute>
-                    <ChatConversationPage user={user} />
-                  </ProtectedRoute>
-                }
-              />
-
-              {/* Calls */}
-              <Route
-                path="/voicecall/:uid"
-                element={
-                  <ProtectedRoute>
-                    <VoiceCallPage user={user} />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/videocall/:uid"
-                element={
-                  <ProtectedRoute>
-                    <VideoCallPage user={user} />
-                  </ProtectedRoute>
-                }
-              />
-
-              {/* Settings / Profile / Wallet */}
-              <Route
-                path="/settings"
-                element={
-                  <ProtectedRoute>
-                    <SettingsPage user={user} />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/edit-profile"
-                element={
-                  <ProtectedRoute>
-                    <EditProfilePage user={user} />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/history"
-                element={
-                  <ProtectedRoute>
-                    <CallHistoryPage user={user} />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/wallet"
-                element={
-                  <ProtectedRoute>
-                    <WalletPage user={user} />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/topup"
-                element={
-                  <ProtectedRoute>
-                    <TopUpPage user={user} />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/withdraw"
-                element={
-                  <ProtectedRoute>
-                    <WithdrawPage user={user} />
-                  </ProtectedRoute>
-                }
-              />
-
-              {/* User Profile */}
-              <Route
-                path="/profile/:uid"
-                element={
-                  <ProtectedRoute>
-                    <UserProfile currentUser={user} />
-                  </ProtectedRoute>
-                }
-              />
-            </Routes>
-          </Router>
-        </PopupProvider>
-      </WalletProvider>
+                {/* Protected Pages */}
+                <Route
+                  path="/chat"
+                  element={
+                    <ProtectedRoute>
+                      <ChatPage user={user} />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/chat/:chatId"
+                  element={
+                    <ProtectedRoute>
+                      <ChatConversationPage user={user} />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/voicecall/:uid"
+                  element={
+                    <ProtectedRoute>
+                      <VoiceCallPage user={user} />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/videocall/:uid"
+                  element={
+                    <ProtectedRoute>
+                      <VideoCallPage user={user} />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/settings"
+                  element={
+                    <ProtectedRoute>
+                      <SettingsPage user={user} />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/edit-profile"
+                  element={
+                    <ProtectedRoute>
+                      <EditProfilePage user={user} />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/history"
+                  element={
+                    <ProtectedRoute>
+                      <CallHistoryPage user={user} />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/wallet"
+                  element={
+                    <ProtectedRoute>
+                      <WalletPage user={user} />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/topup"
+                  element={
+                    <ProtectedRoute>
+                      <TopUpPage user={user} />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/withdraw"
+                  element={
+                    <ProtectedRoute>
+                      <WithdrawPage user={user} />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/profile/:uid"
+                  element={
+                    <ProtectedRoute>
+                      <UserProfile currentUser={user} />
+                    </ProtectedRoute>
+                  }
+                />
+              </Routes>
+            </Router>
+          </PopupProvider>
+        </WalletProvider>
+      )}
     </ThemeProvider>
   );
 }
