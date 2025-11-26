@@ -1,19 +1,17 @@
-import React, { useEffect, useState, useRef, useContext } from "react";
+import React, { useEffect, useState, useContext } from "react";
 import { auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
 import { ThemeContext } from "../context/ThemeContext";
+import { usePopup } from "../context/PopupContext";
 
 export default function WalletPage() {
   const { theme } = useContext(ThemeContext);
+  const { showPopup } = usePopup();
   const [user, setUser] = useState(null);
   const [balance, setBalance] = useState(0);
   const [transactions, setTransactions] = useState([]);
   const [selectedMonth, setSelectedMonth] = useState(new Date());
-  const [showMonthPicker, setShowMonthPicker] = useState(false);
-  const [details, setDetails] = useState(null);
   const [loadingReward, setLoadingReward] = useState(false);
-  const scrollRef = useRef();
-  const modalRef = useRef();
   const navigate = useNavigate();
 
   const backend = "https://smart-talk-zlxe.onrender.com";
@@ -29,9 +27,7 @@ export default function WalletPage() {
     return unsub;
   }, []);
 
-  const getToken = async () => {
-    return await auth.currentUser.getIdToken(true);
-  };
+  const getToken = async () => auth.currentUser.getIdToken(true);
 
   const loadWallet = async (uid) => {
     try {
@@ -43,17 +39,16 @@ export default function WalletPage() {
       if (res.ok) {
         setBalance(data.balance || 0);
         setTransactions(data.transactions || []);
-        if (data.transactions?.length) {
+        if (data.transactions?.length)
           setSelectedMonth(
             new Date(data.transactions[0].createdAt || data.transactions[0].date)
           );
-        }
       } else {
-        alert(data.error || "Failed to load wallet.");
+        showPopup(data.error || "Failed to load wallet.");
       }
     } catch (err) {
       console.error(err);
-      alert("Failed to load wallet. Check console.");
+      showPopup("Failed to load wallet. Check console.");
     }
   };
 
@@ -72,21 +67,20 @@ export default function WalletPage() {
         },
         body: JSON.stringify({ amount: 0.25 }),
       });
-
       const data = await res.json();
 
       if (res.ok) {
         setBalance(data.balance);
         setTransactions((prev) => [data.txn, ...prev]);
-        alert("🎉 Daily reward claimed!");
+        showPopup("🎉 Daily reward claimed!");
       } else if (data.error?.toLowerCase().includes("already claimed")) {
-        alert("✅ You already claimed today's reward!");
+        showPopup("✅ You already claimed today's reward!");
       } else {
-        alert(data.error || "Failed to claim daily reward.");
+        showPopup(data.error || "Failed to claim daily reward.");
       }
     } catch (err) {
       console.error(err);
-      alert("Failed to claim daily reward. Check console.");
+      showPopup("Failed to claim daily reward. Check console.");
     } finally {
       setLoadingReward(false);
     }
@@ -200,7 +194,36 @@ export default function WalletPage() {
           </p>
         ) : (
           filteredTransactions.map((tx) => (
-            <div key={tx._id} style={styles.txRowCompact}>
+            <div
+              key={tx._id}
+              style={{
+                ...styles.txRowCompact,
+                backgroundColor: theme === "dark" ? "#222" : "#fff",
+              }}
+              onClick={() =>
+                showPopup(
+                  <div>
+                    <h3 style={{ marginBottom: 10 }}>Transaction Details</h3>
+                    <p>
+                      <b>Type:</b> {tx.type}
+                    </p>
+                    <p>
+                      <b>Amount:</b> ${tx.amount.toFixed(2)}
+                    </p>
+                    <p>
+                      <b>Date:</b> {formatDate(tx.createdAt || tx.date)}
+                    </p>
+                    <p>
+                      <b>Status:</b> {tx.status}
+                    </p>
+                    <p>
+                      <b>Transaction ID:</b> {tx._id}
+                    </p>
+                  </div>,
+                  { top: 100, left: "50%" }
+                )
+              }
+            >
               <div style={styles.txLeftCompact}>
                 <p style={styles.txTypeCompact}>{tx.type}</p>
                 <span style={styles.txDateCompact}>
@@ -235,7 +258,7 @@ const styles = {
   actionRow: { display: "flex", justifyContent: "center", gap: 15, marginTop: 15 },
   roundBtn: { padding: "12px 20px", borderRadius: 30, border: "none", fontWeight: "bold", color: "#fff" },
   list: { marginTop: 10, maxHeight: "60vh", overflowY: "auto" },
-  txRowCompact: { padding: "10px 12px", borderRadius: 10, marginBottom: 8, display: "flex", justifyContent: "space-between" },
+  txRowCompact: { padding: "10px 12px", borderRadius: 10, marginBottom: 8, display: "flex", justifyContent: "space-between", cursor: "pointer" },
   txLeftCompact: {},
   txTypeCompact: { fontSize: 14, fontWeight: 600 },
   txDateCompact: { fontSize: 12, opacity: 0.6 },
