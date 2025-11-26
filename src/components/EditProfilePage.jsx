@@ -1,308 +1,580 @@
-// src/components/EditProfilePage.jsx
-import React, { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+// src/components/SettingsPage.jsx
+import React, { useEffect, useState, useContext, useRef } from "react";
 import { auth, db } from "../firebaseConfig";
-import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { useNavigate } from "react-router-dom";
+import { ThemeContext } from "../context/ThemeContext";
+import { usePopup } from "../context/PopupContext";
+import axios from "axios";
+import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 
-const NAME_LIMIT = 25;
-const BIO_LIMIT = 80;
-
-const EditProfilePage = () => {
+export default function SettingsPage() {
+  const { theme, wallpaper, updateSettings } = useContext(ThemeContext);
+  const { showPopup, hidePopup } = usePopup();
   const navigate = useNavigate();
-  const user = auth.currentUser;
+  const fileInputRef = useRef(null);
+  const menuRef = useRef(null);
 
-  const [name, setName] = useState("");
-  const [bio, setBio] = useState("");
-  const [email, setEmail] = useState("");
-  const [profilePic, setProfilePic] = useState("");
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
+  const backends = [
+    "https://smart-talk-zlxe.onrender.com",
+    "https://www.loechat.com",
+  ];
+  const backend = backends[0];
 
-  const profileInputRef = useRef(null);
+  const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState({ name: "", bio: "", email: "", profilePic: "" });
+  const [balance, setBalance] = useState(0);
+  const [transactions, setTransactions] = useState([]);
+  const [checkedInToday, setCheckedInToday] = useState(false);
+  const [loadingReward, setLoadingReward] = useState(false);
 
-  // Load user data
+  const [newTheme, setNewTheme] = useState(theme);
+  const [newWallpaper, setNewWallpaper] = useState(wallpaper || "");
+  const [language, setLanguage] = useState("English");
+  const [fontSize, setFontSize] = useState("Medium");
+  const [layout, setLayout] = useState("Default");
+  const [notifications, setNotifications] = useState({ push: true, email: true, sound: false });
+
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+
+  // ================= Auth & Load Wallet =================
   useEffect(() => {
-    if (!user) return;
+    const unsub = auth.onAuthStateChanged(async (u) => {
+      if (!u) return navigate("/"); // redirect if not logged in
+      setUser(u);
 
-    const loadUser = async () => {
       try {
-        const ref = doc(db, "users", user.uid);
-        const snap = await getDoc(ref);
-        if (snap.exists()) {
-          const data = snap.data();
-          setName(data.name || "");
-          setBio(data.bio || "");
-          setEmail(data.email || user.email);
-          setProfilePic(data.profilePic || "");
+        const token = await u.getIdToken(true);
+        const res = await axios.get(`${backend}/api/wallet/${u.uid}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        setBalance(res.data.balance || 0);
+        setTransactions(res.data.transactions || []);
+
+        const lastClaim = res.data.lastDailyClaim ? new Date(res.data.lastDailyClaim) : null;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        if (lastClaim) {
+          lastClaim.setHours(0, 0, 0, 0);
+          setCheckedInToday(lastClaim.getTime() === today.getTime());
+        }
+
+        // Load profile
+        if (res.data.profile) {
+          const p = res.data.profile;
+          setProfile({
+            name: p.name || "",
+            bio: p.bio || "",
+            email: p.email || u.email,
+            profilePic: p.profilePic || "",
+          });
+          if (p.preferences) {
+            setLanguage(p.preferences.language || "English");
+            setFontSize(p.preferences.fontSize || "Medium");
+            setLayout(p.preferences.layout || "Default");
+            setNewTheme(p.preferences.theme || "light");
+            setNewWallpaper(p.preferences.wallpaper || wallpaper || "");
+          }
         }
       } catch (err) {
-        console.error("Failed to load user data:", err);
-        setError("Failed to load profile. Try again later.");
-      } finally {
-        setLoading(false);
+        console.error(err);
+        showPopup("Failed to load wallet or profile.");
       }
-    };
+    });
+    return () => unsub();
+  }, []);
 
-    loadUser();
-  }, [user]);
-
-  // Clean up object URL to avoid memory leaks
-  useEffect(() => {
-    return () => {
-      if (profilePic && selectedFile) URL.revokeObjectURL(profilePic);
-    };
-  }, [profilePic, selectedFile]);
-
-  // Cloudinary uploader
-  const uploadToCloudinary = async (file) => {
-    try {
-      const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
-      const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
-
-      if (!cloudName || !uploadPreset) throw new Error("Cloudinary keys missing.");
-
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("upload_preset", uploadPreset);
-
-      const res = await fetch(
-        `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
-        { method: "POST", body: formData }
-      );
-      const data = await res.json();
-      return data.secure_url;
-    } catch (err) {
-      console.error("Upload failed:", err);
-      throw new Error("Image upload failed");
-    }
-  };
-
-  // File selection
-  const onProfileFileChange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    setSelectedFile(file);
-    setProfilePic(URL.createObjectURL(file));
-  };
-
-  const removeProfilePhoto = () => {
-    setSelectedFile(null);
-    setProfilePic("");
-  };
-
-  // Save updates
-  const handleSave = async () => {
+  // ================= Daily Reward =================
+  const handleDailyReward = async () => {
     if (!user) return;
-    setSaving(true);
-    setError("");
+    setLoadingReward(true);
 
     try {
-      let uploadedUrl = profilePic;
-      if (selectedFile) uploadedUrl = await uploadToCloudinary(selectedFile);
+      const token = await auth.currentUser.getIdToken(true);
+      const res = await axios.post(
+        `${backend}/api/wallet/daily`,
+        { amount: 0.25 },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
 
-      const userRef = doc(db, "users", user.uid);
-      await updateDoc(userRef, {
-        name,
-        bio,
-        email,
-        profilePic: uploadedUrl,
-        updatedAt: serverTimestamp(),
-      });
-
-      navigate("/settings");
+      if (res.data.balance !== undefined) {
+        setBalance(res.data.balance);
+        setCheckedInToday(true);
+        showPopup("🎉 Daily reward claimed! +$0.25");
+      } else if (res.data.error?.toLowerCase().includes("already claimed")) {
+        setCheckedInToday(true);
+        showPopup("✅ You already claimed today's reward!");
+      } else {
+        showPopup(res.data.error || "Failed to claim daily reward.");
+      }
     } catch (err) {
       console.error(err);
-      setError("Failed to save profile. Try again.");
+      showPopup("Failed to claim daily reward. Check console.");
     } finally {
-      setSaving(false);
+      setLoadingReward(false);
     }
   };
 
-  // Generate initials if no profile picture
-  const getInitials = (fullName) => {
-    if (!fullName) return "NA";
-    const names = fullName.trim().split(" ");
+  // ================= Profile Picture Upload =================
+  const onProfileFileChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file || !user) return;
+
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      setProfile({ ...profile, profilePic: ev.target.result });
+
+      try {
+        const userRef = doc(db, "users", user.uid);
+        await updateDoc(userRef, {
+          profilePic: ev.target.result,
+          updatedAt: serverTimestamp(),
+        });
+      } catch (err) {
+        console.error("Failed to update profile picture:", err);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // ================= Inline Name/Bio Update =================
+  const handleProfileUpdate = async (key, value) => {
+    setProfile({ ...profile, [key]: value });
+    if (!user) return;
+    try {
+      const userRef = doc(db, "users", user.uid);
+      await updateDoc(userRef, { [key]: value, updatedAt: serverTimestamp() });
+    } catch (err) {
+      console.error(`Failed to update ${key}:`, err);
+    }
+  };
+
+  // ================= Wallpaper =================
+  const handleWallpaperClick = () => fileInputRef.current.click();
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (ev) => setNewWallpaper(ev.target.result);
+      reader.readAsDataURL(file);
+    }
+  };
+  const removeWallpaper = () => setNewWallpaper("");
+
+  const handleSavePreferences = async () => {
+    if (!user) return;
+    try {
+      const token = await auth.currentUser.getIdToken(true);
+      await axios.post(
+        `${backend}/api/preferences`,
+        {
+          language,
+          fontSize,
+          layout,
+          theme: newTheme,
+          wallpaper: newWallpaper || null,
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      updateSettings(newTheme, newWallpaper);
+      showPopup("✅ Preferences saved successfully!");
+    } catch (err) {
+      console.error(err);
+      showPopup("Failed to save preferences.");
+    }
+  };
+
+  // ================= Menu click outside =================
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setShowProfileMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const isDark = newTheme === "dark";
+  const displayName = profile.name || "No Name";
+  const getInitials = (name) => {
+    if (!name) return "NA";
+    const names = name.trim().split(" ").filter(Boolean);
+    if (names.length === 0) return "NA";
     if (names.length === 1) return names[0][0].toUpperCase();
     return (names[0][0] + names[1][0]).toUpperCase();
   };
 
-  if (loading) return <div style={{ textAlign: "center", padding: 50 }}>Loading...</div>;
+  if (!user) return null;
 
   return (
-    <div style={{ padding: 20, maxWidth: 500, margin: "0 auto" }}>
+    <div
+      style={{
+        padding: 20,
+        minHeight: "100vh",
+        background: isDark ? "#1c1c1c" : "#f8f8f8",
+        color: isDark ? "#fff" : "#000",
+      }}
+    >
       {/* Back button */}
       <button
-        onClick={() => navigate(-1)}
+        onClick={() => navigate("/chat")}
         style={{
-          background: "transparent",
+          position: "absolute",
+          top: 20,
+          left: 20,
+          background: isDark ? "#555" : "#e0e0e0",
           border: "none",
-          fontSize: 18,
-          marginBottom: 15,
+          borderRadius: "50%",
+          padding: 8,
           cursor: "pointer",
         }}
       >
-        ← Back
+        ⬅
       </button>
 
-      {error && (
-        <div style={{ color: "red", marginBottom: 15, textAlign: "center" }}>{error}</div>
-      )}
+      <h2 style={{ textAlign: "center", marginBottom: 20 }}>⚙️ Settings</h2>
 
-      {/* Profile Photo */}
-      <div style={{ textAlign: "center", marginBottom: 25 }}>
-        {profilePic ? (
-          <img
-            src={profilePic}
-            alt="Profile"
-            style={{
-              width: 110,
-              height: 110,
-              borderRadius: "50%",
-              objectFit: "cover",
-            }}
-          />
-        ) : (
+      {/* ================= Profile Card ================= */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          background: isDark ? "#2b2b2b" : "#fff",
+          padding: 15,
+          borderRadius: 12,
+          boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
+          position: "relative",
+        }}
+      >
+        {/* Profile Picture */}
+        <div
+          style={{ position: "relative", marginRight: 15 }}
+          onClick={() => fileInputRef.current.click()}
+        >
+          {profile.profilePic ? (
+            <img
+              src={profile.profilePic}
+              alt="Profile"
+              style={{
+                width: 70,
+                height: 70,
+                borderRadius: "50%",
+                objectFit: "cover",
+              }}
+            />
+          ) : (
+            <div
+              style={{
+                width: 70,
+                height: 70,
+                borderRadius: "50%",
+                background: "#007bff",
+                color: "#fff",
+                fontWeight: "bold",
+                fontSize: 24,
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+              }}
+            >
+              {getInitials(displayName)}
+            </div>
+          )}
+
           <div
             style={{
-              width: 110,
-              height: 110,
+              position: "absolute",
+              bottom: 0,
+              right: 0,
+              background: "#000a",
               borderRadius: "50%",
-              background: "#007bff",
-              color: "#fff",
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
-              fontSize: 36,
-              fontWeight: "bold",
-              margin: "0 auto",
-            }}
-          >
-            {getInitials(name)}
-          </div>
-        )}
-
-        <div style={{ marginTop: 10 }}>
-          <button
-            onClick={() => profileInputRef.current.click()}
-            style={{
-              padding: "8px 15px",
-              borderRadius: 10,
-              border: "none",
-              background: "#007bff",
-              color: "#fff",
+              padding: 4,
               cursor: "pointer",
-              marginRight: 10,
             }}
-            onMouseEnter={(e) => (e.target.style.opacity = 0.8)}
-            onMouseLeave={(e) => (e.target.style.opacity = 1)}
           >
-            Choose Photo
-          </button>
+            ✎
+          </div>
 
-          {profilePic && (
-            <button
-              onClick={removeProfilePhoto}
-              style={{
-                padding: "8px 15px",
-                borderRadius: 10,
-                border: "1px solid #999",
-                background: "#f5f5f5",
-                cursor: "pointer",
-              }}
-              onMouseEnter={(e) => (e.target.style.opacity = 0.8)}
-              onMouseLeave={(e) => (e.target.style.opacity = 1)}
-            >
-              Remove
-            </button>
-          )}
           <input
             type="file"
-            ref={profileInputRef}
+            ref={fileInputRef}
             style={{ display: "none" }}
             accept="image/*"
             onChange={onProfileFileChange}
           />
         </div>
+
+        {/* Name & Bio */}
+        <div style={{ flex: 1 }}>
+          <input
+            value={profile.name}
+            onChange={(e) => handleProfileUpdate("name", e.target.value)}
+            placeholder="Your name"
+            style={{
+              width: "100%",
+              fontWeight: "600",
+              fontSize: 16,
+              border: "none",
+              background: "transparent",
+              color: isDark ? "#fff" : "#000",
+              marginBottom: 3,
+            }}
+          />
+          <textarea
+            value={profile.bio}
+            onChange={(e) => handleProfileUpdate("bio", e.target.value)}
+            placeholder="Your bio"
+            rows={2}
+            style={{
+              width: "100%",
+              border: "none",
+              background: "transparent",
+              color: isDark ? "#ccc" : "#555",
+              fontSize: 14,
+              resize: "none",
+            }}
+          />
+          <p style={{ fontSize: 12, color: isDark ? "#aaa" : "#888" }}>{profile.email}</p>
+        </div>
+
+        {/* 3-Dot Menu */}
+        <div
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowProfileMenu(!showProfileMenu);
+          }}
+          style={{
+            padding: 5,
+            cursor: "pointer",
+            fontSize: 20,
+            color: isDark ? "#fff" : "#333",
+          }}
+        >
+          ⋮
+        </div>
+
+        {/* Dropdown Menu */}
+        {showProfileMenu && (
+          <div
+            ref={menuRef}
+            style={{
+              position: "absolute",
+              top: 60,
+              right: 15,
+              background: isDark ? "#333" : "#fff",
+              color: isDark ? "#fff" : "#000",
+              border: "1px solid #888",
+              borderRadius: 8,
+              boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
+              zIndex: 10,
+              minWidth: 140,
+              overflow: "hidden",
+            }}
+          >
+            <div
+              onClick={() => {
+                navigate("/edit-profile");
+                setShowProfileMenu(false);
+              }}
+              style={menuItemStyle}
+            >
+              Edit Profile
+            </div>
+            <div
+              onClick={() => {
+                auth.signOut();
+                navigate("/");
+              }}
+              style={menuItemStyle}
+            >
+              Logout
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Name */}
-      <label style={{ fontWeight: 600 }}>Name</label>
-      <input
-        value={name}
-        onChange={(e) => setName(e.target.value.slice(0, NAME_LIMIT))}
-        maxLength={NAME_LIMIT}
-        placeholder="Full name"
-        style={{
-          width: "100%",
-          padding: 12,
-          borderRadius: 8,
-          border: "1px solid #ccc",
-          marginBottom: 5,
-        }}
-      />
-      <div style={{ textAlign: "right", fontSize: 12, color: "#555" }}>
-        {NAME_LIMIT - name.length} characters remaining
-      </div>
+      {/* ================= Wallet Section ================= */}
+      <Section title="Wallet" isDark={isDark}>
+        <div onClick={() => navigate("/wallet")} style={{ cursor: "pointer", marginBottom: 10 }}>
+          <p style={{ margin: 0 }}>
+            Balance:{" "}
+            <strong style={{ color: isDark ? "#00e676" : "#007bff" }}>${balance.toFixed(2)}</strong>
+          </p>
+        </div>
 
-      {/* Bio */}
-      <label style={{ fontWeight: 600 }}>Bio</label>
-      <textarea
-        value={bio}
-        onChange={(e) => setBio(e.target.value.slice(0, BIO_LIMIT))}
-        maxLength={BIO_LIMIT}
-        placeholder="Your bio"
-        rows={3}
-        style={{
-          width: "100%",
-          padding: 12,
-          borderRadius: 8,
-          border: "1px solid #ccc",
-          marginBottom: 5,
-        }}
-      />
-      <div style={{ textAlign: "right", fontSize: 12, color: "#555" }}>
-        {BIO_LIMIT - bio.length} characters remaining
-      </div>
+        <button
+          onClick={handleDailyReward}
+          disabled={loadingReward || checkedInToday}
+          style={{
+            ...btnStyle(checkedInToday ? "#666" : "#4CAF50"),
+            opacity: checkedInToday ? 0.7 : 1,
+            marginBottom: 15,
+            width: "100%",
+          }}
+        >
+          {loadingReward
+            ? "Processing..."
+            : checkedInToday
+            ? "✅ Checked In Today"
+            : "🧩 Daily Reward (+$0.25)"}
+        </button>
 
-      {/* Email */}
-      <label style={{ fontWeight: 600 }}>Email</label>
-      <input
-        value={email}
-        readOnly
-        style={{
-          width: "100%",
-          padding: 12,
-          borderRadius: 8,
-          border: "1px solid #ccc",
-          background: "#eee",
-          marginBottom: 20,
-        }}
-      />
+        <div>
+          <h4 style={{ marginBottom: 8 }}>Last 3 Transactions</h4>
+          {transactions.length === 0 ? (
+            <p style={{ fontSize: 14, opacity: 0.6 }}>No recent transactions.</p>
+          ) : (
+            transactions
+              .slice(0, 3)
+              .map((tx) => (
+                <div
+                  key={tx._id || tx.id}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    padding: "6px 10px",
+                    marginBottom: 6,
+                    background: isDark ? "#3b3b3b" : "#f0f0f0",
+                    borderRadius: 8,
+                    fontSize: 14,
+                    cursor: "pointer",
+                  }}
+                  onClick={() =>
+                    showPopup(
+                      <div>
+                        <h3 style={{ marginBottom: 10 }}>Transaction Details</h3>
+                        <p><b>Type:</b> {tx.type}</p>
+                        <p><b>Amount:</b> ${tx.amount.toFixed(2)}</p>
+                        <p><b>Date:</b> {new Date(tx.createdAt || tx.date).toLocaleString()}</p>
+                        <p><b>Status:</b> {tx.status}</p>
+                        <p><b>Transaction ID:</b> {tx._id || tx.id}</p>
+                        <button
+                          onClick={hidePopup}
+                          style={{ marginTop: 10, padding: 6, borderRadius: 6, cursor: "pointer" }}
+                        >
+                          Close
+                        </button>
+                      </div>,
+                      { autoHide: false }
+                    )
+                  }
+                >
+                  <span>{tx.type}</span>
+                  <span style={{ color: tx.amount >= 0 ? "#2ecc71" : "#e74c3c" }}>
+                    {tx.amount >= 0 ? "+" : "-"}${Math.abs(tx.amount).toFixed(2)}
+                  </span>
+                </div>
+              ))
+          )}
+        </div>
+      </Section>
 
-      {/* Save */}
-      <button
-        onClick={handleSave}
-        disabled={saving}
-        style={{
-          width: "100%",
-          padding: 14,
-          borderRadius: 20,
-          border: "none",
-          fontSize: 16,
-          background: "#28a745",
-          color: "white",
-          fontWeight: 600,
-          cursor: "pointer",
-        }}
-        onMouseEnter={(e) => (e.target.style.opacity = 0.9)}
-        onMouseLeave={(e) => (e.target.style.opacity = 1)}
-      >
-        {saving ? "Saving..." : "Save"}
-      </button>
+      {/* ================= Preferences Section ================= */}
+      <Section title="Preferences" isDark={isDark}>
+        <div style={{ marginBottom: 10 }}>
+          <label>Theme</label>
+          <select
+            value={newTheme}
+            onChange={(e) => setNewTheme(e.target.value)}
+            style={selectStyle(isDark)}
+          >
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+
+          <label>Wallpaper</label>
+          <div style={{ display: "flex", alignItems: "center", marginBottom: 10 }}>
+            <button onClick={handleWallpaperClick} style={{ marginRight: 10, ...btnStyle("#007bff") }}>
+              Choose Wallpaper
+            </button>
+            {newWallpaper && (
+              <button onClick={removeWallpaper} style={{ ...btnStyle("#888") }}>Remove</button>
+            )}
+            <input
+              type="file"
+              ref={fileInputRef}
+              style={{ display: "none" }}
+              accept="image/*"
+              onChange={handleFileChange}
+            />
+          </div>
+
+          <label>Language</label>
+          <select value={language} onChange={(e) => setLanguage(e.target.value)} style={selectStyle(isDark)}>
+            <option>English</option>
+            <option>Spanish</option>
+            <option>French</option>
+          </select>
+
+          <label>Font Size</label>
+          <select value={fontSize} onChange={(e) => setFontSize(e.target.value)} style={selectStyle(isDark)}>
+            <option>Small</option>
+            <option>Medium</option>
+            <option>Large</option>
+          </select>
+
+          <label>Layout</label>
+          <select value={layout} onChange={(e) => setLayout(e.target.value)} style={selectStyle(isDark)}>
+            <option>Default</option>
+            <option>Compact</option>
+            <option>Spacious</option>
+          </select>
+
+          <button onClick={handleSavePreferences} style={{ ...btnStyle("#28a745"), width: "100%", marginTop: 10 }}>
+            Save Preferences
+          </button>
+        </div>
+      </Section>
     </div>
   );
-};
+}
 
-export default EditProfilePage;
+// ================= Section Wrapper =================
+function Section({ title, children, isDark }) {
+  return (
+    <div
+      style={{
+        background: isDark ? "#2b2b2b" : "#fff",
+        padding: 20,
+        borderRadius: 12,
+marginTop: 25,
+        boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
+      }}
+    >
+      <h3 style={{ marginBottom: 12 }}>{title}</h3>
+      {children}
+    </div>
+  );
+}
+
+// ================= Reusable Styles =================
+const btnStyle = (bg) => ({
+  marginRight: 8,
+  padding: "10px 15px",
+  background: bg,
+  color: "#fff",
+  border: "none",
+  borderRadius: 8,
+  cursor: "pointer",
+  fontWeight: "bold",
+});
+
+export const selectStyle = (isDark) => ({
+  width: "100%",
+  padding: 8,
+  marginBottom: 10,
+  borderRadius: 6,
+  background: isDark ? "#222" : "#fafafa",
+  color: isDark ? "#fff" : "#000",
+  border: "1px solid #666",
+});
+
+// ================= Menu Item Style =================
+const menuItemStyle = {
+  padding: "10px 15px",
+  cursor: "pointer",
+  borderBottom: "1px solid #888",
+  fontSize: 14,
+  background: "inherit",
+};
