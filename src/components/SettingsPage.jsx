@@ -49,7 +49,7 @@ export default function SettingsPage() {
         setTransactions(data.transactions?.slice(0, 3) || []);
         setCheckedInToday(data.checkedInToday || false);
       } catch (err) {
-        console.error("Failed to load wallet:", err);
+        console.error("Wallet fetch failed:", err);
       }
     };
 
@@ -72,14 +72,16 @@ export default function SettingsPage() {
 
       const data = await res.json();
 
-      if (!res.ok) return alert(data.message);
-
-      setBalance(data.balance);
-      setCheckedInToday(true);
-      alert("🎉 Daily Check-in Success! +$0.25 awarded");
+      if (data.success) {
+        setBalance(data.newBalance);
+        setCheckedInToday(true);
+        alert("🎉 Daily Check-in Successful! +$0.25");
+      } else {
+        alert(data.message || "Already checked in today");
+      }
     } catch (err) {
       console.error(err);
-      alert("Check-in failed");
+      alert("Error during daily check-in");
     }
   };
 
@@ -87,13 +89,12 @@ export default function SettingsPage() {
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
     setSelectedFile(file);
     setProfilePic(URL.createObjectURL(file));
   };
 
   const uploadProfilePic = async () => {
-    if (!selectedFile) return null;
+    if (!selectedFile) return profilePic;
 
     const formData = new FormData();
     formData.append("file", selectedFile);
@@ -120,8 +121,6 @@ export default function SettingsPage() {
 
       await auth.currentUser.updateProfile({ displayName: username });
 
-      setProfilePic(newPicUrl);
-
       updateSettings({
         theme: newTheme,
         wallpaper: newWallpaper,
@@ -143,7 +142,9 @@ export default function SettingsPage() {
     }
   };
 
-  // ------------------ UI Components ------------------
+  // ------------------ UI Helpers ------------------
+  const isDark = newTheme === "dark";
+
   const btnStyle = (color) => ({
     width: "100%",
     padding: 12,
@@ -158,7 +159,7 @@ export default function SettingsPage() {
   const Section = ({ title, children }) => (
     <div
       style={{
-        background: newTheme === "dark" ? "#1c1c1c" : "#ffffff",
+        background: isDark ? "#1c1c1c" : "#fff",
         padding: 16,
         borderRadius: 12,
         marginBottom: 25,
@@ -178,17 +179,17 @@ export default function SettingsPage() {
         padding: 20,
         background: newWallpaper
           ? `url(${newWallpaper}) center/cover`
-          : newTheme === "dark"
+          : isDark
           ? "#121212"
           : "#f5f5f5",
       }}
     >
-      {/* Profile Section */}
+      {/* ================= Profile Section ================= */}
       <Section title="Profile">
         <div style={{ display: "flex", alignItems: "center", gap: 15 }}>
           <img
             src={profilePic || "/default-avatar.png"}
-            alt="profile"
+            alt="Profile"
             style={{
               width: 90,
               height: 90,
@@ -196,13 +197,9 @@ export default function SettingsPage() {
               objectFit: "cover",
             }}
           />
+
           <button onClick={() => fileInputRef.current.click()}>Change</button>
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileChange}
-            hidden
-          />
+          <input type="file" ref={fileInputRef} hidden onChange={handleFileChange} />
         </div>
 
         <input
@@ -213,11 +210,11 @@ export default function SettingsPage() {
         />
       </Section>
 
-      {/* Wallet Section */}
+      {/* ================= Wallet Section (MongoDB) ================= */}
       <Section title="Wallet">
         <p>
           Balance:{" "}
-          <strong style={{ color: "#00e676" }}>
+          <strong style={{ color: isDark ? "#00e676" : "#007bff" }}>
             ${balance.toFixed(2)}
           </strong>
         </p>
@@ -230,47 +227,43 @@ export default function SettingsPage() {
             opacity: checkedInToday ? 0.7 : 1,
           }}
         >
-          {checkedInToday ? "✅ Checked-in Today" : "🧩 Daily Check-in (+$0.25)"}
+          {checkedInToday ? "✅ Checked In Today" : "🧩 Daily Check-in (+$0.25)"}
         </button>
 
-        <button
-          onClick={() => navigate("/topup")}
-          style={btnStyle("#007bff")}
-        >
-          💳 Top Up
-        </button>
-
-        <button
-          onClick={() => navigate("/withdrawal")}
-          style={btnStyle("#28a745")}
-        >
-          💸 Withdraw
-        </button>
-
-        <h4 style={{ marginTop: 20 }}>Recent Transactions</h4>
-
+        <h4 style={{ marginTop: 15 }}>Recent Transactions</h4>
         {transactions.length === 0 ? (
-          <p>No transactions yet.</p>
+          <p>No transactions yet</p>
         ) : (
-          transactions.map((t, i) => (
+          transactions.map((tx, i) => (
             <div
               key={i}
               style={{
-                padding: "10px 0",
-                borderBottom: "1px solid #444",
+                padding: "8px 10px",
+                marginTop: 5,
+                borderRadius: 6,
+                background: isDark ? "#1a1a1a" : "#f4f4f4",
               }}
             >
-              <p style={{ margin: 0 }}>{t.type}</p>
-              <strong style={{ color: t.amount > 0 ? "#4CAF50" : "#d32f2f" }}>
-                {t.amount > 0 ? "+" : ""}
-                ${t.amount.toFixed(2)}
-              </strong>
+              <strong>{tx.type}</strong> — ${tx.amount}
+              <div style={{ fontSize: 12, opacity: 0.6 }}>{tx.date}</div>
             </div>
           ))
         )}
+
+        <div style={{ marginTop: 12 }}>
+          <button onClick={() => navigate("/topup")} style={btnStyle("#007bff")}>
+            💳 Top Up
+          </button>
+          <button
+            onClick={() => navigate("/withdrawal")}
+            style={btnStyle("#28a745")}
+          >
+            💸 Withdraw
+          </button>
+        </div>
       </Section>
 
-      {/* Preferences Section */}
+      {/* ================= Appearance Section ================= */}
       <Section title="Appearance">
         <select
           value={newTheme}
@@ -289,7 +282,7 @@ export default function SettingsPage() {
         />
       </Section>
 
-      {/* Save Button */}
+      {/* ================= Save Button ================= */}
       <button onClick={saveSettings} style={btnStyle("#6200ea")}>
         Save Settings
       </button>
