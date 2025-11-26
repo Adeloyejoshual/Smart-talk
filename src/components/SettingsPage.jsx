@@ -1,294 +1,297 @@
 // src/components/SettingsPage.jsx
-
-import React, { useEffect, useState, useContext } from "react";
+import React, { useEffect, useState, useContext, useRef } from "react";
 import { auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
 import { ThemeContext } from "../context/ThemeContext";
 import axios from "axios";
 
 export default function SettingsPage() {
-  const navigate = useNavigate();
   const { theme, wallpaper, updateSettings } = useContext(ThemeContext);
+  const navigate = useNavigate();
+  const fileInputRef = useRef();
 
-  const [profilePic, setProfilePic] = useState("");
-  const [name, setName] = useState("");
+  // ------------------ States ------------------
+  const [user, setUser] = useState(null);
   const [username, setUsername] = useState("");
-  const [bio, setBio] = useState("");
-  const [sound, setSound] = useState(false);
-
-  const [wallet, setWallet] = useState({ balance: 0, transactions: [] });
-  const [loadingWallet, setLoadingWallet] = useState(true);
-
+  const [profilePic, setProfilePic] = useState("");
   const [selectedFile, setSelectedFile] = useState(null);
-  const isDark = theme === "dark";
 
-  const API_BASE = "https://smart-talk-zlxe.onrender.com";
+  const [balance, setBalance] = useState(0);
+  const [transactions, setTransactions] = useState([]);
+  const [checkedInToday, setCheckedInToday] = useState(false);
 
-  /* ===============================
-     FETCH USER DATA FROM BACKEND
-  =============================== */
-  const fetchUserPreferences = async (uid) => {
+  const [newWallpaper, setNewWallpaper] = useState(wallpaper || "");
+  const [newTheme, setNewTheme] = useState(theme);
+
+  // ------------------ Load User ------------------
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged((currentUser) => {
+      if (!currentUser) return navigate("/login");
+      setUser(currentUser);
+      setUsername(currentUser.displayName || "");
+      setProfilePic(currentUser.photoURL || "");
+    });
+    return unsubscribe;
+  }, [navigate]);
+
+  // ------------------ MongoDB Wallet Fetch ------------------
+  useEffect(() => {
+    if (!user) return;
+
+    const fetchWallet = async () => {
+      try {
+        const res = await fetch(
+          `https://smart-talk-zlxe.onrender.com/api/wallet/${user.uid}`
+        );
+        const data = await res.json();
+
+        setBalance(data.balance || 0);
+        setTransactions(data.transactions?.slice(0, 3) || []);
+        setCheckedInToday(data.checkedInToday || false);
+      } catch (err) {
+        console.error("Failed to load wallet:", err);
+      }
+    };
+
+    fetchWallet();
+  }, [user]);
+
+  // ------------------ Daily Check-in ------------------
+  const handleDailyCheckin = async () => {
+    if (!user) return;
+
     try {
-      const res = await axios.get(`${API_BASE}/api/users/${uid}`);
-      const data = res.data;
+      const res = await fetch(
+        "https://smart-talk-zlxe.onrender.com/api/wallet/daily",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ uid: user.uid }),
+        }
+      );
 
-      setName(data.name || "");
-      setUsername(data.username || "");
-      setBio(data.bio || "");
-      setProfilePic(data.profilePic || "");
-      setSound(data.sound || false);
+      const data = await res.json();
+
+      if (!res.ok) return alert(data.message);
+
+      setBalance(data.balance);
+      setCheckedInToday(true);
+      alert("🎉 Daily Check-in Success! +$0.25 awarded");
     } catch (err) {
-      console.error("Error fetching preferences:", err);
+      console.error(err);
+      alert("Check-in failed");
     }
   };
 
-  /* ===============================
-     FETCH USER WALLET
-  =============================== */
-  const fetchWallet = async (uid) => {
-    try {
-      const res = await axios.get(`${API_BASE}/api/wallet/${uid}`);
+  // ------------------ Upload Profile Picture ------------------
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
 
-      setWallet({
-        balance: res.data.balance || 0,
-        transactions: res.data.transactions || [],
-      });
-
-    } catch (err) {
-      console.error("Wallet fetch error:", err);
-    } finally {
-      setLoadingWallet(false);
-    }
+    setSelectedFile(file);
+    setProfilePic(URL.createObjectURL(file));
   };
 
-  /* ===============================
-     HANDLE PROFILE PIC UPLOAD
-  =============================== */
-  const uploadProfilePic = async (file) => {
-    if (!file) return profilePic;
+  const uploadProfilePic = async () => {
+    if (!selectedFile) return null;
 
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append("file", selectedFile);
     formData.append("upload_preset", "ml_default");
 
-    const uploadRes = await axios.post(
-      `https://api.cloudinary.com/v1_1/dtdatsmuq/image/upload`,
-      formData
+    const uploadRes = await fetch(
+      "https://api.cloudinary.com/v1_1/dnjakvpbw/image/upload",
+      { method: "POST", body: formData }
     );
 
-    return uploadRes.data.secure_url;
+    const data = await uploadRes.json();
+    return data.secure_url;
   };
 
-  /* ===============================
-     SAVE UPDATED PROFILE SETTINGS
-  =============================== */
-  const savePreferences = async () => {
-    if (!auth.currentUser) return;
-
+  // ------------------ Save Settings ------------------
+  const saveSettings = async () => {
     try {
-      let uploadedPic = profilePic;
+      let newPicUrl = profilePic;
 
       if (selectedFile) {
-        uploadedPic = await uploadProfilePic(selectedFile);
-        setProfilePic(uploadedPic);
+        newPicUrl = await uploadProfilePic();
+        await auth.currentUser.updateProfile({ photoURL: newPicUrl });
       }
 
-      await axios.post(`${API_BASE}/api/preferences`, {
-        uid: auth.currentUser.uid,
-        name,
-        username,
-        bio,
-        sound,
-        profilePic: uploadedPic,
+      await auth.currentUser.updateProfile({ displayName: username });
+
+      setProfilePic(newPicUrl);
+
+      updateSettings({
+        theme: newTheme,
+        wallpaper: newWallpaper,
       });
 
-      updateSettings({ wallpaper, theme });
-      alert("Profile updated successfully!");
+      await axios.post(
+        "https://smart-talk-zlxe.onrender.com/api/preferences",
+        {
+          uid: user.uid,
+          theme: newTheme,
+          wallpaper: newWallpaper,
+        }
+      );
 
+      alert("Settings Saved Successfully!");
     } catch (err) {
-      console.error("Save error:", err);
-      alert("Error saving changes.");
+      console.error(err);
+      alert("Error saving settings");
     }
   };
 
-  /* ===============================
-     SIGN OUT
-  =============================== */
-  const logout = async () => {
-    await auth.signOut();
-    navigate("/login");
-  };
+  // ------------------ UI Components ------------------
+  const btnStyle = (color) => ({
+    width: "100%",
+    padding: 12,
+    borderRadius: 10,
+    background: color,
+    color: "white",
+    fontSize: 16,
+    border: "none",
+    marginTop: 10,
+  });
 
-  /* ===============================
-     LOAD DATA ON MOUNT
-  =============================== */
-  useEffect(() => {
-    if (!auth.currentUser) return;
+  const Section = ({ title, children }) => (
+    <div
+      style={{
+        background: newTheme === "dark" ? "#1c1c1c" : "#ffffff",
+        padding: 16,
+        borderRadius: 12,
+        marginBottom: 25,
+        boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+      }}
+    >
+      <h3 style={{ marginBottom: 10 }}>{title}</h3>
+      {children}
+    </div>
+  );
 
-    const uid = auth.currentUser.uid;
-    fetchUserPreferences(uid);
-    fetchWallet(uid);
-  }, []);
-
-  /* ===============================
-     UI
-  =============================== */
+  // ------------------ Render ------------------
   return (
     <div
       style={{
-        padding: 20,
-        background: isDark ? "#0d0d0d" : "#f4f4f4",
         minHeight: "100vh",
+        padding: 20,
+        background: newWallpaper
+          ? `url(${newWallpaper}) center/cover`
+          : newTheme === "dark"
+          ? "#121212"
+          : "#f5f5f5",
       }}
     >
-      {/* PROFILE CARD */}
-      <div
-        style={{
-          background: isDark ? "#1e1e1e" : "#fff",
-          padding: 20,
-          borderRadius: 12,
-          marginBottom: 25,
-          boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-        }}
-      >
-        <h2 style={{ marginBottom: 12 }}>Profile</h2>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <label style={{ cursor: "pointer" }}>
-            <img
-              src={profilePic || "/default-avatar.png"}
-              alt="Profile"
-              style={{
-                width: 80,
-                height: 80,
-                borderRadius: "50%",
-                objectFit: "cover",
-                border: "3px solid #3b82f6",
-              }}
-            />
-            <input
-              type="file"
-              accept="image/*"
-              style={{ display: "none" }}
-              onChange={(e) => {
-                const file = e.target.files[0];
-                setSelectedFile(file);
-                setProfilePic(URL.createObjectURL(file));
-              }}
-            />
-          </label>
-
-          <div style={{ flex: 1 }}>
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Full Name"
-              style={{
-                width: "100%",
-                padding: 10,
-                borderRadius: 10,
-                border: "1px solid #ccc",
-              }}
-            />
-            <input
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="@username"
-              style={{
-                width: "100%",
-                marginTop: 10,
-                padding: 10,
-                borderRadius: 10,
-                border: "1px solid #ccc",
-              }}
-            />
-          </div>
+      {/* Profile Section */}
+      <Section title="Profile">
+        <div style={{ display: "flex", alignItems: "center", gap: 15 }}>
+          <img
+            src={profilePic || "/default-avatar.png"}
+            alt="profile"
+            style={{
+              width: 90,
+              height: 90,
+              borderRadius: "50%",
+              objectFit: "cover",
+            }}
+          />
+          <button onClick={() => fileInputRef.current.click()}>Change</button>
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            hidden
+          />
         </div>
 
-        <textarea
-          value={bio}
-          onChange={(e) => setBio(e.target.value)}
-          placeholder="Write a short bio..."
-          style={{
-            width: "100%",
-            marginTop: 15,
-            padding: 10,
-            borderRadius: 10,
-            border: "1px solid #ccc",
-            height: 80,
-            resize: "none",
-          }}
-        ></textarea>
+        <input
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          style={{ marginTop: 20, width: "100%", padding: 10 }}
+          placeholder="Username"
+        />
+      </Section>
+
+      {/* Wallet Section */}
+      <Section title="Wallet">
+        <p>
+          Balance:{" "}
+          <strong style={{ color: "#00e676" }}>
+            ${balance.toFixed(2)}
+          </strong>
+        </p>
 
         <button
-          onClick={savePreferences}
+          onClick={handleDailyCheckin}
+          disabled={checkedInToday}
           style={{
-            marginTop: 20,
-            width: "100%",
-            padding: 12,
-            background: "#3b82f6",
-            color: "#fff",
-            borderRadius: 10,
-            border: "none",
-            fontWeight: "bold",
+            ...btnStyle(checkedInToday ? "#666" : "#4CAF50"),
+            opacity: checkedInToday ? 0.7 : 1,
           }}
         >
-          Save Changes
+          {checkedInToday ? "✅ Checked-in Today" : "🧩 Daily Check-in (+$0.25)"}
         </button>
-      </div>
 
-      {/* WALLET SECTION */}
-      <div
-        style={{
-          background: isDark ? "#1e1e1e" : "#fff",
-          padding: 20,
-          borderRadius: 12,
-          boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-        }}
-      >
-        <h2>Wallet</h2>
+        <button
+          onClick={() => navigate("/topup")}
+          style={btnStyle("#007bff")}
+        >
+          💳 Top Up
+        </button>
 
-        {loadingWallet ? (
-          <p>Loading wallet…</p>
+        <button
+          onClick={() => navigate("/withdrawal")}
+          style={btnStyle("#28a745")}
+        >
+          💸 Withdraw
+        </button>
+
+        <h4 style={{ marginTop: 20 }}>Recent Transactions</h4>
+
+        {transactions.length === 0 ? (
+          <p>No transactions yet.</p>
         ) : (
-          <>
-            <h3 style={{ fontSize: 28, marginTop: 10 }}>
-              ₦{wallet.balance.toLocaleString()}
-            </h3>
-
-            <h4 style={{ marginTop: 20 }}>Last Transactions</h4>
-            {wallet.transactions.slice(0, 3).map((t, i) => (
-              <div
-                key={i}
-                style={{
-                  padding: 10,
-                  background: isDark ? "#2b2b2b" : "#f1f1f1",
-                  borderRadius: 8,
-                  marginTop: 10,
-                }}
-              >
-                <strong>{t.type}</strong> — ₦{t.amount}
-                <div style={{ fontSize: 12, opacity: 0.7 }}>{t.date}</div>
-              </div>
-            ))}
-          </>
+          transactions.map((t, i) => (
+            <div
+              key={i}
+              style={{
+                padding: "10px 0",
+                borderBottom: "1px solid #444",
+              }}
+            >
+              <p style={{ margin: 0 }}>{t.type}</p>
+              <strong style={{ color: t.amount > 0 ? "#4CAF50" : "#d32f2f" }}>
+                {t.amount > 0 ? "+" : ""}
+                ${t.amount.toFixed(2)}
+              </strong>
+            </div>
+          ))
         )}
-      </div>
+      </Section>
 
-      {/* LOGOUT */}
-      <button
-        onClick={logout}
-        style={{
-          marginTop: 30,
-          width: "100%",
-          padding: 12,
-          background: "red",
-          color: "white",
-          borderRadius: 10,
-          border: "none",
-        }}
-      >
-        Logout
+      {/* Preferences Section */}
+      <Section title="Appearance">
+        <select
+          value={newTheme}
+          onChange={(e) => setNewTheme(e.target.value)}
+          style={{ width: "100%", padding: 12 }}
+        >
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+
+        <input
+          value={newWallpaper}
+          onChange={(e) => setNewWallpaper(e.target.value)}
+          placeholder="Wallpaper Image URL"
+          style={{ marginTop: 10, width: "100%", padding: 12 }}
+        />
+      </Section>
+
+      {/* Save Button */}
+      <button onClick={saveSettings} style={btnStyle("#6200ea")}>
+        Save Settings
       </button>
     </div>
   );
