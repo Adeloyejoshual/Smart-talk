@@ -3,21 +3,23 @@ import React, { useEffect, useState, useContext, useRef } from "react";
 import { auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
 import { ThemeContext } from "../context/ThemeContext";
+import { usePopup } from "../context/PopupContext";
 import axios from "axios";
 
 export default function SettingsPage() {
   const { theme, wallpaper, updateSettings } = useContext(ThemeContext);
+  const { showPopup, hidePopup } = usePopup();
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
   const backend = "https://smart-talk-dqit.onrender.com";
 
   // ===================== State =====================
   const [user, setUser] = useState(null);
-  const [profileData, setProfileData] = useState({
+  const [profile, setProfile] = useState({
     name: "",
     bio: "",
-    profilePic: "",
     email: "",
+    profilePic: "",
   });
   const [balance, setBalance] = useState(0);
   const [transactions, setTransactions] = useState([]);
@@ -37,20 +39,20 @@ export default function SettingsPage() {
 
   // ===================== Load user & wallet =====================
   useEffect(() => {
-    const unsub = auth.onAuthStateChanged(async (userAuth) => {
-      if (!userAuth) return;
-      setUser(userAuth);
+    const unsub = auth.onAuthStateChanged(async (u) => {
+      if (!u) return navigate("/"); // redirect if not logged in
+      setUser(u);
 
       try {
-        const token = await userAuth.getIdToken(true);
-        const res = await axios.get(`${backend}/api/wallet/${userAuth.uid}`, {
+        const token = await u.getIdToken(true);
+        const res = await axios.get(`${backend}/api/wallet/${u.uid}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
 
         setBalance(res.data.balance || 0);
         setTransactions(res.data.transactions || []);
 
-        // Last daily reward
+        // check daily reward
         const lastClaim = res.data.lastDailyClaim
           ? new Date(res.data.lastDailyClaim)
           : null;
@@ -61,21 +63,21 @@ export default function SettingsPage() {
           setCheckedInToday(lastClaim.getTime() === today.getTime());
         }
 
-        // Profile data
+        // load profile
         if (res.data.profile) {
-          const data = res.data.profile;
-          setProfileData({
-            name: data.name || "",
-            bio: data.bio || "",
-            profilePic: data.profilePic || "",
-            email: data.email || userAuth.email,
+          const p = res.data.profile;
+          setProfile({
+            name: p.name || "",
+            bio: p.bio || "",
+            email: p.email || u.email,
+            profilePic: p.profilePic || "",
           });
-          if (data.preferences) {
-            setLanguage(data.preferences.language || "English");
-            setFontSize(data.preferences.fontSize || "Medium");
-            setLayout(data.preferences.layout || "Default");
-            setNewTheme(data.preferences.theme || "light");
-            setNewWallpaper(data.preferences.wallpaper || wallpaper || "");
+          if (p.preferences) {
+            setLanguage(p.preferences.language || "English");
+            setFontSize(p.preferences.fontSize || "Medium");
+            setLayout(p.preferences.layout || "Default");
+            setNewTheme(p.preferences.theme || "light");
+            setNewWallpaper(p.preferences.wallpaper || wallpaper || "");
           }
         }
       } catch (err) {
@@ -89,6 +91,7 @@ export default function SettingsPage() {
   const handleDailyReward = async () => {
     if (!user) return;
     setLoadingReward(true);
+
     try {
       const token = await auth.currentUser.getIdToken(true);
       const res = await axios.post(
@@ -151,7 +154,7 @@ export default function SettingsPage() {
   };
 
   const isDark = newTheme === "dark";
-  const displayName = profileData.name || "No Name";
+  const displayName = profile.name || "No Name";
   const getInitials = (name) => {
     if (!name) return "NA";
     const names = name.trim().split(" ").filter(Boolean);
@@ -204,9 +207,9 @@ export default function SettingsPage() {
           boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
         }}
       >
-        {profileData.profilePic ? (
+        {profile.profilePic ? (
           <img
-            src={profileData.profilePic}
+            src={profile.profilePic}
             alt="Profile"
             style={{
               width: 70,
@@ -240,10 +243,10 @@ export default function SettingsPage() {
             {displayName}
           </p>
           <p style={{ margin: 0, fontSize: 14, color: isDark ? "#ccc" : "#555" }}>
-            {profileData.bio || "No bio yet — click to edit"}
+            {profile.bio || "No bio yet — click to edit"}
           </p>
           <p style={{ margin: 0, fontSize: 12, color: isDark ? "#aaa" : "#888" }}>
-            {profileData.email}
+            {profile.email}
           </p>
         </div>
       </div>
@@ -297,12 +300,30 @@ export default function SettingsPage() {
                     background: isDark ? "#3b3b3b" : "#f0f0f0",
                     borderRadius: 8,
                     fontSize: 14,
+                    cursor: "pointer",
                   }}
+                  onClick={() =>
+                    showPopup(
+                      <div>
+                        <h3 style={{ marginBottom: 10 }}>Transaction Details</h3>
+                        <p><b>Type:</b> {tx.type}</p>
+                        <p><b>Amount:</b> ${tx.amount.toFixed(2)}</p>
+                        <p><b>Date:</b> {new Date(tx.createdAt || tx.date).toLocaleString()}</p>
+                        <p><b>Status:</b> {tx.status}</p>
+                        <p><b>Transaction ID:</b> {tx._id || tx.id}</p>
+                        <button
+                          onClick={hidePopup}
+                          style={{ marginTop: 10, padding: 6, borderRadius: 6, cursor: "pointer" }}
+                        >
+                          Close
+                        </button>
+                      </div>,
+                      { autoHide: false }
+                    )
+                  }
                 >
                   <span>{tx.type}</span>
-                  <span
-                    style={{ color: tx.amount >= 0 ? "#2ecc71" : "#e74c3c" }}
-                  >
+                  <span style={{ color: tx.amount >= 0 ? "#2ecc71" : "#e74c3c" }}>
                     {tx.amount >= 0 ? "+" : "-"}${Math.abs(tx.amount).toFixed(2)}
                   </span>
                 </div>
@@ -311,14 +332,10 @@ export default function SettingsPage() {
         </div>
       </Section>
 
-      {/* ================= Preferences ================= */}
+      {/* ================= User Preferences ================= */}
       <Section title="User Preferences" isDark={isDark}>
         <label>Language:</label>
-        <select
-          value={language}
-          onChange={(e) => setLanguage(e.target.value)}
-          style={selectStyle(isDark)}
-        >
+        <select value={language} onChange={(e) => setLanguage(e.target.value)} style={selectStyle(isDark)}>
           <option>English</option>
           <option>French</option>
           <option>Spanish</option>
@@ -326,22 +343,14 @@ export default function SettingsPage() {
         </select>
 
         <label>Font Size:</label>
-        <select
-          value={fontSize}
-          onChange={(e) => setFontSize(e.target.value)}
-          style={selectStyle(isDark)}
-        >
+        <select value={fontSize} onChange={(e) => setFontSize(e.target.value)} style={selectStyle(isDark)}>
           <option>Small</option>
           <option>Medium</option>
           <option>Large</option>
         </select>
 
         <label>Layout:</label>
-        <select
-          value={layout}
-          onChange={(e) => setLayout(e.target.value)}
-          style={selectStyle(isDark)}
-        >
+        <select value={layout} onChange={(e) => setLayout(e.target.value)} style={selectStyle(isDark)}>
           <option>Default</option>
           <option>Compact</option>
           <option>Spacious</option>
@@ -350,47 +359,24 @@ export default function SettingsPage() {
 
       {/* ================= Theme & Wallpaper ================= */}
       <Section title="Theme & Wallpaper" isDark={isDark}>
-        <select
-          value={newTheme}
-          onChange={(e) => setNewTheme(e.target.value)}
-          style={selectStyle(isDark)}
-        >
+        <select value={newTheme} onChange={(e) => setNewTheme(e.target.value)} style={selectStyle(isDark)}>
           <option value="light">🌞 Light</option>
           <option value="dark">🌙 Dark</option>
         </select>
 
-        <div
-          onClick={handleWallpaperClick}
-          style={{
-            ...previewBox,
-            backgroundImage: newWallpaper ? `url(${newWallpaper})` : "none",
-            cursor: "pointer",
-          }}
-        >
+        <div onClick={handleWallpaperClick} style={{ ...previewBox, backgroundImage: newWallpaper ? `url(${newWallpaper})` : "none", cursor: "pointer" }}>
           <p>{newWallpaper ? "Wallpaper Selected" : "🌈 Wallpaper Preview"}</p>
         </div>
 
         {newWallpaper && (
-          <button
-            onClick={removeWallpaper}
-            style={{ ...btnStyle("#d32f2f"), marginTop: 10 }}
-          >
+          <button onClick={removeWallpaper} style={{ ...btnStyle("#d32f2f"), marginTop: 10 }}>
             Remove Wallpaper
           </button>
         )}
 
-        <input
-          type="file"
-          accept="image/*"
-          ref={fileInputRef}
-          style={{ display: "none" }}
-          onChange={handleFileChange}
-        />
+        <input type="file" accept="image/*" ref={fileInputRef} style={{ display: "none" }} onChange={handleFileChange} />
 
-        <button
-          onClick={handleSavePreferences}
-          style={{ ...btnStyle("#007bff"), marginTop: 15, borderRadius: 20 }}
-        >
+        <button onClick={handleSavePreferences} style={{ ...btnStyle("#007bff"), marginTop: 15, borderRadius: 20 }}>
           💾 Save Preferences
         </button>
       </Section>
@@ -398,34 +384,13 @@ export default function SettingsPage() {
       {/* ================= Notifications ================= */}
       <Section title="Notifications" isDark={isDark}>
         <label>
-          <input
-            type="checkbox"
-            checked={notifications.push}
-            onChange={() =>
-              setNotifications({ ...notifications, push: !notifications.push })
-            }
-          />
-          Push Notifications
+          <input type="checkbox" checked={notifications.push} onChange={() => setNotifications({ ...notifications, push: !notifications.push })} /> Push Notifications
         </label>
         <label>
-          <input
-            type="checkbox"
-            checked={notifications.email}
-            onChange={() =>
-              setNotifications({ ...notifications, email: !notifications.email })
-            }
-          />
-          Email Alerts
+          <input type="checkbox" checked={notifications.email} onChange={() => setNotifications({ ...notifications, email: !notifications.email })} /> Email Alerts
         </label>
         <label>
-          <input
-            type="checkbox"
-            checked={notifications.sound}
-            onChange={() =>
-              setNotifications({ ...notifications, sound: !notifications.sound })
-            }
-          />
-          Sounds
+          <input type="checkbox" checked={notifications.sound} onChange={() => setNotifications({ ...notifications, sound: !notifications.sound })} /> Sounds
         </label>
       </Section>
 
