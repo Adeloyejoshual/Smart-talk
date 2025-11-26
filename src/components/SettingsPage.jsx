@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useContext, useRef } from "react";
+// src/components/SettingsPage.jsx
+import React, { useEffect, useState, useRef, useContext } from "react";
 import { auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
 import { ThemeContext } from "../context/ThemeContext";
@@ -13,8 +14,6 @@ export default function SettingsPage() {
   const [user, setUser] = useState(null);
   const [balance, setBalance] = useState(0);
   const [transactions, setTransactions] = useState([]);
-  const [checkedInToday, setCheckedInToday] = useState(false);
-
   const [language, setLanguage] = useState("English");
   const [fontSize, setFontSize] = useState("Medium");
   const [layout, setLayout] = useState("Default");
@@ -51,20 +50,25 @@ export default function SettingsPage() {
       }
 
       // Load user preferences and profile picture
-      const userDataRes = await fetch(`${backend}/api/user/${u.uid}`, {
-        headers: { Authorization: `Bearer await u.getIdToken(true)` },
-      });
-      const userData = await userDataRes.json();
-      if (userData.preferences) {
-        const p = userData.preferences;
-        setLanguage(p.language || "English");
-        setFontSize(p.fontSize || "Medium");
-        setLayout(p.layout || "Default");
-        setNewTheme(p.theme || "light");
-        setNewWallpaper(p.wallpaper || wallpaper);
-        setPreviewWallpaper(p.wallpaper || wallpaper);
+      try {
+        const token = await u.getIdToken(true);
+        const userDataRes = await fetch(`${backend}/api/user/${u.uid}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const userData = await userDataRes.json();
+        if (userData.preferences) {
+          const p = userData.preferences;
+          setLanguage(p.language || "English");
+          setFontSize(p.fontSize || "Medium");
+          setLayout(p.layout || "Default");
+          setNewTheme(p.theme || "light");
+          setNewWallpaper(p.wallpaper || wallpaper);
+          setPreviewWallpaper(p.wallpaper || wallpaper);
+        }
+        setProfilePic(userData.profilePic || null);
+      } catch (err) {
+        console.error(err);
       }
-      setProfilePic(userData.profilePic || null);
     });
 
     return () => unsub();
@@ -83,7 +87,7 @@ export default function SettingsPage() {
   });
 
   const handleDailyCheckin = async (e) => {
-    e.stopPropagation(); // Prevent section click
+    e.stopPropagation();
     if (alreadyCheckedIn) return showPopup("✅ Already checked in today!");
     if (!user) return;
 
@@ -229,44 +233,72 @@ export default function SettingsPage() {
 
       <h2 style={{ textAlign: "center", marginBottom: 20 }}>⚙️ Settings</h2>
 
-      {/* Profile Picture */}
+      {/* ================= Profile ================= */}
       <Section title="Profile" isDark={isDark}>
-        <div style={{ display: "flex", alignItems: "center", gap: 15 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           <div
             style={{
-              width: 80,
-              height: 80,
+              width: 88,
+              height: 88,
               borderRadius: "50%",
-              background: "#ccc",
+              background: "#888",
               overflow: "hidden",
               cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              position: "relative",
             }}
             onClick={() => document.getElementById("profilePicInput").click()}
+            title="Click to change profile photo"
           >
             {profilePic ? (
-              <img src={profilePic} alt="profile" style={{ width: "100%", height: "100%" }} />
+              <img
+                src={profilePic}
+                alt="Profile"
+                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+              />
             ) : (
-              <p style={{ textAlign: "center", lineHeight: "80px" }}>👤</p>
+              <span style={{ fontSize: 36, color: "#fff" }}>
+                {user.email?.[0]?.toUpperCase() || "U"}
+              </span>
             )}
+
+            <div
+              style={{
+                position: "absolute",
+                bottom: 0,
+                right: 0,
+                width: 24,
+                height: 24,
+                borderRadius: "50%",
+                background: "#007bff",
+                color: "#fff",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 14,
+                border: "2px solid #fff",
+              }}
+            >
+              ✎
+            </div>
           </div>
+
           <input
             type="file"
             id="profilePicInput"
-            style={{ display: "none" }}
             accept="image/*"
+            style={{ display: "none" }}
             onChange={handleProfileUpload}
           />
+
           <span>{user.email}</span>
         </div>
       </Section>
 
-      {/* Wallet */}
-      <Section
-        title="Wallet"
-        isDark={isDark}
-        onClick={() => navigate("/wallet")}
-        style={{ cursor: "pointer" }}
-      >
+      {/* ================= Wallet ================= */}
+      <Section title="Wallet" isDark={isDark} onClick={() => navigate("/wallet")} style={{ cursor: "pointer" }}>
         <p>
           Balance: <strong style={{ color: isDark ? "#00e676" : "#007bff" }}>${balance.toFixed(2)}</strong>
         </p>
@@ -283,7 +315,7 @@ export default function SettingsPage() {
         </div>
       </Section>
 
-      {/* Preferences */}
+      {/* ================= Preferences ================= */}
       <Section title="User Preferences" isDark={isDark}>
         <label>Language:</label>
         <select value={language} onChange={(e) => setLanguage(e.target.value)} style={selectStyle(isDark)}>
@@ -306,7 +338,7 @@ export default function SettingsPage() {
         </select>
       </Section>
 
-      {/* Theme & Wallpaper */}
+      {/* ================= Theme & Wallpaper ================= */}
       <Section title="Theme & Wallpaper" isDark={isDark}>
         <select value={newTheme} onChange={(e) => setNewTheme(e.target.value)} style={selectStyle(isDark)}>
           <option value="light">🌞 Light</option>
@@ -319,14 +351,14 @@ export default function SettingsPage() {
         <button onClick={handleSavePreferences} style={btnStyle("#007bff")}>💾 Save Preferences</button>
       </Section>
 
-      {/* Notifications */}
+      {/* ================= Notifications ================= */}
       <Section title="Notifications" isDark={isDark}>
         <label><input type="checkbox" checked={notifications.push} onChange={() => setNotifications({ ...notifications, push: !notifications.push })}/> Push Notifications</label>
         <label><input type="checkbox" checked={notifications.email} onChange={() => setNotifications({ ...notifications, email: !notifications.email })}/> Email Alerts</label>
         <label><input type="checkbox" checked={notifications.sound} onChange={() => setNotifications({ ...notifications, sound: !notifications.sound })}/> Sounds</label>
       </Section>
 
-      {/* About */}
+      {/* ================= About ================= */}
       <Section title="About" isDark={isDark}>
         <p>Version 1.0.0</p>
         <p>© 2025 Hahala App</p>
@@ -361,6 +393,36 @@ function Section({ title, children, isDark, onClick, style }) {
 }
 
 // -------------------- Styles --------------------
-const btnStyle = (bg) => ({ marginRight: 8, padding: "10px 15px", background: bg, color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: "bold" });
-const selectStyle = (isDark) => ({ width: "100%", padding: 8, marginBottom: 10, borderRadius: 6, background: isDark ? "#222" : "#fafafa", color: isDark ? "#fff" : "#000", border: "1px solid #666" });
-const previewBox = { width: "100%", height: 150, borderRadius: 10, border: "2px solid #555", marginTop: 15, display: "flex", justifyContent: "center", alignItems: "center", backgroundSize: "cover", backgroundPosition: "center" };
+const btnStyle = (bg) => ({
+  marginRight: 8,
+  padding: "10px 15px",
+  background: bg,
+  color: "#fff",
+  border: "none",
+  borderRadius: 8,
+  cursor: "pointer",
+  fontWeight: "bold",
+});
+
+const selectStyle = (isDark) => ({
+  width: "100%",
+  padding: 8,
+  marginBottom: 10,
+  borderRadius: 6,
+  background: isDark ? "#222" : "#fafafa",
+  color: isDark ? "#fff" : "#000",
+  border: "1px solid #666",
+});
+
+const previewBox = {
+  width: "100%",
+  height: 150,
+  borderRadius: 10,
+  border: "2px solid #555",
+  marginTop: 15,
+  display: "flex",
+  justifyContent: "center",
+  alignItems: "center",
+  backgroundSize: "cover",
+  backgroundPosition: "center",
+};
