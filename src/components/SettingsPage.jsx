@@ -6,21 +6,16 @@ import { signOut } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
 import { ThemeContext } from "../context/ThemeContext";
 import { usePopup } from "../context/PopupContext";
-import axios from "axios";
 
 // Cloudinary env
 const CLOUDINARY_CLOUD = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
 const CLOUDINARY_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
 
 export default function SettingsPage() {
-  const { theme, wallpaper, updateSettings } = useContext(ThemeContext);
+  const { theme } = useContext(ThemeContext);
   const { showPopup, hidePopup } = usePopup();
   const navigate = useNavigate();
 
-  const profileInputRef = useRef(null);
-  const isDark = theme === "dark";
-
-  // ---------------- STATES ----------------
   const [user, setUser] = useState(null);
   const [name, setName] = useState("");
   const [bio, setBio] = useState("");
@@ -32,18 +27,21 @@ export default function SettingsPage() {
   const [transactions, setTransactions] = useState([]);
   const [loadingReward, setLoadingReward] = useState(false);
 
-  const [newTheme, setNewTheme] = useState(theme);
-  const [newWallpaper, setNewWallpaper] = useState(wallpaper || "");
+  const profileInputRef = useRef(null);
+  const isDark = theme === "dark";
 
   const backend = "https://smart-talk-zlxe.onrender.com";
 
-  // ---------------- LOAD USER + PROFILE ----------------
+  // ================== Load User + Wallet ==================
   useEffect(() => {
     const unsubAuth = auth.onAuthStateChanged(async (u) => {
       if (!u) return navigate("/");
 
       setUser(u);
       setEmail(u.email || "");
+
+      // Load wallet
+      loadWallet(u.uid);
 
       const userRef = doc(db, "users", u.uid);
 
@@ -55,23 +53,19 @@ export default function SettingsPage() {
           bio: "",
           email: u.email || "",
           profilePic: null,
-          preferences: { theme: "light", wallpaper: "" },
+          preferences: { theme: "light" },
           createdAt: serverTimestamp(),
         });
       }
 
+      // Live snapshot for profile
       const unsubSnap = onSnapshot(userRef, (s) => {
         if (!s.exists()) return;
         const data = s.data();
         setName(data.name || "");
         setBio(data.bio || "");
         setProfilePic(data.profilePic || null);
-        setNewTheme(data.preferences?.theme || theme);
-        setNewWallpaper(data.preferences?.wallpaper || wallpaper || "");
       });
-
-      // Load wallet from backend
-      loadWallet(u.uid);
 
       return () => unsubSnap();
     });
@@ -79,33 +73,40 @@ export default function SettingsPage() {
     return () => unsubAuth();
   }, []);
 
-  // ---------------- WALLET ----------------
   const getToken = async () => auth.currentUser.getIdToken(true);
 
   const loadWallet = async (uid) => {
     try {
       const token = await getToken();
-      const res = await axios.get(`${backend}/api/wallet/${uid}`, {
+      const res = await fetch(`${backend}/api/wallet/${uid}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setBalance(res.data.balance || 0);
-      setTransactions(res.data.transactions || []);
+      const data = await res.json();
+      if (res.ok) {
+        setBalance(data.balance || 0);
+        setTransactions(data.transactions || []);
+      } else {
+        showPopup(data.error || "Failed to load wallet.");
+      }
     } catch (err) {
       console.error(err);
-      showPopup("Failed to load wallet.");
+      showPopup("Failed to load wallet. Check console.");
     }
   };
 
-  const alreadyClaimed = transactions.some((t) => {
-    if (t.type !== "checkin") return false;
-    const txDate = new Date(t.createdAt || t.date);
+  // ================== Daily Reward ==================
+  const alreadyClaimed = (() => {
+    if (!transactions || transactions.length === 0) return false;
     const today = new Date();
-    return (
-      txDate.getFullYear() === today.getFullYear() &&
-      txDate.getMonth() === today.getMonth() &&
-      txDate.getDate() === today.getDate()
-    );
-  });
+    today.setHours(0, 0, 0, 0);
+
+    return transactions.some((t) => {
+      if (t.type !== "checkin") return false;
+      const txDate = new Date(t.createdAt || t.date);
+      txDate.setHours(0, 0, 0, 0);
+      return txDate.getTime() === today.getTime();
+    });
+  })();
 
   const handleDailyReward = async () => {
     if (!user) return;
@@ -113,63 +114,48 @@ export default function SettingsPage() {
 
     try {
       const token = await getToken();
-      const res = await axios.post(
-        `${backend}/api/wallet/daily`,
-        { amount: 0.25 },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const res = await fetch(`${backend}/api/wallet/daily`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ amount: 0.25 }),
+      });
+      const data = await res.json();
 
-      if (res.data.balance !== undefined) {
-        setBalance(res.data.balance);
-        setTransactions((prev) => [res.data.txn, ...prev]);
+      if (res.ok) {
+        setBalance(data.balance);
+        setTransactions((prev) => [data.txn, ...prev]);
         showPopup("🎉 Daily reward claimed!");
-      } else if (res.data.error?.toLowerCase().includes("already claimed")) {
+      } else if (data.error?.toLowerCase().includes("already claimed")) {
         showPopup("✅ You already claimed today's reward!");
       } else {
-        showPopup(res.data.error || "Failed to claim daily reward.");
+        showPopup(data.error || "Failed to claim daily reward.");
       }
     } catch (err) {
       console.error(err);
-      showPopup("Failed to claim daily reward.");
+      showPopup("Failed to claim daily reward. Check console.");
     } finally {
       setLoadingReward(false);
     }
   };
 
-  // ---------------- PREFERENCES ----------------
-  const handleSavePreferences = async () => {
-    if (!user) return;
-    try {
-      const token = await getToken();
-      await axios.post(
-        `${backend}/api/preferences`,
-        {
-          theme: newTheme,
-          wallpaper: newWallpaper || null,
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      updateSettings(newTheme, newWallpaper);
-      showPopup("✅ Preferences saved!");
-    } catch (err) {
-      console.error(err);
-      showPopup("Failed to save preferences.");
-    }
-  };
-
-  // ---------------- PROFILE PIC ----------------
+  // ================== Cloudinary Upload ==================
   const uploadToCloudinary = async (file) => {
-    if (!CLOUDINARY_CLOUD || !CLOUDINARY_PRESET) throw new Error("Cloudinary not configured");
+    if (!CLOUDINARY_CLOUD || !CLOUDINARY_PRESET)
+      throw new Error("Cloudinary environment not set");
+
     const fd = new FormData();
     fd.append("file", file);
     fd.append("upload_preset", CLOUDINARY_PRESET);
 
-    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`, {
-      method: "POST",
-      body: fd,
-    });
-
+    const res = await fetch(
+      `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`,
+      { method: "POST", body: fd }
+    );
     if (!res.ok) throw new Error("Cloudinary upload failed");
+
     const data = await res.json();
     return data.secure_url || data.url;
   };
@@ -177,6 +163,7 @@ export default function SettingsPage() {
   const onProfileFileChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
     setSelectedFile(file);
     setProfilePic(URL.createObjectURL(file));
 
@@ -188,7 +175,7 @@ export default function SettingsPage() {
       setProfilePic(url);
       setSelectedFile(null);
     } catch (err) {
-      console.error(err);
+      console.error("Upload failed:", err);
       alert("Failed to upload profile picture.");
     }
   };
@@ -197,6 +184,14 @@ export default function SettingsPage() {
     await signOut(auth);
     navigate("/");
   };
+
+  const formatDate = (d) =>
+    new Date(d).toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
 
   if (!user) return <p>Loading user...</p>;
 
@@ -211,7 +206,7 @@ export default function SettingsPage() {
     >
       <h2 style={{ textAlign: "center", marginBottom: 20 }}>⚙️ Settings</h2>
 
-      {/* ---------------- Profile Card ---------------- */}
+      {/* ================= Profile Card ================= */}
       <div
         style={{
           display: "flex",
@@ -225,8 +220,9 @@ export default function SettingsPage() {
           position: "relative",
         }}
       >
+        {/* Profile Picture */}
         <div
-          onClick={() => profileInputRef.current?.click()}
+          onClick={() => navigate("/edit-profile")}
           style={{
             width: 88,
             height: 88,
@@ -241,34 +237,164 @@ export default function SettingsPage() {
             color: "#fff",
             fontWeight: "bold",
           }}
-          title="Click to change profile picture"
+          title="Click to edit profile"
         >
           {!profilePic && (name?.[0] || "U")}
         </div>
 
+        {/* User Info */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <h3 style={{ margin: 0, fontSize: 20 }}>{name || "Unnamed User"}</h3>
 
+            {/* Menu */}
             <div style={{ marginLeft: "auto", position: "relative" }}>
               <button
-                onClick={() => showPopup(
-                  <div>
-                    <button onClick={() => { navigate("/edit-profile"); hidePopup(); }} style={menuItemStyle}>Edit Info</button>
-                    <button onClick={handleLogout} style={menuItemStyle}>Log Out</button>
-                  </div>
-                )}
-                style={{ border: "none", background: "transparent", fontSize: 20, cursor: "pointer", color: isDark ? "#fff" : "#222" }}
+                onClick={() => setMenuOpen((s) => !s)}
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  color: isDark ? "#fff" : "#222",
+                  cursor: "pointer",
+                  fontSize: 20,
+                }}
               >
                 ⋮
               </button>
+              {menuOpen && (
+                <div
+                  style={{
+                    position: "absolute",
+                    right: 0,
+                    top: 34,
+                    background: isDark ? "#1a1a1a" : "#fff",
+                    color: isDark ? "#fff" : "#000",
+                    borderRadius: 8,
+                    boxShadow: "0 10px 30px rgba(0,0,0,0.12)",
+                    overflow: "hidden",
+                    zIndex: 60,
+                    minWidth: 150,
+                  }}
+                >
+                  <button
+                    onClick={() => {
+                      navigate("/edit-profile");
+                      setMenuOpen(false);
+                    }}
+                    style={menuItemStyle}
+                  >
+                    Edit Info
+                  </button>
+                  <button onClick={handleLogout} style={menuItemStyle}>
+                    Log Out
+                  </button>
+                </div>
+              )}
             </div>
           </div>
-          <p style={{ margin: "6px 0", color: isDark ? "#ccc" : "#555" }}>{bio || "No bio yet"}</p>
-          <p style={{ margin: 0, color: isDark ? "#bbb" : "#777", fontSize: 13 }}>{email}</p>
+
+          <p style={{ margin: "6px 0", color: isDark ? "#ccc" : "#555" }}>
+            {bio || "No bio yet — click ⋮ → Edit Info to add one."}
+          </p>
+          <p style={{ margin: "0 0 12px", color: isDark ? "#bbb" : "#777", fontSize: 13 }}>
+            {email}
+          </p>
+
+          {/* ================= Wallet Panel ================= */}
+          <div
+            style={{
+              padding: 12,
+              background: isDark ? "#1f1f1f" : "#eef6ff",
+              borderRadius: 12,
+              cursor: "pointer",
+            }}
+            onClick={() => navigate("/wallet")}
+          >
+            <p style={{ margin: 0 }}>
+              Balance:{" "}
+              <strong style={{ color: isDark ? "#00e676" : "#007bff" }}>
+                ${balance.toFixed(2)}
+              </strong>
+            </p>
+
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDailyReward();
+              }}
+              disabled={alreadyClaimed || loadingReward}
+              style={{
+                marginTop: 8,
+                width: "100%",
+                padding: "10px",
+                borderRadius: 8,
+                border: "none",
+                background: alreadyClaimed ? "#666" : "#ffd700",
+                color: "#000",
+                fontWeight: "bold",
+                cursor: alreadyClaimed ? "not-allowed" : "pointer",
+              }}
+            >
+              {loadingReward
+                ? "Processing..."
+                : alreadyClaimed
+                ? "Already Claimed"
+                : "🧩 Daily Reward (+$0.25)"}
+            </button>
+
+            {/* Last 3 transactions */}
+            <div style={{ marginTop: 12 }}>
+              <h4 style={{ margin: "8px 0" }}>Last 3 Transactions</h4>
+              {transactions.length === 0 ? (
+                <p style={{ fontSize: 13, opacity: 0.5 }}>No recent transactions</p>
+              ) : (
+                transactions.slice(0, 3).map((tx) => (
+                  <div
+                    key={tx._id}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      padding: "6px 10px",
+                      marginBottom: 6,
+                      background: isDark ? "#2b2b2b" : "#fff",
+                      borderRadius: 6,
+                      fontSize: 13,
+                      cursor: "pointer",
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      showPopup(
+                        <div>
+                          <h3 style={{ marginBottom: 10 }}>Transaction Details</h3>
+                          <p><b>Type:</b> {tx.type}</p>
+                          <p><b>Amount:</b> ${tx.amount.toFixed(2)}</p>
+                          <p><b>Date:</b> {new Date(tx.createdAt || tx.date).toLocaleString()}</p>
+                          <p><b>Status:</b> {tx.status}</p>
+                          <p><b>Transaction ID:</b> {tx._id}</p>
+                          <button
+                            onClick={hidePopup}
+                            style={{ marginTop: 10, padding: 6, borderRadius: 6, cursor: "pointer" }}
+                          >
+                            Close
+                          </button>
+                        </div>,
+                        { autoHide: false }
+                      );
+                    }}
+                  >
+                    <span>{tx.type}</span>
+                    <span style={{ color: tx.amount >= 0 ? "#2ecc71" : "#e74c3c" }}>
+                      {tx.amount >= 0 ? "+" : "-"}${Math.abs(tx.amount).toFixed(2)}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
+      {/* Hidden file input for Cloudinary */}
       <input
         ref={profileInputRef}
         type="file"
@@ -276,135 +402,11 @@ export default function SettingsPage() {
         style={{ display: "none" }}
         onChange={onProfileFileChange}
       />
-
-      {/* ---------------- Wallet Panel ---------------- */}
-      <Section title="Wallet" isDark={isDark}>
-        <p>
-          Balance: <strong style={{ color: isDark ? "#00e676" : "#007bff" }}>${balance.toFixed(2)}</strong>
-        </p>
-
-        <button
-          onClick={handleDailyReward}
-          disabled={loadingReward || alreadyClaimed}
-          style={{
-            ...btnStyle(alreadyClaimed ? "#666" : "#ffd700"),
-            width: "100%",
-            marginBottom: 10,
-            cursor: alreadyClaimed ? "not-allowed" : "pointer",
-          }}
-        >
-          {loadingReward
-            ? "Processing..."
-            : alreadyClaimed
-            ? "Already Claimed"
-            : "🧩 Daily Reward (+$0.25)"}
-        </button>
-
-        <h4>Last 3 Transactions</h4>
-        {transactions.slice(0, 3).length === 0 ? (
-          <p style={{ opacity: 0.6 }}>No recent transactions.</p>
-        ) : (
-          transactions.slice(0, 3).map((tx) => (
-            <div
-              key={tx._id || tx.id}
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                padding: "8px 12px",
-                marginBottom: 6,
-                background: isDark ? "#222" : "#f8f8f8",
-                borderRadius: 8,
-                cursor: "pointer",
-              }}
-              onClick={() =>
-                showPopup(
-                  <div>
-                    <h3 style={{ marginBottom: 10 }}>Transaction Details</h3>
-                    <p><b>Type:</b> {tx.type}</p>
-                    <p><b>Amount:</b> ${tx.amount.toFixed(2)}</p>
-                    <p><b>Date:</b> {new Date(tx.createdAt || tx.date).toLocaleString()}</p>
-                    <p><b>Status:</b> {tx.status}</p>
-                    <p><b>Transaction ID:</b> {tx._id || tx.id}</p>
-                    <button onClick={hidePopup} style={{ marginTop: 10, padding: 6, borderRadius: 6, cursor: "pointer" }}>Close</button>
-                  </div>,
-                  { autoHide: false }
-                )
-              }
-            >
-              <span>{tx.type}</span>
-              <span style={{ color: tx.amount >= 0 ? "#2ecc71" : "#e74c3c" }}>
-                {tx.amount >= 0 ? "+" : "-"}${Math.abs(tx.amount).toFixed(2)}
-              </span>
-            </div>
-          ))
-        )}
-      </Section>
-
-      {/* ---------------- Preferences ---------------- */}
-      <Section title="Preferences" isDark={isDark}>
-        <label>Theme</label>
-        <select value={newTheme} onChange={(e) => setNewTheme(e.target.value)} style={selectStyle(isDark)}>
-          <option value="light">Light</option>
-          <option value="dark">Dark</option>
-        </select>
-
-        <label>Wallpaper</label>
-        <input
-          type="text"
-          placeholder="Wallpaper URL"
-          value={newWallpaper}
-          onChange={(e) => setNewWallpaper(e.target.value)}
-          style={selectStyle(isDark)}
-        />
-
-        <button onClick={handleSavePreferences} style={{ ...btnStyle("#007bff"), width: "100%" }}>
-          Save Preferences
-        </button>
-      </Section>
     </div>
   );
 }
 
-// ---------------- Section ----------------
-function Section({ title, children, isDark }) {
-  return (
-    <div
-      style={{
-        background: isDark ? "#2b2b2b" : "#fff",
-        padding: 20,
-        borderRadius: 12,
-        marginTop: 25,
-        boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
-      }}
-    >
-      <h3 style={{ marginBottom: 12 }}>{title}</h3>
-      {children}
-    </div>
-  );
-}
-
-// ---------------- Styles ----------------
-const btnStyle = (bg) => ({
-  marginRight: 8,
-  padding: "10px 15px",
-  background: bg,
-  color: "#fff",
-  border: "none",
-  borderRadius: 8,
-  cursor: "pointer",
-  fontWeight: "bold",
-});
-
-const selectStyle = (isDark) => ({
-  width: "100%",
-  padding: 8,
-  marginBottom: 10,
-  borderRadius: 6,
-  background: isDark ? "#222" : "#fafafa",
-  color: isDark ? "#fff" : "#000",
-  border: "1px solid #666",
-});
-
+/* Styles */
 const menuItemStyle = {
   display: "block",
   width: "100%",
