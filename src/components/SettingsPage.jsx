@@ -6,11 +6,16 @@ import { ThemeContext } from "../context/ThemeContext";
 import { usePopup } from "../context/PopupContext";
 import axios from "axios";
 
+// Cloudinary env
+const CLOUDINARY_CLOUD = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+const CLOUDINARY_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+
 export default function SettingsPage() {
   const { theme, wallpaper, updateSettings } = useContext(ThemeContext);
   const { showPopup, hidePopup } = usePopup();
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
+
   const backend = "https://smart-talk-zlxe.onrender.com";
 
   // ===================== State =====================
@@ -21,6 +26,8 @@ export default function SettingsPage() {
     email: "",
     profilePic: "",
   });
+  const [selectedFile, setSelectedFile] = useState(null);
+
   const [balance, setBalance] = useState(0);
   const [transactions, setTransactions] = useState([]);
   const [checkedInToday, setCheckedInToday] = useState(false);
@@ -36,6 +43,12 @@ export default function SettingsPage() {
     email: true,
     sound: false,
   });
+
+  const [editing, setEditing] = useState(false);
+  const [loadingSave, setLoadingSave] = useState(false);
+
+  const profileInputRef = useRef(null);
+  const wallpaperInputRef = useRef(null);
 
   // ===================== Load user & wallet =====================
   useEffect(() => {
@@ -78,6 +91,7 @@ export default function SettingsPage() {
             setLayout(p.preferences.layout || "Default");
             setNewTheme(p.preferences.theme || "light");
             setNewWallpaper(p.preferences.wallpaper || wallpaper || "");
+            setNotifications(p.preferences.notifications || notifications);
           }
         }
       } catch (err) {
@@ -118,43 +132,89 @@ export default function SettingsPage() {
     }
   };
 
-  // ===================== Profile & Preferences =====================
-  const handleWallpaperClick = () => fileInputRef.current.click();
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (ev) => setNewWallpaper(ev.target.result);
-      reader.readAsDataURL(file);
-    }
-  };
-  const removeWallpaper = () => setNewWallpaper("");
+  // ===================== Cloudinary Upload =====================
+  const uploadToCloudinary = async (file) => {
+    if (!CLOUDINARY_CLOUD || !CLOUDINARY_PRESET)
+      throw new Error("Cloudinary environment not set");
 
-  const handleSavePreferences = async () => {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("upload_preset", CLOUDINARY_PRESET);
+
+    const res = await fetch(
+      `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`,
+      { method: "POST", body: fd }
+    );
+
+    if (!res.ok) throw new Error("Cloudinary upload failed");
+    const data = await res.json();
+    return data.secure_url || data.url;
+  };
+
+  const handleProfileFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setSelectedFile(file);
+    const reader = new FileReader();
+    reader.onload = (ev) => setProfile({ ...profile, profilePic: ev.target.result });
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveProfile = async () => {
     if (!user) return;
+    setLoadingSave(true);
     try {
+      let profileUrl = profile.profilePic;
+
+      if (selectedFile) {
+        profileUrl = await uploadToCloudinary(selectedFile);
+      } else if (profile.profilePic?.startsWith("data:")) {
+        const res = await fetch(profile.profilePic);
+        const blob = await res.blob();
+        profileUrl = await uploadToCloudinary(blob);
+      }
+
       const token = await auth.currentUser.getIdToken(true);
       await axios.post(
         `${backend}/api/preferences`,
         {
+          profilePic: profileUrl,
+          name: profile.name,
+          bio: profile.bio,
+          theme: newTheme,
+          wallpaper: newWallpaper || null,
           language,
           fontSize,
           layout,
-          theme: newTheme,
-          wallpaper: newWallpaper || null,
+          notifications,
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );
+
+      setSelectedFile(null);
       updateSettings(newTheme, newWallpaper);
-      alert("✅ Preferences saved successfully!");
+      alert("✅ Profile & settings saved!");
     } catch (err) {
       console.error(err);
-      alert("Failed to save preferences.");
+      alert("Failed to save profile: " + err.message);
+    } finally {
+      setLoadingSave(false);
     }
   };
 
+  const handleWallpaperClick = () => wallpaperInputRef.current.click();
+  const handleWallpaperChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => setNewWallpaper(ev.target.result);
+    reader.readAsDataURL(file);
+  };
+
   const isDark = newTheme === "dark";
-  const displayName = profile.name || "No Name";
+
+  if (!user) return <p>Loading user...</p>;
+
   const getInitials = (name) => {
     if (!name) return "NA";
     const names = name.trim().split(" ").filter(Boolean);
@@ -162,8 +222,6 @@ export default function SettingsPage() {
     if (names.length === 1) return names[0][0].toUpperCase();
     return (names[0][0] + names[1][0]).toUpperCase();
   };
-
-  if (!user) return <p>Loading user...</p>;
 
   // ===================== JSX =====================
   return (
@@ -196,174 +254,105 @@ export default function SettingsPage() {
 
       {/* ================= Profile Card ================= */}
       <div
-        onClick={() => navigate("/edit-profile")}
         style={{
           display: "flex",
           alignItems: "center",
-          cursor: "pointer",
+          gap: 16,
           background: isDark ? "#2b2b2b" : "#fff",
-          padding: 15,
+          padding: 16,
           borderRadius: 12,
-          boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
+          boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
+          marginBottom: 25,
+          position: "relative",
         }}
       >
-        {profile.profilePic ? (
-          <img
-            src={profile.profilePic}
-            alt="Profile"
-            style={{
-              width: 70,
-              height: 70,
-              borderRadius: "50%",
-              objectFit: "cover",
-              marginRight: 15,
-            }}
-          />
-        ) : (
-          <div
-            style={{
-              width: 70,
-              height: 70,
-              borderRadius: "50%",
-              background: "#007bff",
-              color: "#fff",
-              fontWeight: "bold",
-              fontSize: 24,
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
-              marginRight: 15,
-            }}
-          >
-            {getInitials(displayName)}
-          </div>
-        )}
-        <div>
-          <p style={{ margin: 0, fontWeight: "600", fontSize: 16 }}>
-            {displayName}
-          </p>
-          <p style={{ margin: 0, fontSize: 14, color: isDark ? "#ccc" : "#555" }}>
-            {profile.bio || "No bio yet — click to edit"}
-          </p>
-          <p style={{ margin: 0, fontSize: 12, color: isDark ? "#aaa" : "#888" }}>
-            {profile.email}
-          </p>
+        {/* Profile Picture */}
+        <div
+          onClick={() => profileInputRef.current.click()}
+          style={{
+            width: 88,
+            height: 88,
+            borderRadius: "50%",
+            background: profile.profilePic
+              ? `url(${profile.profilePic}) center/cover`
+              : "#888",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 28,
+            color: "#fff",
+            fontWeight: "bold",
+          }}
+        >
+          {!profile.profilePic && getInitials(profile.name)}
+        </div>
+
+        {/* User Info */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ margin: 0, fontWeight: "600", fontSize: 16 }}>{profile.name || "No Name"}</p>
+          <p style={{ margin: 0, fontSize: 14, color: isDark ? "#ccc" : "#555" }}>{profile.bio || "No bio yet — click to edit"}</p>
+          <p style={{ margin: 0, fontSize: 12, color: isDark ? "#aaa" : "#888" }}>{profile.email}</p>
         </div>
       </div>
 
+      <input
+        type="file"
+        accept="image/*"
+        ref={profileInputRef}
+        style={{ display: "none" }}
+        onChange={handleProfileFileChange}
+      />
+
       {/* ================= Wallet Section ================= */}
       <Section title="Wallet" isDark={isDark}>
-        <div
-          onClick={() => navigate("/wallet")}
-          style={{
-            marginBottom: 10,
-            cursor: "pointer",
-            padding: 10,
-            borderRadius: 8,
-            background: isDark ? "#3b3b3b" : "#f0f0f0",
-          }}
-        >
-          <p style={{ margin: 0 }}>
-            Balance:{" "}
-            <strong style={{ color: isDark ? "#00e676" : "#007bff" }}>
-              ${balance.toFixed(2)}
-            </strong>
-          </p>
-          <p style={{ margin: 0, fontSize: 12, opacity: 0.7 }}>
-            Click to see all transactions
-          </p>
-        </div>
-
+        <p>
+          Balance: <strong style={{ color: isDark ? "#00e676" : "#007bff" }}>${balance.toFixed(2)}</strong>
+        </p>
         <button
           onClick={handleDailyReward}
           disabled={loadingReward || checkedInToday}
-          style={{
-            ...btnStyle(checkedInToday ? "#666" : "#4CAF50"),
-            opacity: checkedInToday ? 0.7 : 1,
-            marginBottom: 15,
-            width: "100%",
-          }}
+          style={{ ...btnStyle(checkedInToday ? "#666" : "#4CAF50"), opacity: checkedInToday ? 0.7 : 1 }}
         >
-          {loadingReward
-            ? "Processing..."
-            : checkedInToday
-            ? "✅ Checked In Today"
-            : "🧩 Daily Reward (+$0.25)"}
+          {loadingReward ? "Processing..." : checkedInToday ? "✅ Checked In Today" : "🧩 Daily Reward (+$0.25)"}
         </button>
-
         <div>
           <h4 style={{ marginBottom: 8 }}>Last 3 Transactions</h4>
-          {transactions.length === 0 ? (
-            <p style={{ fontSize: 14, opacity: 0.6 }}>No recent transactions.</p>
-          ) : (
-            transactions
-              .slice(0, 3)
-              .map((tx) => (
-                <div
-                  key={tx._id || tx.id}
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    padding: "6px 10px",
-                    marginBottom: 6,
-                    background: isDark ? "#3b3b3b" : "#f0f0f0",
-                    borderRadius: 8,
-                    fontSize: 14,
-                    cursor: "pointer",
-                  }}
-                  onClick={() =>
-                    showPopup(
-                      <div>
-                        <h3 style={{ marginBottom: 10 }}>Transaction Details</h3>
-                        <p><b>Type:</b> {tx.type}</p>
-                        <p><b>Amount:</b> ${tx.amount.toFixed(2)}</p>
-                        <p><b>Date:</b> {new Date(tx.createdAt || tx.date).toLocaleString()}</p>
-                        <p><b>Status:</b> {tx.status}</p>
-                        <p><b>Transaction ID:</b> {tx._id || tx.id}</p>
-                        <button
-                          onClick={hidePopup}
-                          style={{ marginTop: 10, padding: 6, borderRadius: 6, cursor: "pointer" }}
-                        >
-                          Close
-                        </button>
-                      </div>,
-                      { autoHide: false }
-                    )
-                  }
-                >
-                  <span>{tx.type}</span>
-                  <span style={{ color: tx.amount >= 0 ? "#2ecc71" : "#e74c3c" }}>
-                    {tx.amount >= 0 ? "+" : "-"}${Math.abs(tx.amount).toFixed(2)}
-                  </span>
-                </div>
-              ))
-          )}
+          {transactions.slice(0, 3).map((tx) => (
+            <div
+              key={tx._id || tx.id}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                padding: "6px 10px",
+                marginBottom: 6,
+                background: isDark ? "#3b3b3b" : "#f0f0f0",
+                borderRadius: 8,
+                fontSize: 14,
+                cursor: "pointer",
+              }}
+              onClick={() =>
+                showPopup(
+                  <div>
+                    <h3 style={{ marginBottom: 10 }}>Transaction Details</h3>
+                    <p><b>Type:</b> {tx.type}</p>
+                    <p><b>Amount:</b> ${tx.amount.toFixed(2)}</p>
+                    <p><b>Date:</b> {new Date(tx.createdAt || tx.date).toLocaleString()}</p>
+                    <p><b>Status:</b> {tx.status}</p>
+                    <p><b>Transaction ID:</b> {tx._id || tx.id}</p>
+                    <button onClick={hidePopup} style={{ marginTop: 10, padding: 6, borderRadius: 6, cursor: "pointer" }}>Close</button>
+                  </div>,
+                  { autoHide: false }
+                )
+              }
+            >
+              <span>{tx.type}</span>
+              <span style={{ color: tx.amount >= 0 ? "#2ecc71" : "#e74c3c" }}>
+                {tx.amount >= 0 ? "+" : "-"}${Math.abs(tx.amount).toFixed(2)}
+              </span>
+            </div>
+          ))}
         </div>
-      </Section>
-
-      {/* ================= User Preferences ================= */}
-      <Section title="User Preferences" isDark={isDark}>
-        <label>Language:</label>
-        <select value={language} onChange={(e) => setLanguage(e.target.value)} style={selectStyle(isDark)}>
-          <option>English</option>
-          <option>French</option>
-          <option>Spanish</option>
-          <option>Arabic</option>
-        </select>
-
-        <label>Font Size:</label>
-        <select value={fontSize} onChange={(e) => setFontSize(e.target.value)} style={selectStyle(isDark)}>
-          <option>Small</option>
-          <option>Medium</option>
-          <option>Large</option>
-        </select>
-
-        <label>Layout:</label>
-        <select value={layout} onChange={(e) => setLayout(e.target.value)} style={selectStyle(isDark)}>
-          <option>Default</option>
-          <option>Compact</option>
-          <option>Spacious</option>
-        </select>
       </Section>
 
       {/* ================= Theme & Wallpaper ================= */}
@@ -373,65 +362,14 @@ export default function SettingsPage() {
           <option value="dark">🌙 Dark</option>
         </select>
 
-        <div onClick={handleWallpaperClick} style={{ ...previewBox, backgroundImage: newWallpaper ? `url(${newWallpaper})` : "none", cursor: "pointer" }}>
-          <p>{newWallpaper ? "Wallpaper Selected" : "🌈 Wallpaper Preview"}</p>
+        <div onClick={handleWallpaperClick} style={{ ...previewBox, backgroundImage: newWallpaper ? `url(${newWallpaper})` : "none" }}>
+          <p>🌈 Wallpaper Preview</p>
         </div>
+        <input type="file" accept="image/*" ref={wallpaperInputRef} style={{ display: "none" }} onChange={handleWallpaperChange} />
 
-        {newWallpaper && (
-          <button onClick={removeWallpaper} style={{ ...btnStyle("#d32f2f"), marginTop: 10 }}>
-            Remove Wallpaper
-          </button>
-        )}
-
-        <input type="file" accept="image/*" ref={fileInputRef} style={{ display: "none" }} onChange={handleFileChange} />
-
-        <button onClick={handleSavePreferences} style={{ ...btnStyle("#007bff"), marginTop: 15, borderRadius: 20 }}>
-          💾 Save Preferences
-        </button>
+        <button onClick={handleSaveProfile} style={btnStyle("#007bff")}>💾 Save Profile & Preferences</button>
       </Section>
 
-      {/* ================= Notifications ================= */}
-      <Section title="Notifications" isDark={isDark}>
-        <label>
-          <input type="checkbox" checked={notifications.push} onChange={() => setNotifications({ ...notifications, push: !notifications.push })} /> Push Notifications
-        </label>
-        <label>
-          <input type="checkbox" checked={notifications.email} onChange={() => setNotifications({ ...notifications, email: !notifications.email })} /> Email Alerts
-        </label>
-        <label>
-          <input type="checkbox" checked={notifications.sound} onChange={() => setNotifications({ ...notifications, sound: !notifications.sound })} /> Sounds
-        </label>
-      </Section>
-
-      {/* ================= About ================= */}
-      <Section title="About" isDark={isDark}>
-        <p>Version 1.0.0</p>
-        <p>© 2025 Hahala App</p>
-        <p>Terms of Service | Privacy Policy</p>
-        <p>Website: <a href="https://www.loechat.com" target="_blank" rel="noreferrer">www.loechat.com</a></p>
-      </Section>
-
-      {/* ================= Logout ================= */}
-      <div style={{ marginTop: 40, textAlign: "center" }}>
-        <button
-          onClick={async () => {
-            await auth.signOut();
-            navigate("/");
-          }}
-          style={{
-            padding: "12px 25px",
-            background: "#e53935",
-            color: "#fff",
-            border: "none",
-            borderRadius: 12,
-            cursor: "pointer",
-            fontWeight: "bold",
-            fontSize: 16,
-          }}
-        >
-          🚪 Logout
-        </button>
-      </div>
     </div>
   );
 }
@@ -439,15 +377,13 @@ export default function SettingsPage() {
 // ================= Section Wrapper =================
 function Section({ title, children, isDark }) {
   return (
-    <div
-      style={{
-        background: isDark ? "#2b2b2b" : "#fff",
-        padding: 20,
-        borderRadius: 12,
-        marginTop: 25,
-        boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
-      }}
-    >
+    <div style={{
+      background: isDark ? "#2b2b2b" : "#fff",
+      padding: 20,
+      borderRadius: 12,
+      marginTop: 25,
+      boxShadow: "0 2px 6px rgba(0,0,0,0.1)"
+    }}>
       <h3 style={{ marginBottom: 12 }}>{title}</h3>
       {children}
     </div>
