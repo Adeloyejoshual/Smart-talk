@@ -1,426 +1,295 @@
 // src/components/SettingsPage.jsx
-import React, { useEffect, useState, useContext, useRef } from "react";
+
+import React, { useEffect, useState, useContext } from "react";
 import { auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
 import { ThemeContext } from "../context/ThemeContext";
-import { usePopup } from "../context/PopupContext";
 import axios from "axios";
 
-// Cloudinary env
-const CLOUDINARY_CLOUD = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
-const CLOUDINARY_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
-
 export default function SettingsPage() {
-  const { theme, wallpaper, updateSettings } = useContext(ThemeContext);
-  const { showPopup, hidePopup } = usePopup();
   const navigate = useNavigate();
-  const fileInputRef = useRef(null);
+  const { theme, wallpaper, updateSettings } = useContext(ThemeContext);
 
-  const backend = "https://smart-talk-zlxe.onrender.com";
+  const [profilePic, setProfilePic] = useState("");
+  const [name, setName] = useState("");
+  const [username, setUsername] = useState("");
+  const [bio, setBio] = useState("");
+  const [sound, setSound] = useState(false);
 
-  // ===================== State =====================
-  const [user, setUser] = useState(null);
-  const [profile, setProfile] = useState({
-    name: "",
-    bio: "",
-    email: "",
-    profilePic: "",
-  });
+  const [wallet, setWallet] = useState({ balance: 0, transactions: [] });
+  const [loadingWallet, setLoadingWallet] = useState(true);
+
   const [selectedFile, setSelectedFile] = useState(null);
+  const isDark = theme === "dark";
 
-  const [balance, setBalance] = useState(0);
-  const [transactions, setTransactions] = useState([]);
-  const [checkedInToday, setCheckedInToday] = useState(false);
-  const [loadingReward, setLoadingReward] = useState(false);
+  const API_BASE = "https://smart-talk-zlxe.onrender.com";
 
-  const [newTheme, setNewTheme] = useState(theme);
-  const [newWallpaper, setNewWallpaper] = useState(wallpaper || "");
-  const [language, setLanguage] = useState("English");
-  const [fontSize, setFontSize] = useState("Medium");
-  const [layout, setLayout] = useState("Default");
-  const [notifications, setNotifications] = useState({
-    push: true,
-    email: true,
-    sound: false,
-  });
-
-  const [editing, setEditing] = useState(false);
-  const [loadingSave, setLoadingSave] = useState(false);
-
-  const profileInputRef = useRef(null);
-  const wallpaperInputRef = useRef(null);
-
-  // ===================== Load user & wallet =====================
-  useEffect(() => {
-    const unsub = auth.onAuthStateChanged(async (u) => {
-      if (!u) return navigate("/"); // redirect if not logged in
-      setUser(u);
-
-      try {
-        const token = await u.getIdToken(true);
-        const res = await axios.get(`${backend}/api/wallet/${u.uid}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        setBalance(res.data.balance || 0);
-        setTransactions(res.data.transactions || []);
-
-        // check daily reward
-        const lastClaim = res.data.lastDailyClaim
-          ? new Date(res.data.lastDailyClaim)
-          : null;
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        if (lastClaim) {
-          lastClaim.setHours(0, 0, 0, 0);
-          setCheckedInToday(lastClaim.getTime() === today.getTime());
-        }
-
-        // load profile
-        if (res.data.profile) {
-          const p = res.data.profile;
-          setProfile({
-            name: p.name || "",
-            bio: p.bio || "",
-            email: p.email || u.email,
-            profilePic: p.profilePic || "",
-          });
-          if (p.preferences) {
-            setLanguage(p.preferences.language || "English");
-            setFontSize(p.preferences.fontSize || "Medium");
-            setLayout(p.preferences.layout || "Default");
-            setNewTheme(p.preferences.theme || "light");
-            setNewWallpaper(p.preferences.wallpaper || wallpaper || "");
-            setNotifications(p.preferences.notifications || notifications);
-          }
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    });
-    return () => unsub();
-  }, []);
-
-  // ===================== Daily Reward =====================
-  const handleDailyReward = async () => {
-    if (!user) return;
-    setLoadingReward(true);
-
+  /* ===============================
+     FETCH USER DATA FROM BACKEND
+  =============================== */
+  const fetchUserPreferences = async (uid) => {
     try {
-      const token = await auth.currentUser.getIdToken(true);
-      const res = await axios.post(
-        `${backend}/api/wallet/daily`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const res = await axios.get(`${API_BASE}/api/users/${uid}`);
+      const data = res.data;
 
-      if (res.data.balance !== undefined) {
-        setBalance(res.data.balance);
-        setCheckedInToday(true);
-        alert("🎉 Daily reward claimed! +$0.25");
-      } else if (res.data.error?.toLowerCase().includes("already claimed")) {
-        setCheckedInToday(true);
-        alert("✅ You already claimed today's reward!");
-      } else {
-        alert(res.data.error || "Failed to claim daily reward.");
-      }
+      setName(data.name || "");
+      setUsername(data.username || "");
+      setBio(data.bio || "");
+      setProfilePic(data.profilePic || "");
+      setSound(data.sound || false);
     } catch (err) {
-      console.error(err);
-      alert("Failed to claim daily reward. Check console.");
-    } finally {
-      setLoadingReward(false);
+      console.error("Error fetching preferences:", err);
     }
   };
 
-  // ===================== Cloudinary Upload =====================
-  const uploadToCloudinary = async (file) => {
-    if (!CLOUDINARY_CLOUD || !CLOUDINARY_PRESET)
-      throw new Error("Cloudinary environment not set");
+  /* ===============================
+     FETCH USER WALLET
+  =============================== */
+  const fetchWallet = async (uid) => {
+    try {
+      const res = await axios.get(`${API_BASE}/api/wallet/${uid}`);
 
-    const fd = new FormData();
-    fd.append("file", file);
-    fd.append("upload_preset", CLOUDINARY_PRESET);
+      setWallet({
+        balance: res.data.balance || 0,
+        transactions: res.data.transactions || [],
+      });
 
-    const res = await fetch(
-      `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`,
-      { method: "POST", body: fd }
+    } catch (err) {
+      console.error("Wallet fetch error:", err);
+    } finally {
+      setLoadingWallet(false);
+    }
+  };
+
+  /* ===============================
+     HANDLE PROFILE PIC UPLOAD
+  =============================== */
+  const uploadProfilePic = async (file) => {
+    if (!file) return profilePic;
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("upload_preset", "ml_default");
+
+    const uploadRes = await axios.post(
+      `https://api.cloudinary.com/v1_1/dtdatsmuq/image/upload`,
+      formData
     );
 
-    if (!res.ok) throw new Error("Cloudinary upload failed");
-    const data = await res.json();
-    return data.secure_url || data.url;
+    return uploadRes.data.secure_url;
   };
 
-  const handleProfileFileChange = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setSelectedFile(file);
-    const reader = new FileReader();
-    reader.onload = (ev) => setProfile({ ...profile, profilePic: ev.target.result });
-    reader.readAsDataURL(file);
-  };
+  /* ===============================
+     SAVE UPDATED PROFILE SETTINGS
+  =============================== */
+  const savePreferences = async () => {
+    if (!auth.currentUser) return;
 
-  const handleSaveProfile = async () => {
-    if (!user) return;
-    setLoadingSave(true);
     try {
-      let profileUrl = profile.profilePic;
+      let uploadedPic = profilePic;
 
       if (selectedFile) {
-        profileUrl = await uploadToCloudinary(selectedFile);
-      } else if (profile.profilePic?.startsWith("data:")) {
-        const res = await fetch(profile.profilePic);
-        const blob = await res.blob();
-        profileUrl = await uploadToCloudinary(blob);
+        uploadedPic = await uploadProfilePic(selectedFile);
+        setProfilePic(uploadedPic);
       }
 
-      const token = await auth.currentUser.getIdToken(true);
-      await axios.post(
-        `${backend}/api/preferences`,
-        {
-          profilePic: profileUrl,
-          name: profile.name,
-          bio: profile.bio,
-          theme: newTheme,
-          wallpaper: newWallpaper || null,
-          language,
-          fontSize,
-          layout,
-          notifications,
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      await axios.post(`${API_BASE}/api/preferences`, {
+        uid: auth.currentUser.uid,
+        name,
+        username,
+        bio,
+        sound,
+        profilePic: uploadedPic,
+      });
 
-      setSelectedFile(null);
-      updateSettings(newTheme, newWallpaper);
-      alert("✅ Profile & settings saved!");
+      updateSettings({ wallpaper, theme });
+      alert("Profile updated successfully!");
+
     } catch (err) {
-      console.error(err);
-      alert("Failed to save profile: " + err.message);
-    } finally {
-      setLoadingSave(false);
+      console.error("Save error:", err);
+      alert("Error saving changes.");
     }
   };
 
-  const handleWallpaperClick = () => wallpaperInputRef.current.click();
-  const handleWallpaperChange = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => setNewWallpaper(ev.target.result);
-    reader.readAsDataURL(file);
+  /* ===============================
+     SIGN OUT
+  =============================== */
+  const logout = async () => {
+    await auth.signOut();
+    navigate("/login");
   };
 
-  const isDark = newTheme === "dark";
+  /* ===============================
+     LOAD DATA ON MOUNT
+  =============================== */
+  useEffect(() => {
+    if (!auth.currentUser) return;
 
-  if (!user) return <p>Loading user...</p>;
+    const uid = auth.currentUser.uid;
+    fetchUserPreferences(uid);
+    fetchWallet(uid);
+  }, []);
 
-  const getInitials = (name) => {
-    if (!name) return "NA";
-    const names = name.trim().split(" ").filter(Boolean);
-    if (names.length === 0) return "NA";
-    if (names.length === 1) return names[0][0].toUpperCase();
-    return (names[0][0] + names[1][0]).toUpperCase();
-  };
-
-  // ===================== JSX =====================
+  /* ===============================
+     UI
+  =============================== */
   return (
     <div
       style={{
         padding: 20,
+        background: isDark ? "#0d0d0d" : "#f4f4f4",
         minHeight: "100vh",
-        background: isDark ? "#1c1c1c" : "#f8f8f8",
-        color: isDark ? "#fff" : "#000",
       }}
     >
-      {/* Back button */}
-      <button
-        onClick={() => navigate("/chat")}
-        style={{
-          position: "absolute",
-          top: 20,
-          left: 20,
-          background: isDark ? "#555" : "#e0e0e0",
-          border: "none",
-          borderRadius: "50%",
-          padding: 8,
-          cursor: "pointer",
-        }}
-      >
-        ⬅
-      </button>
-
-      <h2 style={{ textAlign: "center", marginBottom: 20 }}>⚙️ Settings</h2>
-
-      {/* ================= Profile Card ================= */}
+      {/* PROFILE CARD */}
       <div
         style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 16,
-          background: isDark ? "#2b2b2b" : "#fff",
-          padding: 16,
+          background: isDark ? "#1e1e1e" : "#fff",
+          padding: 20,
           borderRadius: 12,
-          boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
           marginBottom: 25,
-          position: "relative",
+          boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
         }}
       >
-        {/* Profile Picture */}
-        <div
-          onClick={() => profileInputRef.current.click()}
+        <h2 style={{ marginBottom: 12 }}>Profile</h2>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <label style={{ cursor: "pointer" }}>
+            <img
+              src={profilePic || "/default-avatar.png"}
+              alt="Profile"
+              style={{
+                width: 80,
+                height: 80,
+                borderRadius: "50%",
+                objectFit: "cover",
+                border: "3px solid #3b82f6",
+              }}
+            />
+            <input
+              type="file"
+              accept="image/*"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const file = e.target.files[0];
+                setSelectedFile(file);
+                setProfilePic(URL.createObjectURL(file));
+              }}
+            />
+          </label>
+
+          <div style={{ flex: 1 }}>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Full Name"
+              style={{
+                width: "100%",
+                padding: 10,
+                borderRadius: 10,
+                border: "1px solid #ccc",
+              }}
+            />
+            <input
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="@username"
+              style={{
+                width: "100%",
+                marginTop: 10,
+                padding: 10,
+                borderRadius: 10,
+                border: "1px solid #ccc",
+              }}
+            />
+          </div>
+        </div>
+
+        <textarea
+          value={bio}
+          onChange={(e) => setBio(e.target.value)}
+          placeholder="Write a short bio..."
           style={{
-            width: 88,
-            height: 88,
-            borderRadius: "50%",
-            background: profile.profilePic
-              ? `url(${profile.profilePic}) center/cover`
-              : "#888",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 28,
+            width: "100%",
+            marginTop: 15,
+            padding: 10,
+            borderRadius: 10,
+            border: "1px solid #ccc",
+            height: 80,
+            resize: "none",
+          }}
+        ></textarea>
+
+        <button
+          onClick={savePreferences}
+          style={{
+            marginTop: 20,
+            width: "100%",
+            padding: 12,
+            background: "#3b82f6",
             color: "#fff",
+            borderRadius: 10,
+            border: "none",
             fontWeight: "bold",
           }}
         >
-          {!profile.profilePic && getInitials(profile.name)}
-        </div>
-
-        {/* User Info */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ margin: 0, fontWeight: "600", fontSize: 16 }}>{profile.name || "No Name"}</p>
-          <p style={{ margin: 0, fontSize: 14, color: isDark ? "#ccc" : "#555" }}>{profile.bio || "No bio yet — click to edit"}</p>
-          <p style={{ margin: 0, fontSize: 12, color: isDark ? "#aaa" : "#888" }}>{profile.email}</p>
-        </div>
+          Save Changes
+        </button>
       </div>
 
-      <input
-        type="file"
-        accept="image/*"
-        ref={profileInputRef}
-        style={{ display: "none" }}
-        onChange={handleProfileFileChange}
-      />
+      {/* WALLET SECTION */}
+      <div
+        style={{
+          background: isDark ? "#1e1e1e" : "#fff",
+          padding: 20,
+          borderRadius: 12,
+          boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+        }}
+      >
+        <h2>Wallet</h2>
 
-      {/* ================= Wallet Section ================= */}
-      <Section title="Wallet" isDark={isDark}>
-        <p>
-          Balance: <strong style={{ color: isDark ? "#00e676" : "#007bff" }}>${balance.toFixed(2)}</strong>
-        </p>
-        <button
-          onClick={handleDailyReward}
-          disabled={loadingReward || checkedInToday}
-          style={{ ...btnStyle(checkedInToday ? "#666" : "#4CAF50"), opacity: checkedInToday ? 0.7 : 1 }}
-        >
-          {loadingReward ? "Processing..." : checkedInToday ? "✅ Checked In Today" : "🧩 Daily Reward (+$0.25)"}
-        </button>
-        <div>
-          <h4 style={{ marginBottom: 8 }}>Last 3 Transactions</h4>
-          {transactions.slice(0, 3).map((tx) => (
-            <div
-              key={tx._id || tx.id}
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                padding: "6px 10px",
-                marginBottom: 6,
-                background: isDark ? "#3b3b3b" : "#f0f0f0",
-                borderRadius: 8,
-                fontSize: 14,
-                cursor: "pointer",
-              }}
-              onClick={() =>
-                showPopup(
-                  <div>
-                    <h3 style={{ marginBottom: 10 }}>Transaction Details</h3>
-                    <p><b>Type:</b> {tx.type}</p>
-                    <p><b>Amount:</b> ${tx.amount.toFixed(2)}</p>
-                    <p><b>Date:</b> {new Date(tx.createdAt || tx.date).toLocaleString()}</p>
-                    <p><b>Status:</b> {tx.status}</p>
-                    <p><b>Transaction ID:</b> {tx._id || tx.id}</p>
-                    <button onClick={hidePopup} style={{ marginTop: 10, padding: 6, borderRadius: 6, cursor: "pointer" }}>Close</button>
-                  </div>,
-                  { autoHide: false }
-                )
-              }
-            >
-              <span>{tx.type}</span>
-              <span style={{ color: tx.amount >= 0 ? "#2ecc71" : "#e74c3c" }}>
-                {tx.amount >= 0 ? "+" : "-"}${Math.abs(tx.amount).toFixed(2)}
-              </span>
-            </div>
-          ))}
-        </div>
-      </Section>
+        {loadingWallet ? (
+          <p>Loading wallet…</p>
+        ) : (
+          <>
+            <h3 style={{ fontSize: 28, marginTop: 10 }}>
+              ₦{wallet.balance.toLocaleString()}
+            </h3>
 
-      {/* ================= Theme & Wallpaper ================= */}
-      <Section title="Theme & Wallpaper" isDark={isDark}>
-        <select value={newTheme} onChange={(e) => setNewTheme(e.target.value)} style={selectStyle(isDark)}>
-          <option value="light">🌞 Light</option>
-          <option value="dark">🌙 Dark</option>
-        </select>
+            <h4 style={{ marginTop: 20 }}>Last Transactions</h4>
+            {wallet.transactions.slice(0, 3).map((t, i) => (
+              <div
+                key={i}
+                style={{
+                  padding: 10,
+                  background: isDark ? "#2b2b2b" : "#f1f1f1",
+                  borderRadius: 8,
+                  marginTop: 10,
+                }}
+              >
+                <strong>{t.type}</strong> — ₦{t.amount}
+                <div style={{ fontSize: 12, opacity: 0.7 }}>{t.date}</div>
+              </div>
+            ))}
+          </>
+        )}
+      </div>
 
-        <div onClick={handleWallpaperClick} style={{ ...previewBox, backgroundImage: newWallpaper ? `url(${newWallpaper})` : "none" }}>
-          <p>🌈 Wallpaper Preview</p>
-        </div>
-        <input type="file" accept="image/*" ref={wallpaperInputRef} style={{ display: "none" }} onChange={handleWallpaperChange} />
-
-        <button onClick={handleSaveProfile} style={btnStyle("#007bff")}>💾 Save Profile & Preferences</button>
-      </Section>
-
+      {/* LOGOUT */}
+      <button
+        onClick={logout}
+        style={{
+          marginTop: 30,
+          width: "100%",
+          padding: 12,
+          background: "red",
+          color: "white",
+          borderRadius: 10,
+          border: "none",
+        }}
+      >
+        Logout
+      </button>
     </div>
   );
 }
-
-// ================= Section Wrapper =================
-function Section({ title, children, isDark }) {
-  return (
-    <div style={{
-      background: isDark ? "#2b2b2b" : "#fff",
-      padding: 20,
-      borderRadius: 12,
-      marginTop: 25,
-      boxShadow: "0 2px 6px rgba(0,0,0,0.1)"
-    }}>
-      <h3 style={{ marginBottom: 12 }}>{title}</h3>
-      {children}
-    </div>
-  );
-}
-
-// ================= Reusable Styles =================
-const btnStyle = (bg) => ({
-  marginRight: 8,
-  padding: "10px 15px",
-  background: bg,
-  color: "#fff",
-  border: "none",
-  borderRadius: 8,
-  cursor: "pointer",
-  fontWeight: "bold",
-});
-
-const selectStyle = (isDark) => ({
-  width: "100%",
-  padding: 8,
-  marginBottom: 10,
-  borderRadius: 6,
-  background: isDark ? "#222" : "#fafafa",
-  color: isDark ? "#fff" : "#000",
-  border: "1px solid #666",
-});
-
-const previewBox = {
-  width: "100%",
-  height: 150,
-  borderRadius: 10,
-  border: "2px solid #555",
-  marginTop: 15,
-  display: "flex",
-  justifyContent: "center",
-  alignItems: "center",
-  backgroundSize: "cover",
-  backgroundPosition: "center",
-};
