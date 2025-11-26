@@ -21,6 +21,8 @@ export default function SettingsPage() {
   const [profilePic, setProfilePic] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [balance, setBalance] = useState(0);
+  const [checkedInToday, setCheckedInToday] = useState(false);
 
   const profileInputRef = useRef(null);
   const isDark = theme === "dark";
@@ -42,6 +44,8 @@ export default function SettingsPage() {
           bio: "",
           email: u.email || "",
           profilePic: null,
+          balance: 5.0,
+          lastCheckin: null,
           preferences: { theme: "light" },
           createdAt: serverTimestamp(),
         });
@@ -53,6 +57,8 @@ export default function SettingsPage() {
         setName(data.name || "");
         setBio(data.bio || "");
         setProfilePic(data.profilePic || null);
+        setBalance(data.balance || 0);
+        checkLastCheckin(data.lastCheckin);
       });
 
       return () => unsubSnap();
@@ -60,6 +66,45 @@ export default function SettingsPage() {
 
     return () => unsubAuth();
   }, []);
+
+  // Daily check-in logic
+  const checkLastCheckin = (lastCheckin) => {
+    if (!lastCheckin) return setCheckedInToday(false);
+    const lastDate = new Date(lastCheckin.seconds * 1000);
+    const today = new Date();
+    setCheckedInToday(
+      lastDate.getDate() === today.getDate() &&
+        lastDate.getMonth() === today.getMonth() &&
+        lastDate.getFullYear() === today.getFullYear()
+    );
+  };
+
+  const handleDailyCheckin = async () => {
+    if (!user) return;
+    const userRef = doc(db, "users", user.uid);
+    const snap = await getDoc(userRef);
+    if (!snap.exists()) return;
+
+    const data = snap.data();
+    const lastCheckin = data.lastCheckin ? new Date(data.lastCheckin.seconds * 1000) : null;
+    const today = new Date();
+
+    if (
+      lastCheckin &&
+      lastCheckin.getDate() === today.getDate() &&
+      lastCheckin.getMonth() === today.getMonth() &&
+      lastCheckin.getFullYear() === today.getFullYear()
+    ) {
+      alert("✅ You already checked in today!");
+      return;
+    }
+
+    const newBalance = (data.balance || 0) + 0.25;
+    await updateDoc(userRef, { balance: newBalance, lastCheckin: serverTimestamp() });
+    setBalance(newBalance);
+    setCheckedInToday(true);
+    alert("🎉 You earned +$0.25 for your daily check-in!");
+  };
 
   // Cloudinary uploader
   const uploadToCloudinary = async (file) => {
@@ -214,6 +259,20 @@ export default function SettingsPage() {
         </div>
       </div>
 
+      {/* Wallet Section */}
+      <Section title="Wallet" isDark={isDark}>
+        <p>
+          Balance: <strong style={{ color: isDark ? "#00e676" : "#007bff" }}>${balance.toFixed(2)}</strong>
+        </p>
+        <button
+          onClick={handleDailyCheckin}
+          disabled={checkedInToday}
+          style={{ ...btnStyle(checkedInToday ? "#666" : "#4CAF50"), opacity: checkedInToday ? 0.7 : 1 }}
+        >
+          {checkedInToday ? "✅ Checked In Today" : "🧩 Daily Check-in (+$0.25)"}
+        </button>
+      </Section>
+
       {/* Hidden file input for Cloudinary */}
       <input
         ref={profileInputRef}
@@ -226,7 +285,36 @@ export default function SettingsPage() {
   );
 }
 
+/* Section Wrapper */
+function Section({ title, children, isDark }) {
+  return (
+    <div
+      style={{
+        background: isDark ? "#2b2b2b" : "#fff",
+        padding: 20,
+        borderRadius: 12,
+        marginTop: 25,
+        boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
+      }}
+    >
+      <h3>{title}</h3>
+      {children}
+    </div>
+  );
+}
+
 /* Styles */
+const btnStyle = (bg) => ({
+  marginTop: 8,
+  padding: "10px 15px",
+  background: bg,
+  color: "#fff",
+  border: "none",
+  borderRadius: 8,
+  cursor: "pointer",
+  fontWeight: "bold",
+});
+
 const menuItemStyle = {
   display: "block",
   width: "100%",
