@@ -1,7 +1,7 @@
 // src/components/SettingsPage.jsx
 import React, { useEffect, useState, useContext, useRef } from "react";
 import { auth } from "../firebaseConfig";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { ThemeContext } from "../context/ThemeContext";
 import { usePopup } from "../context/PopupContext";
 import axios from "axios";
@@ -10,16 +10,15 @@ export default function SettingsPage() {
   const { theme, wallpaper, updateSettings } = useContext(ThemeContext);
   const { showPopup, hidePopup } = usePopup();
   const navigate = useNavigate();
-  const fileInputRef = useRef(null);
 
-  // You can choose which backend to use
+  // ================= Backends =================
   const backends = [
     "https://smart-talk-zlxe.onrender.com",
     "https://www.loechat.com",
   ];
-  const backend = backends[0]; // change index if needed
+  const backend = backends[0];
 
-  // ===================== State =====================
+  // ================= States =================
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState({ name: "", bio: "", email: "", profilePic: "" });
   const [balance, setBalance] = useState(0);
@@ -34,7 +33,7 @@ export default function SettingsPage() {
   const [layout, setLayout] = useState("Default");
   const [notifications, setNotifications] = useState({ push: true, email: true, sound: false });
 
-  // ===================== Load user & wallet =====================
+  // ================= Load user & wallet =================
   useEffect(() => {
     const unsub = auth.onAuthStateChanged(async (u) => {
       if (!u) return navigate("/"); // redirect if not logged in
@@ -83,7 +82,7 @@ export default function SettingsPage() {
     return () => unsub();
   }, []);
 
-  // ===================== Daily Reward =====================
+  // ================= Daily Reward =================
   const handleDailyReward = async () => {
     if (!user) return;
     setLoadingReward(true);
@@ -114,18 +113,7 @@ export default function SettingsPage() {
     }
   };
 
-  // ===================== Profile & Preferences =====================
-  const handleWallpaperClick = () => fileInputRef.current.click();
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (ev) => setNewWallpaper(ev.target.result);
-      reader.readAsDataURL(file);
-    }
-  };
-  const removeWallpaper = () => setNewWallpaper("");
-
+  // ================= Preferences =================
   const handleSavePreferences = async () => {
     if (!user) return;
     try {
@@ -191,56 +179,94 @@ export default function SettingsPage() {
 
       {/* ================= Profile Card ================= */}
       <div
-        onClick={() => navigate("/edit-profile")}
         style={{
           display: "flex",
           alignItems: "center",
-          cursor: "pointer",
+          justifyContent: "space-between",
           background: isDark ? "#2b2b2b" : "#fff",
           padding: 15,
           borderRadius: 12,
           boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
+          marginBottom: 20,
         }}
       >
-        {profile.profilePic ? (
-          <img
-            src={profile.profilePic}
-            alt="Profile"
+        <div style={{ display: "flex", alignItems: "center" }}>
+          {profile.profilePic ? (
+            <img
+              src={profile.profilePic}
+              alt="Profile"
+              style={{
+                width: 70,
+                height: 70,
+                borderRadius: "50%",
+                objectFit: "cover",
+                marginRight: 15,
+              }}
+            />
+          ) : (
+            <div
+              style={{
+                width: 70,
+                height: 70,
+                borderRadius: "50%",
+                background: "#007bff",
+                color: "#fff",
+                fontWeight: "bold",
+                fontSize: 24,
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                marginRight: 15,
+              }}
+            >
+              {getInitials(displayName)}
+            </div>
+          )}
+          <div>
+            <p style={{ margin: 0, fontWeight: "600", fontSize: 16 }}>{displayName}</p>
+            <p style={{ margin: 0, fontSize: 14, color: isDark ? "#ccc" : "#555" }}>
+              {profile.bio || "No bio yet"}
+            </p>
+            <p style={{ margin: 0, fontSize: 12, color: isDark ? "#aaa" : "#888" }}>
+              {profile.email}
+            </p>
+          </div>
+        </div>
+
+        {/* 3-dot menu */}
+        <div>
+          <button
+            onClick={() =>
+              showPopup(
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  <div
+                    style={menuItemStyle}
+                    onClick={() => {
+                      hidePopup();
+                      navigate("/edit-profile", { state: { profile, setProfile } });
+                    }}
+                  >
+                    Edit Profile
+                  </div>
+                  <div
+                    style={menuItemStyle}
+                    onClick={() => auth.signOut().then(() => navigate("/"))}
+                  >
+                    Logout
+                  </div>
+                </div>
+              )
+            }
             style={{
-              width: 70,
-              height: 70,
-              borderRadius: "50%",
-              objectFit: "cover",
-              marginRight: 15,
-            }}
-          />
-        ) : (
-          <div
-            style={{
-              width: 70,
-              height: 70,
-              borderRadius: "50%",
-              background: "#007bff",
-              color: "#fff",
-              fontWeight: "bold",
-              fontSize: 24,
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
-              marginRight: 15,
+              background: "transparent",
+              border: "none",
+              fontSize: 22,
+              cursor: "pointer",
+              color: isDark ? "#fff" : "#000",
             }}
           >
-            {getInitials(displayName)}
-          </div>
-        )}
-        <div>
-          <p style={{ margin: 0, fontWeight: "600", fontSize: 16 }}>{displayName}</p>
-          <p style={{ margin: 0, fontSize: 14, color: isDark ? "#ccc" : "#555" }}>
-            {profile.bio || "No bio yet — click to edit"}
-          </p>
-          <p style={{ margin: 0, fontSize: 12, color: isDark ? "#aaa" : "#888" }}>
-            {profile.email}
-          </p>
+            ⋮
+          </button>
         </div>
       </div>
 
@@ -320,8 +346,31 @@ export default function SettingsPage() {
         </div>
       </Section>
 
-      {/* ================= Preferences, Theme, Wallpaper, Notifications, About, Logout ================= */}
-      {/* Same as previous SettingsPage code... */}
+      {/* ================= Preferences Section ================= */}
+      <Section title="Preferences" isDark={isDark}>
+        <label>Theme</label>
+        <select
+          value={newTheme}
+          onChange={(e) => setNewTheme(e.target.value)}
+          style={selectStyle(isDark)}
+        >
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+
+        <label>Wallpaper</label>
+        <input
+          type="text"
+          placeholder="Wallpaper URL"
+          value={newWallpaper}
+          onChange={(e) => setNewWallpaper(e.target.value)}
+          style={selectStyle(isDark)}
+        />
+
+        <button onClick={handleSavePreferences} style={{ ...btnStyle("#007bff"), width: "100%" }}>
+          Save Preferences
+        </button>
+      </Section>
     </div>
   );
 }
@@ -356,7 +405,7 @@ const btnStyle = (bg) => ({
   fontWeight: "bold",
 });
 
-export const selectStyle = (isDark) => ({
+const selectStyle = (isDark) => ({
   width: "100%",
   padding: 8,
   marginBottom: 10,
@@ -365,3 +414,10 @@ export const selectStyle = (isDark) => ({
   color: isDark ? "#fff" : "#000",
   border: "1px solid #666",
 });
+
+const menuItemStyle = {
+  padding: "10px 15px",
+  cursor: "pointer",
+  borderBottom: "1px solid #ccc",
+  fontWeight: "500",
+};
