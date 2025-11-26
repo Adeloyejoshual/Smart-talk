@@ -254,80 +254,80 @@ export default function SettingsPage() {
       {/* ================= Wallet Section ================= */}
       <Section title="Wallet" isDark={isDark}>
         <div
-          onClick={() => navigate("/wallet")}
-          style={{ cursor: "pointer", marginBottom: 10 }}
-        >
-          <p style={{ margin: 0 }}>
-            Balance:{" "}
-            <strong style={{ color: isDark ? "#00e676" : "#007bff" }}>
-              ${balance.toFixed(2)}
-            </strong>
-          </p>
-        </div>
-
-        <button
-          onClick={handleDailyReward}
-          disabled={loadingReward || checkedInToday}
           style={{
-            ...btnStyle(checkedInToday ? "#666" : "#4CAF50"),
-            opacity: checkedInToday ? 0.7 : 1,
             marginBottom: 15,
-            width: "100%",
+            padding: 15,
+            borderRadius: 12,
+            background: isDark ? "#1f1f1f" : "#f5f5f5",
           }}
         >
-          {loadingReward
-            ? "Processing..."
-            : checkedInToday
-            ? "✅ Checked In Today"
-            : "🧩 Daily Reward (+$0.25)"}
-        </button>
+          <p style={{ margin: 0, fontSize: 14 }}>Balance:</p>
+          <h2 style={{ margin: "5px 0", color: isDark ? "#00e676" : "#007bff" }}>
+            ${balance.toFixed(2)}
+          </h2>
 
-        <div>
-          <h4 style={{ marginBottom: 8 }}>Last 3 Transactions</h4>
+          <button
+            onClick={handleDailyReward}
+            disabled={loadingReward || checkedInToday}
+            style={{
+              ...btnStyle(checkedInToday ? "#666" : "#4CAF50"),
+              opacity: checkedInToday ? 0.7 : 1,
+              marginTop: 10,
+              width: "100%",
+            }}
+          >
+            {loadingReward
+              ? "Processing..."
+              : checkedInToday
+              ? "✅ Checked In Today"
+              : "🧩 Daily Reward (+$0.25)"}
+          </button>
+        </div>
+
+        {/* Transactions List */}
+        <div style={{ maxHeight: "200px", overflowY: "auto" }}>
           {transactions.length === 0 ? (
-            <p style={{ fontSize: 14, opacity: 0.6 }}>No recent transactions.</p>
+            <p style={{ fontSize: 14, opacity: 0.6 }}>No transactions yet.</p>
           ) : (
-            transactions
-              .slice(0, 3)
-              .map((tx) => (
-                <div
-                  key={tx._id || tx.id}
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    padding: "6px 10px",
-                    marginBottom: 6,
-                    background: isDark ? "#3b3b3b" : "#f0f0f0",
-                    borderRadius: 8,
-                    fontSize: 14,
-                    cursor: "pointer",
-                  }}
-                  onClick={() =>
-                    showPopup(
-                      <div>
-                        <h3 style={{ marginBottom: 10 }}>Transaction Details</h3>
-                        <p><b>Type:</b> {tx.type}</p>
-                        <p><b>Amount:</b> ${tx.amount.toFixed(2)}</p>
-                        <p><b>Date:</b> {new Date(tx.createdAt || tx.date).toLocaleString()}</p>
-                        <p><b>Status:</b> {tx.status}</p>
-                        <p><b>Transaction ID:</b> {tx._id || tx.id}</p>
-                        <button
-                          onClick={hidePopup}
-                          style={{ marginTop: 10, padding: 6, borderRadius: 6, cursor: "pointer" }}
-                        >
-                          Close
-                        </button>
-                      </div>,
-                      { autoHide: false }
-                    )
-                  }
-                >
-                  <span>{tx.type}</span>
-                  <span style={{ color: tx.amount >= 0 ? "#2ecc71" : "#e74c3c" }}>
-                    {tx.amount >= 0 ? "+" : "-"}${Math.abs(tx.amount).toFixed(2)}
-                  </span>
-                </div>
-              ))
+            transactions.map((tx) => (
+              <div
+                key={tx._id || tx.id}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  padding: "10px",
+                  marginBottom: 8,
+                  background: isDark ? "#2b2b2b" : "#fff",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  fontSize: 14,
+                }}
+                onClick={() =>
+                  showPopup(
+                    <div>
+                      <h3 style={{ marginBottom: 10 }}>Transaction Details</h3>
+                      <p><b>Type:</b> {tx.type}</p>
+                      <p><b>Amount:</b> ${tx.amount.toFixed(2)}</p>
+                      <p><b>Date:</b> {new Date(tx.createdAt || tx.date).toLocaleString()}</p>
+                      <p><b>Status:</b> {tx.status}</p>
+                      <p><b>Transaction ID:</b> {tx._id || tx.id}</p>
+                      <button
+                        onClick={hidePopup}
+                        style={{ marginTop: 10, padding: 6, borderRadius: 6, cursor: "pointer" }}
+                      >
+                        Close
+                      </button>
+                    </div>,
+                    { autoHide: false }
+                  )
+                }
+              >
+                <span>{tx.type}</span>
+                <span style={{ color: tx.amount >= 0 ? "#2ecc71" : "#e74c3c" }}>
+                  {tx.amount >= 0 ? "+" : "-"}${Math.abs(tx.amount).toFixed(2)}
+                </span>
+              </div>
+            ))
           )}
         </div>
       </Section>
