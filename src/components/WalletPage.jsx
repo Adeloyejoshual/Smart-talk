@@ -6,7 +6,7 @@ import { usePopup } from "../context/PopupContext";
 
 export default function WalletPage() {
   const { theme } = useContext(ThemeContext);
-  const { showPopup } = usePopup();
+  const { showPopup, hidePopup } = usePopup();
   const [user, setUser] = useState(null);
   const [balance, setBalance] = useState(0);
   const [transactions, setTransactions] = useState([]);
@@ -72,9 +72,9 @@ export default function WalletPage() {
       if (res.ok) {
         setBalance(data.balance);
         setTransactions((prev) => [data.txn, ...prev]);
-        showPopup("🎉 Daily reward claimed!");
+        showPopup("🎉 Daily reward claimed!"); // auto-hide
       } else if (data.error?.toLowerCase().includes("already claimed")) {
-        showPopup("✅ You already claimed today's reward!");
+        showPopup("✅ You already claimed today's reward!"); // auto-hide
       } else {
         showPopup(data.error || "Failed to claim daily reward.");
       }
@@ -87,9 +87,6 @@ export default function WalletPage() {
   };
 
   // ---------------- HELPERS ----------------
-  const formatMonth = (date) =>
-    date.toLocaleString("en-US", { month: "long", year: "numeric" });
-
   const formatDate = (d) =>
     new Date(d).toLocaleString("en-US", {
       month: "short",
@@ -204,23 +201,19 @@ export default function WalletPage() {
                 showPopup(
                   <div>
                     <h3 style={{ marginBottom: 10 }}>Transaction Details</h3>
-                    <p>
-                      <b>Type:</b> {tx.type}
-                    </p>
-                    <p>
-                      <b>Amount:</b> ${tx.amount.toFixed(2)}
-                    </p>
-                    <p>
-                      <b>Date:</b> {formatDate(tx.createdAt || tx.date)}
-                    </p>
-                    <p>
-                      <b>Status:</b> {tx.status}
-                    </p>
-                    <p>
-                      <b>Transaction ID:</b> {tx._id}
-                    </p>
+                    <p><b>Type:</b> {tx.type}</p>
+                    <p><b>Amount:</b> ${tx.amount.toFixed(2)}</p>
+                    <p><b>Date:</b> {formatDate(tx.createdAt || tx.date)}</p>
+                    <p><b>Status:</b> {tx.status}</p>
+                    <p><b>Transaction ID:</b> {tx._id}</p>
+                    <button
+                      onClick={hidePopup}
+                      style={{ marginTop: 10, padding: 6, borderRadius: 6, cursor: "pointer" }}
+                    >
+                      Close
+                    </button>
                   </div>,
-                  { top: 100, left: "50%" }
+                  { autoHide: false } // detailed popup stays
                 )
               }
             >
