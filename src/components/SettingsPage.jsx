@@ -1,9 +1,8 @@
-import React, { useEffect, useState, useContext } from "react";
+import React, { useEffect, useState, useContext, useRef } from "react";
 import { auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
 import { ThemeContext } from "../context/ThemeContext";
 import { usePopup } from "../context/PopupContext";
-import ProfilePicture from "./ProfilePicture";
 
 const CLOUDINARY_CLOUD = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
 const CLOUDINARY_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
@@ -15,6 +14,7 @@ export default function SettingsPage() {
   const [balance, setBalance] = useState(0);
   const [transactions, setTransactions] = useState([]);
   const [checkedInToday, setCheckedInToday] = useState(false);
+
   const [language, setLanguage] = useState("English");
   const [fontSize, setFontSize] = useState("Medium");
   const [layout, setLayout] = useState("Default");
@@ -23,8 +23,8 @@ export default function SettingsPage() {
   const [previewWallpaper, setPreviewWallpaper] = useState(wallpaper);
   const [notifications, setNotifications] = useState({ push: true, email: true, sound: false });
   const [profilePic, setProfilePic] = useState(null);
-  const [selectedFile, setSelectedFile] = useState(null);
 
+  const fileInputRef = useRef(null);
   const navigate = useNavigate();
   const backend = "https://smart-talk-zlxe.onrender.com";
 
@@ -34,8 +34,8 @@ export default function SettingsPage() {
       if (!u) return setUser(null);
       setUser(u);
 
+      // Load wallet from backend (MongoDB)
       try {
-        // Wallet from backend (MongoDB)
         const token = await u.getIdToken(true);
         const res = await fetch(`${backend}/api/wallet/${u.uid}`, {
           headers: { Authorization: `Bearer ${token}` },
@@ -45,26 +45,26 @@ export default function SettingsPage() {
           setBalance(data.balance || 0);
           setTransactions(data.transactions || []);
         } else showPopup(data.error || "Failed to load wallet.");
-
-        // User preferences & profile pic
-        const userRes = await fetch(`${backend}/api/user/${u.uid}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const userData = await userRes.json();
-        if (userData.preferences) {
-          const p = userData.preferences;
-          setLanguage(p.language || "English");
-          setFontSize(p.fontSize || "Medium");
-          setLayout(p.layout || "Default");
-          setNewTheme(p.theme || "light");
-          setNewWallpaper(p.wallpaper || wallpaper);
-          setPreviewWallpaper(p.wallpaper || wallpaper);
-        }
-        setProfilePic(userData.profilePic || null);
       } catch (err) {
         console.error(err);
-        showPopup("Failed to load user data. Check console.");
+        showPopup("Failed to load wallet. Check console.");
       }
+
+      // Load user preferences and profile picture
+      const userDataRes = await fetch(`${backend}/api/user/${u.uid}`, {
+        headers: { Authorization: `Bearer await u.getIdToken(true)` },
+      });
+      const userData = await userDataRes.json();
+      if (userData.preferences) {
+        const p = userData.preferences;
+        setLanguage(p.language || "English");
+        setFontSize(p.fontSize || "Medium");
+        setLayout(p.layout || "Default");
+        setNewTheme(p.theme || "light");
+        setNewWallpaper(p.wallpaper || wallpaper);
+        setPreviewWallpaper(p.wallpaper || wallpaper);
+      }
+      setProfilePic(userData.profilePic || null);
     });
 
     return () => unsub();
@@ -83,7 +83,7 @@ export default function SettingsPage() {
   });
 
   const handleDailyCheckin = async (e) => {
-    e.stopPropagation();
+    e.stopPropagation(); // Prevent section click
     if (alreadyCheckedIn) return showPopup("✅ Already checked in today!");
     if (!user) return;
 
@@ -112,7 +112,7 @@ export default function SettingsPage() {
   // -------------------- Cloudinary Upload --------------------
   const uploadToCloudinary = async (file) => {
     if (!CLOUDINARY_CLOUD || !CLOUDINARY_PRESET)
-      throw new Error("Cloudinary environment not set");
+      throw new Error("Cloudinary env not set");
 
     const fd = new FormData();
     fd.append("file", file);
@@ -124,6 +124,26 @@ export default function SettingsPage() {
     );
     const data = await res.json();
     return data.secure_url || data.url;
+  };
+
+  // -------------------- Wallpaper --------------------
+  const handleWallpaperClick = () => fileInputRef.current.click();
+  const handleFileChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (ev) => setPreviewWallpaper(ev.target.result);
+    reader.readAsDataURL(file);
+
+    try {
+      const url = await uploadToCloudinary(file);
+      setNewWallpaper(url);
+      updateSettings(newTheme, url);
+    } catch (err) {
+      console.error(err);
+      showPopup("Failed to upload wallpaper");
+    }
   };
 
   // -------------------- Save Preferences --------------------
@@ -143,25 +163,33 @@ export default function SettingsPage() {
         }),
       });
       updateSettings(newTheme, newWallpaper);
-
-      // If profile picture changed, upload it
-      if (selectedFile) {
-        const url = await uploadToCloudinary(selectedFile);
-        setProfilePic(url);
-        await fetch(`${backend}/api/user/profile-pic`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ profilePic: url }),
-        });
-      }
-
       showPopup("✅ Preferences saved!");
     } catch (err) {
       console.error(err);
       showPopup("Failed to save preferences");
+    }
+  };
+
+  // -------------------- Profile Picture --------------------
+  const handleProfileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const url = await uploadToCloudinary(file);
+      setProfilePic(url);
+      const token = await user.getIdToken(true);
+      await fetch(`${backend}/api/user/profile-pic`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ profilePic: url }),
+      });
+      showPopup("✅ Profile picture updated!");
+    } catch (err) {
+      console.error(err);
+      showPopup("Failed to upload profile picture");
     }
   };
 
@@ -203,17 +231,36 @@ export default function SettingsPage() {
 
       {/* Profile Picture */}
       <Section title="Profile" isDark={isDark}>
-        <ProfilePicture
-          profilePic={profilePic}
-          onChange={(file, previewUrl) => {
-            setSelectedFile(file);
-            setProfilePic(previewUrl);
-          }}
-        />
-        <p style={{ textAlign: "center", marginTop: 10 }}>{user.email}</p>
+        <div style={{ display: "flex", alignItems: "center", gap: 15 }}>
+          <div
+            style={{
+              width: 80,
+              height: 80,
+              borderRadius: "50%",
+              background: "#ccc",
+              overflow: "hidden",
+              cursor: "pointer",
+            }}
+            onClick={() => document.getElementById("profilePicInput").click()}
+          >
+            {profilePic ? (
+              <img src={profilePic} alt="profile" style={{ width: "100%", height: "100%" }} />
+            ) : (
+              <p style={{ textAlign: "center", lineHeight: "80px" }}>👤</p>
+            )}
+          </div>
+          <input
+            type="file"
+            id="profilePicInput"
+            style={{ display: "none" }}
+            accept="image/*"
+            onChange={handleProfileUpload}
+          />
+          <span>{user.email}</span>
+        </div>
       </Section>
 
-      {/* Wallet Section */}
+      {/* Wallet */}
       <Section
         title="Wallet"
         isDark={isDark}
@@ -230,6 +277,10 @@ export default function SettingsPage() {
         >
           {alreadyCheckedIn ? "✅ Checked In Today" : "🧩 Daily Check-in (+$0.25)"}
         </button>
+        <div style={{ marginTop: 10 }}>
+          <button onClick={(e) => { e.stopPropagation(); navigate("/topup"); }} style={btnStyle("#007bff")}>💳 Top Up</button>
+          <button onClick={(e) => { e.stopPropagation(); navigate("/withdrawal"); }} style={btnStyle("#28a745")}>💸 Withdraw</button>
+        </div>
       </Section>
 
       {/* Preferences */}
@@ -261,28 +312,10 @@ export default function SettingsPage() {
           <option value="light">🌞 Light</option>
           <option value="dark">🌙 Dark</option>
         </select>
-        <div
-          onClick={() => document.getElementById("wallpaperInput").click()}
-          style={{ ...previewBox, backgroundImage: previewWallpaper ? `url(${previewWallpaper})` : "none" }}
-        >
+        <div onClick={handleWallpaperClick} style={{ ...previewBox, backgroundImage: previewWallpaper ? `url(${previewWallpaper})` : "none" }}>
           <p>🌈 Wallpaper Preview</p>
         </div>
-        <input
-          type="file"
-          id="wallpaperInput"
-          accept="image/*"
-          style={{ display: "none" }}
-          onChange={async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = (ev) => setPreviewWallpaper(ev.target.result);
-            reader.readAsDataURL(file);
-            const url = await uploadToCloudinary(file);
-            setNewWallpaper(url);
-            updateSettings(newTheme, url);
-          }}
-        />
+        <input type="file" accept="image/*" ref={fileInputRef} style={{ display: "none" }} onChange={handleFileChange} />
         <button onClick={handleSavePreferences} style={btnStyle("#007bff")}>💾 Save Preferences</button>
       </Section>
 
@@ -307,7 +340,7 @@ export default function SettingsPage() {
   );
 }
 
-// -------------------- Section --------------------
+// -------------------- Section Component --------------------
 function Section({ title, children, isDark, onClick, style }) {
   return (
     <div
