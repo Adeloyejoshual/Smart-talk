@@ -1,7 +1,7 @@
 // src/components/SettingsPage.jsx
 import React, { useEffect, useState, useContext, useRef } from "react";
 import { auth } from "../firebaseConfig";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { ThemeContext } from "../context/ThemeContext";
 import { usePopup } from "../context/PopupContext";
 import axios from "axios";
@@ -10,14 +10,15 @@ export default function SettingsPage() {
   const { theme, wallpaper, updateSettings } = useContext(ThemeContext);
   const { showPopup, hidePopup } = usePopup();
   const navigate = useNavigate();
-  const fileInputRef = useRef(null);
 
+  // ================= Backends =================
   const backends = [
     "https://smart-talk-zlxe.onrender.com",
     "https://www.loechat.com",
   ];
   const backend = backends[0];
 
+  // ================= States =================
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState({ name: "", bio: "", email: "", profilePic: "" });
   const [balance, setBalance] = useState(0);
@@ -32,10 +33,10 @@ export default function SettingsPage() {
   const [layout, setLayout] = useState("Default");
   const [notifications, setNotifications] = useState({ push: true, email: true, sound: false });
 
-  // Load user & wallet
+  // ================= Load user & wallet =================
   useEffect(() => {
     const unsub = auth.onAuthStateChanged(async (u) => {
-      if (!u) return navigate("/");
+      if (!u) return navigate("/"); // redirect if not logged in
       setUser(u);
 
       try {
@@ -47,6 +48,7 @@ export default function SettingsPage() {
         setBalance(res.data.balance || 0);
         setTransactions(res.data.transactions || []);
 
+        // check daily reward
         const lastClaim = res.data.lastDailyClaim ? new Date(res.data.lastDailyClaim) : null;
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -55,6 +57,7 @@ export default function SettingsPage() {
           setCheckedInToday(lastClaim.getTime() === today.getTime());
         }
 
+        // load profile
         if (res.data.profile) {
           const p = res.data.profile;
           setProfile({
@@ -79,6 +82,7 @@ export default function SettingsPage() {
     return () => unsub();
   }, []);
 
+  // ================= Daily Reward =================
   const handleDailyReward = async () => {
     if (!user) return;
     setLoadingReward(true);
@@ -109,17 +113,7 @@ export default function SettingsPage() {
     }
   };
 
-  const handleWallpaperClick = () => fileInputRef.current.click();
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (ev) => setNewWallpaper(ev.target.result);
-      reader.readAsDataURL(file);
-    }
-  };
-  const removeWallpaper = () => setNewWallpaper("");
-
+  // ================= Preferences =================
   const handleSavePreferences = async () => {
     if (!user) return;
     try {
@@ -189,7 +183,6 @@ export default function SettingsPage() {
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          cursor: "pointer",
           background: isDark ? "#2b2b2b" : "#fff",
           padding: 15,
           borderRadius: 12,
@@ -197,7 +190,7 @@ export default function SettingsPage() {
           marginBottom: 20,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center" }} onClick={() => navigate("/edit-profile")}>
+        <div style={{ display: "flex", alignItems: "center" }}>
           {profile.profilePic ? (
             <img
               src={profile.profilePic}
@@ -232,7 +225,7 @@ export default function SettingsPage() {
           <div>
             <p style={{ margin: 0, fontWeight: "600", fontSize: 16 }}>{displayName}</p>
             <p style={{ margin: 0, fontSize: 14, color: isDark ? "#ccc" : "#555" }}>
-              {profile.bio || "No bio yet — click to edit"}
+              {profile.bio || "No bio yet"}
             </p>
             <p style={{ margin: 0, fontSize: 12, color: isDark ? "#aaa" : "#888" }}>
               {profile.email}
@@ -241,27 +234,29 @@ export default function SettingsPage() {
         </div>
 
         {/* 3-dot menu */}
-        <div style={{ position: "relative" }}>
+        <div>
           <button
-            onClick={() => showPopup(
-              <div style={{ display: "flex", flexDirection: "column" }}>
-                <div
-                  style={{ ...menuItemStyle }}
-                  onClick={() => {
-                    hidePopup();
-                    navigate("/edit-profile");
-                  }}
-                >
-                  Edit Profile
+            onClick={() =>
+              showPopup(
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  <div
+                    style={menuItemStyle}
+                    onClick={() => {
+                      hidePopup();
+                      navigate("/edit-profile", { state: { profile, setProfile } });
+                    }}
+                  >
+                    Edit Profile
+                  </div>
+                  <div
+                    style={menuItemStyle}
+                    onClick={() => auth.signOut().then(() => navigate("/"))}
+                  >
+                    Logout
+                  </div>
                 </div>
-                <div
-                  style={{ ...menuItemStyle }}
-                  onClick={() => auth.signOut().then(() => navigate("/"))}
-                >
-                  Logout
-                </div>
-              </div>
-            )}
+              )
+            }
             style={{
               background: "transparent",
               border: "none",
@@ -351,9 +346,8 @@ export default function SettingsPage() {
         </div>
       </Section>
 
-      {/* ================= Preferences ================= */}
+      {/* ================= Preferences Section ================= */}
       <Section title="Preferences" isDark={isDark}>
-        {/* Theme */}
         <label>Theme</label>
         <select
           value={newTheme}
@@ -364,68 +358,16 @@ export default function SettingsPage() {
           <option value="dark">Dark</option>
         </select>
 
-        {/* Wallpaper */}
         <label>Wallpaper</label>
-        <div style={{ display: "flex", alignItems: "center", marginBottom: 10 }}>
-          <button
-            onClick={handleWallpaperClick}
-            style={{ ...btnStyle("#007bff"), marginRight: 10 }}
-          >
-            Choose
-          </button>
-          {newWallpaper && (
-            <button onClick={removeWallpaper} style={btnStyle("#888")}>
-              Remove
-            </button>
-          )}
-          <input
-            type="file"
-            ref={fileInputRef}
-            style={{ display: "none" }}
-            accept="image/*"
-            onChange={handleFileChange}
-          />
-        </div>
-
-        {/* Language */}
-        <label>Language</label>
-        <select
-          value={language}
-          onChange={(e) => setLanguage(e.target.value)}
+        <input
+          type="text"
+          placeholder="Wallpaper URL"
+          value={newWallpaper}
+          onChange={(e) => setNewWallpaper(e.target.value)}
           style={selectStyle(isDark)}
-        >
-          <option value="English">English</option>
-          <option value="Spanish">Spanish</option>
-          <option value="French">French</option>
-        </select>
+        />
 
-        {/* Font Size */}
-        <label>Font Size</label>
-        <select
-          value={fontSize}
-          onChange={(e) => setFontSize(e.target.value)}
-          style={selectStyle(isDark)}
-        >
-          <option value="Small">Small</option>
-          <option value="Medium">Medium</option>
-          <option value="Large">Large</option>
-        </select>
-
-        {/* Layout */}
-        <label>Layout</label>
-        <select
-          value={layout}
-          onChange={(e) => setLayout(e.target.value)}
-          style={selectStyle(isDark)}
-        >
-          <option value="Default">Default</option>
-          <option value="Compact">Compact</option>
-        </select>
-
-        <button
-          onClick={handleSavePreferences}
-          style={{ ...btnStyle("#28a745"), marginTop: 10, width: "100%" }}
-        >
+        <button onClick={handleSavePreferences} style={{ ...btnStyle("#007bff"), width: "100%" }}>
           Save Preferences
         </button>
       </Section>
@@ -433,7 +375,7 @@ export default function SettingsPage() {
   );
 }
 
-// Section component
+// ================= Section Wrapper =================
 function Section({ title, children, isDark }) {
   return (
     <div
@@ -451,6 +393,7 @@ function Section({ title, children, isDark }) {
   );
 }
 
+// ================= Reusable Styles =================
 const btnStyle = (bg) => ({
   marginRight: 8,
   padding: "10px 15px",
@@ -462,7 +405,7 @@ const btnStyle = (bg) => ({
   fontWeight: "bold",
 });
 
-export const selectStyle = (isDark) => ({
+const selectStyle = (isDark) => ({
   width: "100%",
   padding: 8,
   marginBottom: 10,
@@ -475,7 +418,6 @@ export const selectStyle = (isDark) => ({
 const menuItemStyle = {
   padding: "10px 15px",
   cursor: "pointer",
-  borderBottom: "1px solid #888",
-  fontSize: 14,
-  background: "inherit",
+  borderBottom: "1px solid #ccc",
+  fontWeight: "500",
 };
