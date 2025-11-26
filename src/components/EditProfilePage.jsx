@@ -1,18 +1,16 @@
 // src/components/SettingsPage.jsx
 import React, { useEffect, useState, useContext, useRef } from "react";
-import { auth, db } from "../firebaseConfig";
+import { auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
 import { ThemeContext } from "../context/ThemeContext";
 import { usePopup } from "../context/PopupContext";
 import axios from "axios";
-import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 
 export default function SettingsPage() {
   const { theme, wallpaper, updateSettings } = useContext(ThemeContext);
   const { showPopup, hidePopup } = usePopup();
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
-  const menuRef = useRef(null);
 
   const backends = [
     "https://smart-talk-zlxe.onrender.com",
@@ -34,12 +32,10 @@ export default function SettingsPage() {
   const [layout, setLayout] = useState("Default");
   const [notifications, setNotifications] = useState({ push: true, email: true, sound: false });
 
-  const [showProfileMenu, setShowProfileMenu] = useState(false);
-
-  // ================= Auth & Load Wallet =================
+  // Load user & wallet
   useEffect(() => {
     const unsub = auth.onAuthStateChanged(async (u) => {
-      if (!u) return navigate("/"); // redirect if not logged in
+      if (!u) return navigate("/");
       setUser(u);
 
       try {
@@ -59,7 +55,6 @@ export default function SettingsPage() {
           setCheckedInToday(lastClaim.getTime() === today.getTime());
         }
 
-        // Load profile
         if (res.data.profile) {
           const p = res.data.profile;
           setProfile({
@@ -84,7 +79,6 @@ export default function SettingsPage() {
     return () => unsub();
   }, []);
 
-  // ================= Daily Reward =================
   const handleDailyReward = async () => {
     if (!user) return;
     setLoadingReward(true);
@@ -115,41 +109,6 @@ export default function SettingsPage() {
     }
   };
 
-  // ================= Profile Picture Upload =================
-  const onProfileFileChange = async (e) => {
-    const file = e.target.files[0];
-    if (!file || !user) return;
-
-    const reader = new FileReader();
-    reader.onload = async (ev) => {
-      setProfile({ ...profile, profilePic: ev.target.result });
-
-      try {
-        const userRef = doc(db, "users", user.uid);
-        await updateDoc(userRef, {
-          profilePic: ev.target.result,
-          updatedAt: serverTimestamp(),
-        });
-      } catch (err) {
-        console.error("Failed to update profile picture:", err);
-      }
-    };
-    reader.readAsDataURL(file);
-  };
-
-  // ================= Inline Name/Bio Update =================
-  const handleProfileUpdate = async (key, value) => {
-    setProfile({ ...profile, [key]: value });
-    if (!user) return;
-    try {
-      const userRef = doc(db, "users", user.uid);
-      await updateDoc(userRef, { [key]: value, updatedAt: serverTimestamp() });
-    } catch (err) {
-      console.error(`Failed to update ${key}:`, err);
-    }
-  };
-
-  // ================= Wallpaper =================
   const handleWallpaperClick = () => fileInputRef.current.click();
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -183,17 +142,6 @@ export default function SettingsPage() {
       showPopup("Failed to save preferences.");
     }
   };
-
-  // ================= Menu click outside =================
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (menuRef.current && !menuRef.current.contains(event.target)) {
-        setShowProfileMenu(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
 
   const isDark = newTheme === "dark";
   const displayName = profile.name || "No Name";
@@ -240,18 +188,16 @@ export default function SettingsPage() {
         style={{
           display: "flex",
           alignItems: "center",
+          justifyContent: "space-between",
+          cursor: "pointer",
           background: isDark ? "#2b2b2b" : "#fff",
           padding: 15,
           borderRadius: 12,
           boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
-          position: "relative",
+          marginBottom: 20,
         }}
       >
-        {/* Profile Picture */}
-        <div
-          style={{ position: "relative", marginRight: 15 }}
-          onClick={() => fileInputRef.current.click()}
-        >
+        <div style={{ display: "flex", alignItems: "center" }} onClick={() => navigate("/edit-profile")}>
           {profile.profilePic ? (
             <img
               src={profile.profilePic}
@@ -261,6 +207,7 @@ export default function SettingsPage() {
                 height: 70,
                 borderRadius: "50%",
                 objectFit: "cover",
+                marginRight: 15,
               }}
             />
           ) : (
@@ -276,122 +223,56 @@ export default function SettingsPage() {
                 display: "flex",
                 justifyContent: "center",
                 alignItems: "center",
+                marginRight: 15,
               }}
             >
               {getInitials(displayName)}
             </div>
           )}
+          <div>
+            <p style={{ margin: 0, fontWeight: "600", fontSize: 16 }}>{displayName}</p>
+            <p style={{ margin: 0, fontSize: 14, color: isDark ? "#ccc" : "#555" }}>
+              {profile.bio || "No bio yet — click to edit"}
+            </p>
+            <p style={{ margin: 0, fontSize: 12, color: isDark ? "#aaa" : "#888" }}>
+              {profile.email}
+            </p>
+          </div>
+        </div>
 
-          <div
+        {/* 3-dot menu */}
+        <div style={{ position: "relative" }}>
+          <button
+            onClick={() => showPopup(
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                <div
+                  style={{ ...menuItemStyle }}
+                  onClick={() => {
+                    hidePopup();
+                    navigate("/edit-profile");
+                  }}
+                >
+                  Edit Profile
+                </div>
+                <div
+                  style={{ ...menuItemStyle }}
+                  onClick={() => auth.signOut().then(() => navigate("/"))}
+                >
+                  Logout
+                </div>
+              </div>
+            )}
             style={{
-              position: "absolute",
-              bottom: 0,
-              right: 0,
-              background: "#000a",
-              borderRadius: "50%",
-              padding: 4,
+              background: "transparent",
+              border: "none",
+              fontSize: 22,
               cursor: "pointer",
+              color: isDark ? "#fff" : "#000",
             }}
           >
-            ✎
-          </div>
-
-          <input
-            type="file"
-            ref={fileInputRef}
-            style={{ display: "none" }}
-            accept="image/*"
-            onChange={onProfileFileChange}
-          />
+            ⋮
+          </button>
         </div>
-
-        {/* Name & Bio */}
-        <div style={{ flex: 1 }}>
-          <input
-            value={profile.name}
-            onChange={(e) => handleProfileUpdate("name", e.target.value)}
-            placeholder="Your name"
-            style={{
-              width: "100%",
-              fontWeight: "600",
-              fontSize: 16,
-              border: "none",
-              background: "transparent",
-              color: isDark ? "#fff" : "#000",
-              marginBottom: 3,
-            }}
-          />
-          <textarea
-            value={profile.bio}
-            onChange={(e) => handleProfileUpdate("bio", e.target.value)}
-            placeholder="Your bio"
-            rows={2}
-            style={{
-              width: "100%",
-              border: "none",
-              background: "transparent",
-              color: isDark ? "#ccc" : "#555",
-              fontSize: 14,
-              resize: "none",
-            }}
-          />
-          <p style={{ fontSize: 12, color: isDark ? "#aaa" : "#888" }}>{profile.email}</p>
-        </div>
-
-        {/* 3-Dot Menu */}
-        <div
-          onClick={(e) => {
-            e.stopPropagation();
-            setShowProfileMenu(!showProfileMenu);
-          }}
-          style={{
-            padding: 5,
-            cursor: "pointer",
-            fontSize: 20,
-            color: isDark ? "#fff" : "#333",
-          }}
-        >
-          ⋮
-        </div>
-
-        {/* Dropdown Menu */}
-        {showProfileMenu && (
-          <div
-            ref={menuRef}
-            style={{
-              position: "absolute",
-              top: 60,
-              right: 15,
-              background: isDark ? "#333" : "#fff",
-              color: isDark ? "#fff" : "#000",
-              border: "1px solid #888",
-              borderRadius: 8,
-              boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
-              zIndex: 10,
-              minWidth: 140,
-              overflow: "hidden",
-            }}
-          >
-            <div
-              onClick={() => {
-                navigate("/edit-profile");
-                setShowProfileMenu(false);
-              }}
-              style={menuItemStyle}
-            >
-              Edit Profile
-            </div>
-            <div
-              onClick={() => {
-                auth.signOut();
-                navigate("/");
-              }}
-              style={menuItemStyle}
-            >
-              Logout
-            </div>
-          </div>
-        )}
       </div>
 
       {/* ================= Wallet Section ================= */}
@@ -470,67 +351,89 @@ export default function SettingsPage() {
         </div>
       </Section>
 
-      {/* ================= Preferences Section ================= */}
+      {/* ================= Preferences ================= */}
       <Section title="Preferences" isDark={isDark}>
-        <div style={{ marginBottom: 10 }}>
-          <label>Theme</label>
-          <select
-            value={newTheme}
-            onChange={(e) => setNewTheme(e.target.value)}
-            style={selectStyle(isDark)}
+        {/* Theme */}
+        <label>Theme</label>
+        <select
+          value={newTheme}
+          onChange={(e) => setNewTheme(e.target.value)}
+          style={selectStyle(isDark)}
+        >
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+
+        {/* Wallpaper */}
+        <label>Wallpaper</label>
+        <div style={{ display: "flex", alignItems: "center", marginBottom: 10 }}>
+          <button
+            onClick={handleWallpaperClick}
+            style={{ ...btnStyle("#007bff"), marginRight: 10 }}
           >
-            <option value="light">Light</option>
-            <option value="dark">Dark</option>
-          </select>
-
-          <label>Wallpaper</label>
-          <div style={{ display: "flex", alignItems: "center", marginBottom: 10 }}>
-            <button onClick={handleWallpaperClick} style={{ marginRight: 10, ...btnStyle("#007bff") }}>
-              Choose Wallpaper
-            </button>
-            {newWallpaper && (
-              <button onClick={removeWallpaper} style={{ ...btnStyle("#888") }}>Remove</button>
-            )}
-            <input
-              type="file"
-              ref={fileInputRef}
-              style={{ display: "none" }}
-              accept="image/*"
-              onChange={handleFileChange}
-            />
-          </div>
-
-          <label>Language</label>
-          <select value={language} onChange={(e) => setLanguage(e.target.value)} style={selectStyle(isDark)}>
-            <option>English</option>
-            <option>Spanish</option>
-            <option>French</option>
-          </select>
-
-          <label>Font Size</label>
-          <select value={fontSize} onChange={(e) => setFontSize(e.target.value)} style={selectStyle(isDark)}>
-            <option>Small</option>
-            <option>Medium</option>
-            <option>Large</option>
-          </select>
-
-          <label>Layout</label>
-          <select value={layout} onChange={(e) => setLayout(e.target.value)} style={selectStyle(isDark)}>
-            <option>Default</option>
-            <option>Compact</option>
-            <option>Spacious</option>
-          </select>
-
-          <button onClick={handleSavePreferences} style={{ ...btnStyle("#28a745"), width: "100%", marginTop: 10 }}>
-            Save Preferences
+            Choose
           </button>
+          {newWallpaper && (
+            <button onClick={removeWallpaper} style={btnStyle("#888")}>
+              Remove
+            </button>
+          )}
+          <input
+            type="file"
+            ref={fileInputRef}
+            style={{ display: "none" }}
+            accept="image/*"
+            onChange={handleFileChange}
+          />
         </div>
+
+        {/* Language */}
+        <label>Language</label>
+        <select
+          value={language}
+          onChange={(e) => setLanguage(e.target.value)}
+          style={selectStyle(isDark)}
+        >
+          <option value="English">English</option>
+          <option value="Spanish">Spanish</option>
+          <option value="French">French</option>
+        </select>
+
+        {/* Font Size */}
+        <label>Font Size</label>
+        <select
+          value={fontSize}
+          onChange={(e) => setFontSize(e.target.value)}
+          style={selectStyle(isDark)}
+        >
+          <option value="Small">Small</option>
+          <option value="Medium">Medium</option>
+          <option value="Large">Large</option>
+        </select>
+
+        {/* Layout */}
+        <label>Layout</label>
+        <select
+          value={layout}
+          onChange={(e) => setLayout(e.target.value)}
+          style={selectStyle(isDark)}
+        >
+          <option value="Default">Default</option>
+          <option value="Compact">Compact</option>
+        </select>
+
+        <button
+          onClick={handleSavePreferences}
+          style={{ ...btnStyle("#28a745"), marginTop: 10, width: "100%" }}
+        >
+          Save Preferences
+        </button>
       </Section>
     </div>
   );
 }
 
-// ================= Section Wrapper =================
+// Section component
 function Section({ title, children, isDark }) {
   return (
     <div
@@ -538,7 +441,7 @@ function Section({ title, children, isDark }) {
         background: isDark ? "#2b2b2b" : "#fff",
         padding: 20,
         borderRadius: 12,
-marginTop: 25,
+        marginTop: 25,
         boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
       }}
     >
@@ -548,7 +451,6 @@ marginTop: 25,
   );
 }
 
-// ================= Reusable Styles =================
 const btnStyle = (bg) => ({
   marginRight: 8,
   padding: "10px 15px",
@@ -570,7 +472,6 @@ export const selectStyle = (isDark) => ({
   border: "1px solid #666",
 });
 
-// ================= Menu Item Style =================
 const menuItemStyle = {
   padding: "10px 15px",
   cursor: "pointer",
