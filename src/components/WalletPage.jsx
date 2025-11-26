@@ -36,13 +36,10 @@ export default function WalletPage() {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
+
       if (res.ok) {
         setBalance(data.balance || 0);
         setTransactions(data.transactions || []);
-        if (data.transactions?.length)
-          setSelectedMonth(
-            new Date(data.transactions[0].createdAt || data.transactions[0].date)
-          );
       } else {
         showPopup(data.error || "Failed to load wallet.");
       }
@@ -72,9 +69,9 @@ export default function WalletPage() {
       if (res.ok) {
         setBalance(data.balance);
         setTransactions((prev) => [data.txn, ...prev]);
-        showPopup("🎉 Daily reward claimed!"); // auto-hide
+        showPopup("🎉 Daily reward claimed!");
       } else if (data.error?.toLowerCase().includes("already claimed")) {
-        showPopup("✅ You already claimed today's reward!"); // auto-hide
+        showPopup("✅ You already claimed today's reward!");
       } else {
         showPopup(data.error || "Failed to claim daily reward.");
       }
@@ -114,6 +111,15 @@ export default function WalletPage() {
     );
   });
 
+  const prevMonth = () =>
+    setSelectedMonth(
+      new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() - 1, 1)
+    );
+  const nextMonth = () =>
+    setSelectedMonth(
+      new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() + 1, 1)
+    );
+
   return (
     <div
       style={{
@@ -122,6 +128,7 @@ export default function WalletPage() {
         color: theme === "dark" ? "#fff" : "#000",
       }}
     >
+      {/* Back Button */}
       <button
         onClick={() => navigate("/settings")}
         style={{
@@ -132,8 +139,11 @@ export default function WalletPage() {
       >
         ←
       </button>
+
+      {/* Title */}
       <h2 style={styles.title}>Wallet</h2>
 
+      {/* Wallet Card */}
       <div
         style={{
           ...styles.walletCard,
@@ -143,6 +153,7 @@ export default function WalletPage() {
         <p style={styles.balanceLabel}>Balance</p>
         <h1 style={styles.balanceAmount}>${balance.toFixed(2)}</h1>
 
+        {/* Top-Up / Withdraw */}
         <div style={styles.actionRow}>
           <button
             style={{
@@ -164,6 +175,7 @@ export default function WalletPage() {
           </button>
         </div>
 
+        {/* Daily Reward */}
         <div style={{ marginTop: 15 }}>
           <button
             style={{
@@ -183,7 +195,34 @@ export default function WalletPage() {
         </div>
       </div>
 
-      {/* Transactions list */}
+      {/* Month Selector with Today Button */}
+      <div style={styles.monthSelector}>
+        <button onClick={prevMonth}>◀</button>
+        <span style={{ fontWeight: "bold" }}>
+          {selectedMonth.toLocaleString("default", {
+            month: "long",
+            year: "numeric",
+          })}
+        </span>
+        <button onClick={nextMonth}>▶</button>
+        <button
+          onClick={() => setSelectedMonth(new Date())}
+          style={{
+            marginLeft: 10,
+            padding: "4px 10px",
+            borderRadius: 6,
+            border: "none",
+            backgroundColor: theme === "dark" ? "#3b82f6" : "#34d399",
+            color: "#fff",
+            cursor: "pointer",
+            fontSize: 12,
+          }}
+        >
+          Today
+        </button>
+      </div>
+
+      {/* Transactions List */}
       <div style={styles.list}>
         {filteredTransactions.length === 0 ? (
           <p style={{ textAlign: "center", opacity: 0.5, marginTop: 10 }}>
@@ -201,19 +240,34 @@ export default function WalletPage() {
                 showPopup(
                   <div>
                     <h3 style={{ marginBottom: 10 }}>Transaction Details</h3>
-                    <p><b>Type:</b> {tx.type}</p>
-                    <p><b>Amount:</b> ${tx.amount.toFixed(2)}</p>
-                    <p><b>Date:</b> {formatDate(tx.createdAt || tx.date)}</p>
-                    <p><b>Status:</b> {tx.status}</p>
-                    <p><b>Transaction ID:</b> {tx._id}</p>
+                    <p>
+                      <b>Type:</b> {tx.type}
+                    </p>
+                    <p>
+                      <b>Amount:</b> ${tx.amount.toFixed(2)}
+                    </p>
+                    <p>
+                      <b>Date:</b> {formatDate(tx.createdAt || tx.date)}
+                    </p>
+                    <p>
+                      <b>Status:</b> {tx.status}
+                    </p>
+                    <p>
+                      <b>Transaction ID:</b> {tx._id}
+                    </p>
                     <button
                       onClick={hidePopup}
-                      style={{ marginTop: 10, padding: 6, borderRadius: 6, cursor: "pointer" }}
+                      style={{
+                        marginTop: 10,
+                        padding: 6,
+                        borderRadius: 6,
+                        cursor: "pointer",
+                      }}
                     >
                       Close
                     </button>
                   </div>,
-                  { autoHide: false } // detailed popup stays
+                  { autoHide: false }
                 )
               }
             >
@@ -243,13 +297,23 @@ export default function WalletPage() {
 
 const styles = {
   page: { minHeight: "100vh", padding: 25 },
-  backBtn: { position: "absolute", top: 20, left: 20, padding: "10px 14px", borderRadius: "50%", border: "none", cursor: "pointer", fontSize: 18 },
+  backBtn: {
+    position: "absolute",
+    top: 20,
+    left: 20,
+    padding: "10px 14px",
+    borderRadius: "50%",
+    border: "none",
+    cursor: "pointer",
+    fontSize: 18,
+  },
   title: { marginTop: 20, textAlign: "center", fontSize: 26 },
   walletCard: { padding: 20, borderRadius: 18, marginTop: 20, textAlign: "center", position: "relative" },
   balanceLabel: { opacity: 0.6 },
   balanceAmount: { fontSize: 36, margin: "10px 0" },
   actionRow: { display: "flex", justifyContent: "center", gap: 15, marginTop: 15 },
   roundBtn: { padding: "12px 20px", borderRadius: 30, border: "none", fontWeight: "bold", color: "#fff" },
+  monthSelector: { display: "flex", justifyContent: "center", alignItems: "center", gap: 15, marginTop: 20, marginBottom: 10 },
   list: { marginTop: 10, maxHeight: "60vh", overflowY: "auto" },
   txRowCompact: { padding: "10px 12px", borderRadius: 10, marginBottom: 8, display: "flex", justifyContent: "space-between", cursor: "pointer" },
   txLeftCompact: {},
