@@ -1,3 +1,4 @@
+// src/context/PopupContext.jsx
 import React, { createContext, useState, useContext, useEffect, useRef } from "react";
 import { ThemeContext } from "./ThemeContext";
 
@@ -9,58 +10,52 @@ export const PopupProvider = ({ children }) => {
   const [popup, setPopup] = useState({
     visible: false,
     content: null,
-    centered: false,       // NEW: whether popup is center screen
-    position: { top: 0, left: 0 },
+    autoHide: true,
   });
 
   const popupRef = useRef();
+  const timeoutRef = useRef();
 
-  // Show popup: can be centered or relative to an element
   const showPopup = (content, options = {}) => {
-    const { elementRef = null, offset = { x: 0, y: 0 }, centered = true } = options;
+    const { autoHide = true } = options;
 
-    if (centered || !elementRef?.current) {
-      setPopup({ visible: true, content, centered: true, position: { top: 0, left: 0 } });
-      return;
+    setPopup({ visible: true, content, autoHide });
+
+    // Clear previous timeout
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+
+    // Auto-hide after 2.5s for simple messages
+    if (autoHide) {
+      timeoutRef.current = setTimeout(() => {
+        hidePopup();
+      }, 2500);
     }
-
-    const rect = elementRef.current.getBoundingClientRect();
-    const popupWidth = 200;
-    const popupHeight = 80;
-
-    let top = rect.bottom + offset.y + window.scrollY;
-    let left = rect.left + offset.x + window.scrollX;
-
-    // Flip above if too close to bottom
-    if (top + popupHeight > window.innerHeight + window.scrollY) {
-      top = rect.top - popupHeight - offset.y + window.scrollY;
-    }
-
-    if (left + popupWidth > window.innerWidth + window.scrollX) {
-      left = window.innerWidth - popupWidth - 10;
-    }
-
-    setPopup({ visible: true, content, centered: false, position: { top, left } });
   };
 
-  const hidePopup = () => setPopup({ visible: false, content: null });
+  const hidePopup = () => {
+    setPopup({ visible: false, content: null, autoHide: true });
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+  };
 
+  // Close when clicking outside (only for detailed popups)
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (popupRef.current && !popupRef.current.contains(e.target)) {
+      if (popupRef.current && !popupRef.current.contains(e.target) && !popup.autoHide) {
         hidePopup();
       }
     };
-    if (popup.visible) document.addEventListener("mousedown", handleClickOutside);
+    if (popup.visible) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [popup.visible]);
+  }, [popup.visible, popup.autoHide]);
 
-  // Styles
+  // Centered popup style + theme
   const popupStyle = {
     position: "fixed",
-    top: popup.centered ? "50%" : popup.position.top,
-    left: popup.centered ? "50%" : popup.position.left,
-    transform: popup.centered ? "translate(-50%, -50%)" : "none",
+    top: "50%",
+    left: "50%",
+    transform: "translate(-50%, -50%)",
     background: theme === "dark" ? "rgba(20,20,20,0.95)" : "#fff",
     color: theme === "dark" ? "#fff" : "#000",
     borderRadius: 12,
@@ -70,7 +65,7 @@ export const PopupProvider = ({ children }) => {
         : "0 8px 30px rgba(0,0,0,0.15)",
     zIndex: 99999,
     minWidth: 160,
-    maxWidth: 300,
+    maxWidth: 320,
     padding: 12,
     border: theme === "dark" ? "1px solid #333" : "1px solid #eee",
     backdropFilter: "blur(6px)",
