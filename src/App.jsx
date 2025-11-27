@@ -103,7 +103,7 @@ export default function App() {
           </span>
         </div>
         <p style={{ marginTop: 16, fontSize: 15, opacity: 0.8 }}>
-          SmartTalk is starting…
+          loechat is starting…
         </p>
       </div>
     );
