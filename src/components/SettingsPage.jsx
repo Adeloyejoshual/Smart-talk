@@ -35,6 +35,17 @@ function useAnimatedNumber(target, duration = 800) {
   return display;
 }
 
+// ====== Simulated ad function ======
+const showAd = async () => {
+  return new Promise((resolve) => {
+    console.log("Ad showing...");
+    setTimeout(() => {
+      console.log("Ad finished");
+      resolve(true);
+    }, 3000); // simulate 3s ad
+  });
+};
+
 export default function SettingsPage() {
   const { theme } = useContext(ThemeContext);
   const { showPopup } = usePopup();
@@ -130,11 +141,27 @@ export default function SettingsPage() {
     });
   };
 
-  const handleDailyReward = async () => {
+  const alreadyClaimed = (() => {
+    if (!transactions || transactions.length === 0) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    return transactions.some((t) => {
+      if (t.type !== "checkin") return false;
+      const txDate = new Date(t.createdAt || t.date);
+      txDate.setHours(0, 0, 0, 0);
+      return txDate.getTime() === today.getTime();
+    });
+  })();
+
+  const handleDailyRewardClick = async (e) => {
+    e.stopPropagation();
     if (!user || loadingReward) return;
     setLoadingReward(true);
 
     try {
+      if (!alreadyClaimed) await showAd(); // show ad before claiming
+
       const token = await getToken();
       const res = await fetch(`${backend}/api/wallet/daily`, {
         method: "POST",
@@ -151,7 +178,6 @@ export default function SettingsPage() {
         setTransactions((prev) => [data.txn, ...prev]);
         showPopup("🎉 Daily reward claimed!");
         launchConfetti();
-
         setFlashReward(true);
         setTimeout(() => setFlashReward(false), 600);
       } else if (data.error?.toLowerCase().includes("already claimed")) {
@@ -167,18 +193,11 @@ export default function SettingsPage() {
     }
   };
 
-  const alreadyClaimed = (() => {
-    if (!transactions || transactions.length === 0) return false;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    return transactions.some((t) => {
-      if (t.type !== "checkin") return false;
-      const txDate = new Date(t.createdAt || t.date);
-      txDate.setHours(0, 0, 0, 0);
-      return txDate.getTime() === today.getTime();
-    });
-  })();
+  // ================== Wallet Click with Ad ==================
+  const handleWalletClick = async () => {
+    await showAd();
+    navigate("/wallet");
+  };
 
   // ================== Cloudinary Upload ==================
   const uploadToCloudinary = async (file) => {
@@ -357,7 +376,7 @@ export default function SettingsPage() {
               cursor: "pointer",
               transition: "transform 0.2s",
             }}
-            onClick={() => navigate("/wallet")}
+            onClick={handleWalletClick}
             onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.02)")}
             onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
           >
@@ -376,10 +395,7 @@ export default function SettingsPage() {
 
             {/* Daily Reward Button */}
             <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleDailyReward();
-              }}
+              onClick={handleDailyRewardClick}
               disabled={loadingReward || alreadyClaimed}
               style={{
                 marginTop: 12,
