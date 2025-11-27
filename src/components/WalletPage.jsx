@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { ThemeContext } from "../context/ThemeContext";
 import { usePopup } from "../context/PopupContext";
 import confetti from "canvas-confetti";
+import { useAd } from "./AdGateway"; // <-- hook to trigger ads
 
 // Animated balance hook
 function useAnimatedNumber(target, duration = 800) {
@@ -40,6 +41,7 @@ export default function WalletPage() {
   const [loadingReward, setLoadingReward] = useState(false);
   const [flashReward, setFlashReward] = useState(false);
   const navigate = useNavigate();
+  const { showRewardAd } = useAd(); // hook to trigger ads
 
   const backend = "https://smart-talk-zlxe.onrender.com";
 
@@ -82,6 +84,15 @@ export default function WalletPage() {
     setLoadingReward(true);
 
     try {
+      // Show Rewarded Ad first
+      const adSuccess = await showRewardAd(); // resolves true when ad completes
+      if (!adSuccess) {
+        showPopup("Ad was skipped or failed. Reward not credited.");
+        setLoadingReward(false);
+        return;
+      }
+
+      // After ad completes, claim daily reward
       const token = await getToken();
       const res = await fetch(`${backend}/api/wallet/daily`, {
         method: "POST",
@@ -98,7 +109,6 @@ export default function WalletPage() {
         setTransactions((prev) => [data.txn, ...prev]);
         showPopup("🎉 Daily reward claimed!");
 
-        // Confetti
         confetti({
           particleCount: 120,
           spread: 90,
@@ -106,7 +116,6 @@ export default function WalletPage() {
           colors: ["#ffd700", "#ff9800", "#00e676", "#007bff"],
         });
 
-        // Flash gold effect
         setFlashReward(true);
         setTimeout(() => setFlashReward(false), 600);
       } else if (data.error?.toLowerCase().includes("already claimed")) {
