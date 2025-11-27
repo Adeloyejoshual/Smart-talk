@@ -6,10 +6,34 @@ import { signOut } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
 import { ThemeContext } from "../context/ThemeContext";
 import { usePopup } from "../context/PopupContext";
+import confetti from "canvas-confetti";
 
 // Cloudinary env
 const CLOUDINARY_CLOUD = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
 const CLOUDINARY_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+
+// ====== Hook for animated number ======
+function useAnimatedNumber(target, duration = 800) {
+  const [display, setDisplay] = useState(target);
+  const raf = useRef();
+
+  useEffect(() => {
+    const start = display;
+    const diff = target - start;
+    const startTime = performance.now();
+
+    const animate = (time) => {
+      const progress = Math.min((time - startTime) / duration, 1);
+      setDisplay(start + diff * progress);
+      if (progress < 1) raf.current = requestAnimationFrame(animate);
+    };
+
+    raf.current = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(raf.current);
+  }, [target]);
+
+  return display;
+}
 
 export default function SettingsPage() {
   const { theme } = useContext(ThemeContext);
@@ -24,6 +48,7 @@ export default function SettingsPage() {
   const [selectedFile, setSelectedFile] = useState(null);
 
   const [balance, setBalance] = useState(0);
+  const animatedBalance = useAnimatedNumber(balance, 800); // animated balance
   const [transactions, setTransactions] = useState([]);
   const [loadingReward, setLoadingReward] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -109,6 +134,15 @@ export default function SettingsPage() {
     });
   }, [transactions]);
 
+  const launchConfetti = () => {
+    confetti({
+      particleCount: 120,
+      spread: 90,
+      origin: { y: 0.5 },
+      colors: ["#ffd700", "#ff9800", "#00e676", "#007bff"],
+    });
+  };
+
   const handleDailyReward = async () => {
     if (!user || alreadyClaimed) return;
     setLoadingReward(true);
@@ -129,6 +163,7 @@ export default function SettingsPage() {
         setBalance(data.balance);
         setTransactions((prev) => [data.txn, ...prev]);
         showPopup("🎉 Daily reward claimed!");
+        launchConfetti();
       } else if (data.error?.toLowerCase().includes("already claimed")) {
         showPopup("✅ You already claimed today's reward!");
       } else {
@@ -197,6 +232,24 @@ export default function SettingsPage() {
         color: isDark ? "#fff" : "#000",
       }}
     >
+      {/* Back Arrow */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          marginBottom: 16,
+          cursor: "pointer",
+          color: isDark ? "#fff" : "#000",
+          fontSize: 20,
+          fontWeight: "bold",
+        }}
+        onClick={() => navigate("/chat")}
+        title="Back to Chat"
+      >
+        ← Back
+      </div>
+
+      {/* Settings Header */}
       <h2 style={{ textAlign: "center", marginBottom: 20 }}>⚙️ Settings</h2>
 
       {/* ================= Profile Card ================= */}
@@ -296,20 +349,30 @@ export default function SettingsPage() {
           {/* ================= Wallet Panel ================= */}
           <div
             style={{
-              padding: 12,
+              padding: 16,
               background: isDark ? "#1f1f1f" : "#eef6ff",
               borderRadius: 12,
               cursor: "pointer",
+              transition: "transform 0.2s",
             }}
             onClick={() => navigate("/wallet")}
+            onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.02)")}
+            onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
           >
-            <p style={{ margin: 0 }}>
-              Balance:{" "}
-              <strong style={{ color: isDark ? "#00e676" : "#007bff" }}>
-                ${balance.toFixed(2)}
-              </strong>
-            </p>
+            <p style={{ margin: 0, fontSize: 16 }}>Balance:</p>
+            <strong
+              style={{
+                color: isDark ? "#00e676" : "#007bff",
+                fontSize: 24,
+                display: "inline-block",
+                marginTop: 4,
+                transition: "all 0.5s",
+              }}
+            >
+              ${animatedBalance.toFixed(2)}
+            </strong>
 
+            {/* Daily Reward Button */}
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -317,15 +380,26 @@ export default function SettingsPage() {
               }}
               disabled={alreadyClaimed || loadingReward}
               style={{
-                marginTop: 8,
+                marginTop: 12,
                 width: "100%",
-                padding: "10px",
-                borderRadius: 8,
+                padding: "12px",
+                borderRadius: 10,
                 border: "none",
                 background: alreadyClaimed ? "#666" : "#ffd700",
                 color: "#000",
                 fontWeight: "bold",
+                fontSize: 14,
                 cursor: alreadyClaimed ? "not-allowed" : "pointer",
+                boxShadow: alreadyClaimed
+                  ? "none"
+                  : "0 4px 8px rgba(255, 215, 0, 0.3)",
+                transition: "all 0.3s",
+              }}
+              onMouseEnter={(e) => {
+                if (!alreadyClaimed) e.currentTarget.style.transform = "scale(1.05)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "scale(1)";
               }}
             >
               {loadingReward
@@ -334,6 +408,32 @@ export default function SettingsPage() {
                 ? "Already Claimed"
                 : "🧩 Daily Reward (+$0.25)"}
             </button>
+
+            {/* Transaction Preview */}
+            {transactions?.length > 0 && (
+              <div style={{ marginTop: 14, maxHeight: 120, overflowY: "auto" }}>
+                <p style={{ fontSize: 12, margin: "0 0 4px", color: isDark ? "#ccc" : "#555" }}>
+                  Recent transactions:
+                </p>
+                <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
+                  {transactions.slice(0, 5).map((t, i) => (
+                    <li
+                      key={i}
+                      style={{
+                        fontSize: 12,
+                        marginBottom: 4,
+                        color: t.type === "checkin" ? "#ff9800" : isDark ? "#ccc" : "#333",
+                      }}
+                    >
+                      {t.type} — ${t.amount?.toFixed(2)}{" "}
+                      <span style={{ color: "#999" }}>
+                        ({new Date(t.createdAt || t.date).toLocaleDateString()})
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         </div>
       </div>
