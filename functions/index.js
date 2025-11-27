@@ -39,7 +39,7 @@ app.post("/createStripeSession", async (req, res) => {
         {
           price_data: {
             currency: "usd",
-            product_data: { name: "SmartTalk Wallet Top-up" },
+            product_data: { name: "loechat Wallet Top-up" },
             unit_amount: amount * 100, // Convert dollars to cents
           },
           quantity: 1,
