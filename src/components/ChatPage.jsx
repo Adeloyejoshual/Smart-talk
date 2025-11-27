@@ -184,36 +184,30 @@ export default function ChatPage() {
       }}
     >
       {/* Header */}
-      <div
-        style={{
-          position: "sticky",
-          top: 0,
-          background: isDark ? "#1f1f1f" : "#f5f5f5",
-          padding: "15px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          boxShadow: "0 1px 4px rgba(0,0,0,0.1)",
-        }}
-      >
-        <h2 style={{ margin: 0 }}>Chats</h2>
+<div
+  style={{
+    position: "sticky",
+    top: 0,
+    background: isDark ? "#1f1f1f" : "#f5f5f5",
+    padding: "15px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    boxShadow: "0 1px 4px rgba(0,0,0,0.1)",
+  }}
+>
+  <h2 style={{ margin: 0 }}>Chats</h2>
 
-        <div style={{ display: "flex", gap: 15 }}>
-          <button
-            onClick={() => navigate("/call-history")}
-            style={{ background: "transparent", border: "none", fontSize: 20 }}
-          >
-            📞
-          </button>
-
-          <button
-            onClick={() => navigate("/settings")}
-            style={{ background: "transparent", border: "none", fontSize: 20 }}
-          >
-            ⚙️
-          </button>
-        </div>
-      </div>
+  <div style={{ display: "flex", gap: 15 }}>
+    {/* Only settings button now */}
+    <button
+      onClick={() => navigate("/settings")}
+      style={{ background: "transparent", border: "none", fontSize: 20 }}
+    >
+      ⚙️
+    </button>
+  </div>
+</div>
 
       {/* Search */}
       <div style={{ padding: "10px" }}>
