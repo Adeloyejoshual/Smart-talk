@@ -1,5 +1,5 @@
 // src/components/SettingsPage.jsx
-import React, { useEffect, useState, useContext, useRef } from "react";
+import React, { useEffect, useState, useContext, useRef, useMemo } from "react";
 import { auth, db } from "../firebaseConfig";
 import { doc, getDoc, setDoc, onSnapshot, updateDoc, serverTimestamp } from "firebase/firestore";
 import { signOut } from "firebase/auth";
@@ -12,8 +12,8 @@ const CLOUDINARY_CLOUD = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
 const CLOUDINARY_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
 
 export default function SettingsPage() {
-  const { theme, updateSettings } = useContext(ThemeContext);
-  const { showPopup, hidePopup } = usePopup();
+  const { theme } = useContext(ThemeContext);
+  const { showPopup } = usePopup();
   const navigate = useNavigate();
 
   const [user, setUser] = useState(null);
@@ -26,6 +26,7 @@ export default function SettingsPage() {
   const [balance, setBalance] = useState(0);
   const [transactions, setTransactions] = useState([]);
   const [loadingReward, setLoadingReward] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const profileInputRef = useRef(null);
   const isDark = theme === "dark";
@@ -95,7 +96,7 @@ export default function SettingsPage() {
   };
 
   // ================== Daily Reward ==================
-  const alreadyClaimed = (() => {
+  const alreadyClaimed = useMemo(() => {
     if (!transactions || transactions.length === 0) return false;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -106,10 +107,10 @@ export default function SettingsPage() {
       txDate.setHours(0, 0, 0, 0);
       return txDate.getTime() === today.getTime();
     });
-  })();
+  }, [transactions]);
 
   const handleDailyReward = async () => {
-    if (!user) return;
+    if (!user || alreadyClaimed) return;
     setLoadingReward(true);
 
     try {
