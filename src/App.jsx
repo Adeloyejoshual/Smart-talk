@@ -1,4 +1,4 @@
-// App Name: Loechat
+// src/App.jsx
 import React, { useEffect, useState } from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "./context/ThemeContext";
@@ -26,26 +26,7 @@ import WalletPage from "./components/WalletPage";
 
 // Components
 import ProtectedRoute from "./components/ProtectedRoute";
-import AdGateway from "./components/AdGateway";
-
-// AdMob (React Native example; replace with web equivalent if web app)
-import { InterstitialAd, RewardedAd } from "react-native-google-mobile-ads";
-
-// ----------------------------
-// Ad Units
-// ----------------------------
-const DailyBonusRewarded = RewardedAd.createForAdRequest(
-  "ca-app-pub-3688777614865275/5199548879"
-);
-const RewardInWallet = RewardedAd.createForAdRequest(
-  "ca-app-pub-3688777614865275/2858108953"
-);
-const SettingsInterstitial = InterstitialAd.createForAdRequest(
-  "ca-app-pub-3688777614865275/9138793882"
-);
-const WithdrawRewarded = RewardedAd.createForAdRequest(
-  "ca-app-pub-3688777614865275/6095372733"
-);
+import AdGateway from "./components/AdGateway"; // Web-compatible ad handler
 
 export default function App() {
   const [checkingAuth, setCheckingAuth] = useState(true);
@@ -135,135 +116,117 @@ export default function App() {
     <ThemeProvider>
       <WalletProvider>
         <PopupProvider>
-          {/* ---------------------------- */}
-          {/* Ad Gateway (Global AdSense + AMP) */}
-          {/* ---------------------------- */}
-          <AdGateway />
+          <AdGateway>
+            <Router>
+              <Routes>
+                {/* Public Route */}
+                <Route
+                  path="/"
+                  element={user ? <ChatPage user={user} /> : <HomePage />}
+                />
 
-          <Router>
-            <Routes>
-              {/* Public Route */}
-              <Route
-                path="/"
-                element={user ? <ChatPage user={user} /> : <HomePage />}
-              />
+                {/* Protected Pages */}
+                <Route
+                  path="/chat"
+                  element={
+                    <ProtectedRoute>
+                      <ChatPage user={user} />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/chat/:chatId"
+                  element={
+                    <ProtectedRoute>
+                      <ChatConversationPage user={user} />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/voicecall/:uid"
+                  element={
+                    <ProtectedRoute>
+                      <VoiceCallPage user={user} />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/videocall/:uid"
+                  element={
+                    <ProtectedRoute>
+                      <VideoCallPage user={user} />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/settings"
+                  element={
+                    <ProtectedRoute>
+                      <SettingsPage user={user} />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/wallet"
+                  element={
+                    <ProtectedRoute>
+                      <WalletPage user={user} rewardCoins={rewardCoins} />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/daily-bonus"
+                  element={
+                    <ProtectedRoute>
+                      <HomePage user={user} rewardCoins={rewardCoins} />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/withdraw"
+                  element={
+                    <ProtectedRoute>
+                      <WithdrawPage user={user} rewardCoins={rewardCoins} />
+                    </ProtectedRoute>
+                  }
+                />
 
-              {/* Protected Pages */}
-              <Route
-                path="/chat"
-                element={
-                  <ProtectedRoute>
-                    <ChatPage user={user} />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/chat/:chatId"
-                element={
-                  <ProtectedRoute>
-                    <ChatConversationPage user={user} />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/voicecall/:uid"
-                element={
-                  <ProtectedRoute>
-                    <VoiceCallPage user={user} />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/videocall/:uid"
-                element={
-                  <ProtectedRoute>
-                    <VideoCallPage user={user} />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/settings"
-                element={
-                  <ProtectedRoute>
-                    <SettingsPage
-                      user={user}
-                      showInterstitial={() => SettingsInterstitial.show()}
-                    />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/wallet"
-                element={
-                  <ProtectedRoute>
-                    <WalletPage
-                      user={user}
-                      showReward={() => RewardInWallet.show()}
-                      rewardCoins={rewardCoins}
-                    />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/daily-bonus"
-                element={
-                  <ProtectedRoute>
-                    <HomePage
-                      user={user}
-                      showReward={() => DailyBonusRewarded.show()}
-                      rewardCoins={rewardCoins}
-                    />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/withdraw"
-                element={
-                  <ProtectedRoute>
-                    <WithdrawPage
-                      user={user}
-                      showReward={() => WithdrawRewarded.show()}
-                      rewardCoins={rewardCoins}
-                    />
-                  </ProtectedRoute>
-                }
-              />
-
-              {/* Other Pages */}
-              <Route
-                path="/edit-profile"
-                element={
-                  <ProtectedRoute>
-                    <EditProfilePage user={user} />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/history"
-                element={
-                  <ProtectedRoute>
-                    <CallHistoryPage user={user} />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/topup"
-                element={
-                  <ProtectedRoute>
-                    <TopUpPage user={user} />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/profile/:uid"
-                element={
-                  <ProtectedRoute>
-                    <UserProfile currentUser={user} />
-                  </ProtectedRoute>
-                }
-              />
-            </Routes>
-          </Router>
+                {/* Other Pages */}
+                <Route
+                  path="/edit-profile"
+                  element={
+                    <ProtectedRoute>
+                      <EditProfilePage user={user} />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/history"
+                  element={
+                    <ProtectedRoute>
+                      <CallHistoryPage user={user} />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/topup"
+                  element={
+                    <ProtectedRoute>
+                      <TopUpPage user={user} />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/profile/:uid"
+                  element={
+                    <ProtectedRoute>
+                      <UserProfile currentUser={user} />
+                    </ProtectedRoute>
+                  }
+                />
+              </Routes>
+            </Router>
+          </AdGateway>
         </PopupProvider>
       </WalletProvider>
     </ThemeProvider>
