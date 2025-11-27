@@ -60,6 +60,15 @@ export default function HomePage() {
     }
   };
 
+  // 📰 Load AdSense
+  useEffect(() => {
+    try {
+      (window.adsbygoogle = window.adsbygoogle || []).push({});
+    } catch (e) {
+      console.error("Adsense error", e);
+    }
+  }, []);
+
   return (
     <div style={styles.container}>
       <div style={styles.card}>
@@ -69,6 +78,16 @@ export default function HomePage() {
             ? "Create your account to start chatting instantly"
             : "Welcome back! Login to continue chatting"}
         </p>
+
+        {/* AdSense placeholder */}
+        <ins
+          className="adsbygoogle"
+          style={{ display: "block", width: "320px", height: "100px", margin: "20px auto" }}
+          data-ad-client="ca-pub-3218753156748504" // Replace with your AdSense client ID
+          data-ad-slot="1234567890" // Replace with your Ad slot ID
+          data-ad-format="auto"
+          data-full-width-responsive="true"
+        ></ins>
 
         <form onSubmit={handleAuth} style={styles.form}>
           {isRegister && (
