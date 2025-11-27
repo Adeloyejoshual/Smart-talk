@@ -49,13 +49,13 @@ export default function SettingsPage() {
 
   const [balance, setBalance] = useState(0);
   const animatedBalance = useAnimatedNumber(balance, 800);
+  const [transactions, setTransactions] = useState([]);
   const [loadingReward, setLoadingReward] = useState(false);
   const [flashReward, setFlashReward] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
   const profileInputRef = useRef(null);
   const isDark = theme === "dark";
-
   const backend = "https://smart-talk-zlxe.onrender.com";
 
   // ================== Load User + Wallet ==================
@@ -110,6 +110,7 @@ export default function SettingsPage() {
       const data = await res.json();
       if (res.ok) {
         setBalance(data.balance || 0);
+        setTransactions(data.transactions || []);
       } else {
         showPopup(data.error || "Failed to load wallet.");
       }
@@ -147,10 +148,10 @@ export default function SettingsPage() {
 
       if (res.ok) {
         setBalance(data.balance);
+        setTransactions((prev) => [data.txn, ...prev]);
         showPopup("🎉 Daily reward claimed!");
         launchConfetti();
 
-        // Flash gold effect
         setFlashReward(true);
         setTimeout(() => setFlashReward(false), 600);
       } else if (data.error?.toLowerCase().includes("already claimed")) {
@@ -165,6 +166,19 @@ export default function SettingsPage() {
       setLoadingReward(false);
     }
   };
+
+  const alreadyClaimed = (() => {
+    if (!transactions || transactions.length === 0) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    return transactions.some((t) => {
+      if (t.type !== "checkin") return false;
+      const txDate = new Date(t.createdAt || t.date);
+      txDate.setHours(0, 0, 0, 0);
+      return txDate.getTime() === today.getTime();
+    });
+  })();
 
   // ================== Cloudinary Upload ==================
   const uploadToCloudinary = async (file) => {
@@ -366,27 +380,31 @@ export default function SettingsPage() {
                 e.stopPropagation();
                 handleDailyReward();
               }}
-              disabled={loadingReward}
+              disabled={loadingReward || alreadyClaimed}
               style={{
                 marginTop: 12,
                 width: "100%",
                 padding: "12px",
                 borderRadius: 10,
                 border: "none",
-                background: flashReward ? "#ffd700" : "#ffd700",
+                background: alreadyClaimed ? "#666" : "#ffd700",
                 color: "#000",
                 fontWeight: "bold",
                 fontSize: 14,
-                cursor: "pointer",
-                boxShadow: flashReward
+                cursor: alreadyClaimed ? "not-allowed" : "pointer",
+                boxShadow: alreadyClaimed
+                  ? "none"
+                  : flashReward
                   ? "0 0 15px 5px #ffd700"
                   : "0 4px 8px rgba(255, 215, 0, 0.3)",
                 transition: "all 0.3s",
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.05)")}
-              onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
             >
-              {loadingReward ? "Processing..." : "🧩 Daily Reward (+$0.25)"}
+              {loadingReward
+                ? "Processing..."
+                : alreadyClaimed
+                ? "✅ Already Claimed"
+                : "🧩 Daily Reward (+$0.25)"}
             </button>
           </div>
         </div>
