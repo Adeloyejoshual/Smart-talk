@@ -1,9 +1,10 @@
-// src/App.jsx
+// App Name: Loechat
 import React, { useEffect, useState } from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "./context/ThemeContext";
 import { WalletProvider } from "./context/WalletContext";
-import { auth, setUserPresence } from "./firebaseConfig";
+import { auth, setUserPresence, db } from "./firebaseConfig";
+import { doc, updateDoc, increment } from "firebase/firestore";
 
 // Global Popup
 import { PopupProvider } from "./context/PopupContext";
@@ -26,10 +27,35 @@ import WalletPage from "./components/WalletPage";
 // Components
 import ProtectedRoute from "./components/ProtectedRoute";
 
+// AdMob (React Native example; replace with web equivalent if web app)
+import {
+  InterstitialAd,
+  RewardedAd,
+} from "react-native-google-mobile-ads"; 
+
+// ----------------------------
+// Ad Units
+// ----------------------------
+const DailyBonusRewarded = RewardedAd.createForAdRequest(
+  "ca-app-pub-3688777614865275/5199548879"
+);
+const RewardInWallet = RewardedAd.createForAdRequest(
+  "ca-app-pub-3688777614865275/2858108953"
+);
+const SettingsInterstitial = InterstitialAd.createForAdRequest(
+  "ca-app-pub-3688777614865275/9138793882"
+);
+const WithdrawRewarded = RewardedAd.createForAdRequest(
+  "ca-app-pub-3688777614865275/6095372733"
+);
+
 export default function App() {
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [user, setUser] = useState(null);
 
+  // ----------------------------
+  // Firebase Auth + Presence
+  // ----------------------------
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((u) => {
       setUser(u);
@@ -44,6 +70,20 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // ----------------------------
+  // Reward Coins Helper
+  // ----------------------------
+  const rewardCoins = async (uid, amount) => {
+    if (!uid) return;
+    const userRef = doc(db, "users", uid);
+    await updateDoc(userRef, {
+      coins: increment(amount),
+    });
+  };
+
+  // ----------------------------
+  // Loading Screen
+  // ----------------------------
   if (checkingAuth) {
     return (
       <div
@@ -83,28 +123,16 @@ export default function App() {
             ST
           </span>
         </div>
-
         <p style={{ marginTop: 16, fontSize: 15, opacity: 0.8 }}>
           SmartTalk is starting…
         </p>
-
-        <style>
-          {`
-            @keyframes gradientShift {
-              0% { background-position: 0% 50%; }
-              50% { background-position: 100% 50%; }
-              100% { background-position: 0% 50%; }
-            }
-            @keyframes pulseGlow {
-              0%, 100% { transform: scale(1); filter: brightness(1); }
-              50% { transform: scale(1.05); filter: brightness(1.3); }
-            }
-          `}
-        </style>
       </div>
     );
   }
 
+  // ----------------------------
+  // App Routes
+  // ----------------------------
   return (
     <ThemeProvider>
       <WalletProvider>
@@ -134,8 +162,6 @@ export default function App() {
                   </ProtectedRoute>
                 }
               />
-
-              {/* Calls */}
               <Route
                 path="/voicecall/:uid"
                 element={
@@ -152,16 +178,55 @@ export default function App() {
                   </ProtectedRoute>
                 }
               />
-
-              {/* Settings / Profile / Wallet */}
               <Route
                 path="/settings"
                 element={
                   <ProtectedRoute>
-                    <SettingsPage user={user} />
+                    <SettingsPage
+                      user={user}
+                      showInterstitial={() => SettingsInterstitial.show()}
+                    />
                   </ProtectedRoute>
                 }
               />
+              <Route
+                path="/wallet"
+                element={
+                  <ProtectedRoute>
+                    <WalletPage
+                      user={user}
+                      showReward={() => RewardInWallet.show()}
+                      rewardCoins={rewardCoins}
+                    />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/daily-bonus"
+                element={
+                  <ProtectedRoute>
+                    <HomePage
+                      user={user}
+                      showReward={() => DailyBonusRewarded.show()}
+                      rewardCoins={rewardCoins}
+                    />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/withdraw"
+                element={
+                  <ProtectedRoute>
+                    <WithdrawPage
+                      user={user}
+                      showReward={() => WithdrawRewarded.show()}
+                      rewardCoins={rewardCoins}
+                    />
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Other Pages */}
               <Route
                 path="/edit-profile"
                 element={
@@ -179,14 +244,6 @@ export default function App() {
                 }
               />
               <Route
-                path="/wallet"
-                element={
-                  <ProtectedRoute>
-                    <WalletPage user={user} />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
                 path="/topup"
                 element={
                   <ProtectedRoute>
@@ -194,16 +251,6 @@ export default function App() {
                   </ProtectedRoute>
                 }
               />
-              <Route
-                path="/withdraw"
-                element={
-                  <ProtectedRoute>
-                    <WithdrawPage user={user} />
-                  </ProtectedRoute>
-                }
-              />
-
-              {/* User Profile */}
               <Route
                 path="/profile/:uid"
                 element={
