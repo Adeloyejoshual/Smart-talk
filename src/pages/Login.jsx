@@ -67,7 +67,7 @@ export default function Login() {
 
   return (
     <div style={styles.container}>
-      <h2>Welcome to SmartTalk 💬</h2>
+      <h2>Welcome to loechat 💬</h2>
       <p>Sign in with your Google account or login below</p>
 
       <button style={styles.googleBtn} onClick={handleGoogle}>
