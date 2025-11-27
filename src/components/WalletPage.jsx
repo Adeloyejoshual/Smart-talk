@@ -1,17 +1,44 @@
-import React, { useEffect, useState, useContext } from "react";
+// src/components/WalletPage.jsx
+import React, { useEffect, useState, useContext, useRef } from "react";
 import { auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
 import { ThemeContext } from "../context/ThemeContext";
 import { usePopup } from "../context/PopupContext";
+import confetti from "canvas-confetti";
+
+// Animated balance hook
+function useAnimatedNumber(target, duration = 800) {
+  const [display, setDisplay] = useState(target);
+  const raf = useRef();
+
+  useEffect(() => {
+    const start = display;
+    const diff = target - start;
+    const startTime = performance.now();
+
+    const animate = (time) => {
+      const progress = Math.min((time - startTime) / duration, 1);
+      setDisplay(start + diff * progress);
+      if (progress < 1) raf.current = requestAnimationFrame(animate);
+    };
+
+    raf.current = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(raf.current);
+  }, [target]);
+
+  return display;
+}
 
 export default function WalletPage() {
   const { theme } = useContext(ThemeContext);
   const { showPopup, hidePopup } = usePopup();
   const [user, setUser] = useState(null);
   const [balance, setBalance] = useState(0);
+  const animatedBalance = useAnimatedNumber(balance);
   const [transactions, setTransactions] = useState([]);
   const [selectedMonth, setSelectedMonth] = useState(new Date());
   const [loadingReward, setLoadingReward] = useState(false);
+  const [flashReward, setFlashReward] = useState(false);
   const navigate = useNavigate();
 
   const backend = "https://smart-talk-zlxe.onrender.com";
@@ -51,7 +78,7 @@ export default function WalletPage() {
 
   // ---------------- DAILY REWARD ----------------
   const handleDailyReward = async () => {
-    if (!user) return;
+    if (!user || loadingReward) return;
     setLoadingReward(true);
 
     try {
@@ -70,6 +97,18 @@ export default function WalletPage() {
         setBalance(data.balance);
         setTransactions((prev) => [data.txn, ...prev]);
         showPopup("🎉 Daily reward claimed!");
+
+        // Confetti
+        confetti({
+          particleCount: 120,
+          spread: 90,
+          origin: { y: 0.5 },
+          colors: ["#ffd700", "#ff9800", "#00e676", "#007bff"],
+        });
+
+        // Flash gold effect
+        setFlashReward(true);
+        setTimeout(() => setFlashReward(false), 600);
       } else if (data.error?.toLowerCase().includes("already claimed")) {
         showPopup("✅ You already claimed today's reward!");
       } else {
@@ -140,7 +179,6 @@ export default function WalletPage() {
         ←
       </button>
 
-      {/* Title */}
       <h2 style={styles.title}>Wallet</h2>
 
       {/* Wallet Card */}
@@ -151,9 +189,8 @@ export default function WalletPage() {
         }}
       >
         <p style={styles.balanceLabel}>Balance</p>
-        <h1 style={styles.balanceAmount}>${balance.toFixed(2)}</h1>
+        <h1 style={styles.balanceAmount}>${animatedBalance.toFixed(2)}</h1>
 
-        {/* Top-Up / Withdraw */}
         <div style={styles.actionRow}>
           <button
             style={{
@@ -180,8 +217,16 @@ export default function WalletPage() {
           <button
             style={{
               ...styles.roundBtn,
-              background: alreadyClaimed ? "#555" : "#ffd700",
+              background: flashReward
+                ? "#ffd700"
+                : alreadyClaimed
+                ? "#555"
+                : "#ffd700",
               cursor: alreadyClaimed ? "not-allowed" : "pointer",
+              boxShadow: flashReward
+                ? "0 0 15px 5px #ffd700"
+                : "0 4px 8px rgba(255,215,0,0.3)",
+              transition: "all 0.3s",
             }}
             disabled={alreadyClaimed || loadingReward}
             onClick={handleDailyReward}
@@ -190,12 +235,12 @@ export default function WalletPage() {
               ? "Processing..."
               : alreadyClaimed
               ? "Already Claimed"
-              : "Daily Reward"}
+              : "🧩 Daily Reward (+$0.25)"}
           </button>
         </div>
       </div>
 
-      {/* Month Selector with Today Button */}
+      {/* Month Selector */}
       <div style={styles.monthSelector}>
         <button onClick={prevMonth}>◀</button>
         <span style={{ fontWeight: "bold" }}>
