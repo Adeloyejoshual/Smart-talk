@@ -1,5 +1,5 @@
 // src/components/SettingsPage.jsx
-import React, { useEffect, useState, useContext, useRef, useMemo } from "react";
+import React, { useEffect, useState, useContext, useRef } from "react";
 import { auth, db } from "../firebaseConfig";
 import { doc, getDoc, setDoc, onSnapshot, updateDoc, serverTimestamp } from "firebase/firestore";
 import { signOut } from "firebase/auth";
@@ -48,9 +48,9 @@ export default function SettingsPage() {
   const [selectedFile, setSelectedFile] = useState(null);
 
   const [balance, setBalance] = useState(0);
-  const animatedBalance = useAnimatedNumber(balance, 800); // animated balance
-  const [transactions, setTransactions] = useState([]);
+  const animatedBalance = useAnimatedNumber(balance, 800);
   const [loadingReward, setLoadingReward] = useState(false);
+  const [flashReward, setFlashReward] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
   const profileInputRef = useRef(null);
@@ -110,7 +110,6 @@ export default function SettingsPage() {
       const data = await res.json();
       if (res.ok) {
         setBalance(data.balance || 0);
-        setTransactions(data.transactions || []);
       } else {
         showPopup(data.error || "Failed to load wallet.");
       }
@@ -121,19 +120,6 @@ export default function SettingsPage() {
   };
 
   // ================== Daily Reward ==================
-  const alreadyClaimed = useMemo(() => {
-    if (!transactions || transactions.length === 0) return false;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    return transactions.some((t) => {
-      if (t.type !== "checkin") return false;
-      const txDate = new Date(t.createdAt || t.date);
-      txDate.setHours(0, 0, 0, 0);
-      return txDate.getTime() === today.getTime();
-    });
-  }, [transactions]);
-
   const launchConfetti = () => {
     confetti({
       particleCount: 120,
@@ -144,7 +130,7 @@ export default function SettingsPage() {
   };
 
   const handleDailyReward = async () => {
-    if (!user || alreadyClaimed) return;
+    if (!user || loadingReward) return;
     setLoadingReward(true);
 
     try {
@@ -161,9 +147,12 @@ export default function SettingsPage() {
 
       if (res.ok) {
         setBalance(data.balance);
-        setTransactions((prev) => [data.txn, ...prev]);
         showPopup("🎉 Daily reward claimed!");
         launchConfetti();
+
+        // Flash gold effect
+        setFlashReward(true);
+        setTimeout(() => setFlashReward(false), 600);
       } else if (data.error?.toLowerCase().includes("already claimed")) {
         showPopup("✅ You already claimed today's reward!");
       } else {
@@ -249,7 +238,6 @@ export default function SettingsPage() {
         ← Back
       </div>
 
-      {/* Settings Header */}
       <h2 style={{ textAlign: "center", marginBottom: 20 }}>⚙️ Settings</h2>
 
       {/* ================= Profile Card ================= */}
@@ -378,62 +366,28 @@ export default function SettingsPage() {
                 e.stopPropagation();
                 handleDailyReward();
               }}
-              disabled={alreadyClaimed || loadingReward}
+              disabled={loadingReward}
               style={{
                 marginTop: 12,
                 width: "100%",
                 padding: "12px",
                 borderRadius: 10,
                 border: "none",
-                background: alreadyClaimed ? "#666" : "#ffd700",
+                background: flashReward ? "#ffd700" : "#ffd700",
                 color: "#000",
                 fontWeight: "bold",
                 fontSize: 14,
-                cursor: alreadyClaimed ? "not-allowed" : "pointer",
-                boxShadow: alreadyClaimed
-                  ? "none"
+                cursor: "pointer",
+                boxShadow: flashReward
+                  ? "0 0 15px 5px #ffd700"
                   : "0 4px 8px rgba(255, 215, 0, 0.3)",
                 transition: "all 0.3s",
               }}
-              onMouseEnter={(e) => {
-                if (!alreadyClaimed) e.currentTarget.style.transform = "scale(1.05)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = "scale(1)";
-              }}
+              onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.05)")}
+              onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
             >
-              {loadingReward
-                ? "Processing..."
-                : alreadyClaimed
-                ? "Already Claimed"
-                : "🧩 Daily Reward (+$0.25)"}
+              {loadingReward ? "Processing..." : "🧩 Daily Reward (+$0.25)"}
             </button>
-
-            {/* Transaction Preview */}
-            {transactions?.length > 0 && (
-              <div style={{ marginTop: 14, maxHeight: 120, overflowY: "auto" }}>
-                <p style={{ fontSize: 12, margin: "0 0 4px", color: isDark ? "#ccc" : "#555" }}>
-                  Recent transactions:
-                </p>
-                <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
-                  {transactions.slice(0, 5).map((t, i) => (
-                    <li
-                      key={i}
-                      style={{
-                        fontSize: 12,
-                        marginBottom: 4,
-                        color: t.type === "checkin" ? "#ff9800" : isDark ? "#ccc" : "#333",
-                      }}
-                    >
-                      {t.type} — ${t.amount?.toFixed(2)}{" "}
-                      <span style={{ color: "#999" }}>
-                        ({new Date(t.createdAt || t.date).toLocaleDateString()})
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
           </div>
         </div>
       </div>
