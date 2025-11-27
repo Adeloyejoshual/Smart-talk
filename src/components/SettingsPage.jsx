@@ -35,15 +35,18 @@ function useAnimatedNumber(target, duration = 800) {
   return display;
 }
 
-// ====== Simulated ad function ======
-const showAd = async () => {
-  return new Promise((resolve) => {
-    console.log("Ad showing...");
-    setTimeout(() => {
-      console.log("Ad finished");
-      resolve(true);
-    }, 3000); // simulate 3s ad
-  });
+// ====== Interstitial Ad Function ======
+const showInterstitialAd = () => {
+  const adContainer = document.createElement("ins");
+  adContainer.className = "adsbygoogle";
+  adContainer.style.display = "block";
+  adContainer.setAttribute("data-ad-client", "ca-pub-3218753156748504");
+  adContainer.setAttribute("data-ad-slot", "7639678257");
+  adContainer.setAttribute("data-ad-format", "auto");
+  adContainer.setAttribute("data-full-width-responsive", "true");
+
+  document.body.appendChild(adContainer);
+  (adsbygoogle = window.adsbygoogle || []).push({});
 };
 
 export default function SettingsPage() {
@@ -141,27 +144,11 @@ export default function SettingsPage() {
     });
   };
 
-  const alreadyClaimed = (() => {
-    if (!transactions || transactions.length === 0) return false;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    return transactions.some((t) => {
-      if (t.type !== "checkin") return false;
-      const txDate = new Date(t.createdAt || t.date);
-      txDate.setHours(0, 0, 0, 0);
-      return txDate.getTime() === today.getTime();
-    });
-  })();
-
-  const handleDailyRewardClick = async (e) => {
-    e.stopPropagation();
+  const handleDailyReward = async () => {
     if (!user || loadingReward) return;
     setLoadingReward(true);
 
     try {
-      if (!alreadyClaimed) await showAd(); // show ad before claiming
-
       const token = await getToken();
       const res = await fetch(`${backend}/api/wallet/daily`, {
         method: "POST",
@@ -178,6 +165,7 @@ export default function SettingsPage() {
         setTransactions((prev) => [data.txn, ...prev]);
         showPopup("🎉 Daily reward claimed!");
         launchConfetti();
+
         setFlashReward(true);
         setTimeout(() => setFlashReward(false), 600);
       } else if (data.error?.toLowerCase().includes("already claimed")) {
@@ -193,11 +181,18 @@ export default function SettingsPage() {
     }
   };
 
-  // ================== Wallet Click with Ad ==================
-  const handleWalletClick = async () => {
-    await showAd();
-    navigate("/wallet");
-  };
+  const alreadyClaimed = (() => {
+    if (!transactions || transactions.length === 0) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    return transactions.some((t) => {
+      if (t.type !== "checkin") return false;
+      const txDate = new Date(t.createdAt || t.date);
+      txDate.setHours(0, 0, 0, 0);
+      return txDate.getTime() === today.getTime();
+    });
+  })();
 
   // ================== Cloudinary Upload ==================
   const uploadToCloudinary = async (file) => {
@@ -376,7 +371,13 @@ export default function SettingsPage() {
               cursor: "pointer",
               transition: "transform 0.2s",
             }}
-            onClick={handleWalletClick}
+            onClick={async () => {
+              if (!alreadyClaimed) {
+                showInterstitialAd();
+                await new Promise((r) => setTimeout(r, 1500)); // simulate ad
+              }
+              navigate("/wallet");
+            }}
             onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.02)")}
             onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
           >
@@ -395,7 +396,10 @@ export default function SettingsPage() {
 
             {/* Daily Reward Button */}
             <button
-              onClick={handleDailyRewardClick}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDailyReward();
+              }}
               disabled={loadingReward || alreadyClaimed}
               style={{
                 marginTop: 12,
