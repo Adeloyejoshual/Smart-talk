@@ -99,7 +99,7 @@ export default function App() {
               textShadow: "0 0 12px rgba(255,255,255,0.8)",
             }}
           >
-            ST
+            LC
           </span>
         </div>
         <p style={{ marginTop: 16, fontSize: 15, opacity: 0.8 }}>
