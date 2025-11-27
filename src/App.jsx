@@ -26,12 +26,10 @@ import WalletPage from "./components/WalletPage";
 
 // Components
 import ProtectedRoute from "./components/ProtectedRoute";
+import AdGateway from "./components/AdGateway";
 
 // AdMob (React Native example; replace with web equivalent if web app)
-import {
-  InterstitialAd,
-  RewardedAd,
-} from "react-native-google-mobile-ads"; 
+import { InterstitialAd, RewardedAd } from "react-native-google-mobile-ads";
 
 // ----------------------------
 // Ad Units
@@ -137,6 +135,11 @@ export default function App() {
     <ThemeProvider>
       <WalletProvider>
         <PopupProvider>
+          {/* ---------------------------- */}
+          {/* Ad Gateway (Global AdSense + AMP) */}
+          {/* ---------------------------- */}
+          <AdGateway />
+
           <Router>
             <Routes>
               {/* Public Route */}
