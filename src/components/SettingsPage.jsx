@@ -12,7 +12,7 @@ const CLOUDINARY_CLOUD = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
 const CLOUDINARY_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
 
 export default function SettingsPage() {
-  const { theme } = useContext(ThemeContext);
+  const { theme, updateSettings } = useContext(ThemeContext);
   const { showPopup, hidePopup } = usePopup();
   const navigate = useNavigate();
 
@@ -185,14 +185,6 @@ export default function SettingsPage() {
     navigate("/");
   };
 
-  const formatDate = (d) =>
-    new Date(d).toLocaleString("en-US", {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-
   if (!user) return <p>Loading user...</p>;
 
   return (
@@ -341,55 +333,6 @@ export default function SettingsPage() {
                 ? "Already Claimed"
                 : "🧩 Daily Reward (+$0.25)"}
             </button>
-
-            {/* Last 3 transactions */}
-            <div style={{ marginTop: 12 }}>
-              <h4 style={{ margin: "8px 0" }}>Last 3 Transactions</h4>
-              {transactions.length === 0 ? (
-                <p style={{ fontSize: 13, opacity: 0.5 }}>No recent transactions</p>
-              ) : (
-                transactions.slice(0, 3).map((tx) => (
-                  <div
-                    key={tx._id}
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      padding: "6px 10px",
-                      marginBottom: 6,
-                      background: isDark ? "#2b2b2b" : "#fff",
-                      borderRadius: 6,
-                      fontSize: 13,
-                      cursor: "pointer",
-                    }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      showPopup(
-                        <div>
-                          <h3 style={{ marginBottom: 10 }}>Transaction Details</h3>
-                          <p><b>Type:</b> {tx.type}</p>
-                          <p><b>Amount:</b> ${tx.amount.toFixed(2)}</p>
-                          <p><b>Date:</b> {new Date(tx.createdAt || tx.date).toLocaleString()}</p>
-                          <p><b>Status:</b> {tx.status}</p>
-                          <p><b>Transaction ID:</b> {tx._id}</p>
-                          <button
-                            onClick={hidePopup}
-                            style={{ marginTop: 10, padding: 6, borderRadius: 6, cursor: "pointer" }}
-                          >
-                            Close
-                          </button>
-                        </div>,
-                        { autoHide: false }
-                      );
-                    }}
-                  >
-                    <span>{tx.type}</span>
-                    <span style={{ color: tx.amount >= 0 ? "#2ecc71" : "#e74c3c" }}>
-                      {tx.amount >= 0 ? "+" : "-"}${Math.abs(tx.amount).toFixed(2)}
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
           </div>
         </div>
       </div>
