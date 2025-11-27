@@ -1,0 +1,30 @@
+# Gradle files
+.gradle/
+build/
+
+# Local configuration
+local.properties
+*.iml
+.idea/
+
+# MacOS files
+.DS_Store
+
+# Firebase / Google Services
+google-services.json
+
+# Keystore files
+*.jks
+*.keystore
+
+# Android captures
+captures/
+
+# Log files
+*.log
+
+# Optional: IntelliJ / Android Studio
+out/
+
+# Node / NPM (if using React Native / JS in project)
+node_modules/
