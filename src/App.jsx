@@ -1,4 +1,4 @@
-// src/App.jsx
+// App Name: Loechat
 import React, { useEffect, useState } from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "./context/ThemeContext";
@@ -26,7 +26,7 @@ import WalletPage from "./components/WalletPage";
 
 // Components
 import ProtectedRoute from "./components/ProtectedRoute";
-import AdGateway from "./components/AdGateway"; // Web-compatible ad handler
+import AdGateway, { useAd } from "./components/AdGateway";
 
 export default function App() {
   const [checkingAuth, setCheckingAuth] = useState(true);
@@ -116,6 +116,9 @@ export default function App() {
     <ThemeProvider>
       <WalletProvider>
         <PopupProvider>
+          {/* ---------------------------- */}
+          {/* Global Ad Gateway */}
+          {/* ---------------------------- */}
           <AdGateway>
             <Router>
               <Routes>
@@ -170,7 +173,10 @@ export default function App() {
                   path="/wallet"
                   element={
                     <ProtectedRoute>
-                      <WalletPage user={user} rewardCoins={rewardCoins} />
+                      <WalletPage
+                        user={user}
+                        rewardCoins={rewardCoins}
+                      />
                     </ProtectedRoute>
                   }
                 />
@@ -178,7 +184,10 @@ export default function App() {
                   path="/daily-bonus"
                   element={
                     <ProtectedRoute>
-                      <HomePage user={user} rewardCoins={rewardCoins} />
+                      <HomePage
+                        user={user}
+                        rewardCoins={rewardCoins}
+                      />
                     </ProtectedRoute>
                   }
                 />
@@ -186,7 +195,10 @@ export default function App() {
                   path="/withdraw"
                   element={
                     <ProtectedRoute>
-                      <WithdrawPage user={user} rewardCoins={rewardCoins} />
+                      <WithdrawPage
+                        user={user}
+                        rewardCoins={rewardCoins}
+                      />
                     </ProtectedRoute>
                   }
                 />
