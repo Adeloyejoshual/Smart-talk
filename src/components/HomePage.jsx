@@ -72,7 +72,7 @@ export default function HomePage() {
   return (
     <div style={styles.container}>
       <div style={styles.card}>
-        <h1>SmartTalk 💬</h1>
+        <h1>loechat 💬</h1>
         <p>
           {isRegister
             ? "Create your account to start chatting instantly"
