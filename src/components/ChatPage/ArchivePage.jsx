@@ -16,38 +16,20 @@ import {
 import { db, auth } from "../../firebaseConfig";
 import { useNavigate } from "react-router-dom";
 import { ThemeContext } from "../../context/ThemeContext";
+import { UserContext } from "../../context/UserContext"; // <-- Use UserContext
 import ChatHeader from "./Header";
-
-const CLOUDINARY_CLOUD = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
-const CLOUDINARY_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
 
 export default function ArchivePage() {
   const { theme, wallpaper } = useContext(ThemeContext);
+  const { user, profilePic } = useContext(UserContext);
   const isDark = theme === "dark";
   const navigate = useNavigate();
 
-  const [user, setUser] = useState(null);
   const [chats, setChats] = useState([]);
   const [search, setSearch] = useState("");
   const [selectedChats, setSelectedChats] = useState([]);
   const [selectionMode, setSelectionMode] = useState(false);
-  const [profilePic, setProfilePic] = useState(null);
   const profileInputRef = useRef(null);
-
-  // ================= AUTH =================
-  useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(async (u) => {
-      if (!u) return navigate("/");
-      setUser(u);
-
-      const snap = await getDoc(doc(db, "users", u.uid));
-      if (snap.exists()) {
-        const data = snap.data();
-        setProfilePic(data.profilePic || null);
-      }
-    });
-    return unsubscribe;
-  }, [navigate]);
 
   // ================= LOAD ARCHIVED CHATS =================
   useEffect(() => {
@@ -147,37 +129,7 @@ export default function ArchivePage() {
     exitSelectionMode();
   };
 
-  // ================= CLOUDINARY PROFILE =================
-  const uploadToCloudinary = async (file) => {
-    const fd = new FormData();
-    fd.append("file", file);
-    fd.append("upload_preset", CLOUDINARY_PRESET);
-    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`, {
-      method: "POST",
-      body: fd,
-    });
-    if (!res.ok) throw new Error("Cloudinary upload failed");
-    const data = await res.json();
-    return data.secure_url || data.url;
-  };
-
-  const handleProfileFileChange = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file || !user) return;
-    setProfilePic(URL.createObjectURL(file));
-    try {
-      const url = await uploadToCloudinary(file);
-      await updateDoc(doc(db, "users", user.uid), { profilePic: url, updatedAt: serverTimestamp() });
-      setProfilePic(url);
-    } catch (err) {
-      console.error(err);
-      alert("Failed to upload avatar");
-    }
-  };
-
-  const openProfileUploader = () => profileInputRef.current?.click();
-
-  // ================= RENDER =================
+  // ================= FILTER CHATS =================
   const filteredChats = search
     ? chats.filter(
         (c) =>
@@ -186,6 +138,7 @@ export default function ArchivePage() {
       )
     : chats;
 
+  // ================= RENDER =================
   return (
     <div style={{ background: wallpaper ? `url(${wallpaper}) no-repeat center/cover` : isDark ? "#121212" : "#fff", minHeight: "100vh", color: isDark ? "#fff" : "#000", paddingBottom: "90px" }}>
       
@@ -254,9 +207,6 @@ export default function ArchivePage() {
           );
         })}
       </div>
-
-      {/* PROFILE UPLOADER */}
-      <input ref={profileInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleProfileFileChange} />
     </div>
   );
 }
