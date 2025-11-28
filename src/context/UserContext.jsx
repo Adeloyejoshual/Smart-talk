@@ -1,88 +1,86 @@
 // src/context/UserContext.jsx
 import React, { createContext, useState, useEffect } from "react";
-import { auth, db, setUserPresence } from "../firebaseConfig";
+import { auth, db } from "../firebaseConfig";
 import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 
-export const UserContext = createContext();
-
+// Cloudinary configuration from .env
 const CLOUDINARY_CLOUD = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
 const CLOUDINARY_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
 
+export const UserContext = createContext();
+
 export const UserProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(null); // Firebase user
   const [profilePic, setProfilePic] = useState(null);
   const [profileName, setProfileName] = useState("");
-  const [loading, setLoading] = useState(true);
 
-  // ================= AUTH & PRESENCE =================
-  useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(async (u) => {
-      if (!u) {
-        setUser(null);
-        setLoading(false);
-        return;
-      }
-
-      setUser(u);
-
-      // Fetch profile info from Firestore
-      const snap = await getDoc(doc(db, "users", u.uid));
+  // Load user profile from Firestore
+  const loadUserProfile = async (uid) => {
+    if (!uid) return;
+    try {
+      const userRef = doc(db, "users", uid);
+      const snap = await getDoc(userRef);
       if (snap.exists()) {
         const data = snap.data();
         setProfilePic(data.profilePic || null);
         setProfileName(data.name || "");
       }
+    } catch (err) {
+      console.error("Failed to load user profile:", err);
+    }
+  };
 
-      // Presence tracking
-      const cleanupPresence = setUserPresence(u.uid);
-      setLoading(false);
-      return () => cleanupPresence && cleanupPresence();
+  // Firebase auth listener
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged(async (u) => {
+      setUser(u);
+      if (u) {
+        await loadUserProfile(u.uid);
+      } else {
+        setProfilePic(null);
+        setProfileName("");
+      }
     });
-
-    return () => unsubscribe();
+    return unsubscribe;
   }, []);
 
-  // ================= CLOUDINARY UPLOAD =================
-  const uploadToCloudinary = async (file) => {
-    if (!file) throw new Error("No file provided");
+  // Upload profile picture to Cloudinary + update Firestore
+  const uploadProfilePic = async (file) => {
+    if (!user) throw new Error("User not authenticated");
+
+    // Cloudinary upload
     const fd = new FormData();
     fd.append("file", file);
     fd.append("upload_preset", CLOUDINARY_PRESET);
 
     const res = await fetch(
       `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`,
-      { method: "POST", body: fd }
+      {
+        method: "POST",
+        body: fd,
+      }
     );
 
     if (!res.ok) throw new Error("Cloudinary upload failed");
+
     const data = await res.json();
-    return data.secure_url || data.url;
+    const url = data.secure_url || data.url;
+
+    // Update Firestore
+    const userRef = doc(db, "users", user.uid);
+    await updateDoc(userRef, { profilePic: url, updatedAt: serverTimestamp() });
+
+    // Update local state
+    setProfilePic(url);
+    return url;
   };
 
-  // ================= UPDATE PROFILE PICTURE =================
-  const updateProfilePic = async (file) => {
-    if (!user || !file) return;
-
-    try {
-      // Optimistic update
-      const localUrl = URL.createObjectURL(file);
-      setProfilePic(localUrl);
-
-      // Upload to Cloudinary
-      const url = await uploadToCloudinary(file);
-
-      // Save URL to Firestore
-      await updateDoc(doc(db, "users", user.uid), {
-        profilePic: url,
-        updatedAt: serverTimestamp(),
-      });
-
-      setProfilePic(url);
-      return url;
-    } catch (err) {
-      console.error("Failed to update profile picture:", err);
-      throw err;
-    }
+  // Update user name
+  const updateUserName = async (name) => {
+    if (!user) throw new Error("User not authenticated");
+    const userRef = doc(db, "users", user.uid);
+    await updateDoc(userRef, { name, updatedAt: serverTimestamp() });
+    setProfileName(name);
   };
 
   return (
@@ -90,12 +88,12 @@ export const UserProvider = ({ children }) => {
       value={{
         user,
         profilePic,
-        setProfilePic,
         profileName,
+        setProfilePic,
         setProfileName,
-        loading,
-        uploadToCloudinary,
-        updateProfilePic,
+        loadUserProfile,
+        uploadProfilePic,
+        updateUserName,
       }}
     >
       {children}
