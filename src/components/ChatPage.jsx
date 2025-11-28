@@ -12,42 +12,46 @@ import {
   limit,
   doc,
   getDoc,
+  updateDoc,
 } from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
 import { ThemeContext } from "../context/ThemeContext";
+
+// Cloudinary env for avatar upload
+const CLOUDINARY_CLOUD = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+const CLOUDINARY_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
 
 export default function ChatPage() {
   const { theme, wallpaper } = useContext(ThemeContext);
   const [chats, setChats] = useState([]);
   const [search, setSearch] = useState("");
   const [user, setUser] = useState(null);
-  const [showAddFriend, setShowAddFriend] = useState(false);
-  const [friendEmail, setFriendEmail] = useState("");
   const [profilePic, setProfilePic] = useState(null);
   const [profileName, setProfileName] = useState("");
+  const [showAddFriend, setShowAddFriend] = useState(false);
+  const [friendEmail, setFriendEmail] = useState("");
   const navigate = useNavigate();
   const isDark = theme === "dark";
 
   const profileInputRef = useRef(null);
 
-  // 🔐 Auth listener
+  // 🔐 Auth listener + load profile
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (u) => {
-      if (u) {
-        setUser(u);
+      if (!u) return navigate("/");
 
-        // Load user profile for avatar
-        const userRef = doc(db, "users", u.uid);
-        const snap = await getDoc(userRef);
-        if (snap.exists()) {
-          const data = snap.data();
-          setProfilePic(data.profilePic || null);
-          setProfileName(data.name || "");
-        }
+      setUser(u);
 
-      } else navigate("/");
+      const userRef = doc(db, "users", u.uid);
+      const snap = await getDoc(userRef);
+      if (snap.exists()) {
+        const data = snap.data();
+        setProfilePic(data.profilePic || null);
+        setProfileName(data.name || "");
+      }
     });
+
     return unsubscribe;
   }, [navigate]);
 
@@ -65,8 +69,6 @@ export default function ChatPage() {
       const chatList = await Promise.all(
         snapshot.docs.map(async (docSnap) => {
           const chatData = { id: docSnap.id, ...docSnap.data() };
-
-          // 👤 Fetch friend info
           const friendId = chatData.participants.find((id) => id !== user.uid);
           if (friendId) {
             const friendSnap = await getDocs(
@@ -75,16 +77,15 @@ export default function ChatPage() {
             if (!friendSnap.empty) {
               const data = friendSnap.docs[0].data();
               chatData.name = data.name || data.email;
-              chatData.photoURL = data.profilePic || "";
+              chatData.photoURL = data.profilePic || null;
             }
           }
 
-          // 🔁 Fetch last message
+          // Get last message
           const msgRef = collection(db, "chats", docSnap.id, "messages");
           const msgSnap = await getDocs(
             query(msgRef, orderBy("createdAt", "desc"), limit(1))
           );
-
           const latest = msgSnap.docs[0]?.data();
           if (latest) {
             chatData.lastMessage = latest.text || "📷 Photo";
@@ -92,18 +93,61 @@ export default function ChatPage() {
             chatData.lastMessageSender = latest.senderId;
             chatData.lastMessageStatus = latest.status;
           }
-
           return chatData;
         })
       );
-
       setChats(chatList);
     });
 
     return () => unsubscribe();
   }, [user]);
 
-  // ➕ Add Friend
+  // ➕ Upload avatar to Cloudinary
+  const uploadToCloudinary = async (file) => {
+    if (!CLOUDINARY_CLOUD || !CLOUDINARY_PRESET)
+      throw new Error("Cloudinary environment not set");
+
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("upload_preset", CLOUDINARY_PRESET);
+
+    const res = await fetch(
+      `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`,
+      { method: "POST", body: fd }
+    );
+
+    if (!res.ok) throw new Error("Cloudinary upload failed");
+
+    const data = await res.json();
+    return data.secure_url || data.url;
+  };
+
+  const handleProfileFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+
+    setProfilePic(URL.createObjectURL(file));
+
+    try {
+      const url = await uploadToCloudinary(file);
+      const userRef = doc(db, "users", user.uid);
+      await updateDoc(userRef, { profilePic: url, updatedAt: serverTimestamp() });
+      setProfilePic(url);
+    } catch (err) {
+      console.error("Upload failed:", err);
+      alert("Failed to upload avatar");
+    }
+  };
+
+  const openProfileUploader = () => profileInputRef.current?.click();
+
+  const getInitials = (fullName) => {
+    if (!fullName) return "U";
+    const names = fullName.trim().split(" ");
+    if (names.length === 1) return names[0][0].toUpperCase();
+    return (names[0][0] + names[1][0]).toUpperCase();
+  };
+
   const handleAddFriend = async () => {
     if (!friendEmail.trim() || !user) return;
     const email = friendEmail.trim().toLowerCase();
@@ -167,14 +211,6 @@ export default function ChatPage() {
     return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   };
 
-  // Generate initials for user avatar
-  const getInitials = (fullName) => {
-    if (!fullName) return "U";
-    const names = fullName.trim().split(" ");
-    if (names.length === 1) return names[0][0].toUpperCase();
-    return (names[0][0] + names[1][0]).toUpperCase();
-  };
-
   return (
     <div
       style={{
@@ -203,9 +239,9 @@ export default function ChatPage() {
       >
         <h2 style={{ margin: 0 }}>Chats</h2>
 
-        {/* Avatar like SettingsPage */}
+        {/* Avatar with upload */}
         <div
-          onClick={() => navigate("/edit-profile")}
+          onClick={openProfileUploader}
           style={{
             width: 42,
             height: 42,
@@ -220,7 +256,7 @@ export default function ChatPage() {
             fontWeight: "bold",
             fontSize: 18,
           }}
-          title="Click to edit profile"
+          title="Click to upload/change avatar"
         >
           {profilePic ? (
             <img
@@ -233,6 +269,14 @@ export default function ChatPage() {
           )}
         </div>
       </div>
+
+      <input
+        ref={profileInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: "none" }}
+        onChange={handleProfileFileChange}
+      />
 
       {/* Search */}
       <div style={{ padding: "10px" }}>
@@ -272,15 +316,30 @@ export default function ChatPage() {
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <img
-                  src={chat.photoURL || "https://via.placeholder.com/50"}
+                <div
                   style={{
                     width: 45,
                     height: 45,
                     borderRadius: "50%",
-                    objectFit: "cover",
+                    overflow: "hidden",
+                    background: "#888",
+                    display: "flex",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    color: "#fff",
+                    fontWeight: "bold",
                   }}
-                />
+                >
+                  {chat.photoURL ? (
+                    <img
+                      src={chat.photoURL}
+                      alt={chat.name}
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    />
+                  ) : (
+                    getInitials(chat.name)
+                  )}
+                </div>
                 <div>
                   <strong>{chat.name || "Unknown"}</strong>
                   <p
