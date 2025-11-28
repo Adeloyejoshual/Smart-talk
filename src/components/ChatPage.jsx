@@ -12,10 +12,15 @@ import {
   limit,
   doc,
   updateDoc,
+  getDoc,
 } from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
 import { ThemeContext } from "../context/ThemeContext";
+
+// Cloudinary env
+const CLOUDINARY_CLOUD = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+const CLOUDINARY_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
 
 export default function ChatPage() {
   const { theme, wallpaper } = useContext(ThemeContext);
@@ -26,21 +31,32 @@ export default function ChatPage() {
   const [showDropdown, setShowDropdown] = useState(false);
   const [showAddFriend, setShowAddFriend] = useState(false);
   const [friendEmail, setFriendEmail] = useState("");
+  const [profilePic, setProfilePic] = useState(null);
+  const [profileName, setProfileName] = useState("");
   const navigate = useNavigate();
   const isDark = theme === "dark";
 
   const dropdownRef = useRef(null);
+  const profileInputRef = useRef(null);
 
-  // Auth listener
+  // 🔐 Auth listener + load profile
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((u) => {
+    const unsubscribe = auth.onAuthStateChanged(async (u) => {
       if (!u) return navigate("/");
       setUser(u);
+
+      const userRef = doc(db, "users", u.uid);
+      const snap = await getDoc(userRef);
+      if (snap.exists()) {
+        const data = snap.data();
+        setProfilePic(data.profilePic || null);
+        setProfileName(data.name || "");
+      }
     });
     return unsubscribe;
   }, [navigate]);
 
-  // Load chats in real-time (newest first)
+  // 💬 Load chats in real-time (newest first, pinned on top)
   useEffect(() => {
     if (!user) return;
 
@@ -78,27 +94,30 @@ export default function ChatPage() {
             chatData.lastMessageAt = latest.createdAt;
             chatData.lastMessageSender = latest.senderId;
             chatData.lastMessageStatus = latest.status;
-            chatData.unread =
-              latest.senderId !== user.uid && latest.status !== "seen";
           }
 
           return chatData;
         })
       );
 
+      // Sort pinned chats first, then newest
       chatList.sort((a, b) => {
+        if (a.pinned && !b.pinned) return -1;
+        if (!a.pinned && b.pinned) return 1;
+
         const tA = a.lastMessageAt?.seconds || 0;
         const tB = b.lastMessageAt?.seconds || 0;
         return tB - tA;
       });
 
-      setChats(chatList);
+      // Filter out deleted chats
+      setChats(chatList.filter((c) => !c.deleted));
     });
 
     return () => unsubscribe();
   }, [user]);
 
-  // Get initials
+  // ✅ Initials
   const getInitials = (fullName) => {
     if (!fullName) return "U";
     const names = fullName.trim().split(" ").filter(Boolean);
@@ -107,7 +126,47 @@ export default function ChatPage() {
       : names[0][0].toUpperCase();
   };
 
-  // Chat actions
+  // ✅ Profile upload
+  const uploadToCloudinary = async (file) => {
+    if (!CLOUDINARY_CLOUD || !CLOUDINARY_PRESET)
+      throw new Error("Cloudinary env not set");
+
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("upload_preset", CLOUDINARY_PRESET);
+
+    const res = await fetch(
+      `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`,
+      { method: "POST", body: fd }
+    );
+
+    if (!res.ok) throw new Error("Cloudinary upload failed");
+
+    const data = await res.json();
+    return data.secure_url || data.url;
+  };
+
+  const handleProfileFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+    setProfilePic(URL.createObjectURL(file));
+
+    try {
+      const url = await uploadToCloudinary(file);
+      await updateDoc(doc(db, "users", user.uid), {
+        profilePic: url,
+        updatedAt: serverTimestamp(),
+      });
+      setProfilePic(url);
+    } catch (err) {
+      console.error("Upload failed:", err);
+      alert("Failed to upload avatar");
+    }
+  };
+
+  const openProfileUploader = () => profileInputRef.current?.click();
+
+  // ✅ Chat actions
   const toggleSelectChat = (chatId) => {
     setSelectedChats((prev) =>
       prev.includes(chatId) ? prev.filter((id) => id !== chatId) : [...prev, chatId]
@@ -131,6 +190,23 @@ export default function ChatPage() {
     setShowDropdown(false);
   };
 
+  const handleMute = async () => {
+    const mutedUntil = new Date().getTime() + 24 * 60 * 60 * 1000; // mute 24h
+    for (const chatId of selectedChats) {
+      await updateDoc(doc(db, "chats", chatId), { mutedUntil });
+    }
+    setSelectedChats([]);
+    setShowDropdown(false);
+  };
+
+  const handlePin = async () => {
+    for (const chatId of selectedChats) {
+      await updateDoc(doc(db, "chats", chatId), { pinned: true });
+    }
+    setSelectedChats([]);
+    setShowDropdown(false);
+  };
+
   const renderMessageTick = (chat) => {
     if (chat.lastMessageSender !== user?.uid) return null;
     if (chat.lastMessageStatus === "sent") return "✓";
@@ -146,6 +222,7 @@ export default function ChatPage() {
     return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   };
 
+  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (!dropdownRef.current?.contains(e.target)) setShowDropdown(false);
@@ -157,11 +234,7 @@ export default function ChatPage() {
   return (
     <div
       style={{
-        background: wallpaper
-          ? `url(${wallpaper}) no-repeat center/cover`
-          : isDark
-          ? "#121212"
-          : "#fff",
+        background: wallpaper ? `url(${wallpaper}) no-repeat center/cover` : isDark ? "#121212" : "#fff",
         minHeight: "100vh",
         color: isDark ? "#fff" : "#000",
         paddingBottom: "90px",
@@ -182,48 +255,16 @@ export default function ChatPage() {
         }}
       >
         <h2>{selectedChats.length > 0 ? `${selectedChats.length} selected` : "Chats"}</h2>
-
         <div style={{ display: "flex", gap: 15, position: "relative" }}>
           {selectedChats.length > 0 ? (
             <>
               <span style={{ cursor: "pointer" }} onClick={handleArchive}>📦</span>
               <span style={{ cursor: "pointer" }} onClick={handleDelete}>🗑️</span>
-              <span style={{ cursor: "pointer" }}>🔕</span>
-              <span
-                style={{ cursor: "pointer" }}
-                onClick={() => setShowDropdown(!showDropdown)}
-              >
-                ⋮
-              </span>
-              {showDropdown && (
-                <div
-                  ref={dropdownRef}
-                  style={{
-                    position: "absolute",
-                    top: 50,
-                    right: 0,
-                    background: isDark ? "#1f1f1f" : "#fff",
-                    border: "1px solid #ccc",
-                    borderRadius: 8,
-                    padding: 10,
-                    display: "flex",
-                    flexDirection: "column",
-                    zIndex: 20,
-                  }}
-                >
-                  <div style={{ padding: 5, cursor: "pointer" }}>Pin</div>
-                  <div style={{ padding: 5, cursor: "pointer" }}>Block</div>
-                  <div style={{ padding: 5, cursor: "pointer" }}>Mark as read/unread</div>
-                </div>
-              )}
+              <span style={{ cursor: "pointer" }} onClick={handleMute}>🔕</span>
+              <span style={{ cursor: "pointer" }} onClick={handlePin}>📌</span>
             </>
           ) : (
-            <span
-              style={{ fontSize: 22, cursor: "pointer" }}
-              onClick={() => navigate("/settings")}
-            >
-              ⚙️
-            </span>
+            <span style={{ fontSize: 22, cursor: "pointer" }} onClick={() => navigate("/settings")}>⚙️</span>
           )}
         </div>
       </div>
@@ -269,89 +310,79 @@ export default function ChatPage() {
               (c.name?.toLowerCase().includes(search.toLowerCase()) ||
                 c.lastMessage?.toLowerCase().includes(search.toLowerCase()))
           )
-          .map((chat) => (
-            <div
-              key={chat.id}
-              onClick={() =>
-                selectedChats.length > 0
-                  ? toggleSelectChat(chat.id)
-                  : navigate(`/chat/${chat.id}`)
-              }
-              onContextMenu={(e) => {
-                e.preventDefault();
-                toggleSelectChat(chat.id);
-              }}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "10px 0",
-                borderBottom: isDark ? "1px solid #333" : "1px solid #eee",
-                cursor: "pointer",
-                background: selectedChats.includes(chat.id)
-                  ? "rgba(0,123,255,0.2)"
-                  : "transparent",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <div
-                  style={{
-                    width: 45,
-                    height: 45,
-                    borderRadius: "50%",
-                    overflow: "hidden",
-                    background: "#888",
-                    display: "flex",
-                    justifyContent: "center",
-                    alignItems: "center",
-                    color: "#fff",
-                    fontWeight: "bold",
-                  }}
-                >
-                  {chat.photoURL ? (
-                    <img
-                      src={chat.photoURL}
-                      alt={chat.name}
-                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                    />
-                  ) : (
-                    getInitials(chat.name)
-                  )}
-                </div>
-                <div style={{ position: "relative", flex: 1 }}>
-                  <strong>{chat.name || "Unknown"}</strong>
-                  <p
+          .map((chat) => {
+            const isMuted = chat.mutedUntil && chat.mutedUntil > new Date().getTime();
+            return (
+              <div
+                key={chat.id}
+                onClick={() =>
+                  selectedChats.length > 0
+                    ? toggleSelectChat(chat.id)
+                    : navigate(`/chat/${chat.id}`)
+                }
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  toggleSelectChat(chat.id);
+                }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "10px 0",
+                  borderBottom: isDark ? "1px solid #333" : "1px solid #eee",
+                  cursor: "pointer",
+                  background: selectedChats.includes(chat.id)
+                    ? "rgba(0,123,255,0.2)"
+                    : isMuted
+                    ? isDark ? "#2c2c2c" : "#f0f0f0"
+                    : "transparent",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <div
                     style={{
-                      margin: 0,
-                      fontSize: "14px",
-                      color: isDark ? "#ccc" : "#555",
+                      width: 45,
+                      height: 45,
+                      borderRadius: "50%",
+                      overflow: "hidden",
+                      background: "#888",
                       display: "flex",
+                      justifyContent: "center",
                       alignItems: "center",
-                      gap: "5px",
+                      color: "#fff",
+                      fontWeight: "bold",
                     }}
                   >
-                    {renderMessageTick(chat)} {chat.lastMessage || "No messages yet"}
-                  </p>
-                  {/* Blue badge for unread */}
-                  {chat.unread && (
-                    <span
+                    {chat.photoURL ? (
+                      <img
+                        src={chat.photoURL}
+                        alt={chat.name}
+                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      />
+                    ) : (
+                      getInitials(chat.name)
+                    )}
+                  </div>
+                  <div>
+                    <strong>{chat.name || "Unknown"}</strong>
+                    <p
                       style={{
-                        position: "absolute",
-                        right: 0,
-                        top: "50%",
-                        transform: "translateY(-50%)",
-                        width: 10,
-                        height: 10,
-                        borderRadius: "50%",
-                        background: "#1E90FF",
+                        margin: 0,
+                        fontSize: "14px",
+                        color: isDark ? "#ccc" : "#555",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "5px",
                       }}
-                    />
-                  )}
+                    >
+                      {renderMessageTick(chat)} {chat.lastMessage || "No messages yet"}
+                    </p>
+                  </div>
                 </div>
+                <small style={{ color: "#888" }}>{formatDate(chat.lastMessageAt)}</small>
               </div>
-              <small style={{ color: "#888" }}>{formatDate(chat.lastMessageAt)}</small>
-            </div>
-          ))}
+            );
+          })}
       </div>
 
       {/* Floating Add Friend */}
@@ -373,6 +404,14 @@ export default function ChatPage() {
       >
         +
       </button>
+
+      <input
+        ref={profileInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: "none" }}
+        onChange={handleProfileFileChange}
+      />
 
       {/* Bottom Navigation */}
       <div
