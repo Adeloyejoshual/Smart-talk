@@ -14,30 +14,25 @@ import {
   arrayUnion,
   arrayRemove,
   deleteDoc,
-  getDocs,
   limit as fsLimit,
+  getDocs,
 } from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
 import { ThemeContext } from "../context/ThemeContext";
-
-import ChatHeader from "./Chat/ChatHeader";
-import MessageItem from "./Chat/MessageItem";
-import ChatInput from "./Chat/ChatInput";
+import ChatInput from "./ChatInput";
 
 // -------------------- Helpers --------------------
-const dayLabel = (ts) => {
+const fmtTime = (ts) => {
   if (!ts) return "";
   const d = ts.toDate ? ts.toDate() : new Date(ts);
-  const now = new Date();
-  const yesterday = new Date();
-  yesterday.setDate(now.getDate() - 1);
-  if (d.toDateString() === now.toDateString()) return "Today";
-  if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
-  return d.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: d.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
-  });
+  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+};
+
+const getInitials = (name) => {
+  if (!name) return "?";
+  const parts = name.trim().split(" ");
+  if (parts.length === 1) return parts[0][0].toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 };
 
 // -------------------- Component --------------------
@@ -58,13 +53,11 @@ export default function ChatConversationPage() {
   const [loadingMsgs, setLoadingMsgs] = useState(true);
   const [text, setText] = useState("");
   const [selectedFiles, setSelectedFiles] = useState([]);
-  const [replyTo, setReplyTo] = useState(null);
-  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [isAtBottom, setIsAtBottom] = useState(true);
 
   // -------------------- Load chat & friend --------------------
   useEffect(() => {
-    if (!chatId) return;
+    if (!chatId || !myUid) return;
     let unsubChat = null;
     let unsubUser = null;
 
@@ -76,7 +69,6 @@ export default function ChatConversationPage() {
           const data = cSnap.data();
           setChatInfo({ id: cSnap.id, ...data });
 
-          // find friend id
           const friendId = data.participants?.find((p) => p !== myUid);
           if (friendId) {
             const userRef = doc(db, "users", friendId);
@@ -86,7 +78,7 @@ export default function ChatConversationPage() {
           }
         }
 
-        unsubChat = onSnapshot(cRef, (s) => {
+        unsubChat = onSnapshot(doc(db, "chats", chatId), (s) => {
           if (s.exists()) setChatInfo(prev => ({ ...(prev || {}), ...s.data() }));
         });
       } catch (e) {
@@ -95,122 +87,85 @@ export default function ChatConversationPage() {
     };
 
     loadMeta();
-    return () => {
-      if (unsubChat) unsubChat();
-      if (unsubUser) unsubUser();
-    };
+    return () => { if (unsubChat) unsubChat(); if (unsubUser) unsubUser(); };
   }, [chatId, myUid]);
 
   // -------------------- Messages realtime --------------------
   useEffect(() => {
-    if (!chatId) return;
+    if (!chatId || !myUid) return;
     setLoadingMsgs(true);
-    const q = query(
-      collection(db, "chats", chatId, "messages"),
-      orderBy("createdAt", "asc"),
-      fsLimit(2000)
-    );
-
-    const unsub = onSnapshot(q, (snap) => {
-      const docs = snap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .filter(m => !(m.deletedFor?.includes(myUid)));
+    const q = query(collection(db, "chats", chatId, "messages"), orderBy("createdAt","asc"), fsLimit(2000));
+    const unsub = onSnapshot(q, snap => {
+      const docs = snap.docs.map(d=>({id:d.id,...d.data()})).filter(m=>!(m.deletedFor?.includes(myUid)));
       setMessages(docs);
-
-      // mark delivered
-      docs.forEach(async m => {
-        if (m.senderId !== myUid && m.status === "sent") {
-          await updateDoc(doc(db, "chats", chatId, "messages", m.id), { status: "delivered" });
-        }
-      });
-
       setLoadingMsgs(false);
-      if (isAtBottom) endRef.current?.scrollIntoView({ behavior: "smooth" });
+      if(isAtBottom) endRef.current?.scrollIntoView({behavior:"smooth"});
     });
-
     return () => unsub();
   }, [chatId, myUid, isAtBottom]);
 
-  // -------------------- Scroll detection --------------------
   useEffect(() => {
     const el = messagesRefEl.current;
-    if (!el) return;
-    const onScroll = () => setIsAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 80);
+    if(!el) return;
+    const onScroll = () => { setIsAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 80); };
     el.addEventListener("scroll", onScroll);
     return () => el.removeEventListener("scroll", onScroll);
   }, []);
 
-  const scrollToBottom = () => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
-    setIsAtBottom(true);
-  };
+  const scrollToBottom = () => { endRef.current?.scrollIntoView({behavior:"smooth"}); setIsAtBottom(true); };
 
-  // -------------------- Send message --------------------
-  const sendTextMessage = async () => {
-    if ((chatInfo?.blockedBy || []).includes(myUid)) return alert("You are blocked in this chat.");
-    if (selectedFiles.length > 0) return; // handled by ChatInput
-    if (!text.trim()) return;
-
-    try {
-      const payload = {
-        senderId: myUid,
-        text: text.trim(),
-        mediaUrl: "",
-        mediaType: null,
-        createdAt: serverTimestamp(),
-        status: "sent",
-        reactions: {},
-      };
-      if (replyTo) {
-        payload.replyTo = { id: replyTo.id, text: replyTo.text || (replyTo.mediaType || "media"), senderId: replyTo.senderId };
-        setReplyTo(null);
-      }
-      await addDoc(collection(db, "chats", chatId, "messages"), payload);
-      setText("");
-      scrollToBottom();
-    } catch (e) {
-      console.error(e);
-      alert("Failed to send");
-    }
+  // -------------------- Render message --------------------
+  const renderMessage = (m) => {
+    const isMine = m.senderId === myUid;
+    return (
+      <div key={m.id} style={{ display: "flex", flexDirection: "column", alignItems: isMine ? "flex-end" : "flex-start", marginBottom: 8 }}>
+        <div style={{ maxWidth: "70%", padding: 8, borderRadius: 12, backgroundColor: isMine ? "#34B7F1" : (isDark ? "#1b1b1b" : "#fff"), color: isMine ? "#fff" : (isDark ? "#fff" : "#000") }}>
+          {m.text && <div>{m.text}</div>}
+          {m.mediaUrl && (
+            <div style={{ marginTop: 4 }}>
+              {m.mediaType === "image" && <img src={m.mediaUrl} alt="" style={{ maxWidth: "100%", borderRadius: 12 }} />}
+              {m.mediaType === "video" && <video src={m.mediaUrl} controls style={{ maxWidth: "100%", borderRadius: 12 }} />}
+              {m.mediaType === "audio" && <audio src={m.mediaUrl} controls />}
+            </div>
+          )}
+          <div style={{ fontSize: 10, color: "#888", marginTop: 2, textAlign: "right" }}>
+            {m.edited && "(edited)"} {fmtTime(m.createdAt)} {m.status && isMine ? `• ${m.status}` : ""}
+          </div>
+        </div>
+      </div>
+    );
   };
 
   // -------------------- JSX Return --------------------
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        height: "100vh",
-        backgroundColor: wallpaper || (isDark ? "#0b0b0b" : "#f5f5f5"),
-        color: isDark ? "#fff" : "#000",
-      }}
-    >
+    <div style={{ display: "flex", flexDirection: "column", height: "100vh", backgroundColor: wallpaper || (isDark ? "#0b0b0b" : "#f5f5f5"), color: isDark ? "#fff" : "#000" }}>
       {/* Header */}
-      <ChatHeader
-        chatInfo={chatInfo}
-        friendInfo={friendInfo}
-        myUid={myUid}
-        isDark={isDark}
-        headerMenuOpen={headerMenuOpen}
-        setHeaderMenuOpen={setHeaderMenuOpen}
-        navigate={navigate}
-        chatId={chatId}
-      />
+      <div style={{ height: 56, backgroundColor: "#1877F2", color: "#fff", display: "flex", alignItems: "center", padding: "0 12px", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }} onClick={() => friendInfo?.id && navigate(`/UserProfilePage/${friendInfo.id}`)}>
+          <button onClick={(e)=>{e.stopPropagation(); navigate(-1);}} style={{ background:"transparent", border:"none", color:"#fff", fontSize:18 }}>←</button>
 
-      {/* Messages */}
-      <div ref={messagesRefEl} style={{ flex: 1, overflowY: "auto", padding: 8 }}>
-        {loadingMsgs && <div style={{ textAlign: "center", marginTop: 12 }}>Loading...</div>}
-        {messages.map(msg => (
-          <MessageItem
-            key={msg.id}
-            message={msg}
-            myUid={myUid}
-            isDark={isDark}
-            replyTo={replyTo}
-            setReplyTo={setReplyTo}
-            chatId={chatId}
-          />
-        ))}
+          {/* Profile: Cloudinary or Initial */}
+          {friendInfo?.photoURL ? (
+            <img src={friendInfo.photoURL} alt="" style={{ width: 36, height: 36, borderRadius: "50%" }} />
+          ) : (
+            <div style={{ width:36, height:36, borderRadius:"50%", background:"#888", color:"#fff", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:600 }}>
+              {getInitials(friendInfo?.name)}
+            </div>
+          )}
+
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <div style={{ fontWeight: 600 }}>{friendInfo?.name || "Chat"}</div>
+            <div style={{ fontSize: 12, color: "#eee" }}>
+              {friendInfo?.online ? "Online" : "Last seen unknown"}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Messages container */}
+      <div ref={messagesRefEl} style={{ flex:1, overflowY:"auto", padding:8 }}>
+        {loadingMsgs && <div style={{ textAlign:"center", marginTop:20 }}>Loading...</div>}
+        {messages.map(renderMessage)}
         <div ref={endRef} />
       </div>
 
@@ -218,11 +173,22 @@ export default function ChatConversationPage() {
       <ChatInput
         text={text}
         setText={setText}
-        sendTextMessage={sendTextMessage}
+        sendTextMessage={async () => {
+          if (!text.trim()) return;
+          try {
+            await addDoc(collection(db, "chats", chatId, "messages"), {
+              senderId: myUid,
+              text: text.trim(),
+              createdAt: serverTimestamp(),
+              status: "sent",
+            });
+            setText("");
+            scrollToBottom();
+          } catch(e) { console.error(e); }
+        }}
         selectedFiles={selectedFiles}
         setSelectedFiles={setSelectedFiles}
         isDark={isDark}
-        chatId={chatId}
       />
     </div>
   );
