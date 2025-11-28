@@ -11,13 +11,16 @@ import {
   doc,
   serverTimestamp,
   limit as fsLimit,
+  getDoc,
 } from "firebase/firestore";
-import { db, auth } from "../firebaseConfig";
-import { ThemeContext } from "../context/ThemeContext";
-import { usePopup } from "../context/PopupContext";
-import ChatHeader from "./Chat/ChatHeader";
-import MessageItem from "./Chat/MessageItem";
-import ChatInput from "./Chat/ChatInput";
+import { db, auth } from "../../firebaseConfig";
+import { ThemeContext } from "../../context/ThemeContext";
+import { UserContext } from "../../context/UserContext";
+import { usePopup } from "../../context/PopupContext";
+
+import ChatHeader from "./ChatHeader";
+import MessageItem from "./MessageItem";
+import ChatInput from "./ChatInput";
 
 const COLORS = {
   primary: "#34B7F1",
@@ -28,7 +31,7 @@ const COLORS = {
   mutedText: "#888",
 };
 
-// Format date labels
+// Format day label
 const formatDayLabel = (ts) => {
   if (!ts) return "";
   const d = ts.toDate ? ts.toDate() : new Date(ts);
@@ -38,6 +41,7 @@ const formatDayLabel = (ts) => {
 
   if (d.toDateString() === now.toDateString()) return "Today";
   if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
+
   return d.toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
@@ -45,7 +49,7 @@ const formatDayLabel = (ts) => {
   });
 };
 
-// Format timestamp to hh:mm AM/PM
+// Format time (hh:mm AM/PM)
 export const fmtTime = (ts) => {
   if (!ts) return "";
   const d = ts.toDate ? ts.toDate() : new Date(ts);
@@ -59,7 +63,9 @@ export const fmtTime = (ts) => {
 export default function ChatConversationPage() {
   const { chatId } = useParams();
   const { theme, wallpaper } = useContext(ThemeContext);
+  const { uploadToCloudinary } = useContext(UserContext);
   const { showPopup } = usePopup();
+
   const isDark = theme === "dark";
   const myUid = auth.currentUser?.uid;
 
@@ -69,10 +75,12 @@ export default function ChatConversationPage() {
   const [chatInfo, setChatInfo] = useState(null);
   const [friendInfo, setFriendInfo] = useState(null);
   const [messages, setMessages] = useState([]);
+
   const [text, setText] = useState("");
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [uploadProgress, setUploadProgress] = useState({});
   const [replyTo, setReplyTo] = useState(null);
+
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [showScrollDown, setShowScrollDown] = useState(false);
   const [toast, setToast] = useState(null);
@@ -82,32 +90,32 @@ export default function ChatConversationPage() {
   // -----------------------------
   useEffect(() => {
     if (!chatId) return;
+
     let unsubChat = null;
     let unsubUser = null;
 
     const loadMeta = async () => {
-      try {
-        const cRef = doc(db, "chats", chatId);
-        const cSnap = await getDoc(cRef);
-        if (cSnap.exists()) {
-          const data = cSnap.data();
-          setChatInfo({ id: cSnap.id, ...data });
+      const cRef = doc(db, "chats", chatId);
+      const cSnap = await getDoc(cRef);
 
-          const friendId = data.participants?.find((p) => p !== myUid);
-          if (friendId) {
-            const userRef = doc(db, "users", friendId);
-            unsubUser = onSnapshot(userRef, (s) => {
-              if (s.exists()) setFriendInfo({ id: s.id, ...s.data() });
-            });
-          }
+      if (cSnap.exists()) {
+        const data = cSnap.data();
+        setChatInfo({ id: cSnap.id, ...data });
+
+        const friendId = data.participants?.find((p) => p !== myUid);
+
+        if (friendId) {
+          const uRef = doc(db, "users", friendId);
+          unsubUser = onSnapshot(uRef, (s) => {
+            if (s.exists()) setFriendInfo({ id: s.id, ...s.data() });
+          });
         }
-
-        unsubChat = onSnapshot(cRef, (s) => {
-          if (s.exists()) setChatInfo((prev) => ({ ...(prev || {}), ...s.data() }));
-        });
-      } catch (e) {
-        console.error("loadMeta error", e);
       }
+
+      unsubChat = onSnapshot(cRef, (s) => {
+        if (s.exists())
+          setChatInfo((prev) => ({ ...(prev || {}), ...s.data() }));
+      });
     };
 
     loadMeta();
@@ -118,7 +126,7 @@ export default function ChatConversationPage() {
   }, [chatId, myUid]);
 
   // -----------------------------
-  // Messages realtime
+  // Realtime messages
   // -----------------------------
   useEffect(() => {
     if (!chatId) return;
@@ -136,7 +144,7 @@ export default function ChatConversationPage() {
 
       setMessages(docs);
 
-      // Mark incoming as delivered
+      // Mark incoming messages as delivered
       docs.forEach(async (m) => {
         if (m.senderId !== myUid && m.status === "sent") {
           await updateDoc(doc(db, "chats", chatId, "messages", m.id), {
@@ -145,7 +153,7 @@ export default function ChatConversationPage() {
         }
       });
 
-      if (messagesRefEl.current && !isAtBottom) setShowScrollDown(true);
+      if (!isAtBottom) setShowScrollDown(true);
       else scrollToBottom(false);
     });
 
@@ -153,16 +161,17 @@ export default function ChatConversationPage() {
   }, [chatId, myUid, isAtBottom]);
 
   // -----------------------------
-  // Scroll detection
+  // Scroll listener
   // -----------------------------
   useEffect(() => {
     const el = messagesRefEl.current;
     if (!el) return;
 
     const onScroll = () => {
-      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-      setIsAtBottom(atBottom);
-      if (atBottom) setShowScrollDown(false);
+      const bottom =
+        el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+      setIsAtBottom(bottom);
+      if (bottom) setShowScrollDown(false);
     };
 
     el.addEventListener("scroll", onScroll);
@@ -175,19 +184,21 @@ export default function ChatConversationPage() {
     setShowScrollDown(false);
   };
 
-  const triggerToast = (message) => {
-    setToast(message);
+  const triggerToast = (msg) => {
+    setToast(msg);
     setTimeout(() => setToast(null), 2300);
   };
 
   // -----------------------------
-  // Upload documents / audio to B2
+  // Document uploads (B2)
   // -----------------------------
   const uploadToB2 = async (files) => {
     const uploaded = [];
+
     for (let file of files) {
       const tempId = Date.now() + "-" + file.name;
-      setUploadProgress((prev) => ({ ...prev, [tempId]: 0 }));
+
+      setUploadProgress((p) => ({ ...p, [tempId]: 0 }));
 
       try {
         const token = await auth.currentUser.getIdToken();
@@ -199,6 +210,7 @@ export default function ChatConversationPage() {
           headers: { Authorization: `Bearer ${token}` },
           body: formData,
         });
+
         const data = await res.json();
         if (!data.url) throw new Error("Upload failed");
 
@@ -206,82 +218,71 @@ export default function ChatConversationPage() {
           tempId,
           fileName: file.name,
           url: data.url,
-          mediaType: file.type.startsWith("audio") ? "audio" : "file",
+          mediaType: "file",
         });
 
-        setUploadProgress((prev) => {
-          const { [tempId]: _, ...rest } = prev;
+        setUploadProgress((p) => {
+          const { [tempId]: _, ...rest } = p;
           return rest;
         });
       } catch (err) {
-        console.error("B2 upload error:", err);
-        triggerToast("Failed to upload: " + file.name);
+        console.error(err);
+        triggerToast("Upload failed: " + file.name);
       }
     }
     return uploaded;
   };
 
   // -----------------------------
-  // Upload images/videos to Cloudinary
+  // Cloudinary uploads (images, videos, audio)
   // -----------------------------
-  const uploadToCloudinary = async (files) => {
+  const uploadCloudinaryMedia = async (files) => {
     const uploaded = [];
+
     for (let file of files) {
-      const tempId = Date.now() + "-" + file.name;
-      setUploadProgress((prev) => ({ ...prev, [tempId]: 0 }));
-
       try {
-        const formData = new FormData();
-        formData.append("file", file);
-        formData.append("upload_preset", "your_cloudinary_preset");
-
-        const res = await fetch(
-          `https://api.cloudinary.com/v1_1/${process.env.REACT_APP_CLOUDINARY_NAME}/upload`,
-          { method: "POST", body: formData }
-        );
-        const data = await res.json();
-
+        const upload = await uploadToCloudinary(file);
         uploaded.push({
-          tempId,
+          tempId: Date.now() + "-" + file.name,
           fileName: file.name,
-          url: data.secure_url,
-          mediaType: file.type.startsWith("image") ? "image" : "video",
+          url: upload.url,
+          mediaType: upload.type, // image / video / audio
         });
-
-        setUploadProgress((prev) => {
-          const { [tempId]: _, ...rest } = prev;
-          return rest;
-        });
-      } catch (err) {
-        console.error("Cloudinary upload error:", err);
-        triggerToast("Failed to upload media: " + file.name);
+      } catch {
+        triggerToast("Media upload failed: " + file.name);
       }
     }
+
     return uploaded;
   };
 
   // -----------------------------
-  // Send message (text + media)
+  // Sending messages
   // -----------------------------
   const sendTextMessage = async () => {
     if (!text && selectedFiles.length === 0) return;
 
-    // Split files
-    const b2Files = selectedFiles.filter(
-      (f) => !f.type.startsWith("image") && !f.type.startsWith("video")
+    const docs = selectedFiles.filter(
+      (f) =>
+        !f.type.startsWith("image") &&
+        !f.type.startsWith("video") &&
+        !f.type.startsWith("audio")
     );
-    const cloudFiles = selectedFiles.filter(
-      (f) => f.type.startsWith("image") || f.type.startsWith("video")
+
+    const media = selectedFiles.filter(
+      (f) =>
+        f.type.startsWith("image") ||
+        f.type.startsWith("video") ||
+        f.type.startsWith("audio")
     );
 
-    // Upload files
-    const uploadedB2 = await uploadToB2(b2Files);
-    const uploadedCloud = await uploadToCloudinary(cloudFiles);
+    const uploadedDocs = await uploadToB2(docs);
+    const uploadedMedia = await uploadCloudinaryMedia(media);
 
-    const allUploads = [...uploadedB2, ...uploadedCloud];
+    const uploads = [...uploadedDocs, ...uploadedMedia];
 
-    // Save uploaded files in Firestore
-    for (let item of allUploads) {
+    // Save uploaded files
+    for (let item of uploads) {
       await addDoc(collection(db, "chats", chatId, "messages"), {
         senderId: myUid,
         text: "",
@@ -291,7 +292,6 @@ export default function ChatConversationPage() {
         status: "sent",
         createdAt: serverTimestamp(),
         replyTo: replyTo?.id || null,
-        tempId: item.tempId,
       });
     }
 
@@ -321,10 +321,11 @@ export default function ChatConversationPage() {
   };
 
   // -----------------------------
-  // Group messages by day
+  // Group messages by date
   // -----------------------------
   const groupedMessages = [];
   let lastDate = null;
+
   messages.forEach((msg) => {
     const msgDate = formatDayLabel(msg.createdAt);
     if (msgDate !== lastDate) {
@@ -340,22 +341,32 @@ export default function ChatConversationPage() {
         display: "flex",
         flexDirection: "column",
         height: "100vh",
-        backgroundColor: wallpaper || (isDark ? COLORS.darkBg : COLORS.lightBg),
+        backgroundColor:
+          wallpaper || (isDark ? COLORS.darkBg : COLORS.lightBg),
         color: isDark ? COLORS.darkText : COLORS.lightText,
         position: "relative",
       }}
     >
-      <ChatHeader chatInfo={chatInfo} friendInfo={friendInfo} myUid={myUid} />
+      <ChatHeader
+        chatInfo={chatInfo}
+        friendInfo={friendInfo}
+        myUid={myUid}
+      />
 
       <div
         ref={messagesRefEl}
-        style={{ flex: 1, overflowY: "auto", padding: 8, position: "relative" }}
+        style={{ flex: 1, overflowY: "auto", padding: 8 }}
       >
         {groupedMessages.map((item, idx) =>
           item.type === "day" ? (
             <div
-              key={`day-${idx}`}
-              style={{ textAlign: "center", fontSize: 12, color: COLORS.mutedText, margin: "12px 0" }}
+              key={"day-" + idx}
+              style={{
+                textAlign: "center",
+                fontSize: 12,
+                color: COLORS.mutedText,
+                margin: "12px 0",
+              }}
             >
               {item.label}
             </div>
@@ -373,6 +384,7 @@ export default function ChatConversationPage() {
             />
           )
         )}
+
         <div ref={endRef} />
       </div>
 
@@ -408,8 +420,6 @@ export default function ChatConversationPage() {
         selectedFiles={selectedFiles}
         setSelectedFiles={setSelectedFiles}
         onFilesSelected={onFilesSelected}
-        holdStart={() => {}}
-        holdEnd={() => {}}
         recording={false}
         isDark={isDark}
       />
@@ -421,13 +431,12 @@ export default function ChatConversationPage() {
             top: 65,
             left: "50%",
             transform: "translateX(-50%)",
-            background: isDark ? "#333" : "#222",
+            background: "#333",
             color: "#fff",
             padding: "10px 20px",
             borderRadius: 20,
             boxShadow: "0 2px 10px rgba(0,0,0,0.3)",
             opacity: 0.95,
-            transition: "all 0.3s ease-in-out",
             zIndex: 999,
             pointerEvents: "none",
           }}
