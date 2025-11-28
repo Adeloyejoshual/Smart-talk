@@ -24,7 +24,6 @@ export default function ChatHeader({
 
   const selectedCount = selectedChats.length;
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (!dropdownRef.current?.contains(e.target)) {
@@ -48,12 +47,15 @@ export default function ChatHeader({
 
   const handlePinClick = () => {
     const pinnedCount = selectedChats.filter(c => c.pinned).length;
-    if (selectedChats.some(c => !c.pinned) && pinnedCount >= 3) {
+    const allPinned = selectedChats.every(c => c.pinned);
+
+    if (!allPinned && pinnedCount >= 3) {
       triggerToast("You can only pin up to 3 chats");
       return;
     }
+
     onPin?.();
-    triggerToast("Chat(s) updated");
+    triggerToast(allPinned ? "Chat(s) unpinned" : "Chat(s) pinned");
   };
 
   const handleClearChatClick = () => {
@@ -83,7 +85,11 @@ export default function ChatHeader({
     (chat) => chat.lastMessageSender !== user?.uid && chat.lastMessageStatus === "seen"
   );
 
-  const blockLabel = selectedChats.every(c => c.blocked) ? "Unblock" : "Block";
+  const allBlocked = selectedChats.every(c => c.blocked);
+  const blockLabel = allBlocked ? "Unblock" : "Block";
+
+  const allPinned = selectedChats.every(c => c.pinned);
+  const pinIcon = allPinned ? "📌" : "📍"; // change icon dynamically
 
   return (
     <>
@@ -132,7 +138,7 @@ export default function ChatHeader({
                   <div style={{ padding: 10, cursor: "pointer" }} onClick={() => handleMuteClick("1 week", 604800000)}>1 week</div>
                 </div>
               )}
-              <span style={{ cursor: "pointer" }} onClick={handlePinClick} title="Pin / Unpin">📌</span>
+              <span style={{ cursor: "pointer" }} onClick={handlePinClick} title="Pin / Unpin">{pinIcon}</span>
 
               <div style={{ position: "relative" }} ref={dropdownRef}>
                 <span
@@ -187,7 +193,6 @@ export default function ChatHeader({
         </div>
       </div>
 
-      {/* Delete confirmation */}
       {showDeleteConfirm && (
         <div style={{
           position: "fixed",
@@ -211,7 +216,6 @@ export default function ChatHeader({
         </div>
       )}
 
-      {/* Toast popup */}
       {toast && (
         <div style={{
           position: "fixed",
