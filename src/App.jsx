@@ -14,6 +14,7 @@ import { PopupProvider } from "./context/PopupContext";
 import HomePage from "./components/HomePage";
 import ChatPage from "./components/ChatPage";
 import ChatConversationPage from "./components/ChatConversationPage";
+import ArchivePage from "./components/ChatPage/ArchivePage"; // <-- Added
 import CallPage from "./components/CallPage";
 import SettingsPage from "./components/SettingsPage";
 import CallHistoryPage from "./components/CallHistoryPage";
@@ -133,6 +134,14 @@ export default function App() {
                     element={
                       <ProtectedRoute>
                         <ChatPage user={user} />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/archive"
+                    element={
+                      <ProtectedRoute>
+                        <ArchivePage />
                       </ProtectedRoute>
                     }
                   />
