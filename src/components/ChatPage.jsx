@@ -1,369 +1,440 @@
-// src/components/ChatPage/ChatPage.jsx
-import React, { useEffect, useState, useContext, useRef } from "react";
+// src/components/ChatConversationPage.jsx
+import React, { useEffect, useState, useRef, useContext } from "react";
+import { useParams } from "react-router-dom";
 import {
   collection,
+  addDoc,
   query,
-  where,
   orderBy,
   onSnapshot,
-  getDocs,
-  doc,
   updateDoc,
-  getDoc,
-  limit,
+  doc,
   serverTimestamp,
+  limit as fsLimit,
+  getDoc
 } from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
-import { useNavigate } from "react-router-dom";
 import { ThemeContext } from "../context/ThemeContext";
-import { UserContext } from "../context/UserContext"; // <-- Use UserContext
-import ChatHeader from "./ChatPage/Header";
-import AddFriendPopup from "./ChatPage/AddFriendPopup";
+import { usePopup } from "../context/PopupContext";
+import ChatHeader from "./Chat/ChatHeader";
+import MessageItem from "./Chat/MessageItem";
+import ChatInput from "./Chat/ChatInput";
 
-export default function ChatPage() {
+const COLORS = {
+  primary: "#34B7F1",
+  darkBg: "#0b0b0b",
+  lightBg: "#f5f5f5",
+  lightText: "#000",
+  darkText: "#fff",
+  mutedText: "#888",
+};
+
+// Format date labels
+const formatDayLabel = (ts) => {
+  if (!ts) return "";
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  const now = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(now.getDate() - 1);
+
+  if (d.toDateString() === now.toDateString()) return "Today";
+  if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
+  return d.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: d.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
+  });
+};
+
+// Format hh:mm
+export const fmtTime = (ts) => {
+  if (!ts) return "";
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  const hours = d.getHours();
+  const minutes = d.getMinutes().toString().padStart(2, "0");
+  const ampm = hours >= 12 ? "PM" : "AM";
+  const hour12 = hours % 12 || 12;
+  return `${hour12}:${minutes} ${ampm}`;
+};
+
+export default function ChatConversationPage() {
+  const { chatId } = useParams();
   const { theme, wallpaper } = useContext(ThemeContext);
-  const { user, profilePic, profileName, uploadProfilePic } = useContext(UserContext);
+  const { showPopup } = usePopup();
   const isDark = theme === "dark";
-  const navigate = useNavigate();
+  const myUid = auth.currentUser?.uid;
 
-  const [chats, setChats] = useState([]);
-  const [search, setSearch] = useState("");
-  const [selectedChats, setSelectedChats] = useState([]);
-  const [selectionMode, setSelectionMode] = useState(false);
-  const [showAddFriend, setShowAddFriend] = useState(false);
-  const profileInputRef = useRef(null);
+  const messagesRefEl = useRef(null);
+  const endRef = useRef(null);
 
-  // ================= AUTH CHECK =================
+  const [chatInfo, setChatInfo] = useState(null);
+  const [friendInfo, setFriendInfo] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [text, setText] = useState("");
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [uploadProgress, setUploadProgress] = useState({});
+  const [replyTo, setReplyTo] = useState(null);
+  const [isAtBottom, setIsAtBottom] = useState(true);
+  const [showScrollDown, setShowScrollDown] = useState(false);
+  const [toast, setToast] = useState(null);
+
+  // -----------------------------
+  // Load chat & friend info
+  // -----------------------------
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((u) => {
-      if (!u) return navigate("/");
-    });
-    return unsubscribe;
-  }, [navigate]);
+    if (!chatId) return;
+    let unsubChat = null;
+    let unsubUser = null;
 
-  // ================= LOAD CHATS REAL-TIME =================
+    const loadMeta = async () => {
+      try {
+        const cRef = doc(db, "chats", chatId);
+        const cSnap = await getDoc(cRef);
+        if (cSnap.exists()) {
+          const data = cSnap.data();
+          setChatInfo({ id: cSnap.id, ...data });
+
+          const friendId = data.participants?.find((p) => p !== myUid);
+          if (friendId) {
+            const userRef = doc(db, "users", friendId);
+            unsubUser = onSnapshot(userRef, (s) => {
+              if (s.exists()) setFriendInfo({ id: s.id, ...s.data() });
+            });
+          }
+        }
+
+        unsubChat = onSnapshot(cRef, (s) => {
+          if (s.exists()) setChatInfo((prev) => ({ ...(prev || {}), ...s.data() }));
+        });
+      } catch (e) {
+        console.error("loadMeta error", e);
+      }
+    };
+
+    loadMeta();
+    return () => {
+      unsubChat?.();
+      unsubUser?.();
+    };
+  }, [chatId, myUid]);
+
+  // -----------------------------
+  // Messages realtime
+  // -----------------------------
   useEffect(() => {
-    if (!user) return;
+    if (!chatId) return;
+
     const q = query(
-      collection(db, "chats"),
-      where("participants", "array-contains", user.uid),
-      orderBy("lastMessageAt", "desc")
+      collection(db, "chats", chatId, "messages"),
+      orderBy("createdAt", "asc"),
+      fsLimit(2000)
     );
 
-    const unsubscribe = onSnapshot(q, async (snapshot) => {
-      const chatList = await Promise.all(
-        snapshot.docs.map(async (docSnap) => {
-          const chatData = { id: docSnap.id, ...docSnap.data() };
-          const friendId = chatData.participants.find((id) => id !== user.uid);
+    const unsub = onSnapshot(q, (snap) => {
+      const docs = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((m) => !(m.deletedFor?.includes(myUid)));
 
-          if (friendId) {
-            const friendSnap = await getDocs(
-              query(collection(db, "users"), where("uid", "==", friendId))
-            );
-            if (!friendSnap.empty) {
-              const data = friendSnap.docs[0].data();
-              chatData.name = data.name || data.email;
-              chatData.photoURL = data.profilePic || null;
-            }
-          }
+      setMessages(docs);
 
-          const msgSnap = await getDocs(
-            query(
-              collection(db, "chats", docSnap.id, "messages"),
-              orderBy("createdAt", "desc"),
-              limit(1)
-            )
-          );
-          const latest = msgSnap.docs[0]?.data();
-          if (latest) {
-            chatData.lastMessage = latest.text || "📷 Photo";
-            chatData.lastMessageAt = latest.createdAt;
-            chatData.lastMessageSender = latest.senderId;
-            chatData.lastMessageStatus = latest.status;
-          }
-
-          return chatData;
-        })
-      );
-
-      chatList.sort((a, b) => {
-        if (a.pinned && !b.pinned) return -1;
-        if (!a.pinned && b.pinned) return 1;
-        return (b.lastMessageAt?.seconds || 0) - (a.lastMessageAt?.seconds || 0);
+      // mark delivered
+      docs.forEach(async (m) => {
+        if (m.senderId !== myUid && m.status === "sent") {
+          await updateDoc(doc(db, "chats", chatId, "messages", m.id), {
+            status: "delivered",
+          });
+        }
       });
 
-      setChats(chatList.filter((c) => !c.deleted));
+      if (messagesRefEl.current && !isAtBottom) setShowScrollDown(true);
+      else scrollToBottom(false);
     });
-    return () => unsubscribe();
-  }, [user]);
 
-  // ================= HELPERS =================
-  const formatDate = (timestamp) => {
-    if (!timestamp) return "";
-    const date = new Date(timestamp.seconds ? timestamp.seconds * 1000 : timestamp);
-    const now = new Date();
-    if (date.toDateString() === now.toDateString())
-      return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    const yesterday = new Date();
-    yesterday.setDate(now.getDate() - 1);
-    if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
-    return date.toLocaleDateString();
+    return () => unsub();
+  }, [chatId, myUid, isAtBottom]);
+
+  // -----------------------------
+  // Scroll detection
+  // -----------------------------
+  useEffect(() => {
+    const el = messagesRefEl.current;
+    if (!el) return;
+
+    const onScroll = () => {
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+      setIsAtBottom(atBottom);
+      if (atBottom) setShowScrollDown(false);
+    };
+
+    el.addEventListener("scroll", onScroll);
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
+  const scrollToBottom = (smooth = true) => {
+    endRef.current?.scrollIntoView({ behavior: smooth ? "smooth" : "auto" });
+    setIsAtBottom(true);
+    setShowScrollDown(false);
   };
 
-  const renderMessageTick = (chat) => {
-    if (chat.lastMessageSender !== user?.uid) return null;
-    if (chat.lastMessageStatus === "sent") return "✓";
-    if (chat.lastMessageStatus === "delivered") return "✓✓";
-    if (chat.lastMessageStatus === "seen") return <span style={{ color: "#25D366" }}>✓✓</span>;
-    return "";
+  const triggerToast = (message) => {
+    setToast(message);
+    setTimeout(() => setToast(null), 2300);
   };
 
-  // ================= PROFILE UPLOAD =================
-  const handleProfileFileChange = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file || !user) return;
-    try {
-      await uploadProfilePic(file);
-    } catch (err) {
-      console.error(err);
-      alert("Failed to upload avatar");
+  // -----------------------------
+  // Upload images/videos to Cloudinary
+  // -----------------------------
+  const uploadToCloudinary = async (files) => {
+    const uploaded = [];
+    const cloudName = import.meta.env.VITE_CLOUDINARY_NAME;
+    const preset = import.meta.env.VITE_CLOUDINARY_PRESET;
+
+    for (let file of files) {
+      const tempId = Date.now() + "-" + file.name;
+      setUploadProgress((prev) => ({ ...prev, [tempId]: 0 }));
+
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("upload_preset", preset);
+
+        const res = await fetch(
+          `https://api.cloudinary.com/v1_1/${cloudName}/upload`,
+          { method: "POST", body: formData }
+        );
+        const data = await res.json();
+
+        uploaded.push({
+          tempId,
+          fileName: file.name,
+          url: data.secure_url,
+          mediaType: file.type.startsWith("image") ? "image" : "video",
+        });
+
+        setUploadProgress((prev) => {
+          const { [tempId]: _, ...rest } = prev;
+          return rest;
+        });
+      } catch (err) {
+        console.error("Cloudinary upload error:", err);
+        triggerToast("Failed to upload media: " + file.name);
+      }
     }
+    return uploaded;
   };
 
-  const openProfileUploader = () => profileInputRef.current?.click();
+  // -----------------------------
+  // Upload docs/audio to B2
+  // -----------------------------
+  const uploadToB2 = async (files) => {
+    const uploaded = [];
+    for (let file of files) {
+      const tempId = Date.now() + "-" + file.name;
+      setUploadProgress((prev) => ({ ...prev, [tempId]: 0 }));
 
-  // ================= CHAT ACTIONS =================
-  const toggleSelectChat = (chatId) => {
-    setSelectedChats((prev) => {
-      const updated = prev.includes(chatId) ? prev.filter((id) => id !== chatId) : [...prev, chatId];
-      setSelectionMode(updated.length > 0);
-      return updated;
-    });
-  };
+      try {
+        const token = await auth.currentUser.getIdToken();
+        const formData = new FormData();
+        formData.append("file", file);
 
-  const enterSelectionMode = (chatId) => {
-    setSelectedChats([chatId]);
-    setSelectionMode(true);
-  };
+        const res = await fetch("/api/upload-b2", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData,
+        });
 
-  const exitSelectionMode = () => {
-    setSelectedChats([]);
-    setSelectionMode(false);
-  };
+        const data = await res.json();
+        if (!data.url) throw new Error("Upload failed");
 
-  const handleArchive = async () => {
-    await Promise.all(selectedChats.map((id) => updateDoc(doc(db, "chats", id), { archived: true })));
-    exitSelectionMode();
-  };
+        uploaded.push({
+          tempId,
+          fileName: file.name,
+          url: data.url,
+          mediaType: file.type.startsWith("audio") ? "audio" : "file",
+        });
 
-  const handleDelete = async () => {
-    await Promise.all(selectedChats.map((id) => updateDoc(doc(db, "chats", id), { deleted: true })));
-    exitSelectionMode();
-  };
-
-  const handleMute = async (durationMs) => {
-    const mutedUntil = new Date().getTime() + durationMs;
-    await Promise.all(selectedChats.map((id) => updateDoc(doc(db, "chats", id), { mutedUntil })));
-    exitSelectionMode();
-  };
-
-  const handlePin = async (chatId) => {
-    const pinnedChats = chats.filter(c => c.pinned && c.id !== chatId);
-    const chatRef = doc(db, "chats", chatId);
-    const chatSnap = await getDoc(chatRef);
-    if (!chatSnap.exists()) return;
-    const currentPinned = chatSnap.data().pinned || false;
-    if (!currentPinned && pinnedChats.length >= 3) {
-      alert("You can only pin up to 3 chats");
-      return;
+        setUploadProgress((prev) => {
+          const { [tempId]: _, ...rest } = prev;
+          return rest;
+        });
+      } catch (err) {
+        console.error("B2 upload error:", err);
+        triggerToast("Failed to upload: " + file.name);
+      }
     }
-    await updateDoc(chatRef, { pinned: !currentPinned });
+    return uploaded;
   };
 
-  const handleBlock = async (chatId) => {
-    const chatRef = doc(db, "chats", chatId);
-    const chatSnap = await getDoc(chatRef);
-    if (!chatSnap.exists()) return;
-    const currentBlocked = chatSnap.data().blocked || false;
-    await updateDoc(chatRef, { blocked: !currentBlocked });
+  // -----------------------------
+  // Send message
+  // -----------------------------
+  const sendTextMessage = async () => {
+    if (!text && selectedFiles.length === 0) return;
+
+    const b2Files = selectedFiles.filter(
+      (f) => !f.type.startsWith("image") && !f.type.startsWith("video")
+    );
+    const cloudFiles = selectedFiles.filter(
+      (f) => f.type.startsWith("image") || f.type.startsWith("video")
+    );
+
+    const uploadedB2 = await uploadToB2(b2Files);
+    const uploadedCloud = await uploadToCloudinary(cloudFiles);
+
+    const allUploads = [...uploadedB2, ...uploadedCloud];
+
+    for (let item of allUploads) {
+      await addDoc(collection(db, "chats", chatId, "messages"), {
+        senderId: myUid,
+        text: "",
+        mediaUrl: item.url,
+        mediaType: item.mediaType,
+        fileName: item.fileName,
+        status: "sent",
+        createdAt: serverTimestamp(),
+        replyTo: replyTo?.id || null,
+        tempId: item.tempId,
+      });
+    }
+
+    if (text) {
+      await addDoc(collection(db, "chats", chatId, "messages"), {
+        senderId: myUid,
+        text,
+        mediaUrl: null,
+        mediaType: null,
+        status: "sent",
+        createdAt: serverTimestamp(),
+        replyTo: replyTo?.id || null,
+      });
+      setText("");
+    }
+
+    setSelectedFiles([]);
+    setReplyTo(null);
+    scrollToBottom();
   };
 
-  // ================= CHAT FILTERS =================
-  const visibleChats = chats.filter(c => !c.archived);
-  const searchResults = chats.filter(c =>
-    c.name?.toLowerCase().includes(search.toLowerCase()) ||
-    c.lastMessage?.toLowerCase().includes(search.toLowerCase())
-  );
+  const onFilesSelected = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    setSelectedFiles((prev) => [...prev, ...files].slice(0, 30));
+  };
 
-  // ================= RENDER =================
+  // -----------------------------
+  // Group messages by day
+  // -----------------------------
+  const groupedMessages = [];
+  let lastDate = null;
+  messages.forEach((msg) => {
+    const msgDate = formatDayLabel(msg.createdAt);
+    if (msgDate !== lastDate) {
+      groupedMessages.push({ type: "day", label: msgDate });
+      lastDate = msgDate;
+    }
+    groupedMessages.push({ type: "msg", data: msg });
+  });
+
   return (
     <div
       style={{
-        background: wallpaper ? `url(${wallpaper}) no-repeat center/cover` : isDark ? "#121212" : "#fff",
-        minHeight: "100vh",
-        color: isDark ? "#fff" : "#000",
-        paddingBottom: "90px",
+        display: "flex",
+        flexDirection: "column",
+        height: "100vh",
+        backgroundColor: wallpaper || (isDark ? COLORS.darkBg : COLORS.lightBg),
+        color: isDark ? COLORS.darkText : COLORS.lightText,
+        position: "relative",
       }}
     >
-      <ChatHeader
-        selectedChats={chats.filter(c => selectedChats.includes(c.id))}
-        user={user}
-        onArchive={handleArchive}
-        onDelete={handleDelete}
-        onMute={handleMute}
-        onPin={(ids) => selectedChats.forEach(id => handlePin(id))}
-        onMarkRead={async () => { await Promise.all(selectedChats.map(id => updateDoc(doc(db, "chats", id), { lastMessageStatus: "seen" }))); exitSelectionMode(); }}
-        onMarkUnread={async () => { await Promise.all(selectedChats.map(id => updateDoc(doc(db, "chats", id), { lastMessageStatus: "delivered" }))); exitSelectionMode(); }}
-        onBlock={(ids) => selectedChats.forEach(id => handleBlock(id))}
-        onClearChat={async () => { await Promise.all(selectedChats.map(id => { const messagesRef = collection(db, "chats", id, "messages"); return getDocs(messagesRef).then(snap => snap.docs.map(d => updateDoc(d.ref, { text: "", deleted: true }))); })); exitSelectionMode(); }}
-        onSettingsClick={() => navigate("/settings")}
-        selectionMode={selectionMode}
-        exitSelectionMode={exitSelectionMode}
+      <ChatHeader chatInfo={chatInfo} friendInfo={friendInfo} myUid={myUid} />
+
+      <div
+        ref={messagesRefEl}
+        style={{ flex: 1, overflowY: "auto", padding: 8, position: "relative" }}
+      >
+        {groupedMessages.map((item, idx) =>
+          item.type === "day" ? (
+            <div
+              key={`day-${idx}`}
+              style={{ textAlign: "center", fontSize: 12, color: COLORS.mutedText, margin: "12px 0" }}
+            >
+              {item.label}
+            </div>
+          ) : (
+            <MessageItem
+              key={item.data.id}
+              message={item.data}
+              myUid={myUid}
+              chatId={chatId}
+              isDark={isDark}
+              uploadProgress={uploadProgress}
+              replyToMessage={setReplyTo}
+              fmtTime={fmtTime}
+              showPopup={showPopup}
+            />
+          )
+        )}
+        <div ref={endRef} />
+      </div>
+
+      {showScrollDown && !isAtBottom && (
+        <button
+          onClick={() => scrollToBottom()}
+          style={{
+            position: "absolute",
+            bottom: 80,
+            right: 16,
+            width: 44,
+            height: 44,
+            borderRadius: "50%",
+            backgroundColor: COLORS.primary,
+            color: "#fff",
+            border: "none",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            boxShadow: "0 2px 6px rgba(0,0,0,0.3)",
+            zIndex: 50,
+          }}
+        >
+          ↓
+        </button>
+      )}
+
+      <ChatInput
+        text={text}
+        setText={setText}
+        sendTextMessage={sendTextMessage}
+        selectedFiles={selectedFiles}
+        setSelectedFiles={setSelectedFiles}
+        onFilesSelected={onFilesSelected}
+        holdStart={() => {}}
+        holdEnd={() => {}}
+        recording={false}
         isDark={isDark}
       />
 
-      {/* Search */}
-      <div style={{ padding: 10 }}>
-        <input
-          type="text"
-          placeholder="Search chats..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid #ccc" }}
-        />
-      </div>
-
-      {/* Archived shortcut */}
-      <div
-        onClick={() => navigate("/archive")}
-        style={{
-          padding: 10,
-          margin: "5px 0",
-          background: isDark ? "#333" : "#eee",
-          borderRadius: 8,
-          cursor: "pointer",
-          textAlign: "center",
-          fontWeight: "bold",
-        }}
-      >
-        📦 Archived Chats
-      </div>
-
-      {/* Chat list */}
-      <div style={{ padding: 10 }}>
-        {(search ? searchResults : visibleChats).map(chat => {
-          const isMuted = chat.mutedUntil && chat.mutedUntil > new Date().getTime();
-          const isSelected = selectedChats.includes(chat.id);
-          return (
-            <div
-              key={chat.id}
-              onClick={() => selectionMode ? toggleSelectChat(chat.id) : navigate(`/chat/${chat.id}`)}
-              onContextMenu={e => { e.preventDefault(); enterSelectionMode(chat.id); }}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: 10,
-                borderBottom: isDark ? "1px solid #333" : "1px solid #eee",
-                cursor: "pointer",
-                background: isSelected
-                  ? "rgba(0,123,255,0.2)"
-                  : isMuted
-                    ? isDark ? "#2c2c2c" : "#f0f0f0"
-                    : "transparent",
-                opacity: chat.blocked ? 0.5 : 1,
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div
-                  style={{
-                    width: 45,
-                    height: 45,
-                    borderRadius: "50%",
-                    overflow: "hidden",
-                    background: "#888",
-                    display: "flex",
-                    justifyContent: "center",
-                    alignItems: "center",
-                    color: "#fff",
-                    fontWeight: "bold",
-                  }}
-                >
-                  {chat.photoURL ? (
-                    <img src={chat.photoURL} alt={chat.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                  ) : chat.name ? chat.name[0].toUpperCase() : "U"}
-                </div>
-                <div>
-                  <strong>{chat.name || "Unknown"}</strong>
-                  {chat.pinned && <span style={{ marginLeft: 5 }}>📌</span>}
-                  {chat.blocked && <span style={{ marginLeft: 5, color: "red" }}>🚫</span>}
-                  <p style={{ margin: 0, fontSize: 14, color: isDark ? "#ccc" : "#555", display: "flex", alignItems: "center", gap: 5 }}>
-                    {renderMessageTick(chat)} {chat.lastMessage || "No messages yet"}
-                  </p>
-                </div>
-              </div>
-              <small style={{ color: "#888" }}>{formatDate(chat.lastMessageAt)}</small>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Floating add friend */}
-      <button
-        onClick={() => setShowAddFriend(true)}
-        style={{
-          position: "fixed",
-          bottom: 90,
-          right: 25,
-          width: 60,
-          height: 60,
-          borderRadius: "50%",
-          background: "#0d6efd",
-          color: "#fff",
-          fontSize: 30,
-          border: "none",
-          cursor: "pointer",
-        }}
-      >
-        +
-      </button>
-
-      {showAddFriend && <AddFriendPopup user={user} onClose={() => setShowAddFriend(false)} />}
-
-      {/* Profile uploader */}
-      <input
-        ref={profileInputRef}
-        type="file"
-        accept="image/*"
-        style={{ display: "none" }}
-        onChange={handleProfileFileChange}
-      />
-
-      {/* Bottom nav */}
-      <div
-        style={{
-          position: "fixed",
-          bottom: 0,
-          left: 0,
-          width: "100%",
-          background: isDark ? "#1e1e1e" : "#fff",
-          padding: "10px 0",
-          display: "flex",
-          justifyContent: "space-around",
-          alignItems: "center",
-          borderTop: "1px solid rgba(0,0,0,0.1)",
-          zIndex: 10,
-        }}
-      >
-        <div style={{ textAlign: "center", cursor: "pointer" }} onClick={() => navigate("/chat")}>
-          <span style={{ fontSize: 26 }}>💬</span>
-          <div style={{ fontSize: 12 }}>Chat</div>
+      {toast && (
+        <div
+          style={{
+            position: "absolute",
+            top: 65,
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: isDark ? "#333" : "#222",
+            color: "#fff",
+            padding: "10px 20px",
+            borderRadius: 20,
+            boxShadow: "0 2px 10px rgba(0,0,0,0.3)",
+            opacity: 0.95,
+            zIndex: 999,
+            pointerEvents: "none",
+          }}
+        >
+          {toast}
         </div>
-        <div style={{ textAlign: "center", cursor: "pointer" }} onClick={() => navigate("/call-history")}>
-          <span style={{ fontSize: 26 }}>📞</span>
-          <div style={{ fontSize: 12 }}>Calls</div>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
