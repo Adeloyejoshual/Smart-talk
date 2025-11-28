@@ -15,42 +15,23 @@ import {
 } from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
-import { ThemeContext } from "../context/ThemeContext";
+import { ThemeContext } from "../../context/ThemeContext";
+import { UserContext } from "../../context/UserContext"; // UserContext with Cloudinary upload
 import ChatHeader from "./ChatPage/Header";
 import AddFriendPopup from "./ChatPage/AddFriendPopup";
 
-const CLOUDINARY_CLOUD = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
-const CLOUDINARY_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
-
 export default function ChatPage() {
   const { theme, wallpaper } = useContext(ThemeContext);
+  const { user, profilePic, profileName, setProfilePic, setProfileName, uploadProfilePic } = useContext(UserContext);
   const isDark = theme === "dark";
   const navigate = useNavigate();
 
-  const [user, setUser] = useState(null);
   const [chats, setChats] = useState([]);
   const [search, setSearch] = useState("");
   const [selectedChats, setSelectedChats] = useState([]);
   const [selectionMode, setSelectionMode] = useState(false);
-  const [profilePic, setProfilePic] = useState(null);
-  const [profileName, setProfileName] = useState("");
   const [showAddFriend, setShowAddFriend] = useState(false);
   const profileInputRef = useRef(null);
-
-  // ================= AUTH & LOAD PROFILE =================
-  useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(async (u) => {
-      if (!u) return navigate("/");
-      setUser(u);
-      const snap = await getDoc(doc(db, "users", u.uid));
-      if (snap.exists()) {
-        const data = snap.data();
-        setProfilePic(data.profilePic || null);
-        setProfileName(data.name || "");
-      }
-    });
-    return unsubscribe;
-  }, [navigate]);
 
   // ================= LOAD CHATS REAL-TIME =================
   useEffect(() => {
@@ -105,6 +86,7 @@ export default function ChatPage() {
 
       setChats(chatList.filter((c) => !c.deleted));
     });
+
     return () => unsubscribe();
   }, [user]);
 
@@ -130,27 +112,11 @@ export default function ChatPage() {
   };
 
   // ================= PROFILE UPLOAD =================
-  const uploadToCloudinary = async (file) => {
-    const fd = new FormData();
-    fd.append("file", file);
-    fd.append("upload_preset", CLOUDINARY_PRESET);
-    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`, {
-      method: "POST",
-      body: fd,
-    });
-    if (!res.ok) throw new Error("Cloudinary upload failed");
-    const data = await res.json();
-    return data.secure_url || data.url;
-  };
-
   const handleProfileFileChange = async (e) => {
     const file = e.target.files?.[0];
-    if (!file || !user) return;
-    setProfilePic(URL.createObjectURL(file));
+    if (!file) return;
     try {
-      const url = await uploadToCloudinary(file);
-      await updateDoc(doc(db, "users", user.uid), { profilePic: url, updatedAt: serverTimestamp() });
-      setProfilePic(url);
+      await uploadProfilePic(file); // UserContext handles Cloudinary + Firestore
     } catch (err) {
       console.error(err);
       alert("Failed to upload avatar");
@@ -386,7 +352,7 @@ export default function ChatPage() {
           <span style={{ fontSize: 26 }}>💬</span>
           <div style={{ fontSize: 12 }}>Chat</div>
         </div>
-        <div style={{ textAlign: "center", cursor: "pointer" }} onClick={() => navigate("/call-history")}>
+        <div style={{ textAlign: "center", cursor: "pointer" }} onClick={() => navigate("/history")}>
           <span style={{ fontSize: 26 }}>📞</span>
           <div style={{ fontSize: 12 }}>Calls</div>
         </div>
