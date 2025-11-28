@@ -1,3 +1,4 @@
+// src/components/ChatPage.jsx
 import React, { useEffect, useState, useContext } from "react";
 import {
   collection,
@@ -9,6 +10,8 @@ import {
   addDoc,
   serverTimestamp,
   limit,
+  doc,
+  getDoc,
 } from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
@@ -21,18 +24,37 @@ export default function ChatPage() {
   const [user, setUser] = useState(null);
   const [showAddFriend, setShowAddFriend] = useState(false);
   const [friendEmail, setFriendEmail] = useState("");
-  const navigate = useNavigate();
+  const [profilePic, setProfilePic] = useState("");
+  const [profileName, setProfileName] = useState("");
 
+  const navigate = useNavigate();
   const isDark = theme === "dark";
 
   // 🔐 Auth listener
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((u) => {
-      if (u) setUser(u);
-      else navigate("/");
+      if (u) {
+        setUser(u);
+        fetchUserProfile(u.uid);
+      } else navigate("/");
     });
     return unsubscribe;
   }, [navigate]);
+
+  // Load profilePic and name
+  const fetchUserProfile = async (uid) => {
+    try {
+      const ref = doc(db, "users", uid);
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        const data = snap.data();
+        setProfilePic(data.profilePic || "");
+        setProfileName(data.name || "");
+      }
+    } catch (err) {
+      console.error("Failed to load profile:", err);
+    }
+  };
 
   // 💬 Real-time chat list
   useEffect(() => {
@@ -58,7 +80,7 @@ export default function ChatPage() {
             if (!friendSnap.empty) {
               const data = friendSnap.docs[0].data();
               chatData.name = data.displayName || data.email;
-              chatData.photoURL = data.photoURL || "";
+              chatData.photoURL = data.profilePic || data.photoURL || "";
             }
           }
 
@@ -87,25 +109,21 @@ export default function ChatPage() {
     return () => unsubscribe();
   }, [user]);
 
-  // ➕ Add Friend — Updated as you requested
+  // ➕ Add Friend
   const handleAddFriend = async () => {
     if (!friendEmail.trim() || !user) return;
 
     const email = friendEmail.trim().toLowerCase();
-
-    // ❗ Cannot add yourself
     if (email === user.email.toLowerCase()) {
       alert("❌ You cannot add yourself.");
       return;
     }
 
     try {
-      // 🔍 Check user existence
       const usersRef = collection(db, "users");
       const snapshot = await getDocs(query(usersRef, where("email", "==", email)));
 
       if (snapshot.empty) {
-        // ❗ User not found — DO NOTHING
         console.log("User not found. No action taken.");
         setShowAddFriend(false);
         return;
@@ -113,12 +131,8 @@ export default function ChatPage() {
 
       const friendData = snapshot.docs[0].data();
 
-      // 🔁 Check for existing chat
       const existingSnap = await getDocs(
-        query(
-          collection(db, "chats"),
-          where("participants", "array-contains", user.uid)
-        )
+        query(collection(db, "chats"), where("participants", "array-contains", user.uid))
       );
 
       const existing = existingSnap.docs.find((d) =>
@@ -131,7 +145,6 @@ export default function ChatPage() {
         return;
       }
 
-      // ➕ Create chat
       const newChat = await addDoc(collection(db, "chats"), {
         participants: [user.uid, friendData.uid],
         lastMessage: "",
@@ -149,7 +162,6 @@ export default function ChatPage() {
 
   const renderMessageTick = (chat) => {
     if (chat.lastMessageSender !== user?.uid) return null;
-
     if (chat.lastMessageStatus === "sent") return "✓";
     if (chat.lastMessageStatus === "delivered") return "✓✓";
     if (chat.lastMessageStatus === "seen")
@@ -159,55 +171,71 @@ export default function ChatPage() {
 
   const formatDate = (timestamp) => {
     if (!timestamp) return "";
+    const date = new Date(timestamp.seconds ? timestamp.seconds * 1000 : timestamp);
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  };
 
-    const date = new Date(
-      timestamp.seconds ? timestamp.seconds * 1000 : timestamp
-    );
-
-    return date.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-    }); // Example: Nov 25
+  // Generate initials
+  const getInitials = (fullName) => {
+    if (!fullName) return "NA";
+    const names = fullName.trim().split(" ");
+    if (names.length === 1) return names[0][0].toUpperCase();
+    return (names[0][0] + names[1][0]).toUpperCase();
   };
 
   return (
     <div
       style={{
-        background: wallpaper
-          ? `url(${wallpaper}) no-repeat center/cover`
-          : isDark
-          ? "#121212"
-          : "#fff",
+        background: wallpaper ? `url(${wallpaper}) no-repeat center/cover` : isDark ? "#121212" : "#fff",
         minHeight: "100vh",
         color: isDark ? "#fff" : "#000",
         paddingBottom: "90px",
       }}
     >
       {/* Header */}
-<div
-  style={{
-    position: "sticky",
-    top: 0,
-    background: isDark ? "#1f1f1f" : "#f5f5f5",
-    padding: "15px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    boxShadow: "0 1px 4px rgba(0,0,0,0.1)",
-  }}
->
-  <h2 style={{ margin: 0 }}>Chats</h2>
+      <div
+        style={{
+          position: "sticky",
+          top: 0,
+          background: isDark ? "#1f1f1f" : "#f5f5f5",
+          padding: "15px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          boxShadow: "0 1px 4px rgba(0,0,0,0.1)",
+        }}
+      >
+        <h2 style={{ margin: 0 }}>Chats</h2>
 
-  <div style={{ display: "flex", gap: 15 }}>
-    {/* Only settings button now */}
-    <button
-      onClick={() => navigate("/settings")}
-      style={{ background: "transparent", border: "none", fontSize: 20 }}
-    >
-      ⚙️
-    </button>
-  </div>
-</div>
+        {/* User Avatar */}
+        <div
+          onClick={() => navigate("/settings")}
+          style={{
+            width: 42,
+            height: 42,
+            borderRadius: "50%",
+            overflow: "hidden",
+            cursor: "pointer",
+            background: "#007bff",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            color: "white",
+            fontWeight: "bold",
+            fontSize: 18,
+          }}
+        >
+          {profilePic ? (
+            <img
+              src={profilePic}
+              alt="Me"
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            />
+          ) : (
+            getInitials(profileName)
+          )}
+        </div>
+      </div>
 
       {/* Search */}
       <div style={{ padding: "10px" }}>
@@ -216,12 +244,7 @@ export default function ChatPage() {
           placeholder="Search chats..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          style={{
-            width: "100%",
-            padding: "8px 12px",
-            borderRadius: 8,
-            border: "1px solid #ccc",
-          }}
+          style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid #ccc" }}
         />
       </div>
 
@@ -249,35 +272,16 @@ export default function ChatPage() {
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                 <img
                   src={chat.photoURL || "https://via.placeholder.com/50"}
-                  style={{
-                    width: 45,
-                    height: 45,
-                    borderRadius: "50%",
-                    objectFit: "cover",
-                  }}
+                  style={{ width: 45, height: 45, borderRadius: "50%", objectFit: "cover" }}
                 />
-
                 <div>
                   <strong>{chat.name || "Unknown"}</strong>
-                  <p
-                    style={{
-                      margin: 0,
-                      fontSize: "14px",
-                      color: isDark ? "#ccc" : "#555",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "5px",
-                    }}
-                  >
-                    {renderMessageTick(chat)}{" "}
-                    {chat.lastMessage || "No messages yet"}
+                  <p style={{ margin: 0, fontSize: "14px", color: isDark ? "#ccc" : "#555", display: "flex", alignItems: "center", gap: "5px" }}>
+                    {renderMessageTick(chat)} {chat.lastMessage || "No messages yet"}
                   </p>
                 </div>
               </div>
-
-              <small style={{ color: "#888" }}>
-                {formatDate(chat.lastMessageAt)}
-              </small>
+              <small style={{ color: "#888" }}>{formatDate(chat.lastMessageAt)}</small>
             </div>
           ))}
       </div>
@@ -331,12 +335,7 @@ export default function ChatPage() {
               value={friendEmail}
               onChange={(e) => setFriendEmail(e.target.value)}
               placeholder="Email"
-              style={{
-                width: "100%",
-                padding: 10,
-                borderRadius: 8,
-                border: "1px solid #ccc",
-              }}
+              style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #ccc" }}
             />
 
             <div style={{ marginTop: 15, display: "flex", gap: 10 }}>
@@ -347,7 +346,7 @@ export default function ChatPage() {
         </div>
       )}
 
-      {/* 🔥 Bottom Navigation Bar (Chat + Call) */}
+      {/* Bottom Navigation */}
       <div
         style={{
           position: "fixed",
@@ -362,24 +361,11 @@ export default function ChatPage() {
           borderTop: "1px solid rgba(0,0,0,0.1)",
         }}
       >
-        <div
-          style={{
-            textAlign: "center",
-            cursor: "pointer",
-          }}
-          onClick={() => navigate("/chat")}
-        >
+        <div style={{ textAlign: "center", cursor: "pointer" }} onClick={() => navigate("/chat")}>
           <span style={{ fontSize: 26 }}>💬</span>
           <div style={{ fontSize: 12 }}>Chat</div>
         </div>
-
-        <div
-          style={{
-            textAlign: "center",
-            cursor: "pointer",
-          }}
-          onClick={() => navigate("/call-history")}
-        >
+        <div style={{ textAlign: "center", cursor: "pointer" }} onClick={() => navigate("/call-history")}>
           <span style={{ fontSize: 26 }}>📞</span>
           <div style={{ fontSize: 12 }}>Calls</div>
         </div>
