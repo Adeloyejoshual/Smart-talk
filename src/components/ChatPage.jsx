@@ -11,7 +11,7 @@ import {
   updateDoc,
   limit,
   getDoc,
-  serverTimestamp
+  serverTimestamp,
 } from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
@@ -214,6 +214,13 @@ export default function ChatPage() {
     setSelectedChats([]);
   };
 
+  // ================= CHAT FILTERS =================
+  const visibleChats = chats.filter(c => !c.archived);
+  const searchResults = chats.filter(c =>
+    c.name?.toLowerCase().includes(search.toLowerCase()) ||
+    c.lastMessage?.toLowerCase().includes(search.toLowerCase())
+  );
+
   // ================= RENDER =================
   return (
     <div
@@ -270,66 +277,59 @@ export default function ChatPage() {
 
       {/* Chat list */}
       <div style={{ padding: 10 }}>
-        {chats
-          .filter(
-            (c) =>
-              !c.archived &&
-              (c.name?.toLowerCase().includes(search.toLowerCase()) ||
-                c.lastMessage?.toLowerCase().includes(search.toLowerCase()))
-          )
-          .map((chat) => {
-            const isMuted = chat.mutedUntil && chat.mutedUntil > new Date().getTime();
-            const isSelected = selectedChats.includes(chat.id);
-            return (
-              <div
-                key={chat.id}
-                onClick={() => selectedChats.length ? toggleSelectChat(chat.id) : navigate(`/chat/${chat.id}`)}
-                onContextMenu={(e) => { e.preventDefault(); toggleSelectChat(chat.id); }}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  padding: 10,
-                  borderBottom: isDark ? "1px solid #333" : "1px solid #eee",
-                  cursor: "pointer",
-                  background: isSelected
-                    ? "rgba(0,123,255,0.2)"
-                    : isMuted
-                      ? isDark ? "#2c2c2c" : "#f0f0f0"
-                      : "transparent",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div
-                    style={{
-                      width: 45,
-                      height: 45,
-                      borderRadius: "50%",
-                      overflow: "hidden",
-                      background: "#888",
-                      display: "flex",
-                      justifyContent: "center",
-                      alignItems: "center",
-                      color: "#fff",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    {chat.photoURL ? (
-                      <img src={chat.photoURL} alt={chat.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                    ) : getInitials(chat.name)}
-                  </div>
-                  <div>
-                    <strong>{chat.name || "Unknown"}</strong>
-                    {chat.pinned && <span style={{ marginLeft: 5 }}>📌</span>}
-                    <p style={{ margin: 0, fontSize: 14, color: isDark ? "#ccc" : "#555", display: "flex", alignItems: "center", gap: 5 }}>
-                      {renderMessageTick(chat)} {chat.lastMessage || "No messages yet"}
-                    </p>
-                  </div>
+        {(search ? searchResults : visibleChats).map(chat => {
+          const isMuted = chat.mutedUntil && chat.mutedUntil > new Date().getTime();
+          const isSelected = selectedChats.includes(chat.id);
+          return (
+            <div
+              key={chat.id}
+              onClick={() => selectedChats.length ? toggleSelectChat(chat.id) : navigate(`/chat/${chat.id}`)}
+              onContextMenu={e => { e.preventDefault(); toggleSelectChat(chat.id); }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: 10,
+                borderBottom: isDark ? "1px solid #333" : "1px solid #eee",
+                cursor: "pointer",
+                background: isSelected
+                  ? "rgba(0,123,255,0.2)"
+                  : isMuted
+                    ? isDark ? "#2c2c2c" : "#f0f0f0"
+                    : "transparent",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div
+                  style={{
+                    width: 45,
+                    height: 45,
+                    borderRadius: "50%",
+                    overflow: "hidden",
+                    background: "#888",
+                    display: "flex",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    color: "#fff",
+                    fontWeight: "bold",
+                  }}
+                >
+                  {chat.photoURL ? (
+                    <img src={chat.photoURL} alt={chat.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  ) : chat.name ? chat.name[0].toUpperCase() : "U"}
                 </div>
-                <small style={{ color: "#888" }}>{formatDate(chat.lastMessageAt)}</small>
+                <div>
+                  <strong>{chat.name || "Unknown"}</strong>
+                  {chat.pinned && <span style={{ marginLeft: 5 }}>📌</span>}
+                  <p style={{ margin: 0, fontSize: 14, color: isDark ? "#ccc" : "#555", display: "flex", alignItems: "center", gap: 5 }}>
+                    {renderMessageTick(chat)} {chat.lastMessage || "No messages yet"}
+                  </p>
+                </div>
               </div>
-            );
-          })}
+              <small style={{ color: "#888" }}>{formatDate(chat.lastMessageAt)}</small>
+            </div>
+          );
+        })}
       </div>
 
       {/* Floating add friend */}
