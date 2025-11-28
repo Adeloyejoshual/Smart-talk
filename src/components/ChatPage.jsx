@@ -17,7 +17,7 @@ import { db, auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
 import { ThemeContext } from "../context/ThemeContext";
 import ChatHeader from "./ChatPage/Header";
-import AddFriendPopup from "./AddFriendPopup";
+import AddFriendPopup from "./ChatPage/AddFriendPopup";
 
 // Cloudinary env
 const CLOUDINARY_CLOUD = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
