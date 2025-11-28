@@ -222,7 +222,7 @@ export default function ChatPage() {
           : "#fff",
         minHeight: "100vh",
         color: isDark ? "#fff" : "#000",
-        paddingBottom: "90px",
+        paddingBottom: "90px", // for bottom nav
       }}
     >
       {/* Header */}
@@ -236,6 +236,7 @@ export default function ChatPage() {
           alignItems: "center",
           justifyContent: "space-between",
           boxShadow: "0 1px 4px rgba(0,0,0,0.1)",
+          zIndex: 10,
         }}
       >
         <h2 style={{ margin: 0 }}>Chats</h2>
@@ -424,6 +425,39 @@ export default function ChatPage() {
           </div>
         </div>
       )}
+
+      {/* 🔥 Bottom Navigation Bar (Chat + Call) */}
+      <div
+        style={{
+          position: "fixed",
+          bottom: 0,
+          left: 0,
+          width: "100%",
+          background: isDark ? "#1e1e1e" : "#ffffff",
+          padding: "10px 0",
+          display: "flex",
+          justifyContent: "space-around",
+          alignItems: "center",
+          borderTop: "1px solid rgba(0,0,0,0.1)",
+          zIndex: 10,
+        }}
+      >
+        <div
+          style={{ textAlign: "center", cursor: "pointer" }}
+          onClick={() => navigate("/chat")}
+        >
+          <span style={{ fontSize: 26 }}>💬</span>
+          <div style={{ fontSize: 12 }}>Chat</div>
+        </div>
+
+        <div
+          style={{ textAlign: "center", cursor: "pointer" }}
+          onClick={() => navigate("/call-history")}
+        >
+          <span style={{ fontSize: 26 }}>📞</span>
+          <div style={{ fontSize: 12 }}>Calls</div>
+        </div>
+      </div>
     </div>
   );
 }
