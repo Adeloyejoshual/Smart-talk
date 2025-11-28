@@ -1,185 +1,172 @@
-// src/components/Chat/ChatHeader.jsx
-import React, { useContext } from "react";
+import React from "react";
 import { useNavigate } from "react-router-dom";
-import { ThemeContext } from "../../context/ThemeContext";
-import { UserContext } from "../../context/UserContext"; // for Cloudinary
 
-export default function ChatHeader({ chatInfo, friendInfo, myUid, onPinMessage, pinnedMessage, onGoToPinned, onUnpin }) {
-  const { theme } = useContext(ThemeContext);
+const COLORS = {
+  headerBlue: "#1877F2",
+  lightCard: "#fff",
+  darkCard: "#1b1b1b",
+  mutedText: "#888",
+};
+
+const SPACING = { sm: 8, borderRadius: 12 };
+
+const menuBtnStyle = {
+  padding: SPACING.sm,
+  borderRadius: SPACING.borderRadius,
+  border: "none",
+  background: "transparent",
+  cursor: "pointer",
+  textAlign: "left",
+  width: "100%",
+};
+
+export default function ChatHeader({
+  friendInfo,
+  chatInfo,
+  myUid,
+  theme,
+  wallpaper,
+  headerMenuOpen,
+  setHeaderMenuOpen,
+  clearChat,
+  toggleBlock,
+}) {
   const isDark = theme === "dark";
   const navigate = useNavigate();
 
-  if (!friendInfo) return null;
-
-  // -----------------------------
-  // Format last seen
-  // -----------------------------
-  const formatLastSeen = (ts) => {
-    if (!ts) return "Offline";
-    const d = ts.toDate ? ts.toDate() : new Date(ts);
-    const now = new Date();
-    const yesterday = new Date();
-    yesterday.setDate(now.getDate() - 1);
-
-    if (d.toDateString() === now.toDateString()) return `Last seen today at ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-    if (d.toDateString() === yesterday.toDateString()) return `Last seen yesterday at ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-
-    const options = { month: "short", day: "numeric" };
-    if (d.getFullYear() !== now.getFullYear()) options.year = "numeric";
-    return `Last seen ${d.toLocaleDateString(undefined, options)}`;
-  };
-
-  const profilePicUrl = friendInfo.photoURL
-    ? `${friendInfo.photoURL}` // already uploaded via Cloudinary
-    : null;
-
-  // -----------------------------
-  // Menu actions
-  // -----------------------------
-  const handleMenuClick = (action) => {
-    switch (action) {
-      case "clear":
-        // Implement clear chat logic here
-        alert("Clear chat clicked");
-        break;
-      case "search":
-        // Implement search
-        alert("Search clicked");
-        break;
-      case "block":
-        alert("Block clicked");
-        break;
-      case "mute":
-        alert("Mute clicked");
-        break;
-      default:
-        break;
+  // -------------------- Render profile picture / initials --------------------
+  const renderHeaderProfile = () => {
+    if (friendInfo?.photoURL) {
+      // Cloudinary URL transformation (optional: resize to 36x36)
+      const url = friendInfo.photoURL.includes("res.cloudinary.com")
+        ? friendInfo.photoURL.replace("/upload/", "/upload/c_fill,h_36,w_36/")
+        : friendInfo.photoURL;
+      return <img src={url} alt="" style={{ width: 36, height: 36, borderRadius: "50%" }} />;
     }
+
+    // Generate initials
+    const name = friendInfo?.name || "U";
+    const initials = name
+      .split(" ")
+      .map((n) => n[0])
+      .slice(0, 2)
+      .join("")
+      .toUpperCase();
+
+    return (
+      <div
+        style={{
+          width: 36,
+          height: 36,
+          borderRadius: "50%",
+          background: COLORS.lightCard,
+          color: isDark ? "#fff" : "#000",
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          fontWeight: 600,
+        }}
+      >
+        {initials}
+      </div>
+    );
   };
 
   return (
     <div
       style={{
-        position: "sticky",
-        top: 0,
-        zIndex: 100,
+        height: 56,
+        backgroundColor: COLORS.headerBlue,
+        color: "#fff",
         display: "flex",
         alignItems: "center",
-        padding: "8px 12px",
-        backgroundColor: "#0d6efd", // Bootstrap blue
-        color: "#fff",
-        boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
-        cursor: "pointer"
+        padding: "0 12px",
+        justifyContent: "space-between",
+        position: "sticky",
+        top: 0,
+        zIndex: 20,
       }}
-      onClick={() => navigate("/friend-profile/" + friendInfo.id)}
     >
-      {/* Profile */}
-      <div style={{ display: "flex", alignItems: "center" }}>
-        {profilePicUrl ? (
-          <img
-            src={profilePicUrl}
-            alt={friendInfo.displayName || "User"}
-            style={{ width: 40, height: 40, borderRadius: "50%", objectFit: "cover", marginRight: 12 }}
-          />
-        ) : (
-          <div
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: "50%",
-              backgroundColor: "#6c757d",
-              color: "#fff",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontWeight: "bold",
-              marginRight: 12,
-              textTransform: "uppercase",
-            }}
-          >
-            {friendInfo.displayName ? friendInfo.displayName[0] : "U"}
-          </div>
-        )}
-        <div style={{ display: "flex", flexDirection: "column" }}>
-          <span style={{ fontWeight: 600, fontSize: 16 }}>{friendInfo.displayName || "Unknown"}</span>
-          <span style={{ fontSize: 12, opacity: 0.85 }}>{formatLastSeen(friendInfo.lastSeen)}</span>
-        </div>
-      </div>
-
-      {/* Spacer */}
-      <div style={{ flex: 1 }} />
-
-      {/* Pinned message shortcut */}
-      {pinnedMessage && (
-        <button
-          onClick={(e) => { e.stopPropagation(); onGoToPinned(); }}
-          style={{
-            backgroundColor: "#fff",
-            color: "#0d6efd",
-            border: "none",
-            borderRadius: 20,
-            padding: "2px 10px",
-            fontSize: 12,
-            marginRight: 8,
-            cursor: "pointer"
-          }}
-        >
-          Pinned
-        </button>
-      )}
-
-      {/* 3-dot menu */}
-      <div style={{ position: "relative" }}>
+      <div
+        style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}
+        onClick={() => friendInfo?.id && navigate(`/UserProfilePage/${friendInfo.id}`)}
+      >
         <button
           onClick={(e) => {
             e.stopPropagation();
-            const menu = document.getElementById("chat-menu");
-            if (menu) menu.style.display = menu.style.display === "block" ? "none" : "block";
+            navigate(-1);
           }}
-          style={{
-            background: "transparent",
-            border: "none",
-            color: "#fff",
-            fontSize: 20,
-            cursor: "pointer",
-          }}
+          style={{ background: "transparent", border: "none", color: "#fff", fontSize: 18 }}
         >
-          ⋮
+          ←
         </button>
-        <div
-          id="chat-menu"
-          style={{
-            display: "none",
-            position: "absolute",
-            right: 0,
-            top: "100%",
-            background: "#fff",
-            color: "#000",
-            borderRadius: 6,
-            boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-            overflow: "hidden",
-            minWidth: 140,
-          }}
-        >
-          {["Clear Chat", "Search", "Block", "Mute"].map((item) => (
-            <div
-              key={item}
-              onClick={() => handleMenuClick(item.toLowerCase().replace(" ", ""))}
-              style={{
-                padding: "10px 12px",
-                cursor: "pointer",
-                borderBottom: "1px solid #eee",
-                fontSize: 14,
-                fontWeight: 500
-              }}
-              onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
-              onMouseEnter={(e) => e.currentTarget.style.background = "#f1f1f1"}
-            >
-              {item}
-            </div>
-          ))}
+
+        {renderHeaderProfile()}
+
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <div style={{ fontWeight: 600 }}>{friendInfo?.name || "Chat"}</div>
+          <div style={{ fontSize: 12, color: COLORS.mutedText }}>
+            {friendInfo?.online
+              ? "Online"
+              : friendInfo?.lastSeen
+              ? `Last seen ${(() => {
+                  try {
+                    const d = friendInfo.lastSeen.toDate ? friendInfo.lastSeen.toDate() : new Date(friendInfo.lastSeen);
+                    return d.toLocaleString();
+                  } catch (e) {
+                    return "unknown";
+                  }
+                })()}`
+              : "Last seen unavailable"}
+          </div>
         </div>
       </div>
+
+      <div style={{ display: "flex", gap: 12 }}>
+        <button
+          onClick={() => navigate("/VoiceCallPage", { state: { friendId: friendInfo?.id, chatId: chatInfo?.id } })}
+          style={{ background: "transparent", border: "none", color: "#fff", fontSize: 18 }}
+          title="Voice call"
+        >
+          📞
+        </button>
+
+        <button
+          onClick={() => navigate("/VideoCallPage", { state: { friendId: friendInfo?.id, chatId: chatInfo?.id } })}
+          style={{ background: "transparent", border: "none", color: "#fff", fontSize: 18 }}
+          title="Video call"
+        >
+          🎥
+        </button>
+
+        <button onClick={() => setHeaderMenuOpen((prev) => !prev)} style={{ background: "transparent", border: "none", color: "#fff" }}>
+          ⋮
+        </button>
+      </div>
+
+      {headerMenuOpen && (
+        <div
+          style={{
+            position: "absolute",
+            top: 56,
+            right: 12,
+            background: COLORS.lightCard,
+            borderRadius: SPACING.borderRadius,
+            boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
+            zIndex: 30,
+          }}
+        >
+          <button style={menuBtnStyle} onClick={clearChat}>
+            Clear Chat
+          </button>
+          <button style={menuBtnStyle} onClick={toggleBlock}>
+            {(chatInfo?.blockedBy || []).includes(myUid) ? "Unblock" : "Block"}
+          </button>
+          <button style={menuBtnStyle} onClick={() => setHeaderMenuOpen(false)}>
+            Close
+          </button>
+        </div>
+      )}
     </div>
   );
 }
