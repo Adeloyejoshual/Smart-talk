@@ -113,14 +113,17 @@ export default function ChatPage() {
   const getInitials = (fullName) => {
     if (!fullName) return "U";
     const names = fullName.trim().split(" ").filter(Boolean);
-    return names.length > 1 ? (names[0][0] + names[1][0]).toUpperCase() : names[0][0].toUpperCase();
+    return names.length > 1
+      ? (names[0][0] + names[1][0]).toUpperCase()
+      : names[0][0].toUpperCase();
   };
 
   const formatDate = (timestamp) => {
     if (!timestamp) return "";
     const date = new Date(timestamp.seconds ? timestamp.seconds * 1000 : timestamp);
     const now = new Date();
-    if (date.toDateString() === now.toDateString()) return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    if (date.toDateString() === now.toDateString())
+      return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     const yesterday = new Date();
     yesterday.setDate(now.getDate() - 1);
     if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
@@ -140,7 +143,10 @@ export default function ChatPage() {
     const fd = new FormData();
     fd.append("file", file);
     fd.append("upload_preset", CLOUDINARY_PRESET);
-    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`, { method: "POST", body: fd });
+    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`, {
+      method: "POST",
+      body: fd,
+    });
     if (!res.ok) throw new Error("Cloudinary upload failed");
     const data = await res.json();
     return data.secure_url || data.url;
@@ -234,7 +240,6 @@ export default function ChatPage() {
       {/* Header */}
       <ChatHeader
         selectedChats={chats.filter((c) => selectedChats.includes(c.id))}
-        selectedCount={selectedChats.length}
         user={user}
         onArchive={handleArchive}
         onDelete={handleDelete}
@@ -342,7 +347,7 @@ export default function ChatPage() {
           width: 60,
           height: 60,
           borderRadius: "50%",
-          background: "#25D366",
+          background: "#0d6efd",
           color: "#fff",
           fontSize: 30,
           border: "none",
