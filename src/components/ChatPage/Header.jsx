@@ -41,10 +41,28 @@ export default function ChatHeader({
     setTimeout(() => setToast(""), 3000);
   };
 
-  const handleArchiveClick = () => { onArchive?.(); triggerToast("Archived chat(s)"); };
-  const handlePinClick = () => { onPin?.(); triggerToast("Chat pinned"); };
-  const handleClearChatClick = () => { onClearChat?.(); triggerToast("Chat cleared"); };
+  const handleArchiveClick = () => {
+    onArchive?.();
+    triggerToast("Archived chat(s)");
+  };
+
+  const handlePinClick = () => {
+    const pinnedCount = selectedChats.filter(c => c.pinned).length;
+    if (selectedChats.some(c => !c.pinned) && pinnedCount >= 3) {
+      triggerToast("You can only pin up to 3 chats");
+      return;
+    }
+    onPin?.();
+    triggerToast("Chat(s) updated");
+  };
+
+  const handleClearChatClick = () => {
+    onClearChat?.();
+    triggerToast("Chat cleared");
+  };
+
   const handleDeleteClick = () => setShowDeleteConfirm(true);
+
   const confirmDelete = () => {
     onDelete?.();
     triggerToast(`Deleted ${selectedCount} chat${selectedCount > 1 ? "s" : ""}`);
@@ -60,18 +78,20 @@ export default function ChatHeader({
   const showMarkRead = selectedChats.some(
     (chat) => chat.lastMessageSender !== user?.uid && chat.lastMessageStatus !== "seen"
   );
+
   const showMarkUnread = selectedChats.some(
     (chat) => chat.lastMessageSender !== user?.uid && chat.lastMessageStatus === "seen"
   );
 
+  const blockLabel = selectedChats.every(c => c.blocked) ? "Unblock" : "Block";
+
   return (
     <>
-      {/* Header */}
       <div
         style={{
           position: "sticky",
           top: 0,
-          background: "#0d6efd", // Bootstrap primary blue
+          background: "#0d6efd",
           color: "#fff",
           padding: "15px",
           display: "flex",
@@ -87,16 +107,13 @@ export default function ChatHeader({
         <div style={{ display: "flex", gap: 15, position: "relative" }}>
           {selectedCount ? (
             <>
-              {/* Multi-select icons */}
               <span style={{ cursor: "pointer" }} onClick={handleArchiveClick} title="Archive">📦</span>
               <span style={{ cursor: "pointer" }} onClick={handleDeleteClick} title="Delete">🗑️</span>
               <span
                 style={{ cursor: "pointer" }}
                 onClick={() => setShowMuteMenu(prev => !prev)}
                 title="Mute"
-              >
-                🔕
-              </span>
+              >🔕</span>
               {showMuteMenu && (
                 <div style={{
                   position: "absolute",
@@ -115,17 +132,14 @@ export default function ChatHeader({
                   <div style={{ padding: 10, cursor: "pointer" }} onClick={() => handleMuteClick("1 week", 604800000)}>1 week</div>
                 </div>
               )}
-              <span style={{ cursor: "pointer" }} onClick={handlePinClick} title="Pin">📌</span>
+              <span style={{ cursor: "pointer" }} onClick={handlePinClick} title="Pin / Unpin">📌</span>
 
-              {/* Three-dot menu in multi-select */}
               <div style={{ position: "relative" }} ref={dropdownRef}>
                 <span
                   style={{ fontSize: 22, cursor: "pointer" }}
                   onClick={() => setShowDropdown(prev => !prev)}
                   title="More options"
-                >
-                  ⋮
-                </span>
+                >⋮</span>
                 {showDropdown && (
                   <div style={{
                     position: "absolute",
@@ -143,30 +157,22 @@ export default function ChatHeader({
                       <div
                         style={{ padding: 10, cursor: "pointer", borderBottom: "1px solid #ddd" }}
                         onClick={() => { onMarkRead?.(); setShowDropdown(false); triggerToast("Marked as read"); }}
-                      >
-                        Mark as Read
-                      </div>
+                      >Mark as Read</div>
                     )}
                     {showMarkUnread && (
                       <div
                         style={{ padding: 10, cursor: "pointer", borderBottom: "1px solid #ddd" }}
                         onClick={() => { onMarkUnread?.(); setShowDropdown(false); triggerToast("Marked as unread"); }}
-                      >
-                        Mark as Unread
-                      </div>
+                      >Mark as Unread</div>
                     )}
                     <div
                       style={{ padding: 10, cursor: "pointer", borderBottom: "1px solid #ddd" }}
-                      onClick={() => { onBlock?.(); setShowDropdown(false); triggerToast("User blocked"); }}
-                    >
-                      Block
-                    </div>
+                      onClick={() => { onBlock?.(); setShowDropdown(false); triggerToast(`${blockLabel}ed user(s)`); }}
+                    >{blockLabel}</div>
                     <div
                       style={{ padding: 10, cursor: "pointer" }}
                       onClick={() => { handleClearChatClick(); setShowDropdown(false); }}
-                    >
-                      Clear Chat
-                    </div>
+                    >Clear Chat</div>
                   </div>
                 )}
               </div>
@@ -176,9 +182,7 @@ export default function ChatHeader({
               style={{ fontSize: 22, cursor: "pointer" }}
               onClick={onSettingsClick}
               title="Settings"
-            >
-              ⚙️
-            </span>
+            >⚙️</span>
           )}
         </div>
       </div>
@@ -220,9 +224,7 @@ export default function ChatHeader({
           borderRadius: 8,
           boxShadow: "0 2px 6px rgba(0,0,0,0.3)",
           zIndex: 50,
-        }}>
-          {toast}
-        </div>
+        }}>{toast}</div>
       )}
     </>
   );
