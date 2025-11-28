@@ -53,7 +53,7 @@ export default function MessageItem({
           {
             label: "Edit",
             action: async () => {
-              if (!message.text) return; // skip if audio/file
+              if (!message.text) return;
               const t = prompt("Edit message", message.text);
               if (t !== null && t !== message.text) {
                 await updateDoc(doc(db, "chats", chatId, "messages", message.id), {
@@ -146,6 +146,33 @@ export default function MessageItem({
           <div style={{ fontSize: 15, whiteSpace: "pre-wrap", lineHeight: 1.4 }}>
             {message.text}
           </div>
+        )}
+
+        {/* Images */}
+        {message.mediaType === "image" && message.mediaUrl && (
+          <img
+            src={message.mediaUrl}
+            alt={message.fileName || "image"}
+            style={{
+              width: "100%",
+              marginTop: message.text ? 6 : 0,
+              borderRadius: SPACING.borderRadius,
+              objectFit: "cover",
+            }}
+          />
+        )}
+
+        {/* Videos */}
+        {message.mediaType === "video" && message.mediaUrl && (
+          <video
+            controls
+            style={{
+              width: "100%",
+              marginTop: message.text ? 6 : 0,
+              borderRadius: SPACING.borderRadius,
+            }}
+            src={message.mediaUrl}
+          />
         )}
 
         {/* Audio / Voice Note */}
