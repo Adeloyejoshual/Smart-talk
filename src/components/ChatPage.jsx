@@ -17,10 +17,6 @@ import { db, auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
 import { ThemeContext } from "../context/ThemeContext";
 
-// Cloudinary env (optional)
-const CLOUDINARY_CLOUD = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
-const CLOUDINARY_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
-
 export default function ChatPage() {
   const { theme, wallpaper } = useContext(ThemeContext);
   const [chats, setChats] = useState([]);
@@ -35,7 +31,7 @@ export default function ChatPage() {
 
   const dropdownRef = useRef(null);
 
-  // 🔐 Auth listener
+  // Auth listener
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((u) => {
       if (!u) return navigate("/");
@@ -44,7 +40,7 @@ export default function ChatPage() {
     return unsubscribe;
   }, [navigate]);
 
-  // 💬 Load chats in real-time (newest first)
+  // Load chats in real-time (newest first)
   useEffect(() => {
     if (!user) return;
 
@@ -82,13 +78,14 @@ export default function ChatPage() {
             chatData.lastMessageAt = latest.createdAt;
             chatData.lastMessageSender = latest.senderId;
             chatData.lastMessageStatus = latest.status;
+            chatData.unread =
+              latest.senderId !== user.uid && latest.status !== "seen";
           }
 
           return chatData;
         })
       );
 
-      // Sort again to ensure newest messages on top
       chatList.sort((a, b) => {
         const tA = a.lastMessageAt?.seconds || 0;
         const tB = b.lastMessageAt?.seconds || 0;
@@ -101,7 +98,7 @@ export default function ChatPage() {
     return () => unsubscribe();
   }, [user]);
 
-  // ✅ Initials
+  // Get initials
   const getInitials = (fullName) => {
     if (!fullName) return "U";
     const names = fullName.trim().split(" ").filter(Boolean);
@@ -110,7 +107,7 @@ export default function ChatPage() {
       : names[0][0].toUpperCase();
   };
 
-  // ✅ Chat actions
+  // Chat actions
   const toggleSelectChat = (chatId) => {
     setSelectedChats((prev) =>
       prev.includes(chatId) ? prev.filter((id) => id !== chatId) : [...prev, chatId]
@@ -149,7 +146,6 @@ export default function ChatPage() {
     return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   };
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (!dropdownRef.current?.contains(e.target)) setShowDropdown(false);
@@ -322,7 +318,7 @@ export default function ChatPage() {
                     getInitials(chat.name)
                   )}
                 </div>
-                <div>
+                <div style={{ position: "relative", flex: 1 }}>
                   <strong>{chat.name || "Unknown"}</strong>
                   <p
                     style={{
@@ -336,6 +332,21 @@ export default function ChatPage() {
                   >
                     {renderMessageTick(chat)} {chat.lastMessage || "No messages yet"}
                   </p>
+                  {/* Blue badge for unread */}
+                  {chat.unread && (
+                    <span
+                      style={{
+                        position: "absolute",
+                        right: 0,
+                        top: "50%",
+                        transform: "translateY(-50%)",
+                        width: 10,
+                        height: 10,
+                        borderRadius: "50%",
+                        background: "#1E90FF",
+                      }}
+                    />
+                  )}
                 </div>
               </div>
               <small style={{ color: "#888" }}>{formatDate(chat.lastMessageAt)}</small>
