@@ -2,6 +2,7 @@
 import React, { useContext, useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { ThemeContext } from "../../context/ThemeContext";
+import { UserContext } from "../../context/UserContext";   // <-- Cloudinary here
 import { usePopup } from "../../context/PopupContext";
 import { doc, updateDoc, collection, getDocs, deleteDoc } from "firebase/firestore";
 import { db } from "../../firebaseConfig";
@@ -10,6 +11,7 @@ const COLORS = {
   headerBlue: "#1877F2",
   mutedText: "#dbe7ff",
 };
+
 const btnStyle = {
   padding: 8,
   borderRadius: 12,
@@ -23,13 +25,14 @@ const btnStyle = {
 export default function ChatHeader({ chatInfo, friendInfo }) {
   const navigate = useNavigate();
   const { theme } = useContext(ThemeContext);
+  const { cloudinaryBase } = useContext(UserContext); // <-- Cloudinary URL base
   const { showPopup } = usePopup();
+
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
-
   const [toast, setToast] = useState(null);
 
-  // Close menu when clicked outside
+  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (menuRef.current && !menuRef.current.contains(e.target)) {
@@ -47,20 +50,21 @@ export default function ChatHeader({ chatInfo, friendInfo }) {
 
   const handleMenuClick = () => setMenuOpen((prev) => !prev);
 
-  // ----- ACTIONS -----
+  // --------------------------
+  // BLOCK / UNBLOCK USER
+  // --------------------------
   const handleBlock = async () => {
     if (!chatInfo?.id || !friendInfo?.id) return;
 
     const chatRef = doc(db, "chats", chatInfo.id);
     const blockedBy = chatInfo.blockedBy || [];
+
     let newBlocked;
 
     if (blockedBy.includes(friendInfo.id)) {
-      // Unblock
       newBlocked = blockedBy.filter((id) => id !== friendInfo.id);
       triggerToast("User unblocked");
     } else {
-      // Block
       newBlocked = [...blockedBy, friendInfo.id];
       triggerToast("User blocked");
     }
@@ -69,14 +73,17 @@ export default function ChatHeader({ chatInfo, friendInfo }) {
     setMenuOpen(false);
   };
 
+  // --------------------------
+  // CLEAR CHAT
+  // --------------------------
   const handleClearChat = async () => {
     if (!chatInfo?.id) return;
 
     const messagesRef = collection(db, "chats", chatInfo.id, "messages");
     const snap = await getDocs(messagesRef);
 
-    const batchDeletes = snap.docs.map((d) => deleteDoc(d.ref));
-    await Promise.all(batchDeletes);
+    const deleteOps = snap.docs.map((m) => deleteDoc(m.ref));
+    await Promise.all(deleteOps);
 
     triggerToast("Chat cleared!");
     setMenuOpen(false);
@@ -86,6 +93,15 @@ export default function ChatHeader({ chatInfo, friendInfo }) {
     triggerToast("User reported.");
     setMenuOpen(false);
   };
+
+  // --------------------------
+  // CLOUDINARY PROFILE IMAGE
+  // --------------------------
+  const profilePic =
+    friendInfo?.photoId
+      ? `${cloudinaryBase}${friendInfo.photoId}`
+      : friendInfo?.photoURL ||
+        "/default-avatar.png";
 
   return (
     <div
@@ -105,7 +121,7 @@ export default function ChatHeader({ chatInfo, friendInfo }) {
       {/* LEFT: Back + Avatar + Name */}
       <div
         style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}
-        onClick={() => friendInfo?.id && navigate(`/UserProfilePage/${friendInfo.id}`)}
+        onClick={() => friendInfo?.id && navigate(`/profile/${friendInfo.id}`)}
       >
         <button
           onClick={(e) => {
@@ -118,53 +134,60 @@ export default function ChatHeader({ chatInfo, friendInfo }) {
         </button>
 
         <img
-          src={friendInfo?.photoURL || "/default-avatar.png"}
+          src={profilePic}
           alt=""
           style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover" }}
         />
 
         <div style={{ display: "flex", flexDirection: "column" }}>
-          <div style={{ fontWeight: 600, fontSize: 14 }}>{friendInfo?.name || "Chat"}</div>
+          <div style={{ fontWeight: 600, fontSize: 14 }}>
+            {friendInfo?.name || "Chat"}
+          </div>
           <div style={{ fontSize: 11, color: COLORS.mutedText }}>
             {friendInfo?.online
               ? "Online"
               : friendInfo?.lastSeen
               ? `Last seen: ${new Date(
-                  friendInfo.lastSeen?.toDate ? friendInfo.lastSeen.toDate() : friendInfo.lastSeen
-                ).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`
+                  friendInfo.lastSeen?.toDate
+                    ? friendInfo.lastSeen.toDate()
+                    : friendInfo.lastSeen
+                ).toLocaleString([], {
+                  month: "short",
+                  day: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}`
               : "Last seen unavailable"}
           </div>
         </div>
       </div>
 
-      {/* RIGHT: Voice & Video Call + 3-dot menu */}
+      {/* RIGHT SIDE */}
       <div style={{ display: "flex", gap: 12, alignItems: "center", position: "relative" }}>
         <button
           onClick={() =>
-            navigate("/voice-call", {
-              state: { friendId: friendInfo?.id, chatId: chatInfo?.id },
+            navigate("/voicecall/" + friendInfo?.id, {
+              state: { chatId: chatInfo?.id },
             })
           }
           style={btnStyle}
-          title="Voice Call"
         >
           📞
         </button>
 
         <button
           onClick={() =>
-            navigate("/video-call", {
-              state: { friendId: friendInfo?.id, chatId: chatInfo?.id },
+            navigate("/videocall/" + friendInfo?.id, {
+              state: { chatId: chatInfo?.id },
             })
           }
           style={btnStyle}
-          title="Video Call"
         >
           🎥
         </button>
 
-        {/* 3-dot menu */}
-        <button onClick={handleMenuClick} style={btnStyle} title="Menu">
+        {/* Menu */}
+        <button onClick={handleMenuClick} style={btnStyle}>
           ⋮
         </button>
 
@@ -181,30 +204,35 @@ export default function ChatHeader({ chatInfo, friendInfo }) {
               boxShadow: "0 2px 10px rgba(0,0,0,0.2)",
               display: "flex",
               flexDirection: "column",
+              minWidth: 150,
               zIndex: 100,
-              minWidth: 140,
             }}
           >
             <button
-              style={{ padding: 10, border: "none", background: "transparent", cursor: "pointer", textAlign: "left" }}
-              onClick={() => navigate(`/UserProfilePage/${friendInfo?.id}`)}
+              style={{ padding: 10, background: "transparent", textAlign: "left" }}
+              onClick={() => navigate(`/profile/${friendInfo?.id}`)}
             >
               View Profile
             </button>
+
             <button
-              style={{ padding: 10, border: "none", background: "transparent", cursor: "pointer", textAlign: "left" }}
+              style={{ padding: 10, background: "transparent", textAlign: "left" }}
               onClick={handleClearChat}
             >
               Clear Chat
             </button>
+
             <button
-              style={{ padding: 10, border: "none", background: "transparent", cursor: "pointer", textAlign: "left" }}
+              style={{ padding: 10, background: "transparent", textAlign: "left" }}
               onClick={handleBlock}
             >
-              {chatInfo?.blockedBy?.includes(friendInfo?.id) ? "Unblock" : "Block"}
+              {chatInfo?.blockedBy?.includes(friendInfo?.id)
+                ? "Unblock"
+                : "Block"}
             </button>
+
             <button
-              style={{ padding: 10, border: "none", background: "transparent", cursor: "pointer", textAlign: "left" }}
+              style={{ padding: 10, background: "transparent", textAlign: "left" }}
               onClick={handleReport}
             >
               Report
@@ -227,7 +255,6 @@ export default function ChatHeader({ chatInfo, friendInfo }) {
             borderRadius: 20,
             boxShadow: "0 2px 6px rgba(0,0,0,0.3)",
             zIndex: 999,
-            opacity: 0.95,
           }}
         >
           {toast}
