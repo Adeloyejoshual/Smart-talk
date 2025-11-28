@@ -36,18 +36,14 @@ export default function ChatHeader({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Toast
   const triggerToast = (message) => {
     setToast(message);
     setTimeout(() => setToast(""), 3000);
   };
 
-  // Multi-select actions
   const handleArchiveClick = () => { onArchive?.(); triggerToast("Archived chat(s)"); };
   const handlePinClick = () => { onPin?.(); triggerToast("Chat pinned"); };
   const handleClearChatClick = () => { onClearChat?.(); triggerToast("Chat cleared"); };
-
-  // Delete with confirmation
   const handleDeleteClick = () => setShowDeleteConfirm(true);
   const confirmDelete = () => {
     onDelete?.();
@@ -55,14 +51,12 @@ export default function ChatHeader({
     setShowDeleteConfirm(false);
   };
 
-  // Mute durations
   const handleMuteClick = (durationLabel, durationMs) => {
     onMute?.(durationMs);
     triggerToast(`Muted chat for ${durationLabel}`);
     setShowMuteMenu(false);
   };
 
-  // Determine if Mark as Read / Unread should show
   const showMarkRead = selectedChats.some(
     (chat) => chat.lastMessageSender !== user?.uid && chat.lastMessageStatus !== "seen"
   );
@@ -77,16 +71,18 @@ export default function ChatHeader({
         style={{
           position: "sticky",
           top: 0,
-          background: isDark ? "#1f1f1f" : "#f5f5f5",
+          background: "#0d6efd", // Bootstrap primary blue
+          color: "#fff",
           padding: "15px",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
           boxShadow: "0 1px 4px rgba(0,0,0,0.1)",
           zIndex: 10,
+          fontWeight: "bold",
         }}
       >
-        <h2>{selectedCount ? `${selectedCount} selected` : "Chats"}</h2>
+        <h2>{selectedCount ? `${selectedCount} selected` : "LoeChat"}</h2>
 
         <div style={{ display: "flex", gap: 15, position: "relative" }}>
           {selectedCount ? (
@@ -106,7 +102,8 @@ export default function ChatHeader({
                   position: "absolute",
                   top: "30px",
                   right: 0,
-                  background: isDark ? "#2c2c2c" : "#fff",
+                  background: "#fff",
+                  color: "#000",
                   border: "1px solid #ccc",
                   borderRadius: 8,
                   boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
@@ -134,7 +131,8 @@ export default function ChatHeader({
                     position: "absolute",
                     top: "30px",
                     right: 0,
-                    background: isDark ? "#2c2c2c" : "#fff",
+                    background: "#fff",
+                    color: "#000",
                     border: "1px solid #ccc",
                     borderRadius: 8,
                     boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
@@ -199,7 +197,7 @@ export default function ChatHeader({
           alignItems: "center",
           zIndex: 50,
         }}>
-          <div style={{ background: isDark ? "#2c2c2c" : "#fff", padding: 20, borderRadius: 8, textAlign: "center", minWidth: 300 }}>
+          <div style={{ background: "#fff", padding: 20, borderRadius: 8, textAlign: "center", minWidth: 300 }}>
             <p>Are you sure you want to permanently delete this chat?</p>
             <div style={{ marginTop: 10, display: "flex", justifyContent: "space-around" }}>
               <button onClick={() => setShowDeleteConfirm(false)}>Cancel</button>
