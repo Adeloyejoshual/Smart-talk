@@ -77,6 +77,7 @@ export default function ChatConversationPage() {
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [showScrollDown, setShowScrollDown] = useState(false);
   const [toast, setToast] = useState(null);
+  const [pinnedMessage, setPinnedMessage] = useState(null);
 
   // -----------------------------
   // Load chat & friend info
@@ -100,6 +101,14 @@ export default function ChatConversationPage() {
             unsubUser = onSnapshot(userRef, (s) => {
               if (s.exists()) setFriendInfo({ id: s.id, ...s.data() });
             });
+          }
+
+          // Load pinned message if exists and not expired
+          if (data.pinnedMessage) {
+            const now = new Date();
+            if (!data.pinnedMessage.expireAt || data.pinnedMessage.expireAt.toDate() > now) {
+              setPinnedMessage(data.pinnedMessage);
+            }
           }
         }
 
@@ -182,138 +191,38 @@ export default function ChatConversationPage() {
   };
 
   // -----------------------------
-  // Upload images/videos to Cloudinary
+  // Pin message actions
   // -----------------------------
-  const uploadToCloudinary = async (files) => {
-    const uploaded = [];
-    const cloudName = import.meta.env.VITE_CLOUDINARY_NAME;
-    const preset = import.meta.env.VITE_CLOUDINARY_PRESET;
+  const handlePinMessage = async (msg, duration) => {
+    if (!msg) return;
+    const expireAt = new Date();
+    if (duration === "24h") expireAt.setHours(expireAt.getHours() + 24);
+    if (duration === "7d") expireAt.setDate(expireAt.getDate() + 7);
+    if (duration === "30d") expireAt.setDate(expireAt.getDate() + 30);
 
-    for (let file of files) {
-      const tempId = Date.now() + "-" + file.name;
-      setUploadProgress((prev) => ({ ...prev, [tempId]: 0 }));
+    const pinData = { ...msg, expireAt: serverTimestamp() };
+    setPinnedMessage({ ...pinData, expireAt });
 
-      try {
-        const formData = new FormData();
-        formData.append("file", file);
-        formData.append("upload_preset", preset);
+    await updateDoc(doc(db, "chats", chatId), { pinnedMessage: pinData });
+    triggerToast("Message pinned");
+  };
 
-        const res = await fetch(
-          `https://api.cloudinary.com/v1_1/${cloudName}/upload`,
-          { method: "POST", body: formData }
-        );
-        const data = await res.json();
+  const handleGoToPinned = () => {
+    if (!pinnedMessage) return;
+    const el = document.getElementById(`msg-${pinnedMessage.id}`);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
 
-        uploaded.push({
-          tempId,
-          fileName: file.name,
-          url: data.secure_url,
-          mediaType: file.type.startsWith("image") ? "image" : "video",
-        });
-
-        setUploadProgress((prev) => {
-          const { [tempId]: _, ...rest } = prev;
-          return rest;
-        });
-      } catch (err) {
-        console.error("Cloudinary upload error:", err);
-        triggerToast("Failed to upload media: " + file.name);
-      }
-    }
-    return uploaded;
+  const handleUnpinMessage = async () => {
+    setPinnedMessage(null);
+    await updateDoc(doc(db, "chats", chatId), { pinnedMessage: null });
+    triggerToast("Pinned message removed");
   };
 
   // -----------------------------
-  // Upload docs/audio to B2
+  // Upload & send message logic
   // -----------------------------
-  const uploadToB2 = async (files) => {
-    const uploaded = [];
-    for (let file of files) {
-      const tempId = Date.now() + "-" + file.name;
-      setUploadProgress((prev) => ({ ...prev, [tempId]: 0 }));
-
-      try {
-        const token = await auth.currentUser.getIdToken();
-        const formData = new FormData();
-        formData.append("file", file);
-
-        const res = await fetch("/api/upload-b2", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-          body: formData,
-        });
-
-        const data = await res.json();
-        if (!data.url) throw new Error("Upload failed");
-
-        uploaded.push({
-          tempId,
-          fileName: file.name,
-          url: data.url,
-          mediaType: file.type.startsWith("audio") ? "audio" : "file",
-        });
-
-        setUploadProgress((prev) => {
-          const { [tempId]: _, ...rest } = prev;
-          return rest;
-        });
-      } catch (err) {
-        console.error("B2 upload error:", err);
-        triggerToast("Failed to upload: " + file.name);
-      }
-    }
-    return uploaded;
-  };
-
-  // -----------------------------
-  // Send message
-  // -----------------------------
-  const sendTextMessage = async () => {
-    if (!text && selectedFiles.length === 0) return;
-
-    const b2Files = selectedFiles.filter(
-      (f) => !f.type.startsWith("image") && !f.type.startsWith("video")
-    );
-    const cloudFiles = selectedFiles.filter(
-      (f) => f.type.startsWith("image") || f.type.startsWith("video")
-    );
-
-    const uploadedB2 = await uploadToB2(b2Files);
-    const uploadedCloud = await uploadToCloudinary(cloudFiles);
-
-    const allUploads = [...uploadedB2, ...uploadedCloud];
-
-    for (let item of allUploads) {
-      await addDoc(collection(db, "chats", chatId, "messages"), {
-        senderId: myUid,
-        text: "",
-        mediaUrl: item.url,
-        mediaType: item.mediaType,
-        fileName: item.fileName,
-        status: "sent",
-        createdAt: serverTimestamp(),
-        replyTo: replyTo?.id || null,
-        tempId: item.tempId,
-      });
-    }
-
-    if (text) {
-      await addDoc(collection(db, "chats", chatId, "messages"), {
-        senderId: myUid,
-        text,
-        mediaUrl: null,
-        mediaType: null,
-        status: "sent",
-        createdAt: serverTimestamp(),
-        replyTo: replyTo?.id || null,
-      });
-      setText("");
-    }
-
-    setSelectedFiles([]);
-    setReplyTo(null);
-    scrollToBottom();
-  };
+  // ... keep your existing uploadToCloudinary, uploadToB2, sendTextMessage, etc.
 
   const onFilesSelected = (e) => {
     const files = Array.from(e.target.files || []);
@@ -346,7 +255,15 @@ export default function ChatConversationPage() {
         position: "relative",
       }}
     >
-      <ChatHeader chatInfo={chatInfo} friendInfo={friendInfo} myUid={myUid} />
+      <ChatHeader
+        chatInfo={chatInfo}
+        friendInfo={friendInfo}
+        myUid={myUid}
+        onPinMessage={handlePinMessage}
+        onGoToPinned={handleGoToPinned}
+        pinnedMessage={pinnedMessage}
+        onUnpin={handleUnpinMessage}
+      />
 
       <div
         ref={messagesRefEl}
@@ -363,6 +280,7 @@ export default function ChatConversationPage() {
           ) : (
             <MessageItem
               key={item.data.id}
+              id={`msg-${item.data.id}`} // needed for go to pinned
               message={item.data}
               myUid={myUid}
               chatId={chatId}
