@@ -13,7 +13,8 @@ export default function ChatHeader({
   onBlock,
   onClearChat,
   onSettingsClick,
-  setSelectedChats,
+  selectionMode,
+  exitSelectionMode,
   isDark,
 }) {
   const [showDropdown, setShowDropdown] = useState(false);
@@ -45,13 +46,13 @@ export default function ChatHeader({
   const handleArchiveClick = () => {
     onArchive?.();
     triggerToast("Archived chat(s)");
-    setSelectedChats([]);
+    exitSelectionMode();
   };
 
   const handleClearChatClick = () => {
     onClearChat?.();
     triggerToast("Chat cleared");
-    setSelectedChats([]);
+    exitSelectionMode();
   };
 
   const handleDeleteClick = () => setShowDeleteConfirm(true);
@@ -60,14 +61,14 @@ export default function ChatHeader({
     onDelete?.();
     triggerToast(`Deleted ${selectedCount} chat${selectedCount > 1 ? "s" : ""}`);
     setShowDeleteConfirm(false);
-    setSelectedChats([]);
+    exitSelectionMode();
   };
 
   const handleMuteClick = (durationLabel, durationMs) => {
     onMute?.(durationMs);
     triggerToast(`Muted chat for ${durationLabel}`);
     setShowMuteMenu(false);
-    setSelectedChats([]);
+    exitSelectionMode();
   };
 
   const showMarkRead = selectedChats.some(
@@ -84,13 +85,9 @@ export default function ChatHeader({
   const pinnedCount = selectedChats.filter((c) => c.pinned).length;
 
   const handlePinClick = () => {
-    if (pinnedCount >= 3) {
-      triggerToast("You can only pin up to 3 chats");
-      return;
-    }
     onPin?.();
-    triggerToast("Chat(s) pinned");
-    setSelectedChats([]);
+    triggerToast("Chat(s) pinned/unpinned");
+    exitSelectionMode();
   };
 
   return (
@@ -100,36 +97,44 @@ export default function ChatHeader({
         style={{
           position: "sticky",
           top: 0,
-          background: "#0d6efd",
+          background: isDark ? "#1e1e1e" : "#075e54",
           color: "#fff",
-          padding: "15px",
+          padding: "12px 15px",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          boxShadow: "0 1px 4px rgba(0,0,0,0.1)",
+          boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
           zIndex: 10,
           fontWeight: "bold",
+          transition: "all 0.3s ease",
         }}
       >
         {/* Selected count + cancel button */}
-        <h2 style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          {selectedCount ? (
+        <h2
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            fontSize: selectionMode ? 16 : 20,
+            transition: "font-size 0.3s ease",
+          }}
+        >
+          {selectionMode && selectedCount ? (
             <>
               {selectedCount} selected
               <span
                 style={{
                   cursor: "pointer",
                   fontWeight: "bold",
-                  padding: "0 5px",
+                  padding: "0 7px",
                   background: "#fff",
-                  color: "#0d6efd",
+                  color: isDark ? "#075e54" : "#075e54",
                   borderRadius: "50%",
-                  lineHeight: "1",
+                  lineHeight: 1,
+                  fontSize: 16,
+                  transition: "all 0.2s ease",
                 }}
-                onClick={(e) => {
-                  e.stopPropagation(); // prevent parent click
-                  setSelectedChats([]);
-                }}
+                onClick={exitSelectionMode}
                 title="Cancel selection"
               >
                 ×
@@ -140,56 +145,74 @@ export default function ChatHeader({
           )}
         </h2>
 
-        <div style={{ display: "flex", gap: 15, position: "relative" }}>
-          {selectedCount ? (
+        <div style={{ display: "flex", gap: 15, position: "relative", alignItems: "center" }}>
+          {selectionMode && selectedCount ? (
             <>
               {/* Multi-select icons */}
-              <span style={{ cursor: "pointer" }} onClick={handleArchiveClick} title="Archive">
+              <span
+                style={{ cursor: "pointer", fontSize: 18 }}
+                onClick={handleArchiveClick}
+                title="Archive"
+              >
                 📦
               </span>
-              <span style={{ cursor: "pointer" }} onClick={handleDeleteClick} title="Delete">
+              <span
+                style={{ cursor: "pointer", fontSize: 18 }}
+                onClick={handleDeleteClick}
+                title="Delete"
+              >
                 🗑️
               </span>
               <span
-                style={{ cursor: "pointer" }}
+                style={{ cursor: "pointer", fontSize: 18 }}
                 onClick={() => setShowMuteMenu((prev) => !prev)}
                 title="Mute"
               >
                 🔕
               </span>
+
               {showMuteMenu && (
                 <div
                   style={{
                     position: "absolute",
-                    top: "30px",
+                    top: "35px",
                     right: 0,
-                    background: "#fff",
-                    color: "#000",
-                    border: "1px solid #ccc",
+                    background: isDark ? "#2c2c2c" : "#fff",
+                    color: isDark ? "#fff" : "#000",
+                    border: `1px solid ${isDark ? "#444" : "#ccc"}`,
                     borderRadius: 8,
-                    boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+                    boxShadow: "0 3px 10px rgba(0,0,0,0.25)",
                     zIndex: 20,
                     minWidth: 140,
                   }}
                 >
-                  <div
-                    style={{ padding: 10, cursor: "pointer", borderBottom: "1px solid #ddd" }}
-                    onClick={() => handleMuteClick("1 hour", 3600000)}
-                  >
-                    1 hour
-                  </div>
-                  <div
-                    style={{ padding: 10, cursor: "pointer", borderBottom: "1px solid #ddd" }}
-                    onClick={() => handleMuteClick("23 hours", 82800000)}
-                  >
-                    23 hours
-                  </div>
-                  <div
-                    style={{ padding: 10, cursor: "pointer" }}
-                    onClick={() => handleMuteClick("1 week", 604800000)}
-                  >
-                    1 week
-                  </div>
+                  {["1 hour", "23 hours", "1 week"].map((label, i) => (
+                    <div
+                      key={label}
+                      style={{
+                        padding: "8px 12px",
+                        cursor: "pointer",
+                        borderBottom: i < 2 ? `1px solid ${isDark ? "#444" : "#ddd"}` : "none",
+                        transition: "background 0.2s",
+                      }}
+                      onClick={() =>
+                        handleMuteClick(
+                          label,
+                          label === "1 hour"
+                            ? 3600000
+                            : label === "23 hours"
+                            ? 82800000
+                            : 604800000
+                        )
+                      }
+                      onMouseEnter={(e) =>
+                        (e.currentTarget.style.background = isDark ? "#444" : "#f5f5f5")
+                      }
+                      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                    >
+                      {label}
+                    </div>
+                  ))}
                 </div>
               )}
 
@@ -206,25 +229,29 @@ export default function ChatHeader({
                   <div
                     style={{
                       position: "absolute",
-                      top: "30px",
+                      top: "35px",
                       right: 0,
-                      background: "#fff",
-                      color: "#000",
-                      border: "1px solid #ccc",
+                      background: isDark ? "#2c2c2c" : "#fff",
+                      color: isDark ? "#fff" : "#000",
+                      border: `1px solid ${isDark ? "#444" : "#ccc"}`,
                       borderRadius: 8,
-                      boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+                      boxShadow: "0 3px 10px rgba(0,0,0,0.25)",
                       zIndex: 20,
                       minWidth: 180,
+                      transition: "all 0.2s ease",
                     }}
                   >
                     {showMarkRead && (
                       <div
-                        style={{ padding: 10, cursor: "pointer", borderBottom: "1px solid #ddd" }}
+                        style={{
+                          padding: "8px 12px",
+                          cursor: "pointer",
+                          borderBottom: `1px solid ${isDark ? "#444" : "#ddd"}`,
+                        }}
                         onClick={() => {
                           onMarkRead?.();
                           setShowDropdown(false);
                           triggerToast("Marked as read");
-                          setSelectedChats([]);
                         }}
                       >
                         Mark as Read
@@ -232,19 +259,26 @@ export default function ChatHeader({
                     )}
                     {showMarkUnread && (
                       <div
-                        style={{ padding: 10, cursor: "pointer", borderBottom: "1px solid #ddd" }}
+                        style={{
+                          padding: "8px 12px",
+                          cursor: "pointer",
+                          borderBottom: `1px solid ${isDark ? "#444" : "#ddd"}`,
+                        }}
                         onClick={() => {
                           onMarkUnread?.();
                           setShowDropdown(false);
                           triggerToast("Marked as unread");
-                          setSelectedChats([]);
                         }}
                       >
                         Mark as Unread
                       </div>
                     )}
                     <div
-                      style={{ padding: 10, cursor: "pointer", borderBottom: "1px solid #ddd" }}
+                      style={{
+                        padding: "8px 12px",
+                        cursor: "pointer",
+                        borderBottom: `1px solid ${isDark ? "#444" : "#ddd"}`,
+                      }}
                       onClick={() => {
                         handlePinClick();
                         setShowDropdown(false);
@@ -253,18 +287,21 @@ export default function ChatHeader({
                       {pinnedCount > 0 ? "Unpin" : "Pin"}
                     </div>
                     <div
-                      style={{ padding: 10, cursor: "pointer", borderBottom: "1px solid #ddd" }}
+                      style={{
+                        padding: "8px 12px",
+                        cursor: "pointer",
+                        borderBottom: `1px solid ${isDark ? "#444" : "#ddd"}`,
+                      }}
                       onClick={() => {
                         onBlock?.();
                         setShowDropdown(false);
                         triggerToast(`${blockLabel}ed user(s)`);
-                        setSelectedChats([]);
                       }}
                     >
                       {blockLabel}
                     </div>
                     <div
-                      style={{ padding: 10, cursor: "pointer" }}
+                      style={{ padding: "8px 12px", cursor: "pointer" }}
                       onClick={() => {
                         handleClearChatClick();
                         setShowDropdown(false);
@@ -305,7 +342,14 @@ export default function ChatHeader({
           }}
         >
           <div
-            style={{ background: "#fff", padding: 20, borderRadius: 8, textAlign: "center", minWidth: 300 }}
+            style={{
+              background: isDark ? "#2c2c2c" : "#fff",
+              padding: 20,
+              borderRadius: 8,
+              textAlign: "center",
+              minWidth: 300,
+              color: isDark ? "#fff" : "#000",
+            }}
           >
             <p>Are you sure you want to permanently delete this chat?</p>
             <div style={{ marginTop: 10, display: "flex", justifyContent: "space-around" }}>
@@ -332,6 +376,7 @@ export default function ChatHeader({
             borderRadius: 8,
             boxShadow: "0 2px 6px rgba(0,0,0,0.3)",
             zIndex: 50,
+            animation: "fadeIn 0.3s",
           }}
         >
           {toast}
