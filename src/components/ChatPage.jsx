@@ -141,9 +141,10 @@ export default function ChatPage() {
 
   const openProfileUploader = () => profileInputRef.current?.click();
 
+  // ✅ Updated initials function
   const getInitials = (fullName) => {
     if (!fullName) return "U";
-    const names = fullName.trim().split(" ");
+    const names = fullName.trim().split(" ").filter(Boolean);
     if (names.length === 1) return names[0][0].toUpperCase();
     return (names[0][0] + names[1][0]).toUpperCase();
   };
@@ -239,7 +240,7 @@ export default function ChatPage() {
       >
         <h2 style={{ margin: 0 }}>Chats</h2>
 
-        {/* Avatar with upload */}
+        {/* Avatar with initials fallback */}
         <div
           onClick={openProfileUploader}
           style={{
