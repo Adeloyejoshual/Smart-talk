@@ -7,12 +7,11 @@ import {
   orderBy,
   onSnapshot,
   getDocs,
-  addDoc,
-  serverTimestamp,
-  limit,
   doc,
   updateDoc,
+  limit,
   getDoc,
+  serverTimestamp,
 } from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
@@ -24,39 +23,38 @@ const CLOUDINARY_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
 
 export default function ChatPage() {
   const { theme, wallpaper } = useContext(ThemeContext);
+  const isDark = theme === "dark";
+  const navigate = useNavigate();
+
+  const [user, setUser] = useState(null);
   const [chats, setChats] = useState([]);
   const [search, setSearch] = useState("");
-  const [user, setUser] = useState(null);
   const [selectedChats, setSelectedChats] = useState([]);
-  const [showDropdown, setShowDropdown] = useState(false);
-  const [showAddFriend, setShowAddFriend] = useState(false);
-  const [friendEmail, setFriendEmail] = useState("");
   const [profilePic, setProfilePic] = useState(null);
   const [profileName, setProfileName] = useState("");
-  const navigate = useNavigate();
-  const isDark = theme === "dark";
+  const [showAddFriend, setShowAddFriend] = useState(false);
 
   const dropdownRef = useRef(null);
   const profileInputRef = useRef(null);
 
-  // 🔐 Auth listener + load profile
+  // ================= AUTH & LOAD PROFILE =================
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (u) => {
       if (!u) return navigate("/");
       setUser(u);
 
-      const userRef = doc(db, "users", u.uid);
-      const snap = await getDoc(userRef);
+      const snap = await getDoc(doc(db, "users", u.uid));
       if (snap.exists()) {
         const data = snap.data();
         setProfilePic(data.profilePic || null);
         setProfileName(data.name || "");
       }
     });
+
     return unsubscribe;
   }, [navigate]);
 
-  // 💬 Load chats in real-time (newest first, pinned on top)
+  // ================= LOAD CHATS REAL-TIME =================
   useEffect(() => {
     if (!user) return;
 
@@ -84,9 +82,12 @@ export default function ChatPage() {
           }
 
           // Last message
-          const msgRef = collection(db, "chats", docSnap.id, "messages");
           const msgSnap = await getDocs(
-            query(msgRef, orderBy("createdAt", "desc"), limit(1))
+            query(
+              collection(db, "chats", docSnap.id, "messages"),
+              orderBy("createdAt", "desc"),
+              limit(1)
+            )
           );
           const latest = msgSnap.docs[0]?.data();
           if (latest) {
@@ -100,24 +101,20 @@ export default function ChatPage() {
         })
       );
 
-      // Sort pinned chats first, then newest
+      // Sort pinned first, then newest
       chatList.sort((a, b) => {
         if (a.pinned && !b.pinned) return -1;
         if (!a.pinned && b.pinned) return 1;
-
-        const tA = a.lastMessageAt?.seconds || 0;
-        const tB = b.lastMessageAt?.seconds || 0;
-        return tB - tA;
+        return (b.lastMessageAt?.seconds || 0) - (a.lastMessageAt?.seconds || 0);
       });
 
-      // Filter out deleted chats
       setChats(chatList.filter((c) => !c.deleted));
     });
 
     return () => unsubscribe();
   }, [user]);
 
-  // ✅ Initials
+  // ================= HELPERS =================
   const getInitials = (fullName) => {
     if (!fullName) return "U";
     const names = fullName.trim().split(" ").filter(Boolean);
@@ -126,22 +123,32 @@ export default function ChatPage() {
       : names[0][0].toUpperCase();
   };
 
-  // ✅ Profile upload
-  const uploadToCloudinary = async (file) => {
-    if (!CLOUDINARY_CLOUD || !CLOUDINARY_PRESET)
-      throw new Error("Cloudinary env not set");
+  const formatDate = (timestamp) => {
+    if (!timestamp) return "";
+    const date = new Date(timestamp.seconds ? timestamp.seconds * 1000 : timestamp);
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  };
 
+  const renderMessageTick = (chat) => {
+    if (chat.lastMessageSender !== user?.uid) return null;
+    if (chat.lastMessageStatus === "sent") return "✓";
+    if (chat.lastMessageStatus === "delivered") return "✓✓";
+    if (chat.lastMessageStatus === "seen") return <span style={{ color: "#25D366" }}>✓✓</span>;
+    return "";
+  };
+
+  // ================= PROFILE UPLOAD =================
+  const uploadToCloudinary = async (file) => {
+    if (!CLOUDINARY_CLOUD || !CLOUDINARY_PRESET) throw new Error("Cloudinary env not set");
     const fd = new FormData();
     fd.append("file", file);
     fd.append("upload_preset", CLOUDINARY_PRESET);
 
-    const res = await fetch(
-      `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`,
-      { method: "POST", body: fd }
-    );
-
+    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`, {
+      method: "POST",
+      body: fd,
+    });
     if (!res.ok) throw new Error("Cloudinary upload failed");
-
     const data = await res.json();
     return data.secure_url || data.url;
   };
@@ -153,20 +160,17 @@ export default function ChatPage() {
 
     try {
       const url = await uploadToCloudinary(file);
-      await updateDoc(doc(db, "users", user.uid), {
-        profilePic: url,
-        updatedAt: serverTimestamp(),
-      });
+      await updateDoc(doc(db, "users", user.uid), { profilePic: url, updatedAt: serverTimestamp() });
       setProfilePic(url);
     } catch (err) {
-      console.error("Upload failed:", err);
+      console.error(err);
       alert("Failed to upload avatar");
     }
   };
 
   const openProfileUploader = () => profileInputRef.current?.click();
 
-  // ✅ Chat actions
+  // ================= CHAT ACTIONS =================
   const toggleSelectChat = (chatId) => {
     setSelectedChats((prev) =>
       prev.includes(chatId) ? prev.filter((id) => id !== chatId) : [...prev, chatId]
@@ -174,52 +178,25 @@ export default function ChatPage() {
   };
 
   const handleArchive = async () => {
-    for (const chatId of selectedChats) {
-      await updateDoc(doc(db, "chats", chatId), { archived: true });
-    }
+    await Promise.all(selectedChats.map((id) => updateDoc(doc(db, "chats", id), { archived: true })));
     setSelectedChats([]);
-    setShowDropdown(false);
     navigate("/archive");
   };
 
   const handleDelete = async () => {
-    for (const chatId of selectedChats) {
-      await updateDoc(doc(db, "chats", chatId), { deleted: true });
-    }
+    await Promise.all(selectedChats.map((id) => updateDoc(doc(db, "chats", id), { deleted: true })));
     setSelectedChats([]);
-    setShowDropdown(false);
   };
 
   const handleMute = async () => {
-    const mutedUntil = new Date().getTime() + 24 * 60 * 60 * 1000; // mute 24h
-    for (const chatId of selectedChats) {
-      await updateDoc(doc(db, "chats", chatId), { mutedUntil });
-    }
+    const mutedUntil = new Date().getTime() + 24 * 60 * 60 * 1000; // 24h
+    await Promise.all(selectedChats.map((id) => updateDoc(doc(db, "chats", id), { mutedUntil })));
     setSelectedChats([]);
-    setShowDropdown(false);
   };
 
   const handlePin = async () => {
-    for (const chatId of selectedChats) {
-      await updateDoc(doc(db, "chats", chatId), { pinned: true });
-    }
+    await Promise.all(selectedChats.map((id) => updateDoc(doc(db, "chats", id), { pinned: true })));
     setSelectedChats([]);
-    setShowDropdown(false);
-  };
-
-  const renderMessageTick = (chat) => {
-    if (chat.lastMessageSender !== user?.uid) return null;
-    if (chat.lastMessageStatus === "sent") return "✓";
-    if (chat.lastMessageStatus === "delivered") return "✓✓";
-    if (chat.lastMessageStatus === "seen")
-      return <span style={{ color: "#25D366" }}>✓✓</span>;
-    return "";
-  };
-
-  const formatDate = (timestamp) => {
-    if (!timestamp) return "";
-    const date = new Date(timestamp.seconds ? timestamp.seconds * 1000 : timestamp);
-    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   };
 
   // Close dropdown when clicking outside
@@ -231,6 +208,7 @@ export default function ChatPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // ================= RENDER =================
   return (
     <div
       style={{
@@ -254,9 +232,9 @@ export default function ChatPage() {
           zIndex: 10,
         }}
       >
-        <h2>{selectedChats.length > 0 ? `${selectedChats.length} selected` : "Chats"}</h2>
+        <h2>{selectedChats.length ? `${selectedChats.length} selected` : "Chats"}</h2>
         <div style={{ display: "flex", gap: 15, position: "relative" }}>
-          {selectedChats.length > 0 ? (
+          {selectedChats.length ? (
             <>
               <span style={{ cursor: "pointer" }} onClick={handleArchive}>📦</span>
               <span style={{ cursor: "pointer" }} onClick={handleDelete}>🗑️</span>
@@ -270,18 +248,13 @@ export default function ChatPage() {
       </div>
 
       {/* Search */}
-      <div style={{ padding: "10px" }}>
+      <div style={{ padding: 10 }}>
         <input
           type="text"
           placeholder="Search chats..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          style={{
-            width: "100%",
-            padding: "8px 12px",
-            borderRadius: 8,
-            border: "1px solid #ccc",
-          }}
+          style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid #ccc" }}
         />
       </div>
 
@@ -289,7 +262,7 @@ export default function ChatPage() {
       <div
         onClick={() => navigate("/archive")}
         style={{
-          padding: "10px",
+          padding: 10,
           margin: "5px 0",
           background: isDark ? "#333" : "#eee",
           borderRadius: 8,
@@ -302,7 +275,7 @@ export default function ChatPage() {
       </div>
 
       {/* Chat List */}
-      <div style={{ padding: "10px" }}>
+      <div style={{ padding: 10 }}>
         {chats
           .filter(
             (c) =>
@@ -315,20 +288,13 @@ export default function ChatPage() {
             return (
               <div
                 key={chat.id}
-                onClick={() =>
-                  selectedChats.length > 0
-                    ? toggleSelectChat(chat.id)
-                    : navigate(`/chat/${chat.id}`)
-                }
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  toggleSelectChat(chat.id);
-                }}
+                onClick={() => selectedChats.length ? toggleSelectChat(chat.id) : navigate(`/chat/${chat.id}`)}
+                onContextMenu={(e) => { e.preventDefault(); toggleSelectChat(chat.id); }}
                 style={{
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
-                  padding: "10px 0",
+                  padding: 10,
                   borderBottom: isDark ? "1px solid #333" : "1px solid #eee",
                   cursor: "pointer",
                   background: selectedChats.includes(chat.id)
@@ -338,7 +304,7 @@ export default function ChatPage() {
                     : "transparent",
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <div
                     style={{
                       width: 45,
@@ -354,27 +320,13 @@ export default function ChatPage() {
                     }}
                   >
                     {chat.photoURL ? (
-                      <img
-                        src={chat.photoURL}
-                        alt={chat.name}
-                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                      />
-                    ) : (
-                      getInitials(chat.name)
-                    )}
+                      <img src={chat.photoURL} alt={chat.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    ) : getInitials(chat.name)}
                   </div>
                   <div>
                     <strong>{chat.name || "Unknown"}</strong>
-                    <p
-                      style={{
-                        margin: 0,
-                        fontSize: "14px",
-                        color: isDark ? "#ccc" : "#555",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "5px",
-                      }}
-                    >
+                    {chat.pinned && <span style={{ marginLeft: 5 }}>📌</span>}
+                    <p style={{ margin: 0, fontSize: 14, color: isDark ? "#ccc" : "#555", display: "flex", alignItems: "center", gap: 5 }}>
                       {renderMessageTick(chat)} {chat.lastMessage || "No messages yet"}
                     </p>
                   </div>
@@ -405,6 +357,7 @@ export default function ChatPage() {
         +
       </button>
 
+      {/* Profile uploader */}
       <input
         ref={profileInputRef}
         type="file"
@@ -420,7 +373,7 @@ export default function ChatPage() {
           bottom: 0,
           left: 0,
           width: "100%",
-          background: isDark ? "#1e1e1e" : "#ffffff",
+          background: isDark ? "#1e1e1e" : "#fff",
           padding: "10px 0",
           display: "flex",
           justifyContent: "space-around",
@@ -433,10 +386,7 @@ export default function ChatPage() {
           <span style={{ fontSize: 26 }}>💬</span>
           <div style={{ fontSize: 12 }}>Chat</div>
         </div>
-        <div
-          style={{ textAlign: "center", cursor: "pointer" }}
-          onClick={() => navigate("/call-history")}
-        >
+        <div style={{ textAlign: "center", cursor: "pointer" }} onClick={() => navigate("/call-history")}>
           <span style={{ fontSize: 26 }}>📞</span>
           <div style={{ fontSize: 12 }}>Calls</div>
         </div>
