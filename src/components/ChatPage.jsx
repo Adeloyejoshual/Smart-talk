@@ -15,14 +15,14 @@ import {
 } from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
-import { ThemeContext } from "../../context/ThemeContext";
-import { UserContext } from "../../context/UserContext"; // UserContext with Cloudinary upload
+import { ThemeContext } from "../context/ThemeContext";
+import { UserContext } from "../context/UserContext"; // <-- Use UserContext
 import ChatHeader from "./ChatPage/Header";
 import AddFriendPopup from "./ChatPage/AddFriendPopup";
 
 export default function ChatPage() {
   const { theme, wallpaper } = useContext(ThemeContext);
-  const { user, profilePic, profileName, setProfilePic, setProfileName, uploadProfilePic } = useContext(UserContext);
+  const { user, profilePic, profileName, uploadProfilePic } = useContext(UserContext);
   const isDark = theme === "dark";
   const navigate = useNavigate();
 
@@ -32,6 +32,14 @@ export default function ChatPage() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [showAddFriend, setShowAddFriend] = useState(false);
   const profileInputRef = useRef(null);
+
+  // ================= AUTH CHECK =================
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged((u) => {
+      if (!u) return navigate("/");
+    });
+    return unsubscribe;
+  }, [navigate]);
 
   // ================= LOAD CHATS REAL-TIME =================
   useEffect(() => {
@@ -86,7 +94,6 @@ export default function ChatPage() {
 
       setChats(chatList.filter((c) => !c.deleted));
     });
-
     return () => unsubscribe();
   }, [user]);
 
@@ -114,9 +121,9 @@ export default function ChatPage() {
   // ================= PROFILE UPLOAD =================
   const handleProfileFileChange = async (e) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || !user) return;
     try {
-      await uploadProfilePic(file); // UserContext handles Cloudinary + Firestore
+      await uploadProfilePic(file);
     } catch (err) {
       console.error(err);
       alert("Failed to upload avatar");
@@ -352,7 +359,7 @@ export default function ChatPage() {
           <span style={{ fontSize: 26 }}>💬</span>
           <div style={{ fontSize: 12 }}>Chat</div>
         </div>
-        <div style={{ textAlign: "center", cursor: "pointer" }} onClick={() => navigate("/history")}>
+        <div style={{ textAlign: "center", cursor: "pointer" }} onClick={() => navigate("/call-history")}>
           <span style={{ fontSize: 26 }}>📞</span>
           <div style={{ fontSize: 12 }}>Calls</div>
         </div>
