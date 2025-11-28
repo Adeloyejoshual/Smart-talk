@@ -1,4 +1,3 @@
-// src/components/ChatConversationPage.jsx
 import React, { useEffect, useState, useRef, useContext } from "react";
 import { useParams } from "react-router-dom";
 import {
@@ -11,7 +10,7 @@ import {
   doc,
   serverTimestamp,
   limit as fsLimit,
-  getDoc
+  getDoc,
 } from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
 import { ThemeContext } from "../context/ThemeContext";
@@ -29,7 +28,7 @@ const COLORS = {
   mutedText: "#888",
 };
 
-// Format date labels
+// ------------------ Helpers ------------------
 const formatDayLabel = (ts) => {
   if (!ts) return "";
   const d = ts.toDate ? ts.toDate() : new Date(ts);
@@ -46,7 +45,6 @@ const formatDayLabel = (ts) => {
   });
 };
 
-// Format hh:mm
 export const fmtTime = (ts) => {
   if (!ts) return "";
   const d = ts.toDate ? ts.toDate() : new Date(ts);
@@ -79,9 +77,7 @@ export default function ChatConversationPage() {
   const [toast, setToast] = useState(null);
   const [pinnedMessage, setPinnedMessage] = useState(null);
 
-  // -----------------------------
-  // Load chat & friend info
-  // -----------------------------
+  // ---------------- Load chat & friend info ----------------
   useEffect(() => {
     if (!chatId) return;
     let unsubChat = null;
@@ -103,7 +99,7 @@ export default function ChatConversationPage() {
             });
           }
 
-          // Load pinned message if exists and not expired
+          // Load pinned message if exists & not expired
           if (data.pinnedMessage) {
             const now = new Date();
             if (!data.pinnedMessage.expireAt || data.pinnedMessage.expireAt.toDate() > now) {
@@ -127,9 +123,7 @@ export default function ChatConversationPage() {
     };
   }, [chatId, myUid]);
 
-  // -----------------------------
-  // Messages realtime
-  // -----------------------------
+  // ---------------- Messages realtime ----------------
   useEffect(() => {
     if (!chatId) return;
 
@@ -162,9 +156,7 @@ export default function ChatConversationPage() {
     return () => unsub();
   }, [chatId, myUid, isAtBottom]);
 
-  // -----------------------------
-  // Scroll detection
-  // -----------------------------
+  // ---------------- Scroll detection ----------------
   useEffect(() => {
     const el = messagesRefEl.current;
     if (!el) return;
@@ -190,9 +182,7 @@ export default function ChatConversationPage() {
     setTimeout(() => setToast(null), 2300);
   };
 
-  // -----------------------------
-  // Pin message actions
-  // -----------------------------
+  // ---------------- Pin message actions ----------------
   const handlePinMessage = async (msg, duration) => {
     if (!msg) return;
     const expireAt = new Date();
@@ -219,10 +209,8 @@ export default function ChatConversationPage() {
     triggerToast("Pinned message removed");
   };
 
-  // -----------------------------
-  // Upload & send message logic
-  // -----------------------------
-  // ... keep your existing uploadToCloudinary, uploadToB2, sendTextMessage, etc.
+  // ---------------- Upload & send message logic ----------------
+  // Keep your existing uploadToCloudinary, uploadToB2, sendTextMessage functions
 
   const onFilesSelected = (e) => {
     const files = Array.from(e.target.files || []);
@@ -230,9 +218,7 @@ export default function ChatConversationPage() {
     setSelectedFiles((prev) => [...prev, ...files].slice(0, 30));
   };
 
-  // -----------------------------
-  // Group messages by day
-  // -----------------------------
+  // ---------------- Group messages by day ----------------
   const groupedMessages = [];
   let lastDate = null;
   messages.forEach((msg) => {
@@ -280,7 +266,7 @@ export default function ChatConversationPage() {
           ) : (
             <MessageItem
               key={item.data.id}
-              id={`msg-${item.data.id}`} // needed for go to pinned
+              id={`msg-${item.data.id}`}
               message={item.data}
               myUid={myUid}
               chatId={chatId}
