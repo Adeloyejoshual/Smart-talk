@@ -10,7 +10,6 @@ import {
   doc,
   updateDoc,
   limit,
-  serverTimestamp,
   getDoc,
 } from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
@@ -32,9 +31,9 @@ export default function ChatPage() {
   const isDark = theme === "dark";
   const dropdownRef = useRef(null);
 
-  // 🔐 Auth listener + load user
+  // 🔐 Auth listener
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(async (u) => {
+    const unsubscribe = auth.onAuthStateChanged((u) => {
       if (!u) return navigate("/");
       setUser(u);
     });
@@ -183,6 +182,58 @@ export default function ChatPage() {
         }}
       >
         <h2>{selectedChats.length > 0 ? `${selectedChats.length} selected` : "Chats"}</h2>
+
+        <div style={{ display: "flex", gap: 15, position: "relative" }}>
+          {selectedChats.length > 0 ? (
+            <>
+              <span style={{ cursor: "pointer" }} onClick={handleArchive}>
+                📦
+              </span>
+              <span style={{ cursor: "pointer" }} onClick={handleDelete}>
+                🗑️
+              </span>
+              <span style={{ cursor: "pointer" }} onClick={handleMute}>
+                🔕
+              </span>
+              <span
+                style={{ cursor: "pointer" }}
+                onClick={() => setShowDropdown(!showDropdown)}
+              >
+                ⋮
+              </span>
+              {showDropdown && (
+                <div
+                  ref={dropdownRef}
+                  style={{
+                    position: "absolute",
+                    top: 50,
+                    right: 0,
+                    background: isDark ? "#1f1f1f" : "#fff",
+                    border: "1px solid #ccc",
+                    borderRadius: 8,
+                    padding: 10,
+                    display: "flex",
+                    flexDirection: "column",
+                    zIndex: 20,
+                  }}
+                >
+                  <div style={{ padding: 5, cursor: "pointer" }}>Pin</div>
+                  <div style={{ padding: 5, cursor: "pointer" }}>Block</div>
+                  <div style={{ padding: 5, cursor: "pointer" }}>
+                    Mark as read/unread
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <span
+              style={{ fontSize: 22, cursor: "pointer" }}
+              onClick={() => navigate("/settings")}
+            >
+              ⚙️
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Search */}
@@ -201,12 +252,34 @@ export default function ChatPage() {
         />
       </div>
 
+      {/* Archived Shortcut */}
+      <div
+        onClick={() => navigate("/archive")}
+        style={{
+          padding: "10px",
+          margin: "5px 0",
+          background: isDark ? "#333" : "#eee",
+          borderRadius: 8,
+          cursor: "pointer",
+          textAlign: "center",
+          fontWeight: "bold",
+        }}
+      >
+        📦 Archived Chats
+      </div>
+
       {/* Chat List */}
       <div style={{ padding: "10px" }}>
         {chats
-          .filter((c) => !c.archived)
+          .filter(
+            (c) =>
+              !c.archived &&
+              (c.name?.toLowerCase().includes(search.toLowerCase()) ||
+                c.lastMessage?.toLowerCase().includes(search.toLowerCase()))
+          )
           .map((chat) => {
-            const isMuted = chat.mutedUntil && chat.mutedUntil > new Date().getTime();
+            const isMuted =
+              chat.mutedUntil && chat.mutedUntil > new Date().getTime();
             return (
               <div
                 key={chat.id}
@@ -229,7 +302,9 @@ export default function ChatPage() {
                   background: selectedChats.includes(chat.id)
                     ? "rgba(0,123,255,0.2)"
                     : isMuted
-                    ? isDark ? "#2c2c2c" : "#f0f0f0"
+                    ? isDark
+                      ? "#2c2c2c"
+                      : "#f0f0f0"
                     : "transparent",
                 }}
               >
