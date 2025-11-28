@@ -31,7 +31,7 @@ export default function ChatPage() {
   const [chats, setChats] = useState([]);
   const [search, setSearch] = useState("");
   const [selectedChats, setSelectedChats] = useState([]);
-  const [selectionMode, setSelectionMode] = useState(false); // NEW
+  const [selectionMode, setSelectionMode] = useState(false); // selection mode
   const [profilePic, setProfilePic] = useState(null);
   const [profileName, setProfileName] = useState("");
   const [showAddFriend, setShowAddFriend] = useState(false);
@@ -167,7 +167,6 @@ export default function ChatPage() {
         ? prev.filter((id) => id !== chatId)
         : [...prev, chatId];
 
-      // Enable selection mode if any chat is selected
       setSelectionMode(updated.length > 0);
       return updated;
     });
@@ -234,6 +233,7 @@ export default function ChatPage() {
         paddingBottom: "90px",
       }}
     >
+      {/* Header */}
       <ChatHeader
         selectedChats={chats.filter(c => selectedChats.includes(c.id))}
         user={user}
@@ -259,13 +259,39 @@ export default function ChatPage() {
         }}
         onSettingsClick={() => navigate("/settings")}
         isDark={isDark}
-        selectionMode={selectionMode} // NEW
-        setSelectionMode={setSelectionMode} // NEW
-        exitSelectionMode={exitSelectionMode} // NEW
+        selectionMode={selectionMode} 
+        setSelectionMode={setSelectionMode} 
+        exitSelectionMode={exitSelectionMode} 
       />
 
-      {/* SEARCH, Archived, Chat List ... same as before ... */}
-      {/* Add click/long-press logic */}
+      {/* Search */}
+      <div style={{ padding: 10 }}>
+        <input
+          type="text"
+          placeholder="Search chats..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid #ccc" }}
+        />
+      </div>
+
+      {/* Archived shortcut */}
+      <div
+        onClick={() => navigate("/archive")}
+        style={{
+          padding: 10,
+          margin: "5px 0",
+          background: isDark ? "#333" : "#eee",
+          borderRadius: 8,
+          cursor: "pointer",
+          textAlign: "center",
+          fontWeight: "bold",
+        }}
+      >
+        📦 Archived Chats
+      </div>
+
+      {/* Chat list */}
       <div style={{ padding: 10 }}>
         {(search ? searchResults : visibleChats).map(chat => {
           const isMuted = chat.mutedUntil && chat.mutedUntil > new Date().getTime();
@@ -324,7 +350,62 @@ export default function ChatPage() {
         })}
       </div>
 
-      {/* Floating Add Friend and Profile Upload remain the same */}
+      {/* Floating add friend */}
+      <button
+        onClick={() => setShowAddFriend(true)}
+        style={{
+          position: "fixed",
+          bottom: 90,
+          right: 25,
+          width: 60,
+          height: 60,
+          borderRadius: "50%",
+          background: "#0d6efd",
+          color: "#fff",
+          fontSize: 30,
+          border: "none",
+          cursor: "pointer",
+        }}
+      >
+        +
+      </button>
+
+      {showAddFriend && <AddFriendPopup user={user} onClose={() => setShowAddFriend(false)} />}
+
+      {/* Profile uploader */}
+      <input
+        ref={profileInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: "none" }}
+        onChange={handleProfileFileChange}
+      />
+
+      {/* Bottom nav */}
+      <div
+        style={{
+          position: "fixed",
+          bottom: 0,
+          left: 0,
+          width: "100%",
+          background: isDark ? "#1e1e1e" : "#fff",
+          padding: "10px 0",
+          display: "flex",
+          justifyContent: "space-around",
+          alignItems: "center",
+          borderTop: "1px solid rgba(0,0,0,0.1)",
+          zIndex: 10,
+        }}
+      >
+        <div style={{ textAlign: "center", cursor: "pointer" }} onClick={() => navigate("/chat")}>
+          <span style={{ fontSize: 26 }}>💬</span>
+          <div style={{ fontSize: 12 }}>Chat</div>
+        </div>
+        <div style={{ textAlign: "center", cursor: "pointer" }} onClick={() => navigate("/call-history")}>
+          <span style={{ fontSize: 26 }}>📞</span>
+          <div style={{ fontSize: 12 }}>Calls</div>
+        </div>
+      </div>
     </div>
   );
 }
