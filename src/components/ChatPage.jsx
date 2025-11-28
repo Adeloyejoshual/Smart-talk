@@ -18,7 +18,7 @@ import { db, auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
 import { ThemeContext } from "../context/ThemeContext";
 
-// Cloudinary env for avatar upload
+// Cloudinary env for avatar upload (optional)
 const CLOUDINARY_CLOUD = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
 const CLOUDINARY_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
 
@@ -31,10 +31,13 @@ export default function ChatPage() {
   const [profileName, setProfileName] = useState("");
   const [showAddFriend, setShowAddFriend] = useState(false);
   const [friendEmail, setFriendEmail] = useState("");
+  const [selectedChats, setSelectedChats] = useState([]);
+  const [showDropdown, setShowDropdown] = useState(false);
   const navigate = useNavigate();
   const isDark = theme === "dark";
 
   const profileInputRef = useRef(null);
+  const dropdownRef = useRef(null);
 
   // 🔐 Auth listener + load profile
   useEffect(() => {
@@ -81,7 +84,7 @@ export default function ChatPage() {
             }
           }
 
-          // Get last message
+          // Last message
           const msgRef = collection(db, "chats", docSnap.id, "messages");
           const msgSnap = await getDocs(
             query(msgRef, orderBy("createdAt", "desc"), limit(1))
@@ -96,6 +99,7 @@ export default function ChatPage() {
           return chatData;
         })
       );
+
       setChats(chatList);
     });
 
@@ -141,7 +145,7 @@ export default function ChatPage() {
 
   const openProfileUploader = () => profileInputRef.current?.click();
 
-  // ✅ Updated initials function
+  // ✅ Initials
   const getInitials = (fullName) => {
     if (!fullName) return "U";
     const names = fullName.trim().split(" ").filter(Boolean);
@@ -149,6 +153,7 @@ export default function ChatPage() {
     return (names[0][0] + names[1][0]).toUpperCase();
   };
 
+  // ➕ Add Friend
   const handleAddFriend = async () => {
     if (!friendEmail.trim() || !user) return;
     const email = friendEmail.trim().toLowerCase();
@@ -195,7 +200,33 @@ export default function ChatPage() {
     }
   };
 
-  const openChat = (chatId) => navigate(`/chat/${chatId}`);
+  // 🏷️ Chat Actions
+  const toggleSelectChat = (chatId) => {
+    if (selectedChats.includes(chatId)) {
+      setSelectedChats(selectedChats.filter((id) => id !== chatId));
+    } else {
+      setSelectedChats([...selectedChats, chatId]);
+    }
+  };
+
+  const handleDelete = async () => {
+    for (const chatId of selectedChats) {
+      const chatRef = doc(db, "chats", chatId);
+      await updateDoc(chatRef, { deleted: true });
+    }
+    setSelectedChats([]);
+    setShowDropdown(false);
+  };
+
+  const handleArchive = async () => {
+    for (const chatId of selectedChats) {
+      const chatRef = doc(db, "chats", chatId);
+      await updateDoc(chatRef, { archived: true });
+    }
+    setSelectedChats([]);
+    setShowDropdown(false);
+    navigate("/archive");
+  };
 
   const renderMessageTick = (chat) => {
     if (chat.lastMessageSender !== user?.uid) return null;
@@ -212,6 +243,17 @@ export default function ChatPage() {
     return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   };
 
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (!dropdownRef.current?.contains(e.target)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   return (
     <div
       style={{
@@ -222,7 +264,7 @@ export default function ChatPage() {
           : "#fff",
         minHeight: "100vh",
         color: isDark ? "#fff" : "#000",
-        paddingBottom: "90px", // for bottom nav
+        paddingBottom: "90px",
       }}
     >
       {/* Header */}
@@ -238,36 +280,60 @@ export default function ChatPage() {
           boxShadow: "0 1px 4px rgba(0,0,0,0.1)",
           zIndex: 10,
         }}
+        onContextMenu={(e) => e.preventDefault()} // Disable default context menu
       >
-        <h2 style={{ margin: 0 }}>Chats</h2>
+        {selectedChats.length > 0 ? (
+          <h2>{selectedChats.length} selected</h2>
+        ) : (
+          <h2>Chats</h2>
+        )}
 
-        {/* Avatar with initials fallback */}
-        <div
-          onClick={openProfileUploader}
-          style={{
-            width: 42,
-            height: 42,
-            borderRadius: "50%",
-            overflow: "hidden",
-            cursor: "pointer",
-            background: "#007bff",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            color: "white",
-            fontWeight: "bold",
-            fontSize: 18,
-          }}
-          title="Click to upload/change avatar"
-        >
-          {profilePic ? (
-            <img
-              src={profilePic}
-              alt="Me"
-              style={{ width: "100%", height: "100%", objectFit: "cover" }}
-            />
+        <div style={{ display: "flex", gap: 15, position: "relative" }}>
+          {selectedChats.length > 0 ? (
+            <>
+              {/* Dynamic Action Icons */}
+              <span style={{ cursor: "pointer" }} onClick={handleArchive}>📦</span>
+              <span style={{ cursor: "pointer" }}>🗑️</span>
+              <span style={{ cursor: "pointer" }}>🔕</span>
+              <span
+                style={{ cursor: "pointer" }}
+                onClick={() => setShowDropdown(!showDropdown)}
+              >
+                ⋮
+              </span>
+
+              {showDropdown && (
+                <div
+                  ref={dropdownRef}
+                  style={{
+                    position: "absolute",
+                    top: 50,
+                    right: 0,
+                    background: isDark ? "#1f1f1f" : "#fff",
+                    border: "1px solid #ccc",
+                    borderRadius: 8,
+                    padding: 10,
+                    display: "flex",
+                    flexDirection: "column",
+                    zIndex: 20,
+                  }}
+                >
+                  <div style={{ padding: 5, cursor: "pointer" }}>Archive</div>
+                  <div style={{ padding: 5, cursor: "pointer" }}>Pin</div>
+                  <div style={{ padding: 5, cursor: "pointer" }}>Block</div>
+                  <div style={{ padding: 5, cursor: "pointer" }}>
+                    Mark as read/unread
+                  </div>
+                </div>
+              )}
+            </>
           ) : (
-            getInitials(profileName)
+            <span
+              style={{ fontSize: 22, cursor: "pointer" }}
+              onClick={() => navigate("/settings")}
+            >
+              ⚙️
+            </span>
           )}
         </div>
       </div>
@@ -301,13 +367,22 @@ export default function ChatPage() {
         {chats
           .filter(
             (c) =>
-              c.name?.toLowerCase().includes(search.toLowerCase()) ||
-              c.lastMessage?.toLowerCase().includes(search.toLowerCase())
+              !c.archived &&
+              (c.name?.toLowerCase().includes(search.toLowerCase()) ||
+                c.lastMessage?.toLowerCase().includes(search.toLowerCase()))
           )
           .map((chat) => (
             <div
               key={chat.id}
-              onClick={() => openChat(chat.id)}
+              onClick={() =>
+                selectedChats.length > 0
+                  ? toggleSelectChat(chat.id)
+                  : navigate(`/chat/${chat.id}`)
+              }
+              onContextMenu={(e) => {
+                e.preventDefault();
+                toggleSelectChat(chat.id);
+              }}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -315,6 +390,9 @@ export default function ChatPage() {
                 padding: "10px 0",
                 borderBottom: isDark ? "1px solid #333" : "1px solid #eee",
                 cursor: "pointer",
+                background: selectedChats.includes(chat.id)
+                  ? "rgba(0,123,255,0.2)"
+                  : "transparent",
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -442,10 +520,7 @@ export default function ChatPage() {
           zIndex: 10,
         }}
       >
-        <div
-          style={{ textAlign: "center", cursor: "pointer" }}
-          onClick={() => navigate("/chat")}
-        >
+        <div style={{ textAlign: "center", cursor: "pointer" }} onClick={() => navigate("/chat")}>
           <span style={{ fontSize: 26 }}>💬</span>
           <div style={{ fontSize: 12 }}>Chat</div>
         </div>
