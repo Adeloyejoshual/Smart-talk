@@ -9,50 +9,67 @@ import {
   getDocs,
   addDoc,
   serverTimestamp,
+  limit,
   doc,
+  getDoc,
   updateDoc,
 } from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
 import { ThemeContext } from "../context/ThemeContext";
 
+// Cloudinary env for avatar upload
+const CLOUDINARY_CLOUD = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+const CLOUDINARY_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+
 export default function ChatPage() {
   const { theme, wallpaper } = useContext(ThemeContext);
   const [chats, setChats] = useState([]);
   const [search, setSearch] = useState("");
   const [user, setUser] = useState(null);
+  const [profilePic, setProfilePic] = useState(null);
+  const [profileName, setProfileName] = useState("");
   const [showAddFriend, setShowAddFriend] = useState(false);
   const [friendEmail, setFriendEmail] = useState("");
   const navigate = useNavigate();
   const isDark = theme === "dark";
-  const longPressTimeout = useRef(null);
 
-  // 🔐 Auth listener
+  const profileInputRef = useRef(null);
+
+  // 🔐 Auth listener + load profile
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((u) => {
+    const unsubscribe = auth.onAuthStateChanged(async (u) => {
       if (!u) return navigate("/");
+
       setUser(u);
+
+      const userRef = doc(db, "users", u.uid);
+      const snap = await getDoc(userRef);
+      if (snap.exists()) {
+        const data = snap.data();
+        setProfilePic(data.profilePic || null);
+        setProfileName(data.name || "");
+      }
     });
+
     return unsubscribe;
   }, [navigate]);
 
-  // 💬 Real-time chat list with unread count (optimized)
+  // 💬 Real-time chat list
   useEffect(() => {
     if (!user) return;
 
-    const chatsQuery = query(
+    const q = query(
       collection(db, "chats"),
       where("participants", "array-contains", user.uid),
       orderBy("lastMessageAt", "desc")
     );
 
-    const unsubscribe = onSnapshot(chatsQuery, async (snapshot) => {
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
       const chatList = await Promise.all(
         snapshot.docs.map(async (docSnap) => {
           const chatData = { id: docSnap.id, ...docSnap.data() };
           const friendId = chatData.participants.find((id) => id !== user.uid);
-
-          // Get friend info
           if (friendId) {
             const friendSnap = await getDocs(
               query(collection(db, "users"), where("uid", "==", friendId))
@@ -64,10 +81,10 @@ export default function ChatPage() {
             }
           }
 
-          // Last message
+          // Get last message
           const msgRef = collection(db, "chats", docSnap.id, "messages");
           const msgSnap = await getDocs(
-            query(msgRef, orderBy("createdAt", "desc"), serverTimestamp())
+            query(msgRef, orderBy("createdAt", "desc"), limit(1))
           );
           const latest = msgSnap.docs[0]?.data();
           if (latest) {
@@ -76,30 +93,55 @@ export default function ChatPage() {
             chatData.lastMessageSender = latest.senderId;
             chatData.lastMessageStatus = latest.status;
           }
-
-          // Unread count
-          const unreadSnap = await getDocs(
-            query(msgRef, where("status", "==", "sent"), where("senderId", "!=", user.uid))
-          );
-          chatData.unreadCount = unreadSnap.size;
-
           return chatData;
         })
       );
-
-      // Sort newest messages first
-      chatList.sort((a, b) => {
-        if (!a.lastMessageAt) return 1;
-        if (!b.lastMessageAt) return -1;
-        return b.lastMessageAt.seconds - a.lastMessageAt.seconds;
-      });
-
       setChats(chatList);
     });
 
-    return unsubscribe;
+    return () => unsubscribe();
   }, [user]);
 
+  // ➕ Upload avatar to Cloudinary
+  const uploadToCloudinary = async (file) => {
+    if (!CLOUDINARY_CLOUD || !CLOUDINARY_PRESET)
+      throw new Error("Cloudinary environment not set");
+
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("upload_preset", CLOUDINARY_PRESET);
+
+    const res = await fetch(
+      `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`,
+      { method: "POST", body: fd }
+    );
+
+    if (!res.ok) throw new Error("Cloudinary upload failed");
+
+    const data = await res.json();
+    return data.secure_url || data.url;
+  };
+
+  const handleProfileFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+
+    setProfilePic(URL.createObjectURL(file));
+
+    try {
+      const url = await uploadToCloudinary(file);
+      const userRef = doc(db, "users", user.uid);
+      await updateDoc(userRef, { profilePic: url, updatedAt: serverTimestamp() });
+      setProfilePic(url);
+    } catch (err) {
+      console.error("Upload failed:", err);
+      alert("Failed to upload avatar");
+    }
+  };
+
+  const openProfileUploader = () => profileInputRef.current?.click();
+
+  // ✅ Updated initials function
   const getInitials = (fullName) => {
     if (!fullName) return "U";
     const names = fullName.trim().split(" ").filter(Boolean);
@@ -153,19 +195,7 @@ export default function ChatPage() {
     }
   };
 
-  const openChat = async (chat) => {
-    // Mark messages as seen
-    const msgRef = collection(db, "chats", chat.id, "messages");
-    const unreadSnap = await getDocs(
-      query(msgRef, where("status", "==", "sent"), where("senderId", "!=", user.uid))
-    );
-    unreadSnap.forEach(async (docu) => {
-      const messageRef = doc(db, "chats", chat.id, "messages", docu.id);
-      await updateDoc(messageRef, { status: "seen" });
-    });
-
-    navigate(`/chat/${chat.id}`);
-  };
+  const openChat = (chatId) => navigate(`/chat/${chatId}`);
 
   const renderMessageTick = (chat) => {
     if (chat.lastMessageSender !== user?.uid) return null;
@@ -182,13 +212,6 @@ export default function ChatPage() {
     return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   };
 
-  const handleLongPress = (chat) => {
-    if (window.confirm(`Do you want to delete chat with ${chat.name}?`)) {
-      const chatRef = doc(db, "chats", chat.id);
-      updateDoc(chatRef, { deleted: true });
-    }
-  };
-
   return (
     <div
       style={{
@@ -199,7 +222,7 @@ export default function ChatPage() {
           : "#fff",
         minHeight: "100vh",
         color: isDark ? "#fff" : "#000",
-        paddingBottom: "90px",
+        paddingBottom: "90px", // for bottom nav
       }}
     >
       {/* Header */}
@@ -217,19 +240,45 @@ export default function ChatPage() {
         }}
       >
         <h2 style={{ margin: 0 }}>Chats</h2>
-        <button
-          onClick={() => navigate("/settings")}
+
+        {/* Avatar with initials fallback */}
+        <div
+          onClick={openProfileUploader}
           style={{
-            fontSize: 24,
-            background: "transparent",
-            border: "none",
+            width: 42,
+            height: 42,
+            borderRadius: "50%",
+            overflow: "hidden",
             cursor: "pointer",
+            background: "#007bff",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            color: "white",
+            fontWeight: "bold",
+            fontSize: 18,
           }}
-          title="Go to Settings"
+          title="Click to upload/change avatar"
         >
-          ⚙️
-        </button>
+          {profilePic ? (
+            <img
+              src={profilePic}
+              alt="Me"
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            />
+          ) : (
+            getInitials(profileName)
+          )}
+        </div>
       </div>
+
+      <input
+        ref={profileInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: "none" }}
+        onChange={handleProfileFileChange}
+      />
 
       {/* Search */}
       <div style={{ padding: "10px" }}>
@@ -258,6 +307,7 @@ export default function ChatPage() {
           .map((chat) => (
             <div
               key={chat.id}
+              onClick={() => openChat(chat.id)}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -266,16 +316,6 @@ export default function ChatPage() {
                 borderBottom: isDark ? "1px solid #333" : "1px solid #eee",
                 cursor: "pointer",
               }}
-              onClick={() => openChat(chat)}
-              onMouseDown={() => {
-                longPressTimeout.current = setTimeout(() => handleLongPress(chat), 700);
-              }}
-              onMouseUp={() => clearTimeout(longPressTimeout.current)}
-              onMouseLeave={() => clearTimeout(longPressTimeout.current)}
-              onTouchStart={() => {
-                longPressTimeout.current = setTimeout(() => handleLongPress(chat), 700);
-              }}
-              onTouchEnd={() => clearTimeout(longPressTimeout.current)}
             >
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                 <div
@@ -309,7 +349,6 @@ export default function ChatPage() {
                       margin: 0,
                       fontSize: "14px",
                       color: isDark ? "#ccc" : "#555",
-                      fontWeight: chat.unreadCount > 0 ? "bold" : "normal",
                       display: "flex",
                       alignItems: "center",
                       gap: "5px",
@@ -319,23 +358,7 @@ export default function ChatPage() {
                   </p>
                 </div>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
-                <small style={{ color: "#888" }}>{formatDate(chat.lastMessageAt)}</small>
-                {chat.unreadCount > 0 && (
-                  <span
-                    style={{
-                      background: "#25D366",
-                      color: "#fff",
-                      borderRadius: "50%",
-                      padding: "2px 6px",
-                      fontSize: 12,
-                      marginTop: 4,
-                    }}
-                  >
-                    {chat.unreadCount}
-                  </span>
-                )}
-              </div>
+              <small style={{ color: "#888" }}>{formatDate(chat.lastMessageAt)}</small>
             </div>
           ))}
       </div>
@@ -403,7 +426,7 @@ export default function ChatPage() {
         </div>
       )}
 
-      {/* 🔥 Bottom Navigation Bar */}
+      {/* 🔥 Bottom Navigation Bar (Chat + Call) */}
       <div
         style={{
           position: "fixed",
