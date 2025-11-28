@@ -9,8 +9,8 @@ import {
   getDocs,
   doc,
   updateDoc,
-  limit,
   getDoc,
+  limit,
   serverTimestamp,
 } from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
@@ -19,7 +19,6 @@ import { ThemeContext } from "../context/ThemeContext";
 import ChatHeader from "./ChatPage/Header";
 import AddFriendPopup from "./ChatPage/AddFriendPopup";
 
-// Cloudinary env
 const CLOUDINARY_CLOUD = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
 const CLOUDINARY_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
 
@@ -35,7 +34,6 @@ export default function ChatPage() {
   const [profilePic, setProfilePic] = useState(null);
   const [profileName, setProfileName] = useState("");
   const [showAddFriend, setShowAddFriend] = useState(false);
-
   const profileInputRef = useRef(null);
 
   // ================= AUTH & LOAD PROFILE =================
@@ -69,7 +67,9 @@ export default function ChatPage() {
           const friendId = chatData.participants.find((id) => id !== user.uid);
 
           if (friendId) {
-            const friendSnap = await getDocs(query(collection(db, "users"), where("uid", "==", friendId)));
+            const friendSnap = await getDocs(
+              query(collection(db, "users"), where("uid", "==", friendId))
+            );
             if (!friendSnap.empty) {
               const data = friendSnap.docs[0].data();
               chatData.name = data.name || data.email;
@@ -77,7 +77,6 @@ export default function ChatPage() {
             }
           }
 
-          // Last message
           const msgSnap = await getDocs(
             query(
               collection(db, "chats", docSnap.id, "messages"),
@@ -184,46 +183,29 @@ export default function ChatPage() {
     setSelectedChats([]);
   };
 
-  const handlePin = async () => {
-    const pinnedChatsCount = chats.filter(c => c.pinned).length;
-    const selectedPinnedCount = selectedChats.filter(id => chats.find(c => c.id === id)?.pinned).length;
+  // ============== PIN / UNPIN ==============
+  const handlePin = async (chatId) => {
+    const pinnedChats = chats.filter(c => c.pinned && c.id !== chatId);
+    const chatRef = doc(db, "chats", chatId);
+    const chatSnap = await getDoc(chatRef);
+    if (!chatSnap.exists()) return;
+    const currentPinned = chatSnap.data().pinned || false;
 
-    if (pinnedChatsCount - selectedPinnedCount + selectedChats.length > 3) {
+    if (!currentPinned && pinnedChats.length >= 3) {
       alert("You can only pin up to 3 chats");
       return;
     }
 
-    await Promise.all(selectedChats.map(async (id) => {
-      const chat = chats.find(c => c.id === id);
-      await updateDoc(doc(db, "chats", id), { pinned: !chat?.pinned });
-    }));
-    setSelectedChats([]);
+    await updateDoc(chatRef, { pinned: !currentPinned });
   };
 
-  const handleMarkRead = async () => {
-    await Promise.all(selectedChats.map((id) => updateDoc(doc(db, "chats", id), { lastMessageStatus: "seen" })));
-    setSelectedChats([]);
-  };
-
-  const handleMarkUnread = async () => {
-    await Promise.all(selectedChats.map((id) => updateDoc(doc(db, "chats", id), { lastMessageStatus: "delivered" })));
-    setSelectedChats([]);
-  };
-
-  const handleClearChat = async () => {
-    await Promise.all(selectedChats.map((id) => {
-      const messagesRef = collection(db, "chats", id, "messages");
-      return getDocs(messagesRef).then(snap => snap.docs.map(d => updateDoc(d.ref, { text: "", deleted: true })));
-    }));
-    setSelectedChats([]);
-  };
-
-  const handleBlock = async () => {
-    await Promise.all(selectedChats.map(async (id) => {
-      const chat = chats.find(c => c.id === id);
-      await updateDoc(doc(db, "chats", id), { blocked: !chat?.blocked });
-    }));
-    setSelectedChats([]);
+  // ============== BLOCK / UNBLOCK ==============
+  const handleBlock = async (chatId) => {
+    const chatRef = doc(db, "chats", chatId);
+    const chatSnap = await getDoc(chatRef);
+    if (!chatSnap.exists()) return;
+    const currentBlocked = chatSnap.data().blocked || false;
+    await updateDoc(chatRef, { blocked: !currentBlocked });
   };
 
   // ================= CHAT FILTERS =================
@@ -243,18 +225,17 @@ export default function ChatPage() {
         paddingBottom: "90px",
       }}
     >
-      {/* Header */}
       <ChatHeader
-        selectedChats={chats.filter((c) => selectedChats.includes(c.id))}
+        selectedChats={chats.filter(c => selectedChats.includes(c.id))}
         user={user}
         onArchive={handleArchive}
         onDelete={handleDelete}
         onMute={handleMute}
-        onPin={handlePin}
-        onMarkRead={handleMarkRead}
-        onMarkUnread={handleMarkUnread}
-        onBlock={handleBlock}
-        onClearChat={handleClearChat}
+        onPin={(ids) => selectedChats.forEach(id => handlePin(id))}
+        onMarkRead={async () => { await Promise.all(selectedChats.map(id => updateDoc(doc(db, "chats", id), { lastMessageStatus: "seen" }))); setSelectedChats([]); }}
+        onMarkUnread={async () => { await Promise.all(selectedChats.map(id => updateDoc(doc(db, "chats", id), { lastMessageStatus: "delivered" }))); setSelectedChats([]); }}
+        onBlock={(ids) => selectedChats.forEach(id => handleBlock(id))}
+        onClearChat={async () => { await Promise.all(selectedChats.map(id => { const messagesRef = collection(db, "chats", id, "messages"); return getDocs(messagesRef).then(snap => snap.docs.map(d => updateDoc(d.ref, { text: "", deleted: true }))); })); setSelectedChats([]); }}
         onSettingsClick={() => navigate("/settings")}
         isDark={isDark}
       />
@@ -308,6 +289,7 @@ export default function ChatPage() {
                   : isMuted
                     ? isDark ? "#2c2c2c" : "#f0f0f0"
                     : "transparent",
+                opacity: chat.blocked ? 0.5 : 1,
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -360,7 +342,9 @@ export default function ChatPage() {
           border: "none",
           cursor: "pointer",
         }}
-      >+</button>
+      >
+        +
+      </button>
 
       {showAddFriend && <AddFriendPopup user={user} onClose={() => setShowAddFriend(false)} />}
 
