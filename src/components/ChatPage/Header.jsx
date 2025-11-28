@@ -13,7 +13,7 @@ export default function ChatHeader({
   onBlock,
   onClearChat,
   onSettingsClick,
-  setSelectedChats, // NEW: pass this from ChatPage.jsx
+  setSelectedChats,
   isDark,
 }) {
   const [showDropdown, setShowDropdown] = useState(false);
@@ -25,7 +25,7 @@ export default function ChatHeader({
 
   const selectedCount = selectedChats.length;
 
-  // Close dropdown when clicking outside
+  // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (!dropdownRef.current?.contains(e.target)) {
@@ -45,11 +45,13 @@ export default function ChatHeader({
   const handleArchiveClick = () => {
     onArchive?.();
     triggerToast("Archived chat(s)");
+    setSelectedChats([]);
   };
 
   const handleClearChatClick = () => {
     onClearChat?.();
     triggerToast("Chat cleared");
+    setSelectedChats([]);
   };
 
   const handleDeleteClick = () => setShowDeleteConfirm(true);
@@ -65,6 +67,7 @@ export default function ChatHeader({
     onMute?.(durationMs);
     triggerToast(`Muted chat for ${durationLabel}`);
     setShowMuteMenu(false);
+    setSelectedChats([]);
   };
 
   const showMarkRead = selectedChats.some(
@@ -87,6 +90,7 @@ export default function ChatHeader({
     }
     onPin?.();
     triggerToast("Chat(s) pinned");
+    setSelectedChats([]);
   };
 
   return (
@@ -122,7 +126,10 @@ export default function ChatHeader({
                   borderRadius: "50%",
                   lineHeight: "1",
                 }}
-                onClick={() => setSelectedChats([])}
+                onClick={(e) => {
+                  e.stopPropagation(); // prevent parent click
+                  setSelectedChats([]);
+                }}
                 title="Cancel selection"
               >
                 ×
@@ -217,6 +224,7 @@ export default function ChatHeader({
                           onMarkRead?.();
                           setShowDropdown(false);
                           triggerToast("Marked as read");
+                          setSelectedChats([]);
                         }}
                       >
                         Mark as Read
@@ -229,6 +237,7 @@ export default function ChatHeader({
                           onMarkUnread?.();
                           setShowDropdown(false);
                           triggerToast("Marked as unread");
+                          setSelectedChats([]);
                         }}
                       >
                         Mark as Unread
@@ -249,6 +258,7 @@ export default function ChatHeader({
                         onBlock?.();
                         setShowDropdown(false);
                         triggerToast(`${blockLabel}ed user(s)`);
+                        setSelectedChats([]);
                       }}
                     >
                       {blockLabel}
