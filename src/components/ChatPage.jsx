@@ -1,5 +1,5 @@
 // src/components/ChatPage.jsx
-import React, { useEffect, useState, useContext, useRef } from "react";
+import React, { useEffect, useState, useContext } from "react";
 import {
   collection,
   query,
@@ -12,46 +12,27 @@ import {
   limit,
   doc,
   getDoc,
-  updateDoc,
 } from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
 import { ThemeContext } from "../context/ThemeContext";
-
-// Cloudinary env for avatar upload
-const CLOUDINARY_CLOUD = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
-const CLOUDINARY_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
 
 export default function ChatPage() {
   const { theme, wallpaper } = useContext(ThemeContext);
   const [chats, setChats] = useState([]);
   const [search, setSearch] = useState("");
   const [user, setUser] = useState(null);
-  const [profilePic, setProfilePic] = useState(null);
-  const [profileName, setProfileName] = useState("");
   const [showAddFriend, setShowAddFriend] = useState(false);
   const [friendEmail, setFriendEmail] = useState("");
   const navigate = useNavigate();
   const isDark = theme === "dark";
 
-  const profileInputRef = useRef(null);
-
-  // 🔐 Auth listener + load profile
+  // 🔐 Auth listener
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (u) => {
       if (!u) return navigate("/");
-
       setUser(u);
-
-      const userRef = doc(db, "users", u.uid);
-      const snap = await getDoc(userRef);
-      if (snap.exists()) {
-        const data = snap.data();
-        setProfilePic(data.profilePic || null);
-        setProfileName(data.name || "");
-      }
     });
-
     return unsubscribe;
   }, [navigate]);
 
@@ -101,53 +82,6 @@ export default function ChatPage() {
 
     return () => unsubscribe();
   }, [user]);
-
-  // ➕ Upload avatar to Cloudinary
-  const uploadToCloudinary = async (file) => {
-    if (!CLOUDINARY_CLOUD || !CLOUDINARY_PRESET)
-      throw new Error("Cloudinary environment not set");
-
-    const fd = new FormData();
-    fd.append("file", file);
-    fd.append("upload_preset", CLOUDINARY_PRESET);
-
-    const res = await fetch(
-      `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`,
-      { method: "POST", body: fd }
-    );
-
-    if (!res.ok) throw new Error("Cloudinary upload failed");
-
-    const data = await res.json();
-    return data.secure_url || data.url;
-  };
-
-  const handleProfileFileChange = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file || !user) return;
-
-    setProfilePic(URL.createObjectURL(file));
-
-    try {
-      const url = await uploadToCloudinary(file);
-      const userRef = doc(db, "users", user.uid);
-      await updateDoc(userRef, { profilePic: url, updatedAt: serverTimestamp() });
-      setProfilePic(url);
-    } catch (err) {
-      console.error("Upload failed:", err);
-      alert("Failed to upload avatar");
-    }
-  };
-
-  const openProfileUploader = () => profileInputRef.current?.click();
-
-  // ✅ Updated initials function
-  const getInitials = (fullName) => {
-    if (!fullName) return "U";
-    const names = fullName.trim().split(" ").filter(Boolean);
-    if (names.length === 1) return names[0][0].toUpperCase();
-    return (names[0][0] + names[1][0]).toUpperCase();
-  };
 
   const handleAddFriend = async () => {
     if (!friendEmail.trim() || !user) return;
@@ -241,44 +175,20 @@ export default function ChatPage() {
       >
         <h2 style={{ margin: 0 }}>Chats</h2>
 
-        {/* Avatar with initials fallback */}
-        <div
-          onClick={openProfileUploader}
+        {/* ⚙️ Settings button */}
+        <button
+          onClick={() => navigate("/settings")}
           style={{
-            width: 42,
-            height: 42,
-            borderRadius: "50%",
-            overflow: "hidden",
+            background: "transparent",
+            border: "none",
+            fontSize: 24,
             cursor: "pointer",
-            background: "#007bff",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            color: "white",
-            fontWeight: "bold",
-            fontSize: 18,
           }}
-          title="Click to upload/change avatar"
+          title="Settings"
         >
-          {profilePic ? (
-            <img
-              src={profilePic}
-              alt="Me"
-              style={{ width: "100%", height: "100%", objectFit: "cover" }}
-            />
-          ) : (
-            getInitials(profileName)
-          )}
-        </div>
+          ⚙️
+        </button>
       </div>
-
-      <input
-        ref={profileInputRef}
-        type="file"
-        accept="image/*"
-        style={{ display: "none" }}
-        onChange={handleProfileFileChange}
-      />
 
       {/* Search */}
       <div style={{ padding: "10px" }}>
@@ -339,7 +249,7 @@ export default function ChatPage() {
                       style={{ width: "100%", height: "100%", objectFit: "cover" }}
                     />
                   ) : (
-                    getInitials(chat.name)
+                    (chat.name || "U")[0].toUpperCase()
                   )}
                 </div>
                 <div>
@@ -426,7 +336,7 @@ export default function ChatPage() {
         </div>
       )}
 
-      {/* 🔥 Bottom Navigation Bar (Chat + Call) */}
+      {/* Bottom Navigation Bar */}
       <div
         style={{
           position: "fixed",
@@ -460,3 +370,4 @@ export default function ChatPage() {
       </div>
     </div>
   );
+}
