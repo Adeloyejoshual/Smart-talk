@@ -31,7 +31,7 @@ export default function ChatPage() {
   const [chats, setChats] = useState([]);
   const [search, setSearch] = useState("");
   const [selectedChats, setSelectedChats] = useState([]);
-  const [selectionMode, setSelectionMode] = useState(false); // selection mode
+  const [selectionMode, setSelectionMode] = useState(false);
   const [profilePic, setProfilePic] = useState(null);
   const [profileName, setProfileName] = useState("");
   const [showAddFriend, setShowAddFriend] = useState(false);
@@ -97,7 +97,6 @@ export default function ChatPage() {
         })
       );
 
-      // Sort pinned first, then newest
       chatList.sort((a, b) => {
         if (a.pinned && !b.pinned) return -1;
         if (!a.pinned && b.pinned) return 1;
@@ -163,13 +162,15 @@ export default function ChatPage() {
   // ================= CHAT ACTIONS =================
   const toggleSelectChat = (chatId) => {
     setSelectedChats((prev) => {
-      const updated = prev.includes(chatId)
-        ? prev.filter((id) => id !== chatId)
-        : [...prev, chatId];
-
+      const updated = prev.includes(chatId) ? prev.filter((id) => id !== chatId) : [...prev, chatId];
       setSelectionMode(updated.length > 0);
       return updated;
     });
+  };
+
+  const enterSelectionMode = (chatId) => {
+    setSelectedChats([chatId]);
+    setSelectionMode(true);
   };
 
   const exitSelectionMode = () => {
@@ -199,12 +200,10 @@ export default function ChatPage() {
     const chatSnap = await getDoc(chatRef);
     if (!chatSnap.exists()) return;
     const currentPinned = chatSnap.data().pinned || false;
-
     if (!currentPinned && pinnedChats.length >= 3) {
       alert("You can only pin up to 3 chats");
       return;
     }
-
     await updateDoc(chatRef, { pinned: !currentPinned });
   };
 
@@ -233,7 +232,6 @@ export default function ChatPage() {
         paddingBottom: "90px",
       }}
     >
-      {/* Header */}
       <ChatHeader
         selectedChats={chats.filter(c => selectedChats.includes(c.id))}
         user={user}
@@ -241,27 +239,14 @@ export default function ChatPage() {
         onDelete={handleDelete}
         onMute={handleMute}
         onPin={(ids) => selectedChats.forEach(id => handlePin(id))}
-        onMarkRead={async () => {
-          await Promise.all(selectedChats.map(id => updateDoc(doc(db, "chats", id), { lastMessageStatus: "seen" })));
-          exitSelectionMode();
-        }}
-        onMarkUnread={async () => {
-          await Promise.all(selectedChats.map(id => updateDoc(doc(db, "chats", id), { lastMessageStatus: "delivered" })));
-          exitSelectionMode();
-        }}
+        onMarkRead={async () => { await Promise.all(selectedChats.map(id => updateDoc(doc(db, "chats", id), { lastMessageStatus: "seen" }))); exitSelectionMode(); }}
+        onMarkUnread={async () => { await Promise.all(selectedChats.map(id => updateDoc(doc(db, "chats", id), { lastMessageStatus: "delivered" }))); exitSelectionMode(); }}
         onBlock={(ids) => selectedChats.forEach(id => handleBlock(id))}
-        onClearChat={async () => {
-          await Promise.all(selectedChats.map(id => {
-            const messagesRef = collection(db, "chats", id, "messages");
-            return getDocs(messagesRef).then(snap => snap.docs.map(d => updateDoc(d.ref, { text: "", deleted: true })));
-          }));
-          exitSelectionMode();
-        }}
+        onClearChat={async () => { await Promise.all(selectedChats.map(id => { const messagesRef = collection(db, "chats", id, "messages"); return getDocs(messagesRef).then(snap => snap.docs.map(d => updateDoc(d.ref, { text: "", deleted: true }))); })); exitSelectionMode(); }}
         onSettingsClick={() => navigate("/settings")}
+        selectionMode={selectionMode}
+        exitSelectionMode={exitSelectionMode}
         isDark={isDark}
-        selectionMode={selectionMode} 
-        setSelectionMode={setSelectionMode} 
-        exitSelectionMode={exitSelectionMode} 
       />
 
       {/* Search */}
@@ -300,7 +285,7 @@ export default function ChatPage() {
             <div
               key={chat.id}
               onClick={() => selectionMode ? toggleSelectChat(chat.id) : navigate(`/chat/${chat.id}`)}
-              onContextMenu={e => { e.preventDefault(); toggleSelectChat(chat.id); }}
+              onContextMenu={e => { e.preventDefault(); enterSelectionMode(chat.id); }}
               style={{
                 display: "flex",
                 alignItems: "center",
