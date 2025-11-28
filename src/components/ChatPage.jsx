@@ -1,375 +1,279 @@
 // src/components/ChatPage.jsx
-import React, { useEffect, useState, useContext } from "react";
+import React, { useEffect, useState, useContext, useRef } from "react";
+import { auth, db } from "../firebaseConfig";
 import {
   collection,
   query,
-  where,
   orderBy,
   onSnapshot,
-  getDocs,
   addDoc,
   serverTimestamp,
-  limit,
-  doc,
-  getDoc,
 } from "firebase/firestore";
-import { db, auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
 import { ThemeContext } from "../context/ThemeContext";
+import { usePopup } from "../context/PopupContext";
+
+// Cloudinary env
+const CLOUDINARY_CLOUD = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+const CLOUDINARY_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
 
 export default function ChatPage() {
-  const { theme, wallpaper } = useContext(ThemeContext);
-  const [chats, setChats] = useState([]);
-  const [search, setSearch] = useState("");
-  const [user, setUser] = useState(null);
-  const [showAddFriend, setShowAddFriend] = useState(false);
-  const [friendEmail, setFriendEmail] = useState("");
-  const [profilePic, setProfilePic] = useState("");
-  const [profileName, setProfileName] = useState("");
-
+  const { theme } = useContext(ThemeContext);
+  const { showPopup } = usePopup();
   const navigate = useNavigate();
+
+  const [user, setUser] = useState(null);
+  const [name, setName] = useState("");
+  const [bio, setBio] = useState("");
+  const [profilePic, setProfilePic] = useState(null);
+  const [selectedFile, setSelectedFile] = useState(null);
+
+  const [messages, setMessages] = useState([]);
+  const [newMessage, setNewMessage] = useState("");
+  const profileInputRef = useRef(null);
+  const bottomRef = useRef(null);
+
   const isDark = theme === "dark";
 
-  // 🔐 Auth listener
+  // ================= Load user profile =================
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((u) => {
-      if (u) {
-        setUser(u);
-        fetchUserProfile(u.uid);
-      } else navigate("/");
-    });
-    return unsubscribe;
-  }, [navigate]);
+    const unsubAuth = auth.onAuthStateChanged(async (u) => {
+      if (!u) return navigate("/");
 
-  // Load profilePic and name
-  const fetchUserProfile = async (uid) => {
-    try {
-      const ref = doc(db, "users", uid);
-      const snap = await getDoc(ref);
+      setUser(u);
+
+      const userRef = doc(db, "users", u.uid);
+      const snap = await getDoc(userRef);
       if (snap.exists()) {
         const data = snap.data();
-        setProfilePic(data.profilePic || "");
-        setProfileName(data.name || "");
-      }
-    } catch (err) {
-      console.error("Failed to load profile:", err);
-    }
-  };
-
-  // 💬 Real-time chat list
-  useEffect(() => {
-    if (!user) return;
-
-    const q = query(
-      collection(db, "chats"),
-      where("participants", "array-contains", user.uid),
-      orderBy("lastMessageAt", "desc")
-    );
-
-    const unsubscribe = onSnapshot(q, async (snapshot) => {
-      const chatList = await Promise.all(
-        snapshot.docs.map(async (docSnap) => {
-          const chatData = { id: docSnap.id, ...docSnap.data() };
-
-          // 👤 Fetch friend info
-          const friendId = chatData.participants.find((id) => id !== user.uid);
-          if (friendId) {
-            const friendSnap = await getDocs(
-              query(collection(db, "users"), where("uid", "==", friendId))
-            );
-            if (!friendSnap.empty) {
-              const data = friendSnap.docs[0].data();
-              chatData.name = data.displayName || data.email;
-              chatData.photoURL = data.profilePic || data.photoURL || "";
-            }
-          }
-
-          // 🔁 Fetch last message
-          const msgRef = collection(db, "chats", docSnap.id, "messages");
-          const msgSnap = await getDocs(
-            query(msgRef, orderBy("createdAt", "desc"), limit(1))
-          );
-
-          const latest = msgSnap.docs[0]?.data();
-
-          if (latest) {
-            chatData.lastMessage = latest.text || "📷 Photo";
-            chatData.lastMessageAt = latest.createdAt;
-            chatData.lastMessageSender = latest.senderId;
-            chatData.lastMessageStatus = latest.status;
-          }
-
-          return chatData;
-        })
-      );
-
-      setChats(chatList);
-    });
-
-    return () => unsubscribe();
-  }, [user]);
-
-  // ➕ Add Friend
-  const handleAddFriend = async () => {
-    if (!friendEmail.trim() || !user) return;
-
-    const email = friendEmail.trim().toLowerCase();
-    if (email === user.email.toLowerCase()) {
-      alert("❌ You cannot add yourself.");
-      return;
-    }
-
-    try {
-      const usersRef = collection(db, "users");
-      const snapshot = await getDocs(query(usersRef, where("email", "==", email)));
-
-      if (snapshot.empty) {
-        console.log("User not found. No action taken.");
-        setShowAddFriend(false);
-        return;
+        setName(data.name || "");
+        setBio(data.bio || "");
+        setProfilePic(data.profilePic || null);
+      } else {
+        // Create user doc if missing
+        await setDoc(userRef, {
+          name: u.displayName || "User",
+          bio: "",
+          email: u.email || "",
+          profilePic: null,
+          preferences: { theme: "light" },
+          createdAt: serverTimestamp(),
+        });
       }
 
-      const friendData = snapshot.docs[0].data();
-
-      const existingSnap = await getDocs(
-        query(collection(db, "chats"), where("participants", "array-contains", user.uid))
-      );
-
-      const existing = existingSnap.docs.find((d) =>
-        d.data().participants.includes(friendData.uid)
-      );
-
-      if (existing) {
-        setShowAddFriend(false);
-        navigate(`/chat/${existing.id}`);
-        return;
-      }
-
-      const newChat = await addDoc(collection(db, "chats"), {
-        participants: [user.uid, friendData.uid],
-        lastMessage: "",
-        lastMessageAt: serverTimestamp(),
+      const unsubSnap = onSnapshot(userRef, (s) => {
+        if (!s.exists()) return;
+        const data = s.data();
+        setName(data.name || "");
+        setBio(data.bio || "");
+        setProfilePic(data.profilePic || null);
       });
 
-      setShowAddFriend(false);
-      navigate(`/chat/${newChat.id}`);
+      return () => unsubSnap();
+    });
+
+    return () => unsubAuth();
+  }, []);
+
+  // ================= Load messages =================
+  useEffect(() => {
+    const messagesRef = collection(db, "messages");
+    const q = query(messagesRef, orderBy("createdAt", "asc"));
+    const unsub = onSnapshot(q, (snapshot) => {
+      const msgs = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setMessages(msgs);
+      // Scroll to bottom
+      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+    });
+
+    return () => unsub();
+  }, []);
+
+  // ================= Cloudinary Upload =================
+  const uploadToCloudinary = async (file) => {
+    if (!CLOUDINARY_CLOUD || !CLOUDINARY_PRESET)
+      throw new Error("Cloudinary environment not set");
+
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("upload_preset", CLOUDINARY_PRESET);
+
+    const res = await fetch(
+      `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`,
+      { method: "POST", body: fd }
+    );
+    if (!res.ok) throw new Error("Cloudinary upload failed");
+
+    const data = await res.json();
+    return data.secure_url || data.url;
+  };
+
+  const onProfileFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+
+    setSelectedFile(file);
+    setProfilePic(URL.createObjectURL(file));
+
+    try {
+      const url = await uploadToCloudinary(file);
+      const userRef = doc(db, "users", user.uid);
+      await updateDoc(userRef, { profilePic: url, updatedAt: serverTimestamp() });
+      setProfilePic(url);
+      setSelectedFile(null);
     } catch (err) {
-      console.log("Add friend error:", err);
+      console.error("Upload failed:", err);
+      showPopup("Failed to upload profile picture.");
     }
   };
 
-  const openChat = (chatId) => navigate(`/chat/${chatId}`);
+  // ================= Send message =================
+  const handleSendMessage = async () => {
+    if (!newMessage.trim() || !user) return;
 
-  const renderMessageTick = (chat) => {
-    if (chat.lastMessageSender !== user?.uid) return null;
-    if (chat.lastMessageStatus === "sent") return "✓";
-    if (chat.lastMessageStatus === "delivered") return "✓✓";
-    if (chat.lastMessageStatus === "seen")
-      return <span style={{ color: "#25D366" }}>✓✓</span>;
-    return "";
+    try {
+      await addDoc(collection(db, "messages"), {
+        text: newMessage.trim(),
+        uid: user.uid,
+        name,
+        profilePic,
+        createdAt: serverTimestamp(),
+      });
+      setNewMessage("");
+    } catch (err) {
+      console.error(err);
+      showPopup("Failed to send message.");
+    }
   };
 
-  const formatDate = (timestamp) => {
-    if (!timestamp) return "";
-    const date = new Date(timestamp.seconds ? timestamp.seconds * 1000 : timestamp);
-    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  };
-
-  // Generate initials
   const getInitials = (fullName) => {
     if (!fullName) return "NA";
-    const names = fullName.trim().split(" ");
-    if (names.length === 1) return names[0][0].toUpperCase();
-    return (names[0][0] + names[1][0]).toUpperCase();
+    const parts = fullName.trim().split(" ");
+    if (parts.length === 1) return parts[0][0].toUpperCase();
+    return (parts[0][0] + parts[1][0]).toUpperCase();
   };
+
+  if (!user) return <div style={{ textAlign: "center", padding: 50 }}>Loading...</div>;
 
   return (
     <div
       style={{
-        background: wallpaper ? `url(${wallpaper}) no-repeat center/cover` : isDark ? "#121212" : "#fff",
-        minHeight: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        height: "100vh",
+        background: isDark ? "#1c1c1c" : "#f8f8f8",
         color: isDark ? "#fff" : "#000",
-        paddingBottom: "90px",
+        padding: 10,
       }}
     >
       {/* Header */}
-      <div
-        style={{
-          position: "sticky",
-          top: 0,
-          background: isDark ? "#1f1f1f" : "#f5f5f5",
-          padding: "15px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          boxShadow: "0 1px 4px rgba(0,0,0,0.1)",
-        }}
-      >
-        <h2 style={{ margin: 0 }}>Chats</h2>
-
-        {/* User Avatar */}
+      <div style={{ display: "flex", alignItems: "center", marginBottom: 10 }}>
         <div
           onClick={() => navigate("/settings")}
           style={{
-            width: 42,
-            height: 42,
-            borderRadius: "50%",
-            overflow: "hidden",
-            cursor: "pointer",
-            background: "#007bff",
+            width: 40,
+            height: 40,
+            borderRadius: 20,
+            background: profilePic ? `url(${profilePic}) center/cover` : "#888",
             display: "flex",
             justifyContent: "center",
             alignItems: "center",
-            color: "white",
+            color: "#fff",
             fontWeight: "bold",
-            fontSize: 18,
+            cursor: "pointer",
+            marginRight: 10,
           }}
         >
-          {profilePic ? (
-            <img
-              src={profilePic}
-              alt="Me"
-              style={{ width: "100%", height: "100%", objectFit: "cover" }}
-            />
-          ) : (
-            getInitials(profileName)
-          )}
+          {!profilePic && getInitials(name)}
         </div>
+        <h3 style={{ margin: 0 }}>{name || "Unnamed User"}</h3>
       </div>
 
-      {/* Search */}
-      <div style={{ padding: "10px" }}>
-        <input
-          type="text"
-          placeholder="Search chats..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid #ccc" }}
-        />
-      </div>
-
-      {/* Chat List */}
-      <div style={{ padding: "10px" }}>
-        {chats
-          .filter(
-            (c) =>
-              c.name?.toLowerCase().includes(search.toLowerCase()) ||
-              c.lastMessage?.toLowerCase().includes(search.toLowerCase())
-          )
-          .map((chat) => (
-            <div
-              key={chat.id}
-              onClick={() => openChat(chat.id)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "10px 0",
-                borderBottom: isDark ? "1px solid #333" : "1px solid #eee",
-                cursor: "pointer",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <img
-                  src={chat.photoURL || "https://via.placeholder.com/50"}
-                  style={{ width: 45, height: 45, borderRadius: "50%", objectFit: "cover" }}
-                />
-                <div>
-                  <strong>{chat.name || "Unknown"}</strong>
-                  <p style={{ margin: 0, fontSize: "14px", color: isDark ? "#ccc" : "#555", display: "flex", alignItems: "center", gap: "5px" }}>
-                    {renderMessageTick(chat)} {chat.lastMessage || "No messages yet"}
-                  </p>
-                </div>
-              </div>
-              <small style={{ color: "#888" }}>{formatDate(chat.lastMessageAt)}</small>
-            </div>
-          ))}
-      </div>
-
-      {/* Floating Add Friend */}
-      <button
-        onClick={() => setShowAddFriend(true)}
-        style={{
-          position: "fixed",
-          bottom: 90,
-          right: 25,
-          width: 60,
-          height: 60,
-          borderRadius: "50%",
-          background: "#25D366",
-          color: "#fff",
-          fontSize: 30,
-          border: "none",
-          cursor: "pointer",
-        }}
-      >
-        +
-      </button>
-
-      {/* Add Friend Modal */}
-      {showAddFriend && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.4)",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            zIndex: 20,
-          }}
-        >
-          <div
-            style={{
-              background: isDark ? "#1f1f1f" : "#fff",
-              padding: 20,
-              borderRadius: 12,
-              width: "90%",
-              maxWidth: 400,
-            }}
-          >
-            <h3>Add Friend</h3>
-
-            <input
-              type="email"
-              value={friendEmail}
-              onChange={(e) => setFriendEmail(e.target.value)}
-              placeholder="Email"
-              style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #ccc" }}
-            />
-
-            <div style={{ marginTop: 15, display: "flex", gap: 10 }}>
-              <button onClick={() => setShowAddFriend(false)}>Cancel</button>
-              <button onClick={handleAddFriend}>Add</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Bottom Navigation */}
+      {/* Messages */}
       <div
         style={{
-          position: "fixed",
-          bottom: 0,
-          left: 0,
-          width: "100%",
-          background: isDark ? "#1e1e1e" : "#ffffff",
-          padding: "10px 0",
-          display: "flex",
-          justifyContent: "space-around",
-          alignItems: "center",
-          borderTop: "1px solid rgba(0,0,0,0.1)",
+          flex: 1,
+          overflowY: "auto",
+          padding: "0 10px",
+          marginBottom: 10,
         }}
       >
-        <div style={{ textAlign: "center", cursor: "pointer" }} onClick={() => navigate("/chat")}>
-          <span style={{ fontSize: 26 }}>💬</span>
-          <div style={{ fontSize: 12 }}>Chat</div>
-        </div>
-        <div style={{ textAlign: "center", cursor: "pointer" }} onClick={() => navigate("/call-history")}>
-          <span style={{ fontSize: 26 }}>📞</span>
-          <div style={{ fontSize: 12 }}>Calls</div>
-        </div>
+        {messages.map((msg) => (
+          <div
+            key={msg.id}
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              marginBottom: 8,
+              flexDirection: msg.uid === user.uid ? "row-reverse" : "row",
+            }}
+          >
+            <div
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                background: msg.profilePic ? `url(${msg.profilePic}) center/cover` : "#555",
+                margin: "0 8px",
+              }}
+            />
+            <div
+              style={{
+                maxWidth: "70%",
+                background: msg.uid === user.uid ? "#007bff" : isDark ? "#333" : "#eee",
+                color: msg.uid === user.uid ? "#fff" : isDark ? "#fff" : "#000",
+                borderRadius: 12,
+                padding: "8px 12px",
+              }}
+            >
+              {msg.text}
+            </div>
+          </div>
+        ))}
+        <div ref={bottomRef} />
       </div>
+
+      {/* Input */}
+      <div style={{ display: "flex", gap: 8 }}>
+        <input
+          value={newMessage}
+          onChange={(e) => setNewMessage(e.target.value)}
+          placeholder="Type a message..."
+          style={{
+            flex: 1,
+            padding: 10,
+            borderRadius: 20,
+            border: "1px solid #ccc",
+          }}
+          onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
+        />
+        <button
+          onClick={handleSendMessage}
+          style={{
+            padding: "10px 16px",
+            borderRadius: 20,
+            border: "none",
+            background: "#007bff",
+            color: "#fff",
+            fontWeight: "bold",
+            cursor: "pointer",
+          }}
+        >
+          Send
+        </button>
+      </div>
+
+      {/* Hidden file input */}
+      <input
+        ref={profileInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: "none" }}
+        onChange={onProfileFileChange}
+      />
     </div>
   );
 }
