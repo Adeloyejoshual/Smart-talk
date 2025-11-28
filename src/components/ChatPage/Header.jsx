@@ -21,9 +21,9 @@ export default function ChatHeader({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const dropdownRef = useRef(null);
-
   const selectedCount = selectedChats.length;
 
+  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (!dropdownRef.current?.contains(e.target)) {
@@ -43,19 +43,6 @@ export default function ChatHeader({
   const handleArchiveClick = () => {
     onArchive?.();
     triggerToast("Archived chat(s)");
-  };
-
-  const handlePinClick = () => {
-    const pinnedCount = selectedChats.filter(c => c.pinned).length;
-    const allPinned = selectedChats.every(c => c.pinned);
-
-    if (!allPinned && pinnedCount >= 3) {
-      triggerToast("You can only pin up to 3 chats");
-      return;
-    }
-
-    onPin?.();
-    triggerToast(allPinned ? "Chat(s) unpinned" : "Chat(s) pinned");
   };
 
   const handleClearChatClick = () => {
@@ -86,13 +73,11 @@ export default function ChatHeader({
   );
 
   const allBlocked = selectedChats.every(c => c.blocked);
-  const blockLabel = allBlocked ? "Unblock" : "Block";
-
   const allPinned = selectedChats.every(c => c.pinned);
-  const pinIcon = allPinned ? "📌" : "📍"; // change icon dynamically
 
   return (
     <>
+      {/* Header */}
       <div
         style={{
           position: "sticky",
@@ -113,6 +98,7 @@ export default function ChatHeader({
         <div style={{ display: "flex", gap: 15, position: "relative" }}>
           {selectedCount ? (
             <>
+              {/* Multi-select icons */}
               <span style={{ cursor: "pointer" }} onClick={handleArchiveClick} title="Archive">📦</span>
               <span style={{ cursor: "pointer" }} onClick={handleDeleteClick} title="Delete">🗑️</span>
               <span
@@ -138,14 +124,15 @@ export default function ChatHeader({
                   <div style={{ padding: 10, cursor: "pointer" }} onClick={() => handleMuteClick("1 week", 604800000)}>1 week</div>
                 </div>
               )}
-              <span style={{ cursor: "pointer" }} onClick={handlePinClick} title="Pin / Unpin">{pinIcon}</span>
 
+              {/* Three-dot menu */}
               <div style={{ position: "relative" }} ref={dropdownRef}>
                 <span
                   style={{ fontSize: 22, cursor: "pointer" }}
                   onClick={() => setShowDropdown(prev => !prev)}
                   title="More options"
                 >⋮</span>
+
                 {showDropdown && (
                   <div style={{
                     position: "absolute",
@@ -171,10 +158,34 @@ export default function ChatHeader({
                         onClick={() => { onMarkUnread?.(); setShowDropdown(false); triggerToast("Marked as unread"); }}
                       >Mark as Unread</div>
                     )}
+
+                    {/* Pin / Unpin */}
                     <div
                       style={{ padding: 10, cursor: "pointer", borderBottom: "1px solid #ddd" }}
-                      onClick={() => { onBlock?.(); setShowDropdown(false); triggerToast(`${blockLabel}ed user(s)`); }}
-                    >{blockLabel}</div>
+                      onClick={() => {
+                        const pinnedCount = selectedChats.filter(c => c.pinned).length;
+
+                        if (!allPinned && pinnedCount >= 3) {
+                          triggerToast("You can only pin up to 3 chats");
+                          return;
+                        }
+
+                        onPin?.();
+                        setShowDropdown(false);
+                        triggerToast(allPinned ? "Chat(s) unpinned" : "Chat(s) pinned");
+                      }}
+                    >{allPinned ? "Unpin" : "Pin"}</div>
+
+                    {/* Block / Unblock */}
+                    <div
+                      style={{ padding: 10, cursor: "pointer", borderBottom: "1px solid #ddd" }}
+                      onClick={() => {
+                        onBlock?.();
+                        setShowDropdown(false);
+                        triggerToast(allBlocked ? "Unblocked user(s)" : "Blocked user(s)");
+                      }}
+                    >{allBlocked ? "Unblock" : "Block"}</div>
+
                     <div
                       style={{ padding: 10, cursor: "pointer" }}
                       onClick={() => { handleClearChatClick(); setShowDropdown(false); }}
@@ -193,6 +204,7 @@ export default function ChatHeader({
         </div>
       </div>
 
+      {/* Delete confirmation */}
       {showDeleteConfirm && (
         <div style={{
           position: "fixed",
@@ -216,6 +228,7 @@ export default function ChatHeader({
         </div>
       )}
 
+      {/* Toast */}
       {toast && (
         <div style={{
           position: "fixed",
