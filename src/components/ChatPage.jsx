@@ -1,5 +1,5 @@
 // src/components/ChatPage.jsx
-import React, { useEffect, useState, useContext } from "react";
+import React, { useEffect, useState, useContext, useRef } from "react";
 import {
   collection,
   query,
@@ -9,9 +9,8 @@ import {
   getDocs,
   addDoc,
   serverTimestamp,
-  limit,
   doc,
-  getDoc,
+  updateDoc,
 } from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
@@ -26,31 +25,34 @@ export default function ChatPage() {
   const [friendEmail, setFriendEmail] = useState("");
   const navigate = useNavigate();
   const isDark = theme === "dark";
+  const longPressTimeout = useRef(null);
 
   // 🔐 Auth listener
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(async (u) => {
+    const unsubscribe = auth.onAuthStateChanged((u) => {
       if (!u) return navigate("/");
       setUser(u);
     });
     return unsubscribe;
   }, [navigate]);
 
-  // 💬 Real-time chat list
+  // 💬 Real-time chat list with unread count (optimized)
   useEffect(() => {
     if (!user) return;
 
-    const q = query(
+    const chatsQuery = query(
       collection(db, "chats"),
       where("participants", "array-contains", user.uid),
       orderBy("lastMessageAt", "desc")
     );
 
-    const unsubscribe = onSnapshot(q, async (snapshot) => {
+    const unsubscribe = onSnapshot(chatsQuery, async (snapshot) => {
       const chatList = await Promise.all(
         snapshot.docs.map(async (docSnap) => {
           const chatData = { id: docSnap.id, ...docSnap.data() };
           const friendId = chatData.participants.find((id) => id !== user.uid);
+
+          // Get friend info
           if (friendId) {
             const friendSnap = await getDocs(
               query(collection(db, "users"), where("uid", "==", friendId))
@@ -62,10 +64,10 @@ export default function ChatPage() {
             }
           }
 
-          // Get last message
+          // Last message
           const msgRef = collection(db, "chats", docSnap.id, "messages");
           const msgSnap = await getDocs(
-            query(msgRef, orderBy("createdAt", "desc"), limit(1))
+            query(msgRef, orderBy("createdAt", "desc"), serverTimestamp())
           );
           const latest = msgSnap.docs[0]?.data();
           if (latest) {
@@ -74,14 +76,36 @@ export default function ChatPage() {
             chatData.lastMessageSender = latest.senderId;
             chatData.lastMessageStatus = latest.status;
           }
+
+          // Unread count
+          const unreadSnap = await getDocs(
+            query(msgRef, where("status", "==", "sent"), where("senderId", "!=", user.uid))
+          );
+          chatData.unreadCount = unreadSnap.size;
+
           return chatData;
         })
       );
+
+      // Sort newest messages first
+      chatList.sort((a, b) => {
+        if (!a.lastMessageAt) return 1;
+        if (!b.lastMessageAt) return -1;
+        return b.lastMessageAt.seconds - a.lastMessageAt.seconds;
+      });
+
       setChats(chatList);
     });
 
-    return () => unsubscribe();
+    return unsubscribe;
   }, [user]);
+
+  const getInitials = (fullName) => {
+    if (!fullName) return "U";
+    const names = fullName.trim().split(" ").filter(Boolean);
+    if (names.length === 1) return names[0][0].toUpperCase();
+    return (names[0][0] + names[1][0]).toUpperCase();
+  };
 
   const handleAddFriend = async () => {
     if (!friendEmail.trim() || !user) return;
@@ -129,7 +153,19 @@ export default function ChatPage() {
     }
   };
 
-  const openChat = (chatId) => navigate(`/chat/${chatId}`);
+  const openChat = async (chat) => {
+    // Mark messages as seen
+    const msgRef = collection(db, "chats", chat.id, "messages");
+    const unreadSnap = await getDocs(
+      query(msgRef, where("status", "==", "sent"), where("senderId", "!=", user.uid))
+    );
+    unreadSnap.forEach(async (docu) => {
+      const messageRef = doc(db, "chats", chat.id, "messages", docu.id);
+      await updateDoc(messageRef, { status: "seen" });
+    });
+
+    navigate(`/chat/${chat.id}`);
+  };
 
   const renderMessageTick = (chat) => {
     if (chat.lastMessageSender !== user?.uid) return null;
@@ -146,6 +182,13 @@ export default function ChatPage() {
     return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   };
 
+  const handleLongPress = (chat) => {
+    if (window.confirm(`Do you want to delete chat with ${chat.name}?`)) {
+      const chatRef = doc(db, "chats", chat.id);
+      updateDoc(chatRef, { deleted: true });
+    }
+  };
+
   return (
     <div
       style={{
@@ -156,7 +199,7 @@ export default function ChatPage() {
           : "#fff",
         minHeight: "100vh",
         color: isDark ? "#fff" : "#000",
-        paddingBottom: "90px", // for bottom nav
+        paddingBottom: "90px",
       }}
     >
       {/* Header */}
@@ -174,17 +217,15 @@ export default function ChatPage() {
         }}
       >
         <h2 style={{ margin: 0 }}>Chats</h2>
-
-        {/* ⚙️ Settings button */}
         <button
           onClick={() => navigate("/settings")}
           style={{
+            fontSize: 24,
             background: "transparent",
             border: "none",
-            fontSize: 24,
             cursor: "pointer",
           }}
-          title="Settings"
+          title="Go to Settings"
         >
           ⚙️
         </button>
@@ -217,7 +258,6 @@ export default function ChatPage() {
           .map((chat) => (
             <div
               key={chat.id}
-              onClick={() => openChat(chat.id)}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -226,6 +266,16 @@ export default function ChatPage() {
                 borderBottom: isDark ? "1px solid #333" : "1px solid #eee",
                 cursor: "pointer",
               }}
+              onClick={() => openChat(chat)}
+              onMouseDown={() => {
+                longPressTimeout.current = setTimeout(() => handleLongPress(chat), 700);
+              }}
+              onMouseUp={() => clearTimeout(longPressTimeout.current)}
+              onMouseLeave={() => clearTimeout(longPressTimeout.current)}
+              onTouchStart={() => {
+                longPressTimeout.current = setTimeout(() => handleLongPress(chat), 700);
+              }}
+              onTouchEnd={() => clearTimeout(longPressTimeout.current)}
             >
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                 <div
@@ -249,7 +299,7 @@ export default function ChatPage() {
                       style={{ width: "100%", height: "100%", objectFit: "cover" }}
                     />
                   ) : (
-                    (chat.name || "U")[0].toUpperCase()
+                    getInitials(chat.name)
                   )}
                 </div>
                 <div>
@@ -259,6 +309,7 @@ export default function ChatPage() {
                       margin: 0,
                       fontSize: "14px",
                       color: isDark ? "#ccc" : "#555",
+                      fontWeight: chat.unreadCount > 0 ? "bold" : "normal",
                       display: "flex",
                       alignItems: "center",
                       gap: "5px",
@@ -268,7 +319,23 @@ export default function ChatPage() {
                   </p>
                 </div>
               </div>
-              <small style={{ color: "#888" }}>{formatDate(chat.lastMessageAt)}</small>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+                <small style={{ color: "#888" }}>{formatDate(chat.lastMessageAt)}</small>
+                {chat.unreadCount > 0 && (
+                  <span
+                    style={{
+                      background: "#25D366",
+                      color: "#fff",
+                      borderRadius: "50%",
+                      padding: "2px 6px",
+                      fontSize: 12,
+                      marginTop: 4,
+                    }}
+                  >
+                    {chat.unreadCount}
+                  </span>
+                )}
+              </div>
             </div>
           ))}
       </div>
@@ -336,7 +403,7 @@ export default function ChatPage() {
         </div>
       )}
 
-      {/* Bottom Navigation Bar */}
+      {/* 🔥 Bottom Navigation Bar */}
       <div
         style={{
           position: "fixed",
