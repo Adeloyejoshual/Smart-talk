@@ -5,7 +5,7 @@ import { collection, query, where, getDocs, addDoc, updateDoc, doc, serverTimest
 import { useNavigate } from "react-router-dom";
 import { ThemeContext } from "../../context/ThemeContext";
 
-export default function AddFriendPopup({ user, onClose }) {
+export default function AddFriendPopup({ user, onClose, onNewChat }) {
   const { theme } = useContext(ThemeContext);
   const isDark = theme === "dark";
 
@@ -14,60 +14,77 @@ export default function AddFriendPopup({ user, onClose }) {
   const navigate = useNavigate();
 
   const handleAddFriend = async () => {
-    if (!email.trim()) return setMessage("Enter a valid email");
+    if (!email) return setMessage("Enter a valid email");
 
     try {
       // Find friend by email
-      const q = query(collection(db, "users"), where("email", "==", email.trim()));
+      const q = query(collection(db, "users"), where("email", "==", email));
       const snap = await getDocs(q);
 
-      if (snap.empty) return setMessage("User not found");
+      if (snap.empty) {
+        setMessage("User not found");
+        return;
+      }
 
       const friendDoc = snap.docs[0];
       const friendUid = friendDoc.id;
 
-      if (friendUid === user.uid) return setMessage("You cannot add yourself");
+      if (friendUid === user.uid) {
+        setMessage("You cannot add yourself");
+        return;
+      }
 
-      // Update friends list for both users
+      // Add friend to current user's friends
       const userRef = doc(db, "users", user.uid);
-      await updateDoc(userRef, {
-        friends: Array.from(new Set([...(user.friends || []), friendUid]))
-      });
+      await updateDoc(userRef, { friends: Array.from(new Set([...(user.friends || []), friendUid])) });
 
+      // Add current user to friend's friends
       const friendRef = doc(db, "users", friendUid);
-      await updateDoc(friendRef, {
-        friends: Array.from(new Set([...(friendDoc.data().friends || []), user.uid]))
-      });
+      await updateDoc(friendRef, { friends: Array.from(new Set([...(friendDoc.data().friends || []), user.uid])) });
 
-      // Check if chat already exists
+      // Check if chat exists
       const chatQuery = query(collection(db, "chats"), where("participants", "array-contains", user.uid));
       const chatSnap = await getDocs(chatQuery);
 
       let chatId = null;
       for (let docSnap of chatSnap.docs) {
-        if (docSnap.data().participants.includes(friendUid)) {
+        const data = docSnap.data();
+        if (data.participants.includes(friendUid)) {
           chatId = docSnap.id;
           break;
         }
       }
 
-      // Create new chat if it doesn't exist
+      // Create chat if not exist
+      let chatData = null;
       if (!chatId) {
-        const newChat = await addDoc(collection(db, "chats"), {
+        const newChatRef = await addDoc(collection(db, "chats"), {
           participants: [user.uid, friendUid],
           lastMessage: "",
           lastMessageAt: serverTimestamp(),
           createdAt: serverTimestamp(),
         });
-        chatId = newChat.id;
+        chatId = newChatRef.id;
+
+        chatData = {
+          id: chatId,
+          participants: [user.uid, friendUid],
+          lastMessage: "",
+          lastMessageAt: new Date(),
+          name: friendDoc.data().name || friendDoc.data().email,
+          photoURL: friendDoc.data().profilePic || null,
+        };
       }
 
-      // Navigate to chat conversation
+      // Immediately add chat to ChatPage list
+      if (chatData && typeof onNewChat === "function") {
+        onNewChat(chatData);
+      }
+
       navigate(`/chat/${chatId}`);
       onClose();
-
     } catch (err) {
-      console.error("Add friend error:", err);
+      console.error(err);
       setMessage("Failed to add friend. Try again.");
     }
   };
@@ -92,16 +109,15 @@ export default function AddFriendPopup({ user, onClose }) {
           padding: 20,
           borderRadius: 8,
           minWidth: 300,
-          boxShadow: "0 2px 10px rgba(0,0,0,0.3)",
+          boxShadow: "0 2px 10px rgba(0,0,0,0.3)"
         }}
       >
         <h3 style={{ marginTop: 0 }}>Add Friend</h3>
-
         <input
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="Friend's email"
+          placeholder="Friend's Gmail"
           style={{
             width: "100%",
             padding: 8,
@@ -112,7 +128,6 @@ export default function AddFriendPopup({ user, onClose }) {
             color: isDark ? "#fff" : "#000",
           }}
         />
-
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
           <button
             onClick={handleAddFriend}
@@ -127,7 +142,6 @@ export default function AddFriendPopup({ user, onClose }) {
           >
             Add
           </button>
-
           <button
             onClick={onClose}
             style={{
@@ -142,7 +156,6 @@ export default function AddFriendPopup({ user, onClose }) {
             Cancel
           </button>
         </div>
-
         {message && <p style={{ marginTop: 10, color: "red" }}>{message}</p>}
       </div>
     </div>
