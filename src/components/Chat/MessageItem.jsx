@@ -63,6 +63,14 @@ export default function MessageItem({ message, myUid, isDark, replyTo, setReplyT
     }
   };
 
+  // -------------------- Media URL Cloudinary helper --------------------
+  const getCloudinaryUrl = (url, type = "image", width = 300) => {
+    if (!url) return "";
+    if (!url.includes("res.cloudinary.com")) return url;
+    const trans = type === "image" ? `c_fill,w_${width},q_auto` : `c_fill,w_${width},q_auto`;
+    return url.replace("/upload/", `/upload/${trans}/`);
+  };
+
   return (
     <div
       style={{
@@ -107,10 +115,18 @@ export default function MessageItem({ message, myUid, isDark, replyTo, setReplyT
         {message.mediaUrl && (
           <div style={{ marginTop: 4 }}>
             {message.mediaType === "image" && (
-              <img src={message.mediaUrl} alt="" style={{ maxWidth: "100%", borderRadius: SPACING.borderRadius }} />
+              <img
+                src={getCloudinaryUrl(message.mediaUrl, "image")}
+                alt=""
+                style={{ maxWidth: "100%", borderRadius: SPACING.borderRadius }}
+              />
             )}
             {message.mediaType === "video" && (
-              <video src={message.mediaUrl} controls style={{ maxWidth: "100%", borderRadius: SPACING.borderRadius }} />
+              <video
+                src={getCloudinaryUrl(message.mediaUrl, "video")}
+                controls
+                style={{ maxWidth: "100%", borderRadius: SPACING.borderRadius }}
+              />
             )}
             {message.mediaType === "audio" && <audio src={message.mediaUrl} controls />}
             {message.mediaType === "pdf" && (
