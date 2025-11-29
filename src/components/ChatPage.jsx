@@ -1,4 +1,4 @@
-// src/components/ChatPage/ChatPage.jsx
+// src/components/ChatPage.jsx
 import React, { useEffect, useState, useContext, useRef } from "react";
 import {
   collection,
@@ -13,16 +13,19 @@ import {
   limit,
   serverTimestamp,
 } from "firebase/firestore";
-import { db, auth } from "../firebaseConfig";
+import { db, auth } from "../firebaseConfig";          // <-- FIXED
 import { useNavigate } from "react-router-dom";
-import { ThemeContext } from "../../context/ThemeContext";
-import { UserContext } from "../../context/UserContext";
-import ChatHeader from "./ChatPage/Header";
-import AddFriendPopup from "./ChatPage/AddFriendPopup";
+import { ThemeContext } from "../context/ThemeContext"; // <-- FIXED
+import { UserContext } from "../context/UserContext";   // <-- FIXED
+
+import ChatHeader from "./ChatPage/Header";             // OK
+import AddFriendPopup from "./ChatPage/AddFriendPopup"; // OK
 
 export default function ChatPage() {
   const { theme, wallpaper } = useContext(ThemeContext);
-  const { user, profilePic, profileName, uploadProfilePic } = useContext(UserContext);
+  const { user, profilePic, profileName, uploadProfilePic } =
+    useContext(UserContext);
+
   const isDark = theme === "dark";
   const navigate = useNavigate();
 
@@ -33,7 +36,7 @@ export default function ChatPage() {
   const [showAddFriend, setShowAddFriend] = useState(false);
   const profileInputRef = useRef(null);
 
-  // AUTH CHECK
+  // ================= AUTH CHECK =================
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((u) => {
       if (!u) return navigate("/");
@@ -41,9 +44,10 @@ export default function ChatPage() {
     return unsubscribe;
   }, [navigate]);
 
-  // REAL-TIME CHATS
+  // ================= LOAD CHATS REAL-TIME =================
   useEffect(() => {
     if (!user) return;
+
     const q = query(
       collection(db, "chats"),
       where("participants", "array-contains", user.uid),
@@ -54,35 +58,47 @@ export default function ChatPage() {
       const chatList = await Promise.all(
         snapshot.docs.map(async (docSnap) => {
           const chatData = { id: docSnap.id, ...docSnap.data() };
+          const friendId = chatData.participants.find((id) => id !== user.uid);
 
-          // get friend info (uid stored in participants)
-          const friendId = (chatData.participants || []).find((id) => id !== user.uid);
+          // Load friend profile
           if (friendId) {
-            try {
-              const uDoc = await getDoc(doc(db, "users", friendId));
-              if (uDoc.exists()) {
-                const udata = uDoc.data();
-                chatData.name = udata.name || udata.email || chatData.name;
-                chatData.photoURL = udata.profilePic || chatData.photoURL || null;
-              }
-            } catch (e) {
-              // ignore
+            const friendSnap = await getDocs(
+              query(collection(db, "users"), where("uid", "==", friendId))
+            );
+
+            if (!friendSnap.empty) {
+              const data = friendSnap.docs[0].data();
+              chatData.name = data.name || data.email;
+              chatData.photoURL = data.profilePic || null;
             }
           }
 
-          // pick latest message details if available
-          // (we rely on server-side fields lastMessage/lastMessageAt when present)
+          // Latest message
+          const msgSnap = await getDocs(
+            query(
+              collection(db, "chats", docSnap.id, "messages"),
+              orderBy("createdAt", "desc"),
+              limit(1)
+            )
+          );
+
+          const latest = msgSnap.docs[0]?.data();
+          if (latest) {
+            chatData.lastMessage = latest.text || "📷 Photo";
+            chatData.lastMessageAt = latest.createdAt;
+            chatData.lastMessageSender = latest.senderId;
+            chatData.lastMessageStatus = latest.status;
+          }
+
           return chatData;
         })
       );
 
-      // sort pinned first then by lastMessageAt fallback
+      // SORT pinned chats on top
       chatList.sort((a, b) => {
         if (a.pinned && !b.pinned) return -1;
         if (!a.pinned && b.pinned) return 1;
-        const aTime = a.lastMessageAt?.seconds ? a.lastMessageAt.seconds : (a.lastMessageAt ? new Date(a.lastMessageAt).getTime() / 1000 : 0);
-        const bTime = b.lastMessageAt?.seconds ? b.lastMessageAt.seconds : (b.lastMessageAt ? new Date(b.lastMessageAt).getTime() / 1000 : 0);
-        return bTime - aTime;
+        return (b.lastMessageAt?.seconds || 0) - (a.lastMessageAt?.seconds || 0);
       });
 
       setChats(chatList.filter((c) => !c.deleted));
@@ -91,16 +107,24 @@ export default function ChatPage() {
     return () => unsubscribe();
   }, [user]);
 
-  // Helpers
+  // ================= HELPERS =================
   const formatDate = (timestamp) => {
     if (!timestamp) return "";
-    const date = new Date(timestamp.seconds ? timestamp.seconds * 1000 : timestamp);
+    const date = new Date(
+      timestamp.seconds ? timestamp.seconds * 1000 : timestamp
+    );
     const now = new Date();
+
     if (date.toDateString() === now.toDateString())
-      return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      return date.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+
     const yesterday = new Date();
     yesterday.setDate(now.getDate() - 1);
     if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
+
     return date.toLocaleDateString();
   };
 
@@ -108,230 +132,226 @@ export default function ChatPage() {
     if (chat.lastMessageSender !== user?.uid) return null;
     if (chat.lastMessageStatus === "sent") return "✓";
     if (chat.lastMessageStatus === "delivered") return "✓✓";
-    if (chat.lastMessageStatus === "seen") return <span style={{ color: "#25D366" }}>✓✓</span>;
+    if (chat.lastMessageStatus === "seen")
+      return <span style={{ color: "#25D366" }}>✓✓</span>;
     return "";
   };
 
-  // Profile upload
+  // ================= PROFILE UPLOAD =================
   const handleProfileFileChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
-    try {
-      await uploadProfilePic(file);
-    } catch (err) {
-      console.error(err);
-      alert("Failed to upload avatar");
-    }
+    await uploadProfilePic(file);
   };
+
   const openProfileUploader = () => profileInputRef.current?.click();
 
-  // Chat actions
+  // ================= CHAT ACTIONS =================
   const toggleSelectChat = (chatId) => {
     setSelectedChats((prev) => {
-      const updated = prev.includes(chatId) ? prev.filter((id) => id !== chatId) : [...prev, chatId];
+      const updated = prev.includes(chatId)
+        ? prev.filter((id) => id !== chatId)
+        : [...prev, chatId];
+
       setSelectionMode(updated.length > 0);
       return updated;
     });
   };
+
   const enterSelectionMode = (chatId) => {
     setSelectedChats([chatId]);
     setSelectionMode(true);
   };
+
   const exitSelectionMode = () => {
     setSelectedChats([]);
     setSelectionMode(false);
   };
 
   const handleArchive = async () => {
-    await Promise.all(selectedChats.map((id) => updateDoc(doc(db, "chats", id), { archived: true })));
+    await Promise.all(
+      selectedChats.map((id) =>
+        updateDoc(doc(db, "chats", id), { archived: true })
+      )
+    );
     exitSelectionMode();
   };
+
   const handleDelete = async () => {
-    await Promise.all(selectedChats.map((id) => updateDoc(doc(db, "chats", id), { deleted: true })));
+    await Promise.all(
+      selectedChats.map((id) =>
+        updateDoc(doc(db, "chats", id), { deleted: true })
+      )
+    );
     exitSelectionMode();
   };
-  const handleMute = async (durationMs) => {
-    const mutedUntil = new Date().getTime() + durationMs;
-    await Promise.all(selectedChats.map((id) => updateDoc(doc(db, "chats", id), { mutedUntil })));
-    exitSelectionMode();
-  };
+
   const handlePin = async (chatId) => {
-    const pinnedChats = chats.filter(c => c.pinned && c.id !== chatId);
     const chatRef = doc(db, "chats", chatId);
     const chatSnap = await getDoc(chatRef);
     if (!chatSnap.exists()) return;
+
     const currentPinned = chatSnap.data().pinned || false;
-    if (!currentPinned && pinnedChats.length >= 3) {
-      alert("You can only pin up to 3 chats");
-      return;
-    }
     await updateDoc(chatRef, { pinned: !currentPinned });
   };
-  const handleBlock = async (chatId) => {
-    const chatRef = doc(db, "chats", chatId);
-    const chatSnap = await getDoc(chatRef);
-    if (!chatSnap.exists()) return;
-    const currentBlocked = chatSnap.data().blocked || false;
-    await updateDoc(chatRef, { blocked: !currentBlocked });
-  };
 
-  // Called by AddFriendPopup to add optimistic chat immediately
-  const handleChatCreated = (chatObj) => {
-    if (!chatObj || !chatObj.id) return;
-    setChats(prev => {
-      // avoid duplicates — if it already exists by id, keep original list
-      if (prev.some(c => c.id === chatObj.id)) return prev;
-      return [chatObj, ...prev];
-    });
-  };
+  // ================= CHAT FILTERS =================
+  const visibleChats = chats.filter((c) => !c.archived);
 
-  const visibleChats = chats.filter(c => !c.archived);
-  const searchResults = chats.filter(c =>
-    c.name?.toLowerCase().includes(search.toLowerCase()) ||
-    c.lastMessage?.toLowerCase().includes(search.toLowerCase())
+  const searchResults = chats.filter(
+    (c) =>
+      c.name?.toLowerCase().includes(search.toLowerCase()) ||
+      c.lastMessage?.toLowerCase().includes(search.toLowerCase())
   );
 
+  // ================= RENDER =================
   return (
     <div
       style={{
-        background: wallpaper ? `url(${wallpaper}) no-repeat center/cover` : isDark ? "#121212" : "#fff",
+        background: wallpaper
+          ? `url(${wallpaper}) no-repeat center/cover`
+          : isDark
+          ? "#121212"
+          : "#fff",
         minHeight: "100vh",
         color: isDark ? "#fff" : "#000",
         paddingBottom: "90px",
       }}
     >
       <ChatHeader
-        selectedChats={chats.filter(c => selectedChats.includes(c.id))}
+        selectedChats={chats.filter((c) => selectedChats.includes(c.id))}
         user={user}
         onArchive={handleArchive}
         onDelete={handleDelete}
-        onMute={handleMute}
-        onPin={(ids) => selectedChats.forEach(id => handlePin(id))}
-        onMarkRead={async () => { await Promise.all(selectedChats.map(id => updateDoc(doc(db, "chats", id), { lastMessageStatus: "seen" }))); exitSelectionMode(); }}
-        onMarkUnread={async () => { await Promise.all(selectedChats.map(id => updateDoc(doc(db, "chats", id), { lastMessageStatus: "delivered" }))); exitSelectionMode(); }}
-        onBlock={(ids) => selectedChats.forEach(id => handleBlock(id))}
-        onClearChat={async () => { await Promise.all(selectedChats.map(id => { const messagesRef = collection(db, "chats", id, "messages"); return getDocs(messagesRef).then(snap => snap.docs.map(d => updateDoc(d.ref, { text: "", deleted: true }))); })); exitSelectionMode(); }}
+        onPin={(ids) => selectedChats.forEach((id) => handlePin(id))}
+        onClearChat={() => {}}
         onSettingsClick={() => navigate("/settings")}
         selectionMode={selectionMode}
         exitSelectionMode={exitSelectionMode}
         isDark={isDark}
       />
 
-      {/* Search */}
+      {/* SEARCH */}
       <div style={{ padding: 10 }}>
         <input
           type="text"
           placeholder="Search chats..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid #ccc" }}
+          style={{
+            width: "100%",
+            padding: 8,
+            borderRadius: 8,
+            border: "1px solid #ccc",
+          }}
         />
       </div>
 
-      {/* Archived shortcut */}
-      <div
-        onClick={() => navigate("/archive")}
-        style={{
-          padding: 10,
-          margin: "5px 0",
-          background: isDark ? "#333" : "#eee",
-          borderRadius: 8,
-          cursor: "pointer",
-          textAlign: "center",
-          fontWeight: "bold",
-        }}
-      >
-        📦 Archived Chats
-      </div>
-
-      {/* Chat list */}
+      {/* Chat List */}
       <div style={{ padding: 10 }}>
-        {(search ? searchResults : visibleChats).map(chat => {
-          const isMuted = chat.mutedUntil && chat.mutedUntil > new Date().getTime();
+        {(search ? searchResults : visibleChats).map((chat) => {
           const isSelected = selectedChats.includes(chat.id);
+
           return (
             <div
               key={chat.id}
-              onClick={() => selectionMode ? toggleSelectChat(chat.id) : navigate(`/chat/${chat.id}`)}
-              onContextMenu={e => { e.preventDefault(); enterSelectionMode(chat.id); }}
+              onClick={() =>
+                selectionMode
+                  ? toggleSelectChat(chat.id)
+                  : navigate(`/chat/${chat.id}`)
+              }
+              onContextMenu={(e) => {
+                e.preventDefault();
+                enterSelectionMode(chat.id);
+              }}
               style={{
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
                 padding: 10,
-                borderBottom: isDark ? "1px solid #333" : "1px solid #eee",
+                borderBottom: isDark
+                  ? "1px solid #333"
+                  : "1px solid #eee",
                 cursor: "pointer",
                 background: isSelected
                   ? "rgba(0,123,255,0.2)"
-                  : isMuted
-                    ? isDark ? "#2c2c2c" : "#f0f0f0"
-                    : "transparent",
-                opacity: chat.blocked ? 0.5 : 1,
+                  : "transparent",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ display: "flex", gap: 10 }}>
                 <div
                   style={{
                     width: 45,
                     height: 45,
                     borderRadius: "50%",
-                    overflow: "hidden",
                     background: "#888",
                     display: "flex",
-                    justifyContent: "center",
                     alignItems: "center",
+                    justifyContent: "center",
                     color: "#fff",
-                    fontWeight: "bold",
                   }}
                 >
                   {chat.photoURL ? (
-                    <img src={chat.photoURL} alt={chat.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                  ) : chat.name ? chat.name[0].toUpperCase() : "U"}
+                    <img
+                      src={chat.photoURL}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                      }}
+                    />
+                  ) : chat.name ? (
+                    chat.name[0]
+                  ) : (
+                    "U"
+                  )}
                 </div>
+
                 <div>
                   <strong>{chat.name || "Unknown"}</strong>
-                  {chat.pinned && <span style={{ marginLeft: 5 }}>📌</span>}
-                  {chat.blocked && <span style={{ marginLeft: 5, color: "red" }}>🚫</span>}
-                  <p style={{ margin: 0, fontSize: 14, color: isDark ? "#ccc" : "#555", display: "flex", alignItems: "center", gap: 5 }}>
-                    {renderMessageTick(chat)} {chat.lastMessage || "No messages yet"}
+                  <p
+                    style={{
+                      margin: 0,
+                      fontSize: 14,
+                      color: isDark ? "#ccc" : "#555",
+                    }}
+                  >
+                    {renderMessageTick(chat)} {chat.lastMessage}
                   </p>
                 </div>
               </div>
-              <small style={{ color: "#888" }}>{formatDate(chat.lastMessageAt)}</small>
+
+              <small style={{ color: "#888" }}>
+                {formatDate(chat.lastMessageAt)}
+              </small>
             </div>
           );
         })}
       </div>
 
-      {/* Floating add friend */}
+      {/* Floating Add Friend Button */}
       <button
         onClick={() => setShowAddFriend(true)}
         style={{
           position: "fixed",
           bottom: 90,
-          right: 25,
+          right: 20,
           width: 60,
           height: 60,
           borderRadius: "50%",
-          background: "#0d6efd",
+          fontSize: 32,
+          background: "#007bff",
           color: "#fff",
-          fontSize: 30,
           border: "none",
-          cursor: "pointer",
         }}
       >
         +
       </button>
 
       {showAddFriend && (
-        <AddFriendPopup
-          user={user}
-          onClose={() => setShowAddFriend(false)}
-          onChatCreated={handleChatCreated}
-        />
+        <AddFriendPopup user={user} onClose={() => setShowAddFriend(false)} />
       )}
 
-      {/* Profile uploader */}
       <input
         ref={profileInputRef}
         type="file"
@@ -339,32 +359,6 @@ export default function ChatPage() {
         style={{ display: "none" }}
         onChange={handleProfileFileChange}
       />
-
-      {/* Bottom nav */}
-      <div
-        style={{
-          position: "fixed",
-          bottom: 0,
-          left: 0,
-          width: "100%",
-          background: isDark ? "#1e1e1e" : "#fff",
-          padding: "10px 0",
-          display: "flex",
-          justifyContent: "space-around",
-          alignItems: "center",
-          borderTop: "1px solid rgba(0,0,0,0.1)",
-          zIndex: 10,
-        }}
-      >
-        <div style={{ textAlign: "center", cursor: "pointer" }} onClick={() => navigate("/chat")}>
-          <span style={{ fontSize: 26 }}>💬</span>
-          <div style={{ fontSize: 12 }}>Chat</div>
-        </div>
-        <div style={{ textAlign: "center", cursor: "pointer" }} onClick={() => navigate("/call-history")}>
-          <span style={{ fontSize: 26 }}>📞</span>
-          <div style={{ fontSize: 12 }}>Calls</div>
-        </div>
-      </div>
     </div>
   );
 }
