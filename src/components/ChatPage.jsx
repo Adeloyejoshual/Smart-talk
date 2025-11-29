@@ -16,7 +16,7 @@ import {
 import { db, auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
 import { ThemeContext } from "../context/ThemeContext";
-import { UserContext } from "../context/UserContext"; // <-- Use UserContext
+import { UserContext } from "../context/UserContext";
 import ChatHeader from "./ChatPage/Header";
 import AddFriendPopup from "./ChatPage/AddFriendPopup";
 
@@ -44,10 +44,11 @@ export default function ChatPage() {
   // ================= LOAD CHATS REAL-TIME =================
   useEffect(() => {
     if (!user) return;
+
     const q = query(
       collection(db, "chats"),
       where("participants", "array-contains", user.uid),
-      orderBy("lastMessageAt", "desc")
+      orderBy("lastMessageAt", "desc") // chats with null lastMessageAt appear at bottom
     );
 
     const unsubscribe = onSnapshot(q, async (snapshot) => {
@@ -56,6 +57,7 @@ export default function ChatPage() {
           const chatData = { id: docSnap.id, ...docSnap.data() };
           const friendId = chatData.participants.find((id) => id !== user.uid);
 
+          // Load friend's info
           if (friendId) {
             const friendSnap = await getDocs(
               query(collection(db, "users"), where("uid", "==", friendId))
@@ -67,6 +69,7 @@ export default function ChatPage() {
             }
           }
 
+          // Load latest message
           const msgSnap = await getDocs(
             query(
               collection(db, "chats", docSnap.id, "messages"),
@@ -86,14 +89,19 @@ export default function ChatPage() {
         })
       );
 
+      // Sort pinned first, then by lastMessageAt (nulls go to bottom)
       chatList.sort((a, b) => {
         if (a.pinned && !b.pinned) return -1;
         if (!a.pinned && b.pinned) return 1;
-        return (b.lastMessageAt?.seconds || 0) - (a.lastMessageAt?.seconds || 0);
+
+        const aTime = a.lastMessageAt?.seconds || 0;
+        const bTime = b.lastMessageAt?.seconds || 0;
+        return bTime - aTime;
       });
 
       setChats(chatList.filter((c) => !c.deleted));
     });
+
     return () => unsubscribe();
   }, [user]);
 
