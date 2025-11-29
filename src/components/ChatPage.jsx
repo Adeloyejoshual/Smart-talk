@@ -1,5 +1,4 @@
-// src/components/ChatPage.jsx
-import React, { useEffect, useState, useContext, useRef } from "react";
+import React, { useEffect, useState, useContext } from "react";
 import {
   collection,
   query,
@@ -7,44 +6,37 @@ import {
   orderBy,
   onSnapshot,
   getDocs,
-  doc,
-  updateDoc,
-  getDoc,
-  limit,
+  addDoc,
   serverTimestamp,
+  limit,
 } from "firebase/firestore";
-import { db, auth } from "../firebaseConfig";          // <-- FIXED
+import { db, auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
-import { ThemeContext } from "../context/ThemeContext"; // <-- FIXED
-import { UserContext } from "../context/UserContext";   // <-- FIXED
-
-import ChatHeader from "./ChatPage/Header";             // OK
-import AddFriendPopup from "./ChatPage/AddFriendPopup"; // OK
+import { ThemeContext } from "../context/ThemeContext";
 
 export default function ChatPage() {
   const { theme, wallpaper } = useContext(ThemeContext);
-  const { user, profilePic, profileName, uploadProfilePic } =
-    useContext(UserContext);
-
-  const isDark = theme === "dark";
-  const navigate = useNavigate();
-
   const [chats, setChats] = useState([]);
   const [search, setSearch] = useState("");
-  const [selectedChats, setSelectedChats] = useState([]);
-  const [selectionMode, setSelectionMode] = useState(false);
+  const [user, setUser] = useState(null);
   const [showAddFriend, setShowAddFriend] = useState(false);
-  const profileInputRef = useRef(null);
+  const [friendEmail, setFriendEmail] = useState("");
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
 
-  // ================= AUTH CHECK =================
+  const isDark = theme === "dark";
+
+  // 🔐 Auth listener
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((u) => {
-      if (!u) return navigate("/");
+      if (u) setUser(u);
+      else navigate("/");
     });
     return unsubscribe;
   }, [navigate]);
 
-  // ================= LOAD CHATS REAL-TIME =================
+  // 💬 Real-time chat list
   useEffect(() => {
     if (!user) return;
 
@@ -58,30 +50,25 @@ export default function ChatPage() {
       const chatList = await Promise.all(
         snapshot.docs.map(async (docSnap) => {
           const chatData = { id: docSnap.id, ...docSnap.data() };
-          const friendId = chatData.participants.find((id) => id !== user.uid);
 
-          // Load friend profile
+          // 👤 Fetch friend info
+          const friendId = chatData.participants.find((id) => id !== user.uid);
           if (friendId) {
             const friendSnap = await getDocs(
               query(collection(db, "users"), where("uid", "==", friendId))
             );
-
             if (!friendSnap.empty) {
               const data = friendSnap.docs[0].data();
-              chatData.name = data.name || data.email;
-              chatData.photoURL = data.profilePic || null;
+              chatData.name = data.displayName || data.email;
+              chatData.photoURL = data.photoURL || "";
             }
           }
 
-          // Latest message
+          // 🔁 Fetch last message (only 1)
+          const msgRef = collection(db, "chats", docSnap.id, "messages");
           const msgSnap = await getDocs(
-            query(
-              collection(db, "chats", docSnap.id, "messages"),
-              orderBy("createdAt", "desc"),
-              limit(1)
-            )
+            query(msgRef, orderBy("createdAt", "desc"), limit(1))
           );
-
           const latest = msgSnap.docs[0]?.data();
           if (latest) {
             chatData.lastMessage = latest.text || "📷 Photo";
@@ -94,39 +81,79 @@ export default function ChatPage() {
         })
       );
 
-      // SORT pinned chats on top
-      chatList.sort((a, b) => {
-        if (a.pinned && !b.pinned) return -1;
-        if (!a.pinned && b.pinned) return 1;
-        return (b.lastMessageAt?.seconds || 0) - (a.lastMessageAt?.seconds || 0);
-      });
-
-      setChats(chatList.filter((c) => !c.deleted));
+      setChats(chatList);
     });
 
     return () => unsubscribe();
   }, [user]);
 
-  // ================= HELPERS =================
-  const formatDate = (timestamp) => {
-    if (!timestamp) return "";
-    const date = new Date(
-      timestamp.seconds ? timestamp.seconds * 1000 : timestamp
-    );
-    const now = new Date();
+  // ➕ Add Friend
+  const handleAddFriend = async () => {
+    setMessage("");
+    setLoading(true);
+    try {
+      if (!friendEmail || !user) {
+        setMessage("Enter a valid email.");
+        setLoading(false);
+        return;
+      }
 
-    if (date.toDateString() === now.toDateString())
-      return date.toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
+      const usersRef = collection(db, "users");
+      const snapshot = await getDocs(
+        query(usersRef, where("email", "==", friendEmail.trim()))
+      );
+
+      if (snapshot.empty) {
+        setMessage("User not found.");
+        setLoading(false);
+        return;
+      }
+
+      const friendData = snapshot.docs[0].data();
+      if (friendData.uid === user.uid) {
+        setMessage("⚠️ You can’t add yourself.");
+        setLoading(false);
+        return;
+      }
+
+      // Check existing chat
+      const existingChatsSnap = await getDocs(
+        query(
+          collection(db, "chats"),
+          where("participants", "array-contains", user.uid)
+        )
+      );
+      const existingChat = existingChatsSnap.docs.find((doc) =>
+        doc.data().participants.includes(friendData.uid)
+      );
+
+      if (existingChat) {
+        setShowAddFriend(false);
+        setLoading(false);
+        navigate(`/chat/${existingChat.id}`);
+        return;
+      }
+
+      // Create new chat
+      const newChat = await addDoc(collection(db, "chats"), {
+        participants: [user.uid, friendData.uid],
+        name: friendData.displayName || friendData.email.split("@")[0],
+        photoURL: friendData.photoURL || "",
+        lastMessage: "",
+        lastMessageAt: serverTimestamp(),
       });
 
-    const yesterday = new Date();
-    yesterday.setDate(now.getDate() - 1);
-    if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
-
-    return date.toLocaleDateString();
+      setFriendEmail("");
+      setShowAddFriend(false);
+      navigate(`/chat/${newChat.id}`);
+    } catch (err) {
+      console.error("Add friend error:", err);
+      setMessage("❌ Error adding friend.");
+    }
+    setLoading(false);
   };
+
+  const openChat = (chatId) => navigate(`/chat/${chatId}`);
 
   const renderMessageTick = (chat) => {
     if (chat.lastMessageSender !== user?.uid) return null;
@@ -137,74 +164,6 @@ export default function ChatPage() {
     return "";
   };
 
-  // ================= PROFILE UPLOAD =================
-  const handleProfileFileChange = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file || !user) return;
-    await uploadProfilePic(file);
-  };
-
-  const openProfileUploader = () => profileInputRef.current?.click();
-
-  // ================= CHAT ACTIONS =================
-  const toggleSelectChat = (chatId) => {
-    setSelectedChats((prev) => {
-      const updated = prev.includes(chatId)
-        ? prev.filter((id) => id !== chatId)
-        : [...prev, chatId];
-
-      setSelectionMode(updated.length > 0);
-      return updated;
-    });
-  };
-
-  const enterSelectionMode = (chatId) => {
-    setSelectedChats([chatId]);
-    setSelectionMode(true);
-  };
-
-  const exitSelectionMode = () => {
-    setSelectedChats([]);
-    setSelectionMode(false);
-  };
-
-  const handleArchive = async () => {
-    await Promise.all(
-      selectedChats.map((id) =>
-        updateDoc(doc(db, "chats", id), { archived: true })
-      )
-    );
-    exitSelectionMode();
-  };
-
-  const handleDelete = async () => {
-    await Promise.all(
-      selectedChats.map((id) =>
-        updateDoc(doc(db, "chats", id), { deleted: true })
-      )
-    );
-    exitSelectionMode();
-  };
-
-  const handlePin = async (chatId) => {
-    const chatRef = doc(db, "chats", chatId);
-    const chatSnap = await getDoc(chatRef);
-    if (!chatSnap.exists()) return;
-
-    const currentPinned = chatSnap.data().pinned || false;
-    await updateDoc(chatRef, { pinned: !currentPinned });
-  };
-
-  // ================= CHAT FILTERS =================
-  const visibleChats = chats.filter((c) => !c.archived);
-
-  const searchResults = chats.filter(
-    (c) =>
-      c.name?.toLowerCase().includes(search.toLowerCase()) ||
-      c.lastMessage?.toLowerCase().includes(search.toLowerCase())
-  );
-
-  // ================= RENDER =================
   return (
     <div
       style={{
@@ -216,23 +175,42 @@ export default function ChatPage() {
         minHeight: "100vh",
         color: isDark ? "#fff" : "#000",
         paddingBottom: "90px",
+        transition: "0.3s ease",
       }}
     >
-      <ChatHeader
-        selectedChats={chats.filter((c) => selectedChats.includes(c.id))}
-        user={user}
-        onArchive={handleArchive}
-        onDelete={handleDelete}
-        onPin={(ids) => selectedChats.forEach((id) => handlePin(id))}
-        onClearChat={() => {}}
-        onSettingsClick={() => navigate("/settings")}
-        selectionMode={selectionMode}
-        exitSelectionMode={exitSelectionMode}
-        isDark={isDark}
-      />
+      {/* Header */}
+      <div
+        style={{
+          position: "sticky",
+          top: 0,
+          background: isDark ? "#1f1f1f" : "#f5f5f5",
+          padding: "15px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          boxShadow: "0 1px 4px rgba(0,0,0,0.1)",
+          zIndex: 2,
+        }}
+      >
+        <h2 style={{ margin: 0 }}>Chats</h2>
+        <div style={{ display: "flex", gap: 15 }}>
+          <button
+            onClick={() => navigate("/call-history")}
+            style={{ background: "transparent", border: "none", fontSize: 18 }}
+          >
+            📞
+          </button>
+          <button
+            onClick={() => navigate("/settings")}
+            style={{ background: "transparent", border: "none", fontSize: 18 }}
+          >
+            ⚙️
+          </button>
+        </div>
+      </div>
 
-      {/* SEARCH */}
-      <div style={{ padding: 10 }}>
+      {/* Search */}
+      <div style={{ padding: "10px" }}>
         <input
           type="text"
           placeholder="Search chats..."
@@ -240,7 +218,7 @@ export default function ChatPage() {
           onChange={(e) => setSearch(e.target.value)}
           style={{
             width: "100%",
-            padding: 8,
+            padding: "8px 12px",
             borderRadius: 8,
             border: "1px solid #ccc",
           }}
@@ -248,85 +226,72 @@ export default function ChatPage() {
       </div>
 
       {/* Chat List */}
-      <div style={{ padding: 10 }}>
-        {(search ? searchResults : visibleChats).map((chat) => {
-          const isSelected = selectedChats.includes(chat.id);
-
-          return (
+      <div style={{ padding: "10px" }}>
+        {chats
+          .filter(
+            (c) =>
+              c.name?.toLowerCase().includes(search.toLowerCase()) ||
+              c.lastMessage?.toLowerCase().includes(search.toLowerCase())
+          )
+          .map((chat) => (
             <div
               key={chat.id}
-              onClick={() =>
-                selectionMode
-                  ? toggleSelectChat(chat.id)
-                  : navigate(`/chat/${chat.id}`)
-              }
-              onContextMenu={(e) => {
-                e.preventDefault();
-                enterSelectionMode(chat.id);
-              }}
+              onClick={() => openChat(chat.id)}
               style={{
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
-                padding: 10,
-                borderBottom: isDark
-                  ? "1px solid #333"
-                  : "1px solid #eee",
+                padding: "10px 0",
+                borderBottom: isDark ? "1px solid #333" : "1px solid #eee",
                 cursor: "pointer",
-                background: isSelected
-                  ? "rgba(0,123,255,0.2)"
-                  : "transparent",
               }}
             >
-              <div style={{ display: "flex", gap: 10 }}>
-                <div
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <img
+                  src={chat.photoURL || "https://via.placeholder.com/50"}
+                  alt="profile"
                   style={{
                     width: 45,
                     height: 45,
                     borderRadius: "50%",
-                    background: "#888",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "#fff",
+                    objectFit: "cover",
                   }}
-                >
-                  {chat.photoURL ? (
-                    <img
-                      src={chat.photoURL}
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "cover",
-                      }}
-                    />
-                  ) : chat.name ? (
-                    chat.name[0]
-                  ) : (
-                    "U"
-                  )}
-                </div>
-
+                />
                 <div>
                   <strong>{chat.name || "Unknown"}</strong>
                   <p
                     style={{
                       margin: 0,
-                      fontSize: 14,
+                      fontSize: "14px",
                       color: isDark ? "#ccc" : "#555",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "5px",
                     }}
                   >
-                    {renderMessageTick(chat)} {chat.lastMessage}
+                    {renderMessageTick(chat)}{" "}
+                    {chat.lastMessage
+                      ? chat.lastMessage.length > 30
+                        ? chat.lastMessage.substring(0, 30) + "..."
+                        : chat.lastMessage
+                      : "No messages yet"}
                   </p>
                 </div>
               </div>
-
               <small style={{ color: "#888" }}>
-                {formatDate(chat.lastMessageAt)}
+                {chat.lastMessageAt
+                  ? new Date(
+                      chat.lastMessageAt?.seconds
+                        ? chat.lastMessageAt.seconds * 1000
+                        : chat.lastMessageAt
+                    ).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })
+                  : ""}
               </small>
             </div>
-          );
-        })}
+          ))}
       </div>
 
       {/* Floating Add Friend Button */}
@@ -334,31 +299,71 @@ export default function ChatPage() {
         onClick={() => setShowAddFriend(true)}
         style={{
           position: "fixed",
-          bottom: 90,
-          right: 20,
+          bottom: 30,
+          right: 30,
           width: 60,
           height: 60,
           borderRadius: "50%",
-          fontSize: 32,
-          background: "#007bff",
+          background: "#25D366",
           color: "#fff",
+          fontSize: 30,
           border: "none",
+          cursor: "pointer",
+          boxShadow: "0 4px 10px rgba(0,0,0,0.2)",
         }}
       >
         +
       </button>
 
+      {/* Add Friend Modal */}
       {showAddFriend && (
-        <AddFriendPopup user={user} onClose={() => setShowAddFriend(false)} />
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.4)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 10,
+          }}
+        >
+          <div
+            style={{
+              background: isDark ? "#1f1f1f" : "#fff",
+              padding: 20,
+              borderRadius: 12,
+              width: "90%",
+              maxWidth: 400,
+              boxShadow: "0 4px 12px rgba(0,0,0,0.25)",
+            }}
+          >
+            <h3>Add Friend</h3>
+            <input
+              type="email"
+              placeholder="Friend's email"
+              value={friendEmail}
+              onChange={(e) => setFriendEmail(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "8px 12px",
+                borderRadius: 8,
+                border: "1px solid #ccc",
+                marginBottom: 10,
+              }}
+            />
+            {message && (
+              <p style={{ color: "red", fontSize: 14, marginBottom: 10 }}>{message}</p>
+            )}
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button onClick={() => setShowAddFriend(false)}>Cancel</button>
+              <button onClick={handleAddFriend} disabled={loading}>
+                {loading ? "Adding..." : "Add"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
-
-      <input
-        ref={profileInputRef}
-        type="file"
-        accept="image/*"
-        style={{ display: "none" }}
-        onChange={handleProfileFileChange}
-      />
     </div>
   );
 }
