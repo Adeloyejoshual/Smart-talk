@@ -25,7 +25,6 @@ export default function ChatHeader({
   chatInfo,
   myUid,
   theme,
-  wallpaper,
   headerMenuOpen,
   setHeaderMenuOpen,
   clearChat,
@@ -34,24 +33,23 @@ export default function ChatHeader({
   const isDark = theme === "dark";
   const navigate = useNavigate();
 
-  // -------------------- Render profile picture / initials --------------------
+  // -------------------- Profile picture or initials --------------------
   const renderHeaderProfile = () => {
     if (friendInfo?.photoURL) {
-      // Cloudinary URL transformation (optional: resize to 36x36)
+      // Cloudinary transformation: resize to 36x36, crop fill
       const url = friendInfo.photoURL.includes("res.cloudinary.com")
         ? friendInfo.photoURL.replace("/upload/", "/upload/c_fill,h_36,w_36/")
         : friendInfo.photoURL;
       return <img src={url} alt="" style={{ width: 36, height: 36, borderRadius: "50%" }} />;
     }
 
-    // Generate initials
+    // Fallback: initials
     const name = friendInfo?.name || "U";
-    const initials = name
-      .split(" ")
-      .map((n) => n[0])
-      .slice(0, 2)
-      .join("")
-      .toUpperCase();
+    const initials = (() => {
+      const parts = name.trim().split(" ");
+      if (parts.length === 1) return parts[0][0].toUpperCase();
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    })();
 
     return (
       <div
@@ -59,7 +57,7 @@ export default function ChatHeader({
           width: 36,
           height: 36,
           borderRadius: "50%",
-          background: COLORS.lightCard,
+          background: isDark ? COLORS.darkCard : COLORS.lightCard,
           color: isDark ? "#fff" : "#000",
           display: "flex",
           justifyContent: "center",
@@ -113,7 +111,7 @@ export default function ChatHeader({
                   try {
                     const d = friendInfo.lastSeen.toDate ? friendInfo.lastSeen.toDate() : new Date(friendInfo.lastSeen);
                     return d.toLocaleString();
-                  } catch (e) {
+                  } catch {
                     return "unknown";
                   }
                 })()}`
@@ -150,7 +148,7 @@ export default function ChatHeader({
             position: "absolute",
             top: 56,
             right: 12,
-            background: COLORS.lightCard,
+            background: isDark ? COLORS.darkCard : COLORS.lightCard,
             borderRadius: SPACING.borderRadius,
             boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
             zIndex: 30,
