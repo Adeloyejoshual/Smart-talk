@@ -11,10 +11,8 @@ import {
   updateDoc,
   doc,
   getDoc,
-  arrayUnion,
-  arrayRemove,
-  deleteDoc,
   getDocs,
+  startAfter,
   limit as fsLimit,
 } from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
@@ -62,6 +60,11 @@ export default function ChatConversationPage() {
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [isAtBottom, setIsAtBottom] = useState(true);
 
+  // Pagination
+  const [lastVisible, setLastVisible] = useState(null);
+  const [hasMore, setHasMore] = useState(true);
+  const pageSize = 50;
+
   // -------------------- Load chat & friend --------------------
   useEffect(() => {
     if (!chatId) return;
@@ -101,21 +104,25 @@ export default function ChatConversationPage() {
     };
   }, [chatId, myUid]);
 
-  // -------------------- Messages realtime --------------------
+  // -------------------- Load latest messages --------------------
   useEffect(() => {
     if (!chatId) return;
     setLoadingMsgs(true);
-    const q = query(
-      collection(db, "chats", chatId, "messages"),
-      orderBy("createdAt", "asc"),
-      fsLimit(2000)
-    );
+
+    const messagesRef = collection(db, "chats", chatId, "messages");
+    const q = query(messagesRef, orderBy("createdAt", "desc"), fsLimit(pageSize));
 
     const unsub = onSnapshot(q, (snap) => {
       const docs = snap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .filter(m => !(m.deletedFor?.includes(myUid)));
-      setMessages(docs);
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((m) => !(m.deletedFor?.includes(myUid)));
+
+      setMessages(docs.reverse());
+      setLastVisible(snap.docs[snap.docs.length - 1]);
+      setHasMore(snap.docs.length === pageSize);
+      setLoadingMsgs(false);
+
+      if (isAtBottom) endRef.current?.scrollIntoView({ behavior: "smooth" });
 
       // mark delivered
       docs.forEach(async m => {
@@ -123,29 +130,66 @@ export default function ChatConversationPage() {
           await updateDoc(doc(db, "chats", chatId, "messages", m.id), { status: "delivered" });
         }
       });
-
-      setLoadingMsgs(false);
-      if (isAtBottom) endRef.current?.scrollIntoView({ behavior: "smooth" });
     });
 
     return () => unsub();
   }, [chatId, myUid, isAtBottom]);
 
+  // -------------------- Load older messages --------------------
+  const loadOlderMessages = async () => {
+    if (!hasMore || !lastVisible) return;
+    setLoadingMsgs(true);
+    try {
+      const messagesRef = collection(db, "chats", chatId, "messages");
+      const q = query(
+        messagesRef,
+        orderBy("createdAt", "desc"),
+        startAfter(lastVisible),
+        fsLimit(pageSize)
+      );
+      const snap = await getDocs(q);
+      if (snap.empty) {
+        setHasMore(false);
+        return;
+      }
+
+      const older = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((m) => !(m.deletedFor?.includes(myUid)));
+
+      setMessages((prev) => [...older.reverse(), ...prev]);
+      setLastVisible(snap.docs[snap.docs.length - 1]);
+    } catch (e) {
+      console.error("Error loading older messages:", e);
+    } finally {
+      setLoadingMsgs(false);
+    }
+  };
+
   // -------------------- Scroll detection --------------------
   useEffect(() => {
     const el = messagesRefEl.current;
     if (!el) return;
-    const onScroll = () => setIsAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 80);
+
+    const onScroll = () => {
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+      setIsAtBottom(atBottom);
+
+      if (el.scrollTop < 100 && hasMore && !loadingMsgs) {
+        loadOlderMessages();
+      }
+    };
+
     el.addEventListener("scroll", onScroll);
     return () => el.removeEventListener("scroll", onScroll);
-  }, []);
+  }, [hasMore, loadingMsgs]);
 
   const scrollToBottom = () => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
     setIsAtBottom(true);
   };
 
-  // -------------------- Send message --------------------
+  // -------------------- Send text message --------------------
   const sendTextMessage = async () => {
     if ((chatInfo?.blockedBy || []).includes(myUid)) return alert("You are blocked in this chat.");
     if (selectedFiles.length > 0) return; // handled by ChatInput
@@ -174,7 +218,7 @@ export default function ChatConversationPage() {
     }
   };
 
-  // -------------------- JSX Return --------------------
+  // -------------------- JSX --------------------
   return (
     <div
       style={{
@@ -190,17 +234,18 @@ export default function ChatConversationPage() {
         chatInfo={chatInfo}
         friendInfo={friendInfo}
         myUid={myUid}
-        isDark={isDark}
+        theme={theme}
+        wallpaper={wallpaper}
         headerMenuOpen={headerMenuOpen}
         setHeaderMenuOpen={setHeaderMenuOpen}
-        navigate={navigate}
-        chatId={chatId}
+        clearChat={() => alert("Clear chat")}
+        toggleBlock={() => alert("Toggle block")}
       />
 
       {/* Messages */}
       <div ref={messagesRefEl} style={{ flex: 1, overflowY: "auto", padding: 8 }}>
         {loadingMsgs && <div style={{ textAlign: "center", marginTop: 12 }}>Loading...</div>}
-        {messages.map(msg => (
+        {messages.map((msg) => (
           <MessageItem
             key={msg.id}
             message={msg}
@@ -223,6 +268,8 @@ export default function ChatConversationPage() {
         setSelectedFiles={setSelectedFiles}
         isDark={isDark}
         chatId={chatId}
+        replyTo={replyTo}
+        setReplyTo={setReplyTo}
       />
     </div>
   );
