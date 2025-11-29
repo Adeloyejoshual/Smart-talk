@@ -16,7 +16,7 @@ import {
 } from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
 import { ThemeContext } from "../context/ThemeContext";
-import { UserContext } from "../context/UserContext"; // <-- Added
+import { UserContext } from "../context/UserContext";
 
 import ChatHeader from "./Chat/ChatHeader";
 import MessageItem from "./Chat/MessageItem";
@@ -28,8 +28,10 @@ const dayLabel = (ts) => {
   const now = new Date();
   const yesterday = new Date();
   yesterday.setDate(now.getDate() - 1);
+
   if (d.toDateString() === now.toDateString()) return "Today";
   if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
+
   return d.toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
@@ -41,9 +43,9 @@ export default function ChatConversationPage() {
   const { chatId } = useParams();
   const navigate = useNavigate();
   const { theme, wallpaper } = useContext(ThemeContext);
-  const { profilePic, profileName } = useContext(UserContext); // <-- current user
-  const isDark = theme === "dark";
+  const { profilePic, profileName } = useContext(UserContext);
 
+  const isDark = theme === "dark";
   const myUid = auth.currentUser?.uid;
 
   const messagesRefEl = useRef(null);
@@ -64,7 +66,7 @@ export default function ChatConversationPage() {
   const [hasMore, setHasMore] = useState(true);
   const pageSize = 50;
 
-  // -------------------- Load chat & friend --------------------
+  // -------------------- Load Chat & Friend Meta --------------------
   useEffect(() => {
     if (!chatId) return;
     let unsubChat = null;
@@ -74,11 +76,12 @@ export default function ChatConversationPage() {
       try {
         const cRef = doc(db, "chats", chatId);
         const cSnap = await getDoc(cRef);
+
         if (cSnap.exists()) {
           const data = cSnap.data();
           setChatInfo({ id: cSnap.id, ...data });
 
-          // find friend id
+          // Identify friend
           const friendId = data.participants?.find((p) => p !== myUid);
           if (friendId) {
             const userRef = doc(db, "users", friendId);
@@ -88,8 +91,11 @@ export default function ChatConversationPage() {
           }
         }
 
+        // Live chat updates
         unsubChat = onSnapshot(cRef, (s) => {
-          if (s.exists()) setChatInfo((prev) => ({ ...(prev || {}), ...s.data() }));
+          if (s.exists()) {
+            setChatInfo((prev) => ({ ...(prev || {}), ...s.data() }));
+          }
         });
       } catch (e) {
         console.error("loadMeta error", e);
@@ -103,7 +109,7 @@ export default function ChatConversationPage() {
     };
   }, [chatId, myUid]);
 
-  // -------------------- Load latest messages --------------------
+  // -------------------- Load Latest Messages --------------------
   useEffect(() => {
     if (!chatId) return;
     setLoadingMsgs(true);
@@ -123,10 +129,12 @@ export default function ChatConversationPage() {
 
       if (isAtBottom) endRef.current?.scrollIntoView({ behavior: "smooth" });
 
-      // mark delivered
+      // Mark delivered
       docs.forEach(async (m) => {
         if (m.senderId !== myUid && m.status === "sent") {
-          await updateDoc(doc(db, "chats", chatId, "messages", m.id), { status: "delivered" });
+          await updateDoc(doc(db, "chats", chatId, "messages", m.id), {
+            status: "delivered",
+          });
         }
       });
     });
@@ -134,10 +142,11 @@ export default function ChatConversationPage() {
     return () => unsub();
   }, [chatId, myUid, isAtBottom]);
 
-  // -------------------- Load older messages --------------------
+  // -------------------- Load Older Messages --------------------
   const loadOlderMessages = async () => {
     if (!hasMore || !lastVisible) return;
     setLoadingMsgs(true);
+
     try {
       const messagesRef = collection(db, "chats", chatId, "messages");
       const q = query(
@@ -146,6 +155,7 @@ export default function ChatConversationPage() {
         startAfter(lastVisible),
         fsLimit(pageSize)
       );
+
       const snap = await getDocs(q);
       if (snap.empty) {
         setHasMore(false);
@@ -165,7 +175,7 @@ export default function ChatConversationPage() {
     }
   };
 
-  // -------------------- Scroll detection --------------------
+  // -------------------- Scroll Listener --------------------
   useEffect(() => {
     const el = messagesRefEl.current;
     if (!el) return;
@@ -188,10 +198,13 @@ export default function ChatConversationPage() {
     setIsAtBottom(true);
   };
 
-  // -------------------- Send text message --------------------
+  // -------------------- Send Text Message --------------------
   const sendTextMessage = async () => {
-    if ((chatInfo?.blockedBy || []).includes(myUid)) return alert("You are blocked in this chat.");
-    if (selectedFiles.length > 0) return; // handled by ChatInput
+    if ((chatInfo?.blockedBy || []).includes(myUid))
+      return alert("You are blocked in this chat.");
+
+    if (selectedFiles.length > 0) return; // media handled separately
+
     if (!text.trim()) return;
 
     try {
@@ -204,6 +217,7 @@ export default function ChatConversationPage() {
         status: "sent",
         reactions: {},
       };
+
       if (replyTo) {
         payload.replyTo = {
           id: replyTo.id,
@@ -212,6 +226,7 @@ export default function ChatConversationPage() {
         };
         setReplyTo(null);
       }
+
       await addDoc(collection(db, "chats", chatId, "messages"), payload);
       setText("");
       scrollToBottom();
@@ -221,7 +236,7 @@ export default function ChatConversationPage() {
     }
   };
 
-  // -------------------- JSX --------------------
+  // -------------------- Render --------------------
   return (
     <div
       style={{
@@ -238,18 +253,21 @@ export default function ChatConversationPage() {
         friendInfo={friendInfo}
         myUid={myUid}
         theme={theme}
-        wallpaper={wallpaper}
         headerMenuOpen={headerMenuOpen}
         setHeaderMenuOpen={setHeaderMenuOpen}
         clearChat={() => alert("Clear chat")}
         toggleBlock={() => alert("Toggle block")}
-        userProfilePic={profilePic} // <-- added
-        userProfileName={profileName} // <-- added
       />
 
       {/* Messages */}
-      <div ref={messagesRefEl} style={{ flex: 1, overflowY: "auto", padding: 8 }}>
-        {loadingMsgs && <div style={{ textAlign: "center", marginTop: 12 }}>Loading...</div>}
+      <div
+        ref={messagesRefEl}
+        style={{ flex: 1, overflowY: "auto", padding: 8 }}
+      >
+        {loadingMsgs && (
+          <div style={{ textAlign: "center", marginTop: 12 }}>Loading...</div>
+        )}
+
         {messages.map((msg) => (
           <MessageItem
             key={msg.id}
@@ -261,6 +279,7 @@ export default function ChatConversationPage() {
             chatId={chatId}
           />
         ))}
+
         <div ref={endRef} />
       </div>
 
