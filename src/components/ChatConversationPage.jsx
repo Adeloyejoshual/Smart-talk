@@ -23,6 +23,7 @@ import ChatHeader from "./Chat/ChatHeader";
 import MessageItem from "./Chat/MessageItem";
 import ChatInput from "./Chat/ChatInput";
 
+// Format day labels for messages
 const dayLabel = (ts) => {
   if (!ts) return "";
   const d = ts.toDate ? ts.toDate() : new Date(ts);
@@ -66,7 +67,7 @@ export default function ChatConversationPage() {
   const [hasMore, setHasMore] = useState(true);
   const pageSize = 50;
 
-  // -------------------- Load chat & friend --------------------
+  // -------------------- Load chat & friend info --------------------
   useEffect(() => {
     if (!chatId) return;
     let unsubChat = null;
@@ -90,7 +91,8 @@ export default function ChatConversationPage() {
         }
 
         unsubChat = onSnapshot(doc(db, "chats", chatId), (s) => {
-          if (s.exists()) setChatInfo((prev) => ({ ...(prev || {}), ...s.data() }));
+          if (s.exists())
+            setChatInfo((prev) => ({ ...(prev || {}), ...s.data() }));
         });
       } catch (e) {
         console.error("loadMeta error", e);
@@ -104,7 +106,7 @@ export default function ChatConversationPage() {
     };
   }, [chatId, myUid]);
 
-  // -------------------- Load latest messages --------------------
+  // -------------------- Real-time messages --------------------
   useEffect(() => {
     if (!chatId) return;
     setLoadingMsgs(true);
@@ -112,22 +114,37 @@ export default function ChatConversationPage() {
     const messagesRef = collection(db, "chats", chatId, "messages");
     const q = query(messagesRef, orderBy("createdAt", "desc"), fsLimit(pageSize));
 
-    const unsub = onSnapshot(q, (snap) => {
+    const unsub = onSnapshot(q, async (snap) => {
       const docs = snap.docs
         .map((d) => ({ id: d.id, ...d.data() }))
         .filter((m) => !(m.deletedFor?.includes(myUid)));
 
-      setMessages(docs.reverse());
+      const reversed = docs.reverse();
+      setMessages(reversed);
       setLastVisible(snap.docs[snap.docs.length - 1]);
       setHasMore(snap.docs.length === pageSize);
       setLoadingMsgs(false);
 
       if (isAtBottom) endRef.current?.scrollIntoView({ behavior: "smooth" });
 
-      // mark delivered
-      docs.forEach(async (m) => {
+      // -------------------- Update chat doc --------------------
+      const lastMsg = reversed[reversed.length - 1];
+      if (lastMsg) {
+        const chatRef = doc(db, "chats", chatId);
+        await updateDoc(chatRef, {
+          lastMessage: lastMsg.text || lastMsg.mediaType || "Media",
+          lastMessageAt: lastMsg.createdAt || serverTimestamp(),
+          lastMessageSender: lastMsg.senderId,
+          lastMessageStatus: lastMsg.status,
+        });
+      }
+
+      // Mark messages as delivered
+      reversed.forEach(async (m) => {
         if (m.senderId !== myUid && m.status === "sent") {
-          await updateDoc(doc(db, "chats", chatId, "messages", m.id), { status: "delivered" });
+          await updateDoc(doc(db, "chats", chatId, "messages", m.id), {
+            status: "delivered",
+          });
         }
       });
     });
@@ -213,7 +230,18 @@ export default function ChatConversationPage() {
         };
         setReplyTo(null);
       }
-      await addDoc(collection(db, "chats", chatId, "messages"), payload);
+
+      const docRef = await addDoc(collection(db, "chats", chatId, "messages"), payload);
+
+      // Update chat lastMessage fields immediately
+      const chatRef = doc(db, "chats", chatId);
+      await updateDoc(chatRef, {
+        lastMessage: payload.text,
+        lastMessageAt: serverTimestamp(),
+        lastMessageSender: myUid,
+        lastMessageStatus: "sent",
+      });
+
       setText("");
       scrollToBottom();
     } catch (e) {
