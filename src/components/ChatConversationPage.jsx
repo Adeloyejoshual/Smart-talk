@@ -1,4 +1,3 @@
-// src/components/ChatConversationPage.jsx
 import React, { useEffect, useState, useRef, useContext } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
@@ -17,12 +16,12 @@ import {
 } from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
 import { ThemeContext } from "../context/ThemeContext";
+import { UserContext } from "../context/UserContext"; // <-- Added
 
 import ChatHeader from "./Chat/ChatHeader";
 import MessageItem from "./Chat/MessageItem";
 import ChatInput from "./Chat/ChatInput";
 
-// -------------------- Helpers --------------------
 const dayLabel = (ts) => {
   if (!ts) return "";
   const d = ts.toDate ? ts.toDate() : new Date(ts);
@@ -38,11 +37,11 @@ const dayLabel = (ts) => {
   });
 };
 
-// -------------------- Component --------------------
 export default function ChatConversationPage() {
   const { chatId } = useParams();
   const navigate = useNavigate();
   const { theme, wallpaper } = useContext(ThemeContext);
+  const { profilePic, profileName } = useContext(UserContext); // <-- current user
   const isDark = theme === "dark";
 
   const myUid = auth.currentUser?.uid;
@@ -90,7 +89,7 @@ export default function ChatConversationPage() {
         }
 
         unsubChat = onSnapshot(cRef, (s) => {
-          if (s.exists()) setChatInfo(prev => ({ ...(prev || {}), ...s.data() }));
+          if (s.exists()) setChatInfo((prev) => ({ ...(prev || {}), ...s.data() }));
         });
       } catch (e) {
         console.error("loadMeta error", e);
@@ -125,7 +124,7 @@ export default function ChatConversationPage() {
       if (isAtBottom) endRef.current?.scrollIntoView({ behavior: "smooth" });
 
       // mark delivered
-      docs.forEach(async m => {
+      docs.forEach(async (m) => {
         if (m.senderId !== myUid && m.status === "sent") {
           await updateDoc(doc(db, "chats", chatId, "messages", m.id), { status: "delivered" });
         }
@@ -206,7 +205,11 @@ export default function ChatConversationPage() {
         reactions: {},
       };
       if (replyTo) {
-        payload.replyTo = { id: replyTo.id, text: replyTo.text || (replyTo.mediaType || "media"), senderId: replyTo.senderId };
+        payload.replyTo = {
+          id: replyTo.id,
+          text: replyTo.text || replyTo.mediaType || "media",
+          senderId: replyTo.senderId,
+        };
         setReplyTo(null);
       }
       await addDoc(collection(db, "chats", chatId, "messages"), payload);
@@ -240,6 +243,8 @@ export default function ChatConversationPage() {
         setHeaderMenuOpen={setHeaderMenuOpen}
         clearChat={() => alert("Clear chat")}
         toggleBlock={() => alert("Toggle block")}
+        userProfilePic={profilePic} // <-- added
+        userProfileName={profileName} // <-- added
       />
 
       {/* Messages */}
