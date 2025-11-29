@@ -1,40 +1,20 @@
 // src/components/Chat/ChatHeader.jsx
-import React, { useEffect, useState, useContext } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "../../firebaseConfig";
-import { UserContext } from "../../context/UserContext";
-import { ThreeDots } from "react-bootstrap-icons";
+import { useUser } from "../../context/UserContext";
 
-export default function ChatHeader({
-  friendId,
-  onClearChat,
-  onSearch,
-  onBlock,
-  onMute,
-}) {
+export default function ChatHeader({ friendId, onClearChat, onSearch, onBlock, onMute }) {
   const navigate = useNavigate();
-  const { profilePic: currentUserPic, profileName: currentUserName, cloudinaryBaseUrl } = useContext(UserContext);
+  const { cloudinaryBaseUrl } = useUser(); // from UserContext
   const [friendInfo, setFriendInfo] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
 
   // -------------------------------
-  // Load friend info from Firestore
+  // Format last seen professionally
   // -------------------------------
-  useEffect(() => {
-    if (!friendId) return;
-
-    const unsub = onSnapshot(doc(db, "users", friendId), (snap) => {
-      if (snap.exists()) setFriendInfo(snap.data());
-    });
-
-    return () => unsub();
-  }, [friendId]);
-
-  // -------------------------------
-  // Format last seen
-  // -------------------------------
-  const formatLastSeen = (timestamp) => {
+  function formatLastSeen(timestamp) {
     if (!timestamp) return "";
     const date = timestamp.toDate();
     const now = new Date();
@@ -59,14 +39,31 @@ export default function ChatHeader({
 
     if (isToday) return `Today, ${timeString}`;
     if (isYesterday) return "Yesterday";
-    if (date.getFullYear() === now.getFullYear())
+
+    if (date.getFullYear() === now.getFullYear()) {
       return date.toLocaleDateString([], { month: "short", day: "numeric" });
+    }
 
     return date.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
-  };
+  }
 
   // -------------------------------
-  // Build initials
+  // Load friend info from Firestore
+  // -------------------------------
+  useEffect(() => {
+    if (!friendId) return;
+
+    const unsub = onSnapshot(doc(db, "users", friendId), (snap) => {
+      if (snap.exists()) {
+        setFriendInfo(snap.data());
+      }
+    });
+
+    return () => unsub();
+  }, [friendId]);
+
+  // -------------------------------
+  // Build initials from name
   // -------------------------------
   const getInitials = (name) => {
     if (!name) return "U";
@@ -76,21 +73,17 @@ export default function ChatHeader({
   };
 
   // -------------------------------
-  // Cloudinary helper
+  // Build Cloudinary image URL
   // -------------------------------
-  const getProfileImage = (url) => {
-    if (!url) return null;
-    return url.includes("res.cloudinary.com") ? url : `${cloudinaryBaseUrl}/${url}`;
-  };
-
-  const displayPic = getProfileImage(friendInfo?.profilePic) || getProfileImage(currentUserPic);
-  const displayName = friendInfo?.name || currentUserName || "User";
+  const profileImage = friendInfo?.profilePic
+    ? `${cloudinaryBaseUrl}/${friendInfo.profilePic}`
+    : null;
 
   return (
     <div
       style={{
         width: "100%",
-        backgroundColor: "#0d6efd",
+        backgroundColor: "#0d6efd", // Bootstrap primary blue
         padding: "10px 12px",
         display: "flex",
         alignItems: "center",
@@ -102,7 +95,7 @@ export default function ChatHeader({
     >
       {/* Profile picture / initials */}
       <div
-        onClick={() => friendId && navigate(`/friend/${friendId}`)}
+        onClick={() => navigate(`/friend/${friendId}`)}
         style={{
           width: 42,
           height: 42,
@@ -119,36 +112,48 @@ export default function ChatHeader({
           color: "#333",
         }}
       >
-        {displayPic ? (
+        {profileImage ? (
           <img
-            src={displayPic}
+            src={profileImage}
             alt=""
-            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+            }}
           />
         ) : (
-          getInitials(displayName)
+          getInitials(friendInfo?.name)
         )}
       </div>
 
       {/* Name + status */}
       <div
-        onClick={() => friendId && navigate(`/friend/${friendId}`)}
+        onClick={() => navigate(`/friend/${friendId}`)}
         style={{ flex: 1, color: "white", cursor: "pointer" }}
       >
-        <div style={{ fontSize: 16, fontWeight: "600" }}>{displayName}</div>
+        <div style={{ fontSize: 16, fontWeight: "600" }}>
+          {friendInfo?.name || "Loading..."}
+        </div>
+
         <div style={{ fontSize: 13, opacity: 0.9 }}>
           {friendInfo?.isOnline ? "Online" : formatLastSeen(friendInfo?.lastSeen)}
         </div>
       </div>
 
-      {/* 3-dot menu */}
+      {/* 3-dot menu (Unicode ⋮) */}
       <div style={{ position: "relative" }}>
-        <ThreeDots
-          size={22}
-          color="white"
-          style={{ cursor: "pointer" }}
+        <div
+          style={{
+            cursor: "pointer",
+            fontSize: 22,
+            color: "white",
+            userSelect: "none",
+          }}
           onClick={() => setMenuOpen(!menuOpen)}
-        />
+        >
+          ⋮
+        </div>
 
         {menuOpen && (
           <div
@@ -163,16 +168,43 @@ export default function ChatHeader({
               width: 160,
             }}
           >
-            <div style={menuItem} onClick={() => { setMenuOpen(false); onSearch(); }}>
+            <div
+              style={menuItem}
+              onClick={() => {
+                setMenuOpen(false);
+                onSearch();
+              }}
+            >
               Search
             </div>
-            <div style={menuItem} onClick={() => { setMenuOpen(false); onClearChat(); }}>
+
+            <div
+              style={menuItem}
+              onClick={() => {
+                setMenuOpen(false);
+                onClearChat();
+              }}
+            >
               Clear Chat
             </div>
-            <div style={menuItem} onClick={() => { setMenuOpen(false); onMute(); }}>
+
+            <div
+              style={menuItem}
+              onClick={() => {
+                setMenuOpen(false);
+                onMute();
+              }}
+            >
               Mute
             </div>
-            <div style={{ ...menuItem, color: "red" }} onClick={() => { setMenuOpen(false); onBlock(); }}>
+
+            <div
+              style={{ ...menuItem, color: "red" }}
+              onClick={() => {
+                setMenuOpen(false);
+                onBlock();
+              }}
+            >
               Block
             </div>
           </div>
