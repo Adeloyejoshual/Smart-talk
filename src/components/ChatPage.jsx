@@ -15,8 +15,8 @@ import {
 } from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
-import { ThemeContext } from "../context/ThemeContext";
-import { UserContext } from "../context/UserContext";
+import { ThemeContext } from "../../context/ThemeContext";
+import { UserContext } from "../../context/UserContext";
 import ChatHeader from "./ChatPage/Header";
 import AddFriendPopup from "./ChatPage/AddFriendPopup";
 
@@ -33,7 +33,7 @@ export default function ChatPage() {
   const [showAddFriend, setShowAddFriend] = useState(false);
   const profileInputRef = useRef(null);
 
-  // ================= AUTH CHECK =================
+  // AUTH CHECK
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((u) => {
       if (!u) return navigate("/");
@@ -41,61 +41,47 @@ export default function ChatPage() {
     return unsubscribe;
   }, [navigate]);
 
-  // ================= LOAD CHATS REAL-TIME =================
+  // REAL-TIME CHATS
   useEffect(() => {
     if (!user) return;
-
     const q = query(
       collection(db, "chats"),
       where("participants", "array-contains", user.uid),
-      orderBy("lastMessageAt", "desc") // chats with null lastMessageAt appear at bottom
+      orderBy("lastMessageAt", "desc")
     );
 
     const unsubscribe = onSnapshot(q, async (snapshot) => {
       const chatList = await Promise.all(
         snapshot.docs.map(async (docSnap) => {
           const chatData = { id: docSnap.id, ...docSnap.data() };
-          const friendId = chatData.participants.find((id) => id !== user.uid);
 
-          // Load friend's info
+          // get friend info (uid stored in participants)
+          const friendId = (chatData.participants || []).find((id) => id !== user.uid);
           if (friendId) {
-            const friendSnap = await getDocs(
-              query(collection(db, "users"), where("uid", "==", friendId))
-            );
-            if (!friendSnap.empty) {
-              const data = friendSnap.docs[0].data();
-              chatData.name = data.name || data.email;
-              chatData.photoURL = data.profilePic || null;
+            try {
+              const uDoc = await getDoc(doc(db, "users", friendId));
+              if (uDoc.exists()) {
+                const udata = uDoc.data();
+                chatData.name = udata.name || udata.email || chatData.name;
+                chatData.photoURL = udata.profilePic || chatData.photoURL || null;
+              }
+            } catch (e) {
+              // ignore
             }
           }
 
-          // Load latest message
-          const msgSnap = await getDocs(
-            query(
-              collection(db, "chats", docSnap.id, "messages"),
-              orderBy("createdAt", "desc"),
-              limit(1)
-            )
-          );
-          const latest = msgSnap.docs[0]?.data();
-          if (latest) {
-            chatData.lastMessage = latest.text || "📷 Photo";
-            chatData.lastMessageAt = latest.createdAt;
-            chatData.lastMessageSender = latest.senderId;
-            chatData.lastMessageStatus = latest.status;
-          }
-
+          // pick latest message details if available
+          // (we rely on server-side fields lastMessage/lastMessageAt when present)
           return chatData;
         })
       );
 
-      // Sort pinned first, then by lastMessageAt (nulls go to bottom)
+      // sort pinned first then by lastMessageAt fallback
       chatList.sort((a, b) => {
         if (a.pinned && !b.pinned) return -1;
         if (!a.pinned && b.pinned) return 1;
-
-        const aTime = a.lastMessageAt?.seconds || 0;
-        const bTime = b.lastMessageAt?.seconds || 0;
+        const aTime = a.lastMessageAt?.seconds ? a.lastMessageAt.seconds : (a.lastMessageAt ? new Date(a.lastMessageAt).getTime() / 1000 : 0);
+        const bTime = b.lastMessageAt?.seconds ? b.lastMessageAt.seconds : (b.lastMessageAt ? new Date(b.lastMessageAt).getTime() / 1000 : 0);
         return bTime - aTime;
       });
 
@@ -105,7 +91,7 @@ export default function ChatPage() {
     return () => unsubscribe();
   }, [user]);
 
-  // ================= HELPERS =================
+  // Helpers
   const formatDate = (timestamp) => {
     if (!timestamp) return "";
     const date = new Date(timestamp.seconds ? timestamp.seconds * 1000 : timestamp);
@@ -126,7 +112,7 @@ export default function ChatPage() {
     return "";
   };
 
-  // ================= PROFILE UPLOAD =================
+  // Profile upload
   const handleProfileFileChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
@@ -137,10 +123,9 @@ export default function ChatPage() {
       alert("Failed to upload avatar");
     }
   };
-
   const openProfileUploader = () => profileInputRef.current?.click();
 
-  // ================= CHAT ACTIONS =================
+  // Chat actions
   const toggleSelectChat = (chatId) => {
     setSelectedChats((prev) => {
       const updated = prev.includes(chatId) ? prev.filter((id) => id !== chatId) : [...prev, chatId];
@@ -148,12 +133,10 @@ export default function ChatPage() {
       return updated;
     });
   };
-
   const enterSelectionMode = (chatId) => {
     setSelectedChats([chatId]);
     setSelectionMode(true);
   };
-
   const exitSelectionMode = () => {
     setSelectedChats([]);
     setSelectionMode(false);
@@ -163,18 +146,15 @@ export default function ChatPage() {
     await Promise.all(selectedChats.map((id) => updateDoc(doc(db, "chats", id), { archived: true })));
     exitSelectionMode();
   };
-
   const handleDelete = async () => {
     await Promise.all(selectedChats.map((id) => updateDoc(doc(db, "chats", id), { deleted: true })));
     exitSelectionMode();
   };
-
   const handleMute = async (durationMs) => {
     const mutedUntil = new Date().getTime() + durationMs;
     await Promise.all(selectedChats.map((id) => updateDoc(doc(db, "chats", id), { mutedUntil })));
     exitSelectionMode();
   };
-
   const handlePin = async (chatId) => {
     const pinnedChats = chats.filter(c => c.pinned && c.id !== chatId);
     const chatRef = doc(db, "chats", chatId);
@@ -187,7 +167,6 @@ export default function ChatPage() {
     }
     await updateDoc(chatRef, { pinned: !currentPinned });
   };
-
   const handleBlock = async (chatId) => {
     const chatRef = doc(db, "chats", chatId);
     const chatSnap = await getDoc(chatRef);
@@ -196,14 +175,22 @@ export default function ChatPage() {
     await updateDoc(chatRef, { blocked: !currentBlocked });
   };
 
-  // ================= CHAT FILTERS =================
+  // Called by AddFriendPopup to add optimistic chat immediately
+  const handleChatCreated = (chatObj) => {
+    if (!chatObj || !chatObj.id) return;
+    setChats(prev => {
+      // avoid duplicates — if it already exists by id, keep original list
+      if (prev.some(c => c.id === chatObj.id)) return prev;
+      return [chatObj, ...prev];
+    });
+  };
+
   const visibleChats = chats.filter(c => !c.archived);
   const searchResults = chats.filter(c =>
     c.name?.toLowerCase().includes(search.toLowerCase()) ||
     c.lastMessage?.toLowerCase().includes(search.toLowerCase())
   );
 
-  // ================= RENDER =================
   return (
     <div
       style={{
@@ -336,7 +323,13 @@ export default function ChatPage() {
         +
       </button>
 
-      {showAddFriend && <AddFriendPopup user={user} onClose={() => setShowAddFriend(false)} />}
+      {showAddFriend && (
+        <AddFriendPopup
+          user={user}
+          onClose={() => setShowAddFriend(false)}
+          onChatCreated={handleChatCreated}
+        />
+      )}
 
       {/* Profile uploader */}
       <input
