@@ -3,18 +3,18 @@ import React, { useEffect, useState, useContext } from "react";
 import { useNavigate } from "react-router-dom";
 import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "../../firebaseConfig";
-import { UserContext } from "../../context/UserContext"; // useContext for current user
+import { UserContext } from "../../context/UserContext"; // current user info
 
 export default function ChatHeader({ friendId, onClearChat, onSearch, onBlock, onMute }) {
   const navigate = useNavigate();
-  const { profilePic } = useContext(UserContext);
+  const { profilePic: myProfilePic } = useContext(UserContext); // current user pic
   const [friendInfo, setFriendInfo] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
 
   // -------------------------------
   // Format last seen
   // -------------------------------
-  function formatLastSeen(timestamp) {
+  const formatLastSeen = (timestamp) => {
     if (!timestamp) return "";
     const date = timestamp.toDate();
     const now = new Date();
@@ -42,7 +42,7 @@ export default function ChatHeader({ friendId, onClearChat, onSearch, onBlock, o
     }
 
     return date.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
-  }
+  };
 
   // -------------------------------
   // Load friend info
@@ -57,13 +57,17 @@ export default function ChatHeader({ friendId, onClearChat, onSearch, onBlock, o
     return () => unsub();
   }, [friendId]);
 
+  // -------------------------------
+  // Build initials from name
+  // -------------------------------
   const getInitials = (name) => {
-    if (!name) return "U";
+    if (!name) return "U"; // fallback
     const parts = name.trim().split(" ");
-    return parts.length === 1 ? parts[0][0].toUpperCase() : (parts[0][0] + parts[1][0]).toUpperCase();
+    if (parts.length === 1) return parts[0][0].toUpperCase();
+    return (parts[0][0] + parts[1][0]).toUpperCase();
   };
 
-  const profileImage = friendInfo?.profilePic || profilePic || null;
+  const profileImage = friendInfo?.profilePic || null;
 
   return (
     <div
@@ -79,6 +83,25 @@ export default function ChatHeader({ friendId, onClearChat, onSearch, onBlock, o
         boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
       }}
     >
+      {/* Back arrow */}
+      <div
+        onClick={() => navigate("/chat")}
+        style={{
+          width: 32,
+          height: 32,
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          cursor: "pointer",
+          marginRight: 8,
+          color: "white",
+          fontSize: 20,
+          fontWeight: "bold",
+        }}
+      >
+        ←
+      </div>
+
       {/* Profile picture / initials */}
       <div
         onClick={() => navigate(`/friend/${friendId}`)}
@@ -99,7 +122,11 @@ export default function ChatHeader({ friendId, onClearChat, onSearch, onBlock, o
         }}
       >
         {profileImage ? (
-          <img src={profileImage} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          <img
+            src={profileImage}
+            alt=""
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          />
         ) : (
           getInitials(friendInfo?.name)
         )}
@@ -113,11 +140,19 @@ export default function ChatHeader({ friendId, onClearChat, onSearch, onBlock, o
         </div>
       </div>
 
-      {/* Three-dot menu (inline SVG) */}
+      {/* Three-dot menu */}
       <div style={{ position: "relative" }}>
         <div
           onClick={() => setMenuOpen(!menuOpen)}
-          style={{ cursor: "pointer", width: 22, height: 22, display: "flex", flexDirection: "column", justifyContent: "space-between", padding: 2 }}
+          style={{
+            cursor: "pointer",
+            width: 22,
+            height: 22,
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "space-between",
+            padding: 2,
+          }}
         >
           <div style={{ width: 4, height: 4, borderRadius: "50%", backgroundColor: "white" }} />
           <div style={{ width: 4, height: 4, borderRadius: "50%", backgroundColor: "white" }} />
