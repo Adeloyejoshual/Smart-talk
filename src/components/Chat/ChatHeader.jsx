@@ -1,3 +1,5 @@
+3
+// src/components/Chat/ChatHeader.jsx
 import React from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -29,33 +31,44 @@ export default function ChatHeader({
   setHeaderMenuOpen,
   clearChat,
   toggleBlock,
+  size = 36, // dynamic size
 }) {
   const isDark = theme === "dark";
   const navigate = useNavigate();
 
-  // -------------------- Profile picture or initials --------------------
+  // -------------------- Render profile picture / initials --------------------
   const renderHeaderProfile = () => {
     if (friendInfo?.photoURL) {
-      // Cloudinary transformation: resize to 36x36, crop fill
-      const url = friendInfo.photoURL.includes("res.cloudinary.com")
-        ? friendInfo.photoURL.replace("/upload/", "/upload/c_fill,h_36,w_36/")
-        : friendInfo.photoURL;
-      return <img src={url} alt="" style={{ width: 36, height: 36, borderRadius: "50%" }} />;
+      let url = friendInfo.photoURL;
+
+      // Cloudinary transformation: resize/crop
+      if (url.includes("res.cloudinary.com")) {
+        url = url.replace("/upload/", `/upload/c_fill,h_${size},w_${size}/`);
+      }
+
+      return (
+        <img
+          src={url}
+          alt={friendInfo?.name || "User"}
+          style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover" }}
+        />
+      );
     }
 
-    // Fallback: initials
+    // Generate initials
     const name = friendInfo?.name || "U";
-    const initials = (() => {
-      const parts = name.trim().split(" ");
-      if (parts.length === 1) return parts[0][0].toUpperCase();
-      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-    })();
+    const initials = name
+      .split(" ")
+      .map((n) => n[0])
+      .slice(0, 2)
+      .join("")
+      .toUpperCase();
 
     return (
       <div
         style={{
-          width: 36,
-          height: 36,
+          width: size,
+          height: size,
           borderRadius: "50%",
           background: isDark ? COLORS.darkCard : COLORS.lightCard,
           color: isDark ? "#fff" : "#000",
@@ -111,7 +124,7 @@ export default function ChatHeader({
                   try {
                     const d = friendInfo.lastSeen.toDate ? friendInfo.lastSeen.toDate() : new Date(friendInfo.lastSeen);
                     return d.toLocaleString();
-                  } catch {
+                  } catch (e) {
                     return "unknown";
                   }
                 })()}`
@@ -148,7 +161,7 @@ export default function ChatHeader({
             position: "absolute",
             top: 56,
             right: 12,
-            background: isDark ? COLORS.darkCard : COLORS.lightCard,
+            background: COLORS.lightCard,
             borderRadius: SPACING.borderRadius,
             boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
             zIndex: 30,
