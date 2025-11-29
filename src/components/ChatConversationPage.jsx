@@ -23,13 +23,13 @@ import ChatHeader from "./Chat/ChatHeader";
 import MessageItem from "./Chat/MessageItem";
 import ChatInput from "./Chat/ChatInput";
 
-// Helper for day labels
 const dayLabel = (ts) => {
   if (!ts) return "";
   const d = ts.toDate ? ts.toDate() : new Date(ts);
   const now = new Date();
   const yesterday = new Date();
   yesterday.setDate(now.getDate() - 1);
+
   if (d.toDateString() === now.toDateString()) return "Today";
   if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
   return d.toLocaleDateString(undefined, {
@@ -43,7 +43,7 @@ export default function ChatConversationPage() {
   const { chatId } = useParams();
   const navigate = useNavigate();
   const { theme, wallpaper } = useContext(ThemeContext);
-  const { profilePic, profileName } = useContext(UserContext); // Current user
+  const { profilePic, profileName } = useContext(UserContext);
   const isDark = theme === "dark";
 
   const myUid = auth.currentUser?.uid;
@@ -80,7 +80,6 @@ export default function ChatConversationPage() {
           const data = cSnap.data();
           setChatInfo({ id: cSnap.id, ...data });
 
-          // find friend id
           const friendId = data.participants?.find((p) => p !== myUid);
           if (friendId) {
             const userRef = doc(db, "users", friendId);
@@ -90,7 +89,7 @@ export default function ChatConversationPage() {
           }
         }
 
-        unsubChat = onSnapshot(cRef, (s) => {
+        unsubChat = onSnapshot(doc(db, "chats", chatId), (s) => {
           if (s.exists()) setChatInfo((prev) => ({ ...(prev || {}), ...s.data() }));
         });
       } catch (e) {
@@ -236,17 +235,11 @@ export default function ChatConversationPage() {
     >
       {/* Header */}
       <ChatHeader
-        chatInfo={chatInfo}
-        friendInfo={friendInfo}
-        myUid={myUid}
-        theme={theme}
-        wallpaper={wallpaper}
-        headerMenuOpen={headerMenuOpen}
-        setHeaderMenuOpen={setHeaderMenuOpen}
-        clearChat={() => alert("Clear chat")}
-        toggleBlock={() => alert("Toggle block")}
-        userProfilePic={profilePic} // Current user's profile pic
-        userProfileName={profileName} // Current user's name
+        friendId={friendInfo?.id}
+        onClearChat={() => alert("Clear chat")}
+        onSearch={() => alert("Search")}
+        onBlock={() => alert("Block")}
+        onMute={() => alert("Mute")}
       />
 
       {/* Messages */}
