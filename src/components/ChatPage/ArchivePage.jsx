@@ -1,7 +1,7 @@
 // src/components/ArchivePage.jsx
-import React, { useEffect, useState, useContext, useRef } from "react";
+import React, { useEffect, useState, useContext } from "react";
 import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, getDoc } from "firebase/firestore";
-import { db, auth } from "../firebaseConfig";
+import { db } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
 import { ThemeContext } from "../context/ThemeContext";
 import { UserContext } from "../context/UserContext";
@@ -16,7 +16,7 @@ export default function ArchivePage() {
   const [newMessages, setNewMessages] = useState({});
   const [search, setSearch] = useState("");
 
-  // Real-time archived chats
+  // Load archived chats in real-time
   useEffect(() => {
     if (!user) return;
 
@@ -96,11 +96,9 @@ export default function ArchivePage() {
   );
 
   return (
-    <div style={{ background: wallpaper || (isDark ? "#121212" : "#fff"), minHeight: "100vh", color: isDark ? "#fff" : "#000", paddingBottom: "90px" }}>
+    <div style={{ background: wallpaper || (isDark ? "#121212" : "#fff"), minHeight: "100vh", color: isDark ? "#fff" : "#000", paddingBottom: "10px" }}>
       {/* Header */}
-      <div style={{ padding: 10, fontWeight: "bold", fontSize: 18 }}>
-        📦 Archived Chats
-      </div>
+      <div style={{ padding: 10, fontWeight: "bold", fontSize: 18 }}>📦 Archived Chats</div>
 
       {/* Search */}
       <div style={{ padding: 10 }}>
@@ -117,7 +115,6 @@ export default function ArchivePage() {
       <div style={{ padding: 10 }}>
         {(search ? searchResults : chats).map((chat) => {
           const isNew = newMessages[chat.id];
-
           return (
             <div
               key={chat.id}
@@ -132,8 +129,27 @@ export default function ArchivePage() {
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{ width: 45, height: 45, borderRadius: "50%", overflow: "hidden", background: "#888", display: "flex", justifyContent: "center", alignItems: "center", color: "#fff", fontWeight: "bold" }}>
-                  {chat.photoURL ? <img src={chat.photoURL} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : chat.name ? chat.name[0].toUpperCase() : "U"}
+                <div
+                  style={{
+                    width: 45,
+                    height: 45,
+                    borderRadius: "50%",
+                    overflow: "hidden",
+                    background: "#888",
+                    display: "flex",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    color: "#fff",
+                    fontWeight: "bold",
+                  }}
+                >
+                  {chat.photoURL ? (
+                    <img src={chat.photoURL} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  ) : chat.name ? (
+                    chat.name[0].toUpperCase()
+                  ) : (
+                    "U"
+                  )}
                 </div>
                 <div>
                   <strong>{chat.name || "Unknown"}</strong>
@@ -145,8 +161,19 @@ export default function ArchivePage() {
               <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
                 <small style={{ color: isNew ? "#0d6efd" : "#888" }}>{formatDate(chat.lastMessageAt)}</small>
                 <button
-                  onClick={(e) => { e.stopPropagation(); handleUnarchive(chat.id); }}
-                  style={{ fontSize: 12, padding: "2px 6px", borderRadius: 6, background: "#0d6efd", color: "#fff", border: "none", cursor: "pointer" }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleUnarchive(chat.id);
+                  }}
+                  style={{
+                    fontSize: 12,
+                    padding: "2px 6px",
+                    borderRadius: 6,
+                    background: "#0d6efd",
+                    color: "#fff",
+                    border: "none",
+                    cursor: "pointer",
+                  }}
                 >
                   Unarchive
                 </button>
@@ -155,5 +182,6 @@ export default function ArchivePage() {
           );
         })}
       </div>
+    </div>
   );
 }
