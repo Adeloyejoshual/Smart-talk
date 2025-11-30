@@ -1,16 +1,7 @@
-// src/components/ChatConversationPage.jsx
+// src/components/Chat/ChatConversationPage.jsx
 import React, { useEffect, useState, useRef, useContext } from "react";
 import { useParams } from "react-router-dom";
-import {
-  collection,
-  addDoc,
-  query,
-  orderBy,
-  onSnapshot,
-  serverTimestamp,
-  updateDoc,
-  doc,
-} from "firebase/firestore";
+import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, updateDoc, doc } from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
 import { ThemeContext } from "../context/ThemeContext";
 import { UserContext } from "../context/UserContext";
@@ -36,207 +27,56 @@ export default function ChatConversationPage() {
   const [text, setText] = useState("");
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [replyTo, setReplyTo] = useState(null);
-  const [pinnedMessageId, setPinnedMessageId] = useState(null);
-  const [typing, setTyping] = useState(false);
+  const [pinnedMessage, setPinnedMessage] = useState(null);
+  const [typingUsers, setTypingUsers] = useState([]);
   const [isAtBottom, setIsAtBottom] = useState(true);
 
-  // -------------------- Load chat info --------------------
+  // ---------------- Real-time messages ----------------
   useEffect(() => {
     if (!chatId) return;
-    let unsubChat = null;
-    let unsubUser = null;
-
-    const loadMeta = async () => {
-      try {
-        const cRef = doc(db, "chats", chatId);
-        unsubChat = onSnapshot(cRef, (snap) => {
-          if (snap.exists()) {
-            const data = snap.data();
-            setChatInfo({ id: snap.id, ...data });
-
-            const friendId = data.participants?.find((p) => p !== myUid);
-            if (friendId) {
-              const userRef = doc(db, "users", friendId);
-              unsubUser = onSnapshot(userRef, (s) => {
-                if (s.exists()) setFriendInfo({ id: s.id, ...s.data() });
-              });
-            }
-          }
-        });
-      } catch (e) {
-        console.error("loadMeta error", e);
-      }
-    };
-
-    loadMeta();
-    return () => {
-      if (unsubChat) unsubChat();
-      if (unsubUser) unsubUser();
-    };
-  }, [chatId, myUid]);
-
-  // -------------------- Real-time messages --------------------
-  useEffect(() => {
-    if (!chatId) return;
-    setLoadingMsgs(true);
-
     const messagesRef = collection(db, "chats", chatId, "messages");
     const q = query(messagesRef, orderBy("createdAt", "asc"));
 
     const unsub = onSnapshot(q, (snap) => {
-      const docs = snap.docs
-        .map((d) => ({ id: d.id, ...d.data() }))
-        .filter((m) => !(m.deletedFor?.includes(myUid)));
-
+      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       setMessages(docs);
-
-      // Find pinned message
-      const pinned = docs.find((m) => m.pinned);
-      if (pinned) setPinnedMessageId(pinned.id);
-
-      setLoadingMsgs(false);
+      const pinned = docs.find(m => m.pinned);
+      setPinnedMessage(pinned || null);
       if (isAtBottom) endRef.current?.scrollIntoView({ behavior: "smooth" });
+      setLoadingMsgs(false);
     });
-
     return () => unsub();
-  }, [chatId, myUid, isAtBottom]);
+  }, [chatId, isAtBottom]);
 
-  // -------------------- Scroll detection --------------------
-  useEffect(() => {
-    const el = messagesRefEl.current;
-    if (!el) return;
-
-    const onScroll = () => {
-      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-      setIsAtBottom(atBottom);
-    };
-
-    el.addEventListener("scroll", onScroll);
-    return () => el.removeEventListener("scroll", onScroll);
-  }, []);
-
-  const scrollToBottom = () => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
-    setIsAtBottom(true);
-  };
-
-  // -------------------- Send text message --------------------
   const sendTextMessage = async () => {
-    if (!text.trim() && selectedFiles.length === 0) return;
-
+    if (!text.trim() && !selectedFiles.length) return;
+    const payload = {
+      senderId: myUid,
+      text: text.trim(),
+      mediaUrl: "",
+      mediaType: null,
+      createdAt: serverTimestamp(),
+      reactions: {},
+    };
+    if (replyTo) payload.replyTo = { id: replyTo.id, text: replyTo.text, senderId: replyTo.senderId };
     try {
-      const payload = {
-        senderId: myUid,
-        text: text.trim(),
-        mediaUrl: selectedFiles[0]?.url || "",
-        mediaType: selectedFiles[0]?.type || null,
-        fileName: selectedFiles[0]?.name || "",
-        createdAt: serverTimestamp(),
-        status: "sent",
-        reactions: {},
-      };
-      if (replyTo) {
-        payload.replyTo = {
-          id: replyTo.id,
-          text: replyTo.text || replyTo.mediaType || "media",
-          senderId: replyTo.senderId,
-        };
-        setReplyTo(null);
-      }
-
       await addDoc(collection(db, "chats", chatId, "messages"), payload);
-      await updateDoc(doc(db, "chats", chatId), {
-        lastMessage: payload.text || payload.mediaType,
-        lastMessageAt: serverTimestamp(),
-        lastMessageSender: myUid,
-        lastMessageStatus: "sent",
-      });
-
-      setText("");
-      setSelectedFiles([]);
-      scrollToBottom();
-    } catch (e) {
-      console.error(e);
-      alert("Failed to send");
-    }
+      setText(""); setReplyTo(null);
+      endRef.current?.scrollIntoView({ behavior: "smooth" });
+    } catch (err) { console.error(err); }
   };
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        height: "100vh",
-        backgroundColor: wallpaper || (isDark ? "#0b0b0b" : "#f5f5f5"),
-        color: isDark ? "#fff" : "#000",
-      }}
-    >
-      {/* Header */}
-      <ChatHeader
-        friendId={friendInfo?.id}
-        onClearChat={() => alert("Clear chat")}
-        onSearch={() => alert("Search")}
-        onBlock={() => alert("Block")}
-        onMute={() => alert("Mute")}
-      />
-
-      {/* Messages */}
+    <div style={{ display: "flex", flexDirection: "column", height: "100vh", backgroundColor: wallpaper || (isDark ? "#0b0b0b" : "#f5f5f5"), color: isDark ? "#fff" : "#000" }}>
+      <ChatHeader friendId={friendInfo?.id} onClearChat={() => {}} onSearch={() => {}} onBlock={() => {}} onMute={() => {}} />
+      {pinnedMessage && <div style={{ background: "#f39c12", color: "#fff", padding: 6, borderRadius: 8, margin: 8, fontSize: 14 }}>📌 {pinnedMessage.text || pinnedMessage.mediaType || "Media"}</div>}
       <div ref={messagesRefEl} style={{ flex: 1, overflowY: "auto", padding: 8 }}>
         {loadingMsgs && <div style={{ textAlign: "center", marginTop: 12 }}>Loading...</div>}
-
-        {/* Pinned message */}
-        {pinnedMessageId && (
-          <MessageItem
-            key={pinnedMessageId}
-            message={messages.find((m) => m.id === pinnedMessageId)}
-            myUid={myUid}
-            isDark={isDark}
-            chatId={chatId}
-            setReplyTo={setReplyTo}
-            pinnedMessageId={pinnedMessageId}
-            setPinnedMessageId={setPinnedMessageId}
-          />
-        )}
-
-        {/* Other messages */}
-        {messages
-          .filter((m) => m.id !== pinnedMessageId)
-          .map((msg) => (
-            <MessageItem
-              key={msg.id}
-              message={msg}
-              myUid={myUid}
-              isDark={isDark}
-              chatId={chatId}
-              setReplyTo={setReplyTo}
-              pinnedMessageId={pinnedMessageId}
-              setPinnedMessageId={setPinnedMessageId}
-            />
-          ))}
-
-        {/* Typing indicator */}
-        {typing && (
-          <div style={{ fontSize: 12, color: "#888", margin: "4px 0" }}>
-            Typing...
-          </div>
-        )}
-
+        {messages.map(msg => <MessageItem key={msg.id} message={msg} myUid={myUid} isDark={isDark} chatId={chatId} setReplyTo={setReplyTo} pinnedMessage={pinnedMessage} setPinnedMessage={setPinnedMessage} />)}
+        {typingUsers.length > 0 && <div style={{ fontSize: 12, color: "#888", margin: 4 }}>{typingUsers.join(", ")} typing...</div>}
         <div ref={endRef} />
       </div>
-
-      {/* Input */}
-      <ChatInput
-        text={text}
-        setText={setText}
-        sendTextMessage={sendTextMessage}
-        selectedFiles={selectedFiles}
-        setSelectedFiles={setSelectedFiles}
-        isDark={isDark}
-        chatId={chatId}
-        replyTo={replyTo}
-        setReplyTo={setReplyTo}
-        setTyping={setTyping}
-      />
+      <ChatInput text={text} setText={setText} sendTextMessage={sendTextMessage} selectedFiles={selectedFiles} setSelectedFiles={setSelectedFiles} isDark={isDark} />
     </div>
   );
 }
