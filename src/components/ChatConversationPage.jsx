@@ -1,6 +1,6 @@
 // src/components/ChatConversationPage.jsx
 import React, { useEffect, useState, useRef, useContext } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import {
   collection,
   addDoc,
@@ -10,10 +10,6 @@ import {
   serverTimestamp,
   updateDoc,
   doc,
-  getDoc,
-  getDocs,
-  startAfter,
-  limit as fsLimit,
 } from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
 import { ThemeContext } from "../context/ThemeContext";
@@ -23,30 +19,11 @@ import ChatHeader from "./Chat/ChatHeader";
 import MessageItem from "./Chat/MessageItem";
 import ChatInput from "./Chat/ChatInput";
 
-// Format day labels for messages
-const dayLabel = (ts) => {
-  if (!ts) return "";
-  const d = ts.toDate ? ts.toDate() : new Date(ts);
-  const now = new Date();
-  const yesterday = new Date();
-  yesterday.setDate(now.getDate() - 1);
-
-  if (d.toDateString() === now.toDateString()) return "Today";
-  if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
-  return d.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: d.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
-  });
-};
-
 export default function ChatConversationPage() {
   const { chatId } = useParams();
-  const navigate = useNavigate();
   const { theme, wallpaper } = useContext(ThemeContext);
   const { profilePic, profileName } = useContext(UserContext);
   const isDark = theme === "dark";
-
   const myUid = auth.currentUser?.uid;
 
   const messagesRefEl = useRef(null);
@@ -59,15 +36,11 @@ export default function ChatConversationPage() {
   const [text, setText] = useState("");
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [replyTo, setReplyTo] = useState(null);
-  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  const [pinnedMessageId, setPinnedMessageId] = useState(null);
+  const [typing, setTyping] = useState(false);
   const [isAtBottom, setIsAtBottom] = useState(true);
 
-  // Pagination
-  const [lastVisible, setLastVisible] = useState(null);
-  const [hasMore, setHasMore] = useState(true);
-  const pageSize = 50;
-
-  // -------------------- Load chat & friend info --------------------
+  // -------------------- Load chat info --------------------
   useEffect(() => {
     if (!chatId) return;
     let unsubChat = null;
@@ -76,23 +49,19 @@ export default function ChatConversationPage() {
     const loadMeta = async () => {
       try {
         const cRef = doc(db, "chats", chatId);
-        const cSnap = await getDoc(cRef);
-        if (cSnap.exists()) {
-          const data = cSnap.data();
-          setChatInfo({ id: cSnap.id, ...data });
+        unsubChat = onSnapshot(cRef, (snap) => {
+          if (snap.exists()) {
+            const data = snap.data();
+            setChatInfo({ id: snap.id, ...data });
 
-          const friendId = data.participants?.find((p) => p !== myUid);
-          if (friendId) {
-            const userRef = doc(db, "users", friendId);
-            unsubUser = onSnapshot(userRef, (s) => {
-              if (s.exists()) setFriendInfo({ id: s.id, ...s.data() });
-            });
+            const friendId = data.participants?.find((p) => p !== myUid);
+            if (friendId) {
+              const userRef = doc(db, "users", friendId);
+              unsubUser = onSnapshot(userRef, (s) => {
+                if (s.exists()) setFriendInfo({ id: s.id, ...s.data() });
+              });
+            }
           }
-        }
-
-        unsubChat = onSnapshot(doc(db, "chats", chatId), (s) => {
-          if (s.exists())
-            setChatInfo((prev) => ({ ...(prev || {}), ...s.data() }));
         });
       } catch (e) {
         console.error("loadMeta error", e);
@@ -112,76 +81,25 @@ export default function ChatConversationPage() {
     setLoadingMsgs(true);
 
     const messagesRef = collection(db, "chats", chatId, "messages");
-    const q = query(messagesRef, orderBy("createdAt", "desc"), fsLimit(pageSize));
+    const q = query(messagesRef, orderBy("createdAt", "asc"));
 
-    const unsub = onSnapshot(q, async (snap) => {
+    const unsub = onSnapshot(q, (snap) => {
       const docs = snap.docs
         .map((d) => ({ id: d.id, ...d.data() }))
         .filter((m) => !(m.deletedFor?.includes(myUid)));
 
-      const reversed = docs.reverse();
-      setMessages(reversed);
-      setLastVisible(snap.docs[snap.docs.length - 1]);
-      setHasMore(snap.docs.length === pageSize);
+      setMessages(docs);
+
+      // Find pinned message
+      const pinned = docs.find((m) => m.pinned);
+      if (pinned) setPinnedMessageId(pinned.id);
+
       setLoadingMsgs(false);
-
       if (isAtBottom) endRef.current?.scrollIntoView({ behavior: "smooth" });
-
-      // -------------------- Update chat doc --------------------
-      const lastMsg = reversed[reversed.length - 1];
-      if (lastMsg) {
-        const chatRef = doc(db, "chats", chatId);
-        await updateDoc(chatRef, {
-          lastMessage: lastMsg.text || lastMsg.mediaType || "Media",
-          lastMessageAt: lastMsg.createdAt || serverTimestamp(),
-          lastMessageSender: lastMsg.senderId,
-          lastMessageStatus: lastMsg.status,
-        });
-      }
-
-      // Mark messages as delivered
-      reversed.forEach(async (m) => {
-        if (m.senderId !== myUid && m.status === "sent") {
-          await updateDoc(doc(db, "chats", chatId, "messages", m.id), {
-            status: "delivered",
-          });
-        }
-      });
     });
 
     return () => unsub();
   }, [chatId, myUid, isAtBottom]);
-
-  // -------------------- Load older messages --------------------
-  const loadOlderMessages = async () => {
-    if (!hasMore || !lastVisible) return;
-    setLoadingMsgs(true);
-    try {
-      const messagesRef = collection(db, "chats", chatId, "messages");
-      const q = query(
-        messagesRef,
-        orderBy("createdAt", "desc"),
-        startAfter(lastVisible),
-        fsLimit(pageSize)
-      );
-      const snap = await getDocs(q);
-      if (snap.empty) {
-        setHasMore(false);
-        return;
-      }
-
-      const older = snap.docs
-        .map((d) => ({ id: d.id, ...d.data() }))
-        .filter((m) => !(m.deletedFor?.includes(myUid)));
-
-      setMessages((prev) => [...older.reverse(), ...prev]);
-      setLastVisible(snap.docs[snap.docs.length - 1]);
-    } catch (e) {
-      console.error("Error loading older messages:", e);
-    } finally {
-      setLoadingMsgs(false);
-    }
-  };
 
   // -------------------- Scroll detection --------------------
   useEffect(() => {
@@ -191,15 +109,11 @@ export default function ChatConversationPage() {
     const onScroll = () => {
       const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
       setIsAtBottom(atBottom);
-
-      if (el.scrollTop < 100 && hasMore && !loadingMsgs) {
-        loadOlderMessages();
-      }
     };
 
     el.addEventListener("scroll", onScroll);
     return () => el.removeEventListener("scroll", onScroll);
-  }, [hasMore, loadingMsgs]);
+  }, []);
 
   const scrollToBottom = () => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -208,16 +122,15 @@ export default function ChatConversationPage() {
 
   // -------------------- Send text message --------------------
   const sendTextMessage = async () => {
-    if ((chatInfo?.blockedBy || []).includes(myUid)) return alert("You are blocked in this chat.");
-    if (selectedFiles.length > 0) return;
-    if (!text.trim()) return;
+    if (!text.trim() && selectedFiles.length === 0) return;
 
     try {
       const payload = {
         senderId: myUid,
         text: text.trim(),
-        mediaUrl: "",
-        mediaType: null,
+        mediaUrl: selectedFiles[0]?.url || "",
+        mediaType: selectedFiles[0]?.type || null,
+        fileName: selectedFiles[0]?.name || "",
         createdAt: serverTimestamp(),
         status: "sent",
         reactions: {},
@@ -231,18 +144,16 @@ export default function ChatConversationPage() {
         setReplyTo(null);
       }
 
-      const docRef = await addDoc(collection(db, "chats", chatId, "messages"), payload);
-
-      // Update chat lastMessage fields immediately
-      const chatRef = doc(db, "chats", chatId);
-      await updateDoc(chatRef, {
-        lastMessage: payload.text,
+      await addDoc(collection(db, "chats", chatId, "messages"), payload);
+      await updateDoc(doc(db, "chats", chatId), {
+        lastMessage: payload.text || payload.mediaType,
         lastMessageAt: serverTimestamp(),
         lastMessageSender: myUid,
         lastMessageStatus: "sent",
       });
 
       setText("");
+      setSelectedFiles([]);
       scrollToBottom();
     } catch (e) {
       console.error(e);
@@ -250,7 +161,6 @@ export default function ChatConversationPage() {
     }
   };
 
-  // -------------------- JSX --------------------
   return (
     <div
       style={{
@@ -273,17 +183,44 @@ export default function ChatConversationPage() {
       {/* Messages */}
       <div ref={messagesRefEl} style={{ flex: 1, overflowY: "auto", padding: 8 }}>
         {loadingMsgs && <div style={{ textAlign: "center", marginTop: 12 }}>Loading...</div>}
-        {messages.map((msg) => (
+
+        {/* Pinned message */}
+        {pinnedMessageId && (
           <MessageItem
-            key={msg.id}
-            message={msg}
+            key={pinnedMessageId}
+            message={messages.find((m) => m.id === pinnedMessageId)}
             myUid={myUid}
             isDark={isDark}
-            replyTo={replyTo}
-            setReplyTo={setReplyTo}
             chatId={chatId}
+            setReplyTo={setReplyTo}
+            pinnedMessageId={pinnedMessageId}
+            setPinnedMessageId={setPinnedMessageId}
           />
-        ))}
+        )}
+
+        {/* Other messages */}
+        {messages
+          .filter((m) => m.id !== pinnedMessageId)
+          .map((msg) => (
+            <MessageItem
+              key={msg.id}
+              message={msg}
+              myUid={myUid}
+              isDark={isDark}
+              chatId={chatId}
+              setReplyTo={setReplyTo}
+              pinnedMessageId={pinnedMessageId}
+              setPinnedMessageId={setPinnedMessageId}
+            />
+          ))}
+
+        {/* Typing indicator */}
+        {typing && (
+          <div style={{ fontSize: 12, color: "#888", margin: "4px 0" }}>
+            Typing...
+          </div>
+        )}
+
         <div ref={endRef} />
       </div>
 
@@ -298,6 +235,7 @@ export default function ChatConversationPage() {
         chatId={chatId}
         replyTo={replyTo}
         setReplyTo={setReplyTo}
+        setTyping={setTyping}
       />
     </div>
   );
