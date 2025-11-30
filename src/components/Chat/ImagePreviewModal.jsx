@@ -1,63 +1,70 @@
+// src/components/Chat/ImagePreviewModal.jsx
 import React, { useState, useEffect } from "react";
 import { X } from "lucide-react";
 
 export default function ImagePreviewModal({
   files,
-  onRemove,
-  onSend,
   onCancel,
+  onSend,
+  onRemove,
   onAddFiles,
-  isDark,
 }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [activeUrl, setActiveUrl] = useState("");
 
-  // Only images/videos
-  const mediaFiles = files.filter(f => f.type.startsWith("image/") || f.type.startsWith("video/"));
+  const mediaFiles = files.filter(
+    (f) =>
+      f.type.startsWith("image/") ||
+      f.type.startsWith("video/") ||
+      f.type.startsWith("audio/") ||
+      f.type.startsWith("application/")
+  );
+
   const activeFile = mediaFiles[activeIndex];
 
-  // Update activeUrl whenever activeFile changes
   useEffect(() => {
     if (!activeFile) return;
 
     const url = URL.createObjectURL(activeFile);
     setActiveUrl(url);
 
-    return () => {
-      URL.revokeObjectURL(url);
-    };
+    return () => URL.revokeObjectURL(url);
   }, [activeFile]);
 
-  const isImage = activeFile?.type.startsWith("image/");
-  const isVideo = activeFile?.type.startsWith("video/");
-
   if (!activeFile) return null;
+
+  const isImage = activeFile.type.startsWith("image/");
+  const isVideo = activeFile.type.startsWith("video/");
+  const isAudio = activeFile.type.startsWith("audio/");
+  const isFile =
+    activeFile.type.startsWith("application/") ||
+    (!isImage && !isVideo && !isAudio);
 
   return (
     <div
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(0,0,0,0.85)",
+        background: "rgba(0,0,0,0.9)",
+        zIndex: 99999,
         display: "flex",
         flexDirection: "column",
-        zIndex: 9999,
-        padding: 20,
-        color: "#fff",
+        padding: 10,
+        color: "white",
       }}
     >
-      {/* Close button */}
+      {/* Close Button */}
       <button
         onClick={onCancel}
         style={{
           position: "absolute",
-          top: 20,
-          right: 20,
-          background: "rgba(0,0,0,0.4)",
-          borderRadius: "50%",
-          border: "none",
+          top: 15,
+          right: 15,
           width: 40,
           height: 40,
+          borderRadius: "50%",
+          border: "none",
+          background: "rgba(255,255,255,0.15)",
           display: "flex",
           justifyContent: "center",
           alignItems: "center",
@@ -67,137 +74,169 @@ export default function ImagePreviewModal({
         <X color="#fff" size={22} />
       </button>
 
-      {/* Active Preview */}
+      {/* Preview Area */}
       <div
         style={{
           flex: 1,
           display: "flex",
           justifyContent: "center",
           alignItems: "center",
-          maxHeight: "70vh",
+          padding: 10,
         }}
       >
         {isImage && (
           <img
             src={activeUrl}
             alt="preview"
-            style={{ maxWidth: "90%", maxHeight: "90%", borderRadius: 12, objectFit: "contain" }}
+            style={{ maxWidth: "100%", maxHeight: "80%", borderRadius: 12 }}
           />
         )}
+
         {isVideo && (
           <video
             src={activeUrl}
             controls
-            style={{ maxWidth: "90%", maxHeight: "90%", borderRadius: 12 }}
+            style={{ maxWidth: "100%", maxHeight: "80%", borderRadius: 12 }}
           />
+        )}
+
+        {isAudio && (
+          <audio controls src={activeUrl} style={{ width: "90%" }} />
+        )}
+
+        {isFile && (
+          <div
+            style={{
+              padding: 20,
+              background: "rgba(255,255,255,0.15)",
+              borderRadius: 12,
+              textAlign: "center",
+              width: "90%",
+            }}
+          >
+            📄 {activeFile.name}
+          </div>
         )}
       </div>
 
-      {/* Thumbnail Selector */}
-      <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 10, marginTop: 10 }}>
-        {/* Add + button */}
+      {/* Thumbnails */}
+      <div
+        style={{
+          display: "flex",
+          overflowX: "auto",
+          gap: 10,
+          padding: "5px 0",
+        }}
+      >
+        {/* Add More Button */}
         <div
           onClick={onAddFiles}
           style={{
-            width: 80,
-            height: 80,
+            width: 70,
+            height: 70,
             borderRadius: 10,
             background: "rgba(255,255,255,0.2)",
             display: "flex",
             justifyContent: "center",
             alignItems: "center",
-            fontSize: 32,
-            fontWeight: "bold",
-            color: "#fff",
             cursor: "pointer",
-            flexShrink: 0,
+            fontSize: 30,
           }}
         >
           +
         </div>
 
         {mediaFiles.map((file, i) => {
-          const thumbUrl = URL.createObjectURL(file);
-          const thumbIsImg = file.type.startsWith("image/");
-          const thumbIsVid = file.type.startsWith("video/");
+          const url = URL.createObjectURL(file);
 
           return (
             <div
               key={i}
               onClick={() => setActiveIndex(i)}
               style={{
-                position: "relative",
-                width: 80,
-                height: 80,
+                width: 70,
+                height: 70,
                 borderRadius: 10,
-                cursor: "pointer",
-                border: activeIndex === i ? "2px solid #34B7F1" : "2px solid transparent",
+                position: "relative",
+                border:
+                  activeIndex === i
+                    ? "2px solid #34B7F1"
+                    : "2px solid transparent",
                 overflow: "hidden",
-                background: "rgba(255,255,255,0.1)",
-                flexShrink: 0,
+                cursor: "pointer",
               }}
             >
-              {thumbIsImg && <img src={thumbUrl} alt="thumb" style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
-              {thumbIsVid && <video src={thumbUrl} style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
+              {file.type.startsWith("image/") ? (
+                <img
+                  src={url}
+                  alt=""
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                />
+              ) : file.type.startsWith("video/") ? (
+                <video
+                  src={url}
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                />
+              ) : (
+                <div
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    background: "rgba(255,255,255,0.2)",
+                    display: "flex",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    fontSize: 20,
+                  }}
+                >
+                  📄
+                </div>
+              )}
 
-              {/* Remove Button */}
-              <button
+              {/* Remove */}
+              <div
                 onClick={(e) => {
                   e.stopPropagation();
                   onRemove(i);
                 }}
                 style={{
                   position: "absolute",
-                  top: 4,
-                  right: 4,
-                  background: "rgba(0,0,0,0.5)",
-                  border: "none",
+                  top: 3,
+                  right: 3,
+                  width: 22,
+                  height: 22,
                   borderRadius: "50%",
-                  width: 24,
-                  height: 24,
+                  background: "rgba(0,0,0,0.7)",
                   display: "flex",
                   justifyContent: "center",
                   alignItems: "center",
                   cursor: "pointer",
                 }}
               >
-                <X size={16} color="#fff" />
-              </button>
+                <X size={14} color="#fff" />
+              </div>
             </div>
           );
         })}
       </div>
 
-      {/* Action Buttons */}
-      <div style={{ display: "flex", gap: 15, justifyContent: "center", marginTop: 20 }}>
-        <button
-          onClick={onCancel}
-          style={{
-            padding: "10px 20px",
-            borderRadius: 10,
-            border: "none",
-            background: "#666",
-            color: "#fff",
-            fontWeight: "bold",
-          }}
-        >
-          Cancel
-        </button>
-
-        <button
-          onClick={onSend}
-          style={{
-            padding: "10px 20px",
-            borderRadius: 10,
-            border: "none",
-            background: "#34B7F1",
-            color: "#fff",
-            fontWeight: "bold",
-          }}
-        >
-          Send {mediaFiles.length > 1 ? `(${mediaFiles.length})` : ""}
-        </button>
-      </div>
+      {/* Send Button */}
+      <button
+        onClick={() => onSend(mediaFiles)}
+        style={{
+          marginTop: 10,
+          padding: "14px 0",
+          width: "100%",
+          borderRadius: 10,
+          border: "none",
+          background: "#34B7F1",
+          color: "#fff",
+          fontSize: 17,
+          fontWeight: "bold",
+        }}
+      >
+        Send ({mediaFiles.length})
+      </button>
     </div>
   );
 }
