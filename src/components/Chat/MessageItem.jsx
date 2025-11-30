@@ -1,242 +1,192 @@
 // src/components/Chat/MessageItem.jsx
 import React, { useState, useRef, useEffect } from "react";
-import { doc, updateDoc, deleteDoc, arrayUnion, getDoc } from "firebase/firestore";
+import { doc, updateDoc, deleteDoc } from "firebase/firestore";
 import { db } from "../../firebaseConfig";
+import EmojiPicker from "./EmojiPicker";
 
-const COLORS = {
-  primary: "#34B7F1",
-  lightCard: "#fff",
-  darkCard: "#1b1b1b",
-  darkText: "#fff",
-  mutedText: "#888",
-  grayBorder: "rgba(0,0,0,0.06)",
-  reactionBg: "#111",
-  pinnedBg: "#ffeeba",
-};
+const QUICK = ["💝","💟","💟","❣️","😝"];
 
-const SPACING = { sm: 8, lg: 14, borderRadius: 12 };
-const INLINE_REACTIONS = ["❤️", "😂", "👍", "😮", "😢"];
-
-export default function MessageItem({
-  message,
-  myUid,
-  isDark,
-  chatId,
-  pinnedMessageId,
-  setPinnedMessageId,
-  onReply,
-}) {
+export default function MessageItem({ message, myUid, chatId, isDark, pinnedMessageId, setPinnedMessageId }) {
   const isMine = message.senderId === myUid;
-  const [reactionBar, setReactionBar] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [swipeOffset, setSwipeOffset] = useState(0);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
+  const [reactions, setReactions] = useState(message.reactions || {});
+  const [animatingDelete, setAnimatingDelete] = useState(false);
   const messageRef = useRef(null);
-  const startX = useRef(0);
-  const isSwiping = useRef(false);
 
-  // -------------------- Helpers --------------------
-  const fmtTime = (ts) => {
-    if (!ts) return "";
-    const d = ts.toDate ? ts.toDate() : new Date(ts);
-    return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  };
-
+  // ---------------- Apply reaction ----------------
   const applyReaction = async (emoji) => {
+    const mRef = doc(db, "chats", chatId, "messages", message.id);
+    const current = reactions[myUid];
+    const newValue = current === emoji ? null : emoji;
+
     try {
-      const mRef = doc(db, "chats", chatId, "messages", message.id);
-      const snap = await getDoc(mRef);
-      if (!snap.exists()) return;
-
-      const existing = snap.data().reactions?.[myUid];
-      const newReaction = existing === emoji ? null : emoji;
-      await updateDoc(mRef, { [`reactions.${myUid}`]: newReaction });
-      setReactionBar(false);
-    } catch (e) {
-      console.error(e);
-    }
+      await updateDoc(mRef, { [`reactions.${myUid}`]: newValue });
+      setReactions(prev => ({ ...prev, [myUid]: newValue }));
+      setShowEmojiPicker(false);
+      setMenuOpen(false);
+    } catch (e) { console.error(e); }
   };
 
-  const deleteMessageForMe = async () => {
-    await updateDoc(doc(db, "chats", chatId, "messages", message.id), { deletedFor: arrayUnion(myUid) });
-    setMenuOpen(false);
-  };
-
-  const deleteMessageForEveryone = async () => {
-    if (!confirm("Delete for everyone?")) return;
-    await deleteDoc(doc(db, "chats", chatId, "messages", message.id));
-    setMenuOpen(false);
-  };
-
-  const copyMessageText = async () => {
+  // ---------------- Pin message ----------------
+  const pinMessage = async () => {
     try {
-      await navigator.clipboard.writeText(message.text || message.mediaUrl || "");
+      await updateDoc(doc(db, "chats", chatId), { pinnedMessage: message.id });
+      setPinnedMessageId(message.id);
+      setMenuOpen(false);
+    } catch(e) { console.error(e); }
+  };
+
+  // ---------------- Delete message ----------------
+  const deleteMessage = async () => {
+    if(!window.confirm("Delete this message?")) return;
+    setAnimatingDelete(true);
+    setTimeout(async () => {
+      await deleteDoc(doc(db, "chats", chatId, "messages", message.id));
+    }, 300); // wait for animation
+  };
+
+  // ---------------- Copy message ----------------
+  const copyMessage = async () => {
+    try {
+      await navigator.clipboard.writeText(message.text || "");
       alert("Copied");
       setMenuOpen(false);
-    } catch {
-      alert("Copy failed");
-    }
+    } catch { alert("Failed to copy"); }
   };
 
-  const togglePin = async () => {
-    if (pinnedMessageId === message.id) {
-      setPinnedMessageId(null);
-      await updateDoc(doc(db, "chats", chatId), { pinnedMessage: null });
-    } else {
-      setPinnedMessageId(message.id);
-      await updateDoc(doc(db, "chats", chatId), { pinnedMessage: message.id });
-    }
-    setMenuOpen(false);
+  // ---------------- Long press (mouse & touch) ----------------
+  let timer = null;
+  const handlePressStart = (e) => {
+    e.preventDefault();
+    timer = setTimeout(() => {
+      const rect = messageRef.current.getBoundingClientRect();
+      setMenuPosition({ top: rect.top - 80, left: rect.left });
+      setMenuOpen(true);
+    }, 500);
   };
+  const handlePressEnd = () => clearTimeout(timer);
 
-  // -------------------- Long press for reactions --------------------
-  const handleLongPress = () => setReactionBar(true);
-
-  // -------------------- Swipe-to-reply --------------------
-  const handleTouchStart = (e) => {
-    startX.current = e.touches[0].clientX;
-    isSwiping.current = true;
-  };
-
-  const handleTouchMove = (e) => {
-    if (!isSwiping.current) return;
-    const dx = e.touches[0].clientX - startX.current;
-    if (!isMine && dx < 0) setSwipeOffset(Math.min(0, dx)); // left swipe only
-  };
-
-  const handleTouchEnd = () => {
-    if (!isSwiping.current) return;
-    if (swipeOffset < -50) onReply?.(message); // trigger reply
-    setSwipeOffset(0);
-    isSwiping.current = false;
-  };
-
-  // Close reactions bar when clicking outside
+  // ---------------- Close menu when clicking outside ----------------
   useEffect(() => {
-    const handleClickOutside = (e) => {
+    const close = (e) => {
       if (messageRef.current && !messageRef.current.contains(e.target)) {
-        setReactionBar(false);
+        setMenuOpen(false);
+        setShowEmojiPicker(false);
       }
     };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener("mousedown", close);
+    document.addEventListener("touchstart", close);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("touchstart", close);
+    };
   }, []);
 
-  // -------------------- JSX --------------------
+  // ---------------- Styles ----------------
+  const bubbleStyles = {
+    maxWidth: "70%",
+    padding: 10,
+    borderRadius: 12,
+    backgroundColor: isMine ? "#34B7F1" : isDark ? "#1b1b1b" : "#fff",
+    color: isMine ? "#fff" : isDark ? "#fff" : "#000",
+    cursor: "pointer",
+    wordBreak: "break-word",
+    transition: "transform 0.3s ease, opacity 0.3s ease",
+    transform: animatingDelete ? "translateX(-100%)" : "translateX(0)",
+    opacity: animatingDelete ? 0 : 1,
+  };
+
+  const menuBtn = {
+    padding: 6,
+    border: "none",
+    background: "#eee",
+    borderRadius: 6,
+    cursor: "pointer",
+    textAlign: "left",
+    fontSize: 14,
+  };
+
   return (
     <div
       ref={messageRef}
+      onMouseDown={handlePressStart}
+      onMouseUp={handlePressEnd}
+      onTouchStart={handlePressStart}
+      onTouchEnd={handlePressEnd}
       style={{
         display: "flex",
         flexDirection: "column",
         alignItems: isMine ? "flex-end" : "flex-start",
-        marginBottom: SPACING.sm,
+        marginBottom: 10,
         position: "relative",
-        transition: "all 0.3s ease",
-        transform: `translateX(${swipeOffset}px)`,
-        opacity: message.deletedFor?.includes(myUid) ? 0.4 : 1,
       }}
-      onContextMenu={(e) => { e.preventDefault(); handleLongPress(); }}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
     >
-      {/* Floating Reactions Bar */}
-      {reactionBar && (
-        <div
-          style={{
-            position: "absolute",
-            bottom: "100%",
-            left: "50%",
-            transform: "translateX(-50%)",
-            display: "flex",
-            gap: 6,
-            background: "#fff",
-            borderRadius: 30,
-            padding: "4px 6px",
-            boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
-            zIndex: 1000,
-          }}
-        >
-          {INLINE_REACTIONS.map((e) => (
-            <span
-              key={e}
-              style={{ fontSize: 22, cursor: "pointer" }}
-              onClick={() => applyReaction(e)}
-            >
-              {e}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* Message Bubble */}
-      <div
-        style={{
-          maxWidth: "70%",
-          padding: SPACING.sm,
-          borderRadius: SPACING.borderRadius,
-          backgroundColor: pinnedMessageId === message.id
-            ? COLORS.pinnedBg
-            : isMine
-            ? COLORS.primary
-            : isDark
-            ? COLORS.darkCard
-            : COLORS.lightCard,
-          color: isMine ? "#fff" : isDark ? COLORS.darkText : "#000",
-          cursor: "pointer",
-          wordBreak: "break-word",
-          transition: "all 0.3s ease",
-        }}
-        onClick={() => setReactionBar(false)}
-      >
+      {/* Message bubble */}
+      <div style={bubbleStyles}>
         {message.text}
-        <div style={{ fontSize: 10, color: COLORS.mutedText, marginTop: 2, textAlign: "right" }}>
-          {fmtTime(message.createdAt)} {isMine && message.status ? `• ${message.status}` : ""}
-        </div>
 
-        {/* Reactions */}
-        {Object.keys(message.reactions || {}).length > 0 && (
-          <div style={{ display: "flex", gap: 2, marginTop: 4 }}>
-            {Object.values(message.reactions).map((r, i) => r && (
-              <span key={i} style={{ backgroundColor: COLORS.reactionBg, color: "#fff", borderRadius: 8, padding: "0 4px", fontSize: 10 }}>
-                {r}
-              </span>
+        {/* Current reactions under bubble */}
+        {Object.values(reactions).filter(Boolean).length > 0 && (
+          <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
+            {Object.values(reactions).filter(Boolean).map((r, i) => (
+              <span key={i} style={{ fontSize: 14 }}>{r}</span>
             ))}
           </div>
         )}
+
+        {/* Pinned badge */}
+        {pinnedMessageId === message.id && (
+          <div style={{ fontSize: 12, color: "#f39c12", marginTop: 4 }}>📌 Pinned</div>
+        )}
       </div>
 
-      {/* Inline menu */}
+      {/* Long press menu */}
       {menuOpen && (
         <div
           style={{
             position: "absolute",
-            top: -SPACING.lg,
-            right: 0,
-            background: COLORS.lightCard,
-            border: `1px solid ${COLORS.grayBorder}`,
-            borderRadius: SPACING.borderRadius,
-            zIndex: 10,
+            top: menuPosition.top,
+            left: menuPosition.left,
+            background: "#fff",
+            borderRadius: 12,
+            padding: 8,
+            boxShadow: "0 6px 15px rgba(0,0,0,0.25)",
+            zIndex: 1000,
             display: "flex",
             flexDirection: "column",
+            gap: 6,
+            minWidth: 200,
           }}
         >
-          <button style={menuBtn} onClick={copyMessageText}>Copy</button>
-          <button style={menuBtn} onClick={togglePin}>{pinnedMessageId === message.id ? "Unpin" : "Pin"}</button>
-          {isMine && <button style={menuBtn} onClick={deleteMessageForEveryone}>Delete for Everyone</button>}
-          <button style={menuBtn} onClick={deleteMessageForMe}>Delete for Me</button>
-          <button style={menuBtn} onClick={() => setMenuOpen(false)}>Close</button>
+          {/* Reaction bar above actions */}
+          <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+            {QUICK.map(e => (
+              <span key={e} style={{ fontSize: 22, cursor: "pointer" }} onClick={() => applyReaction(e)}>
+                {e}
+              </span>
+            ))}
+            <span style={{ fontSize: 20, cursor: "pointer" }} onClick={() => setShowEmojiPicker(true)}>+</span>
+          </div>
+
+          {/* Actions under reactions */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <button style={menuBtn} onClick={copyMessage}>Copy</button>
+            <button style={menuBtn} onClick={pinMessage}>Pin</button>
+            <button style={menuBtn} onClick={deleteMessage}>Delete</button>
+          </div>
+
+          {/* Emoji picker */}
+          {showEmojiPicker && (
+            <EmojiPicker
+              position={{ top: -250, left: 0 }}
+              onSelect={applyReaction}
+              onClose={() => setShowEmojiPicker(false)}
+            />
+          )}
         </div>
       )}
     </div>
   );
 }
-
-const menuBtn = {
-  padding: 8,
-  border: "none",
-  background: "transparent",
-  width: "100%",
-  textAlign: "left",
-  cursor: "pointer",
-};
