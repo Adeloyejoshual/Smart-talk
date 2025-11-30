@@ -1,73 +1,59 @@
 // src/components/Chat/ChatHeader.jsx
-import React, { useEffect, useState, useContext } from "react";
+import React, { useEffect, useState, useContext, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "../../firebaseConfig";
-import { UserContext } from "../../context/UserContext"; // current user info
+import { UserContext } from "../../context/UserContext";
+import { FiMoreVertical } from "react-icons/fi"; // Icon for three-dot menu
 
 export default function ChatHeader({ friendId, onClearChat, onSearch, onBlock, onMute }) {
   const navigate = useNavigate();
-  const { profilePic: myProfilePic } = useContext(UserContext); // current user pic
+  const { profilePic: myProfilePic } = useContext(UserContext);
   const [friendInfo, setFriendInfo] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
 
-  // -------------------------------
-  // Format last seen
-  // -------------------------------
-  const formatLastSeen = (timestamp) => {
-    if (!timestamp) return "";
-    const date = timestamp.toDate();
-    const now = new Date();
+  // Detect click outside menu to close it
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
-    const isToday =
-      date.getDate() === now.getDate() &&
-      date.getMonth() === now.getMonth() &&
-      date.getFullYear() === now.getFullYear();
-
-    const yesterday = new Date();
-    yesterday.setDate(now.getDate() - 1);
-
-    const isYesterday =
-      date.getDate() === yesterday.getDate() &&
-      date.getMonth() === yesterday.getMonth() &&
-      date.getFullYear() === yesterday.getFullYear();
-
-    const timeString = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-
-    if (isToday) return `Today, ${timeString}`;
-    if (isYesterday) return "Yesterday";
-
-    if (date.getFullYear() === now.getFullYear()) {
-      return date.toLocaleDateString([], { month: "short", day: "numeric" });
-    }
-
-    return date.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
-  };
-
-  // -------------------------------
   // Load friend info
-  // -------------------------------
   useEffect(() => {
     if (!friendId) return;
-
     const unsub = onSnapshot(doc(db, "users", friendId), (snap) => {
       if (snap.exists()) setFriendInfo(snap.data());
     });
-
     return () => unsub();
   }, [friendId]);
 
-  // -------------------------------
-  // Build initials from name
-  // -------------------------------
   const getInitials = (name) => {
-    if (!name) return "U"; // fallback
+    if (!name) return "U";
     const parts = name.trim().split(" ");
     if (parts.length === 1) return parts[0][0].toUpperCase();
     return (parts[0][0] + parts[1][0]).toUpperCase();
   };
 
   const profileImage = friendInfo?.profilePic || null;
+
+  const formatLastSeen = (timestamp) => {
+    if (!timestamp) return "";
+    const date = timestamp.toDate();
+    const now = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(now.getDate() - 1);
+    const timeString = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+    if (date.toDateString() === now.toDateString()) return `Today, ${timeString}`;
+    if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
+    return date.toLocaleDateString([], { month: "short", day: "numeric", year: date.getFullYear() !== now.getFullYear() ? "numeric" : undefined });
+  };
 
   return (
     <div
@@ -141,35 +127,26 @@ export default function ChatHeader({ friendId, onClearChat, onSearch, onBlock, o
       </div>
 
       {/* Three-dot menu */}
-      <div style={{ position: "relative" }}>
-        <div
+      <div ref={menuRef} style={{ position: "relative" }}>
+        <FiMoreVertical
           onClick={() => setMenuOpen(!menuOpen)}
-          style={{
-            cursor: "pointer",
-            width: 22,
-            height: 22,
-            display: "flex",
-            flexDirection: "column",
-            justifyContent: "space-between",
-            padding: 2,
-          }}
-        >
-          <div style={{ width: 4, height: 4, borderRadius: "50%", backgroundColor: "white" }} />
-          <div style={{ width: 4, height: 4, borderRadius: "50%", backgroundColor: "white" }} />
-          <div style={{ width: 4, height: 4, borderRadius: "50%", backgroundColor: "white" }} />
-        </div>
+          size={22}
+          color="white"
+          style={{ cursor: "pointer" }}
+        />
 
         {menuOpen && (
           <div
             style={{
               position: "absolute",
-              top: 30,
+              top: 28,
               right: 0,
               background: "white",
               borderRadius: 6,
               padding: "8px 0",
               boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
               width: 160,
+              animation: "fadeIn 0.2s ease",
             }}
           >
             <div style={menuItem} onClick={() => { setMenuOpen(false); onSearch(); }}>Search</div>
@@ -188,4 +165,5 @@ const menuItem = {
   cursor: "pointer",
   fontSize: 14,
   color: "#333",
+  transition: "background 0.2s",
 };
