@@ -1,10 +1,9 @@
 // src/components/Chat/MessageItem.jsx
 import React, { useState, useRef, useEffect } from "react";
-import { doc, updateDoc, deleteDoc, arrayUnion } from "firebase/firestore";
+import { doc, updateDoc, deleteDoc, getDoc, arrayUnion } from "firebase/firestore";
 import { db } from "../../firebaseConfig";
 import EmojiPicker from "./EmojiPicker";
 
-const QUICK_REACTIONS = ["❤️", "😂", "👍", "😮", "😢"];
 const COLORS = {
   primary: "#34B7F1",
   lightCard: "#fff",
@@ -16,162 +15,243 @@ const COLORS = {
   reactionBg: "#111",
 };
 
-export default function MessageItem({ message, myUid, isDark, chatId, onPin }) {
+const SPACING = { sm: 8, lg: 14, borderRadius: 12 };
+const QUICK_REACTIONS = ["❤️", "😂", "👍", "😮", "😢"];
+
+export default function MessageItem({ message, myUid, isDark, chatId }) {
   const isMine = message.senderId === myUid;
+
   const [menuOpen, setMenuOpen] = useState(false);
-  const [showReactions, setShowReactions] = useState(false);
-  const [reactionPos, setReactionPos] = useState("top"); // top or bottom
-  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+  const [reactionPicker, setReactionPicker] = useState(false);
+  const [emojiPosition, setEmojiPosition] = useState({ top: 0, left: 0 });
 
-  const msgRef = useRef(null);
-  const pressTimer = useRef(null);
+  const messageRef = useRef(null);
 
+  // -------------------- Format timestamp --------------------
   const fmtTime = (ts) => {
     if (!ts) return "";
     const d = ts.toDate ? ts.toDate() : new Date(ts);
-    return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
 
-  // -------------------- Long press detection --------------------
-  const onLongPressStart = () => {
-    pressTimer.current = setTimeout(() => {
-      if (msgRef.current) {
-        const rect = msgRef.current.getBoundingClientRect();
-        const windowHeight = window.innerHeight;
-        setReactionPos(rect.top > 60 ? "top" : "bottom");
-      }
-      setShowReactions(true);
-    }, 500);
+  // -------------------- Cloudinary helper --------------------
+  const getCloudinaryUrl = (url, type = "image", width = 300) => {
+    if (!url) return "";
+    if (!url.includes("res.cloudinary.com")) return url;
+    const trans = type === "image" ? `c_fill,w_${width},q_auto` : `c_fill,w_${width},q_auto`;
+    return url.replace("/upload/", `/upload/${trans}/`);
   };
-  const onLongPressEnd = () => clearTimeout(pressTimer.current);
 
   // -------------------- Reactions --------------------
   const applyReaction = async (emoji) => {
     try {
       const mRef = doc(db, "chats", chatId, "messages", message.id);
-      const existing = message.reactions?.[myUid];
+      const snap = await getDoc(mRef);
+      if (!snap.exists()) return;
+      const existing = snap.data().reactions?.[myUid];
       await updateDoc(mRef, { [`reactions.${myUid}`]: existing === emoji ? null : emoji });
-      setShowReactions(false);
+      setReactionPicker(false);
     } catch (e) {
       console.error(e);
     }
   };
 
   // -------------------- Message actions --------------------
-  const deleteMessageForEveryone = async () => {
+  const deleteForEveryone = async () => {
     if (!confirm("Delete for everyone?")) return;
     await deleteDoc(doc(db, "chats", chatId, "messages", message.id));
+    setMenuOpen(false);
   };
-  const deleteMessageForMe = async () => {
-    await updateDoc(doc(db, "chats", chatId, "messages", message.id), { deletedFor: arrayUnion(myUid) });
+
+  const deleteForMe = async () => {
+    await updateDoc(doc(db, "chats", chatId, "messages", message.id), {
+      deletedFor: arrayUnion(myUid),
+    });
+    setMenuOpen(false);
   };
-  const copyMessage = async () => {
+
+  const copyText = async () => {
     try {
       await navigator.clipboard.writeText(message.text || message.mediaUrl || "");
       alert("Copied");
+      setMenuOpen(false);
     } catch {
       alert("Copy failed");
     }
   };
-  const pinMessage = () => {
-    onPin?.(message);
-    setMenuOpen(false);
+
+  const pinMessage = async () => {
+    try {
+      const mRef = doc(db, "chats", chatId, "messages", message.id);
+      await updateDoc(mRef, { pinned: true });
+      alert("Message pinned");
+      setMenuOpen(false);
+    } catch (e) {
+      console.error(e);
+    }
   };
+
+  // -------------------- Long press --------------------
+  const handleLongPress = (e) => {
+    const rect = messageRef.current?.getBoundingClientRect();
+    setEmojiPosition({ top: rect?.top - 50, left: rect?.left || 0 });
+    setReactionPicker(true);
+  };
+
+  const handleClickOutside = (e) => {
+    if (messageRef.current && !messageRef.current.contains(e.target)) {
+      setReactionPicker(false);
+    }
+  };
+
+  useEffect(() => {
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // -------------------- JSX --------------------
   return (
     <div
-      ref={msgRef}
-      onMouseDown={onLongPressStart}
-      onTouchStart={onLongPressStart}
-      onMouseUp={onLongPressEnd}
-      onMouseLeave={onLongPressEnd}
-      onTouchEnd={onLongPressEnd}
+      ref={messageRef}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        handleLongPress();
+      }}
       style={{
         display: "flex",
         flexDirection: "column",
         alignItems: isMine ? "flex-end" : "flex-start",
-        marginBottom: 10,
+        marginBottom: SPACING.sm,
         position: "relative",
-        transition: "all 0.2s ease",
+        maxWidth: "75%",
       }}
     >
-      {/* Reaction bar */}
-      {showReactions && (
-        <div
-          style={{
-            position: "absolute",
-            [reactionPos === "top" ? "bottom" : "top"]: "100%",
-            display: "flex",
-            gap: 6,
-            background: "#fff",
-            borderRadius: 16,
-            padding: "4px 6px",
-            boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
-            zIndex: 50,
-            flexWrap: "wrap",
-            minWidth: 120,
-          }}
-        >
-          {QUICK_REACTIONS.map((r) => (
-            <span key={r} style={{ fontSize: 22, cursor: "pointer" }} onClick={() => applyReaction(r)}>
-              {r}
-            </span>
-          ))}
-          <span style={{ cursor: "pointer", fontSize: 22 }} onClick={() => setEmojiPickerOpen(true)}>+</span>
-
-          {/* Actions under reactions */}
-          <button onClick={() => copyMessage()} style={actionBtn}>Copy</button>
-          <button onClick={() => pinMessage()} style={actionBtn}>Pin</button>
-          <button onClick={() => deleteMessageForMe()} style={actionBtn}>Delete</button>
-        </div>
-      )}
-
-      {/* Full emoji picker */}
-      {emojiPickerOpen && (
-        <EmojiPicker
-          onSelect={(e) => { applyReaction(e); setEmojiPickerOpen(false); }}
-          onClose={() => setEmojiPickerOpen(false)}
-          position={{ top: 0, left: 0 }}
-        />
-      )}
-
-      {/* Message bubble */}
+      {/* Message content */}
       <div
         style={{
-          maxWidth: "70%",
-          padding: 10,
-          borderRadius: 12,
+          padding: SPACING.sm,
+          borderRadius: SPACING.borderRadius,
           backgroundColor: isMine ? COLORS.primary : isDark ? COLORS.darkCard : COLORS.lightCard,
           color: isMine ? "#fff" : isDark ? COLORS.darkText : "#000",
-          cursor: "pointer",
           wordBreak: "break-word",
+          cursor: "pointer",
         }}
       >
+        {/* Text */}
         {message.text && <div>{message.text}</div>}
-        <div style={{ fontSize: 10, color: COLORS.mutedText, textAlign: "right", marginTop: 2 }}>
-          {fmtTime(message.createdAt)} {isMine && message.status ? `• ${message.status}` : ""}
+
+        {/* Media */}
+        {message.mediaUrl && (
+          <div style={{ marginTop: 4 }}>
+            {message.mediaType === "image" && (
+              <img
+                src={getCloudinaryUrl(message.mediaUrl, "image")}
+                alt=""
+                style={{ maxWidth: "100%", borderRadius: SPACING.borderRadius }}
+              />
+            )}
+            {message.mediaType === "video" && (
+              <video
+                src={getCloudinaryUrl(message.mediaUrl, "video")}
+                controls
+                style={{ maxWidth: "100%", borderRadius: SPACING.borderRadius }}
+              />
+            )}
+            {message.mediaType === "audio" && <audio src={message.mediaUrl} controls />}
+            {message.mediaType === "pdf" && (
+              <a href={message.mediaUrl} target="_blank" rel="noreferrer">
+                {message.fileName || "PDF Document"}
+              </a>
+            )}
+          </div>
+        )}
+
+        {/* Time */}
+        <div style={{ fontSize: 10, color: COLORS.mutedText, marginTop: 2, textAlign: "right" }}>
+          {message.edited && "(edited)"} {fmtTime(message.createdAt)}
         </div>
-        {/* Reactions under message */}
-        {Object.keys(message.reactions || {}).length > 0 && (
-          <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
-            {Object.values(message.reactions).map((r, i) => r && (
-              <span key={i} style={{ background: COLORS.reactionBg, color: "#fff", borderRadius: 8, padding: "0 4px", fontSize: 10 }}>
+      </div>
+
+      {/* Floating Emoji + Actions */}
+      {reactionPicker && (
+        <div
+          style={{
+            position: "fixed",
+            top: emojiPosition.top,
+            left: emojiPosition.left,
+            background: "#fff",
+            borderRadius: 16,
+            boxShadow: "0 8px 20px rgba(0,0,0,0.2)",
+            padding: 8,
+            zIndex: 2000,
+          }}
+        >
+          {/* Quick reactions */}
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
+            {QUICK_REACTIONS.map((e) => (
+              <span
+                key={e}
+                style={{ fontSize: 22, cursor: "pointer" }}
+                onClick={() => applyReaction(e)}
+              >
+                {e}
+              </span>
+            ))}
+            <span
+              style={{
+                fontSize: 18,
+                cursor: "pointer",
+                padding: "0 6px",
+                borderRadius: "50%",
+                background: "#eee",
+              }}
+              onClick={() => {}}
+            >
+              +
+            </span>
+          </div>
+
+          {/* Actions below emoji */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <button onClick={() => alert("Reply")} style={actionButton}>Reply</button>
+            <button onClick={copyText} style={actionButton}>Copy</button>
+            <button onClick={pinMessage} style={actionButton}>Pin</button>
+            <button onClick={deleteForEveryone} style={actionButton}>Delete</button>
+          </div>
+        </div>
+      )}
+
+      {/* Existing reactions under message */}
+      {message.reactions && Object.keys(message.reactions).length > 0 && (
+        <div style={{ display: "flex", gap: 4, marginTop: 2, flexWrap: "wrap" }}>
+          {Object.values(message.reactions)
+            .filter(Boolean)
+            .map((r, i) => (
+              <span
+                key={i}
+                style={{
+                  fontSize: 14,
+                  padding: "2px 6px",
+                  borderRadius: 10,
+                  backgroundColor: COLORS.reactionBg,
+                  color: "#fff",
+                }}
+              >
                 {r}
               </span>
             ))}
-          </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
 
-const actionBtn = {
-  padding: "2px 6px",
-  fontSize: 12,
-  cursor: "pointer",
+const actionButton = {
+  padding: 6,
+  background: "#f0f0f0",
   border: "none",
-  background: "#eee",
-  borderRadius: 6,
+  borderRadius: 8,
+  cursor: "pointer",
+  fontSize: 13,
+  textAlign: "center",
 };
