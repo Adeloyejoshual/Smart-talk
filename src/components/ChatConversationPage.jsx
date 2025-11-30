@@ -10,7 +10,6 @@ import {
   serverTimestamp,
   updateDoc,
   doc,
-  getDoc,
 } from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
 import { ThemeContext } from "../context/ThemeContext";
@@ -19,6 +18,7 @@ import { UserContext } from "../context/UserContext";
 import ChatHeader from "./Chat/ChatHeader";
 import MessageItem from "./Chat/MessageItem";
 import ChatInput from "./Chat/ChatInput";
+import ImagePreviewModal from "./Chat/ImagePreviewModal";
 
 export default function ChatConversationPage() {
   const { chatId } = useParams();
@@ -41,29 +41,52 @@ export default function ChatConversationPage() {
   const [typingUsers, setTypingUsers] = useState([]);
   const [isAtBottom, setIsAtBottom] = useState(true);
 
-  // ---------------- Load chat info ----------------
+  const [showPreview, setShowPreview] = useState(false);
+
+  // -------------------- Load chat & friend info --------------------
   useEffect(() => {
     if (!chatId) return;
-    const chatRef = doc(db, "chats", chatId);
-    const unsubChat = onSnapshot(chatRef, async (snap) => {
-      if (!snap.exists()) return;
-      const data = snap.data();
-      setChatInfo({ id: snap.id, ...data });
+    let unsubChat = null;
+    let unsubUser = null;
 
-      // Load friend info
-      const friendId = data.participants?.find((p) => p !== myUid);
-      if (friendId) {
-        const userRef = doc(db, "users", friendId);
-        const unsubUser = onSnapshot(userRef, (s) => {
-          if (s.exists()) setFriendInfo({ id: s.id, ...s.data() });
+    const loadMeta = async () => {
+      try {
+        const cRef = doc(db, "chats", chatId);
+        unsubChat = onSnapshot(cRef, (s) => {
+          if (s.exists()) {
+            const data = s.data();
+            setChatInfo({ id: s.id, ...data });
+
+            const friendId = data.participants?.find((p) => p !== myUid);
+            if (friendId) {
+              const userRef = doc(db, "users", friendId);
+              unsubUser = onSnapshot(userRef, (snap) => {
+                if (snap.exists()) setFriendInfo({ id: snap.id, ...snap.data() });
+              });
+            }
+
+            // Handle pinned message
+            if (data.pinnedMessageId) {
+              const pinnedMsgRef = doc(db, "chats", chatId, "messages", data.pinnedMessageId);
+              onSnapshot(pinnedMsgRef, (snap) => {
+                if (snap.exists()) setPinnedMessage({ id: snap.id, ...snap.data() });
+              });
+            }
+          }
         });
+      } catch (e) {
+        console.error("loadMeta error", e);
       }
-    });
+    };
 
-    return () => unsubChat();
+    loadMeta();
+    return () => {
+      if (unsubChat) unsubChat();
+      if (unsubUser) unsubUser();
+    };
   }, [chatId, myUid]);
 
-  // ---------------- Real-time messages ----------------
+  // -------------------- Real-time messages --------------------
   useEffect(() => {
     if (!chatId) return;
     setLoadingMsgs(true);
@@ -74,8 +97,6 @@ export default function ChatConversationPage() {
     const unsub = onSnapshot(q, (snap) => {
       const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       setMessages(docs);
-      const pinned = docs.find((m) => m.pinned);
-      setPinnedMessage(pinned || null);
       if (isAtBottom) endRef.current?.scrollIntoView({ behavior: "smooth" });
       setLoadingMsgs(false);
     });
@@ -83,38 +104,7 @@ export default function ChatConversationPage() {
     return () => unsub();
   }, [chatId, isAtBottom]);
 
-  // ---------------- Send message ----------------
-  const sendTextMessage = async () => {
-    if (!text.trim() && !selectedFiles.length) return;
-
-    const payload = {
-      senderId: myUid,
-      text: text.trim(),
-      mediaUrl: "",
-      mediaType: null,
-      createdAt: serverTimestamp(),
-      reactions: {},
-    };
-
-    if (replyTo) {
-      payload.replyTo = {
-        id: replyTo.id,
-        text: replyTo.text || replyTo.mediaType || "media",
-        senderId: replyTo.senderId,
-      };
-    }
-
-    try {
-      await addDoc(collection(db, "chats", chatId, "messages"), payload);
-      setText("");
-      setReplyTo(null);
-      endRef.current?.scrollIntoView({ behavior: "smooth" });
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  // ---------------- Scroll detection ----------------
+  // -------------------- Scroll detection --------------------
   useEffect(() => {
     const el = messagesRefEl.current;
     if (!el) return;
@@ -127,6 +117,90 @@ export default function ChatConversationPage() {
     el.addEventListener("scroll", onScroll);
     return () => el.removeEventListener("scroll", onScroll);
   }, []);
+
+  // -------------------- Send text message --------------------
+  const sendTextMessage = async () => {
+    if (!text.trim() && selectedFiles.length === 0) return;
+
+    try {
+      // Handle text + files
+      if (selectedFiles.length > 0) {
+        setShowPreview(true);
+        return; // Media sending handled in preview modal
+      }
+
+      const payload = {
+        senderId: myUid,
+        text: text.trim(),
+        mediaUrl: "",
+        mediaType: null,
+        createdAt: serverTimestamp(),
+        reactions: {},
+        delivered: false,
+        seen: false,
+      };
+
+      if (replyTo) {
+        payload.replyTo = {
+          id: replyTo.id,
+          text: replyTo.text,
+          senderId: replyTo.senderId,
+        };
+        setReplyTo(null);
+      }
+
+      await addDoc(collection(db, "chats", chatId, "messages"), payload);
+      setText("");
+      endRef.current?.scrollIntoView({ behavior: "smooth" });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // -------------------- Send media messages --------------------
+  const sendMediaMessage = async (files) => {
+    if (!files || files.length === 0) return;
+
+    for (let f of files) {
+      const type = f.type.startsWith("image/")
+        ? "image"
+        : f.type.startsWith("video/")
+        ? "video"
+        : f.type.startsWith("audio/")
+        ? "audio"
+        : "file";
+
+      // Upload to Cloudinary / storage here
+      // Placeholder: assume mediaUrl = URL.createObjectURL(f)
+      const mediaUrl = URL.createObjectURL(f);
+
+      const payload = {
+        senderId: myUid,
+        text: f.name,
+        mediaUrl,
+        mediaType: type,
+        createdAt: serverTimestamp(),
+        reactions: {},
+        delivered: false,
+        seen: false,
+      };
+
+      if (replyTo) {
+        payload.replyTo = {
+          id: replyTo.id,
+          text: replyTo.text,
+          senderId: replyTo.senderId,
+        };
+        setReplyTo(null);
+      }
+
+      await addDoc(collection(db, "chats", chatId, "messages"), payload);
+    }
+
+    setSelectedFiles([]);
+    setShowPreview(false);
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
 
   return (
     <div
@@ -141,14 +215,9 @@ export default function ChatConversationPage() {
       {/* Header */}
       <ChatHeader
         friendId={friendInfo?.id}
-        friendName={friendInfo?.name || profileName}
-        friendPic={friendInfo?.profilePic || profilePic}
-        lastSeen={friendInfo?.lastSeen}
-        isOnline={friendInfo?.isOnline}
+        chatId={chatId}
         onClearChat={() => {}}
         onSearch={() => {}}
-        onBlock={() => {}}
-        onMute={() => {}}
       />
 
       {/* Pinned message */}
@@ -161,18 +230,15 @@ export default function ChatConversationPage() {
             borderRadius: 8,
             margin: 8,
             fontSize: 14,
-            cursor: "pointer",
           }}
-          onClick={() => setPinnedMessage(null)}
         >
           📌 {pinnedMessage.text || pinnedMessage.mediaType || "Media"}
         </div>
       )}
 
-      {/* Messages list */}
+      {/* Messages */}
       <div ref={messagesRefEl} style={{ flex: 1, overflowY: "auto", padding: 8 }}>
         {loadingMsgs && <div style={{ textAlign: "center", marginTop: 12 }}>Loading...</div>}
-
         {messages.map((msg) => (
           <MessageItem
             key={msg.id}
@@ -186,25 +252,41 @@ export default function ChatConversationPage() {
           />
         ))}
 
-        {/* Typing indicator */}
         {typingUsers.length > 0 && (
           <div style={{ fontSize: 12, color: "#888", margin: 4 }}>
             {typingUsers.join(", ")} typing...
           </div>
         )}
-
         <div ref={endRef} />
       </div>
 
-      {/* Input */}
+      {/* Chat input */}
       <ChatInput
         text={text}
         setText={setText}
         sendTextMessage={sendTextMessage}
+        sendMediaMessage={sendMediaMessage}
         selectedFiles={selectedFiles}
         setSelectedFiles={setSelectedFiles}
         isDark={isDark}
+        setShowPreview={setShowPreview}
+        replyTo={replyTo}
+        setReplyTo={setReplyTo}
       />
+
+      {/* Image / Video Preview */}
+      {showPreview && selectedFiles.length > 0 && (
+        <ImagePreviewModal
+          files={selectedFiles}
+          onRemove={(i) =>
+            setSelectedFiles((prev) => prev.filter((_, idx) => idx !== i))
+          }
+          onSend={() => sendMediaMessage(selectedFiles)}
+          onCancel={() => setShowPreview(false)}
+          onAddFiles={() => document.getElementById("file-input")?.click()}
+          isDark={isDark}
+        />
+      )}
     </div>
   );
 }
