@@ -1,6 +1,6 @@
 // src/components/Chat/MessageItem.jsx
-import React, { useState } from "react";
-import { doc, updateDoc, deleteDoc, getDoc, arrayUnion } from "firebase/firestore";
+import React, { useState, useRef, useEffect } from "react";
+import { doc, updateDoc, deleteDoc, arrayUnion, getDoc } from "firebase/firestore";
 import { db } from "../../firebaseConfig";
 
 const COLORS = {
@@ -10,46 +10,60 @@ const COLORS = {
   darkText: "#fff",
   mutedText: "#888",
   grayBorder: "rgba(0,0,0,0.06)",
-  edited: "#999",
   reactionBg: "#111",
+  pinnedBg: "#ffeeba",
 };
 
 const SPACING = { sm: 8, lg: 14, borderRadius: 12 };
-
 const INLINE_REACTIONS = ["❤️", "😂", "👍", "😮", "😢"];
 
-export default function MessageItem({ message, myUid, isDark, replyTo, setReplyTo, chatId }) {
+export default function MessageItem({
+  message,
+  myUid,
+  isDark,
+  chatId,
+  pinnedMessageId,
+  setPinnedMessageId,
+  onReply,
+}) {
   const isMine = message.senderId === myUid;
+  const [reactionBar, setReactionBar] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [reactionFor, setReactionFor] = useState(false);
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const messageRef = useRef(null);
+  const startX = useRef(0);
+  const isSwiping = useRef(false);
 
+  // -------------------- Helpers --------------------
   const fmtTime = (ts) => {
     if (!ts) return "";
     const d = ts.toDate ? ts.toDate() : new Date(ts);
     return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   };
 
-  const applyReaction = async (messageId, emoji) => {
+  const applyReaction = async (emoji) => {
     try {
-      const mRef = doc(db, "chats", chatId, "messages", messageId);
+      const mRef = doc(db, "chats", chatId, "messages", message.id);
       const snap = await getDoc(mRef);
       if (!snap.exists()) return;
+
       const existing = snap.data().reactions?.[myUid];
-      await updateDoc(mRef, { [`reactions.${myUid}`]: existing === emoji ? null : emoji });
-      setReactionFor(false);
+      const newReaction = existing === emoji ? null : emoji;
+      await updateDoc(mRef, { [`reactions.${myUid}`]: newReaction });
+      setReactionBar(false);
     } catch (e) {
       console.error(e);
     }
   };
 
-  const deleteMessageForEveryone = async (id) => {
-    if (!confirm("Delete for everyone?")) return;
-    await deleteDoc(doc(db, "chats", chatId, "messages", id));
+  const deleteMessageForMe = async () => {
+    await updateDoc(doc(db, "chats", chatId, "messages", message.id), { deletedFor: arrayUnion(myUid) });
     setMenuOpen(false);
   };
 
-  const deleteMessageForMe = async (id) => {
-    await updateDoc(doc(db, "chats", chatId, "messages", id), { deletedFor: arrayUnion(myUid) });
+  const deleteMessageForEveryone = async () => {
+    if (!confirm("Delete for everyone?")) return;
+    await deleteDoc(doc(db, "chats", chatId, "messages", message.id));
     setMenuOpen(false);
   };
 
@@ -63,88 +77,126 @@ export default function MessageItem({ message, myUid, isDark, replyTo, setReplyT
     }
   };
 
-  // -------------------- Media URL Cloudinary helper --------------------
-  const getCloudinaryUrl = (url, type = "image", width = 300) => {
-    if (!url) return "";
-    if (!url.includes("res.cloudinary.com")) return url;
-    const trans = type === "image" ? `c_fill,w_${width},q_auto` : `c_fill,w_${width},q_auto`;
-    return url.replace("/upload/", `/upload/${trans}/`);
+  const togglePin = async () => {
+    if (pinnedMessageId === message.id) {
+      setPinnedMessageId(null);
+      await updateDoc(doc(db, "chats", chatId), { pinnedMessage: null });
+    } else {
+      setPinnedMessageId(message.id);
+      await updateDoc(doc(db, "chats", chatId), { pinnedMessage: message.id });
+    }
+    setMenuOpen(false);
   };
 
+  // -------------------- Long press for reactions --------------------
+  const handleLongPress = () => setReactionBar(true);
+
+  // -------------------- Swipe-to-reply --------------------
+  const handleTouchStart = (e) => {
+    startX.current = e.touches[0].clientX;
+    isSwiping.current = true;
+  };
+
+  const handleTouchMove = (e) => {
+    if (!isSwiping.current) return;
+    const dx = e.touches[0].clientX - startX.current;
+    if (!isMine && dx < 0) setSwipeOffset(Math.min(0, dx)); // left swipe only
+  };
+
+  const handleTouchEnd = () => {
+    if (!isSwiping.current) return;
+    if (swipeOffset < -50) onReply?.(message); // trigger reply
+    setSwipeOffset(0);
+    isSwiping.current = false;
+  };
+
+  // Close reactions bar when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (messageRef.current && !messageRef.current.contains(e.target)) {
+        setReactionBar(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // -------------------- JSX --------------------
   return (
     <div
+      ref={messageRef}
       style={{
         display: "flex",
         flexDirection: "column",
         alignItems: isMine ? "flex-end" : "flex-start",
         marginBottom: SPACING.sm,
         position: "relative",
+        transition: "all 0.3s ease",
+        transform: `translateX(${swipeOffset}px)`,
+        opacity: message.deletedFor?.includes(myUid) ? 0.4 : 1,
       }}
+      onContextMenu={(e) => { e.preventDefault(); handleLongPress(); }}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
     >
+      {/* Floating Reactions Bar */}
+      {reactionBar && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: "100%",
+            left: "50%",
+            transform: "translateX(-50%)",
+            display: "flex",
+            gap: 6,
+            background: "#fff",
+            borderRadius: 30,
+            padding: "4px 6px",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
+            zIndex: 1000,
+          }}
+        >
+          {INLINE_REACTIONS.map((e) => (
+            <span
+              key={e}
+              style={{ fontSize: 22, cursor: "pointer" }}
+              onClick={() => applyReaction(e)}
+            >
+              {e}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Message Bubble */}
       <div
-        onClick={() => setMenuOpen(!menuOpen)}
         style={{
           maxWidth: "70%",
           padding: SPACING.sm,
           borderRadius: SPACING.borderRadius,
-          backgroundColor: isMine ? COLORS.primary : isDark ? COLORS.darkCard : COLORS.lightCard,
+          backgroundColor: pinnedMessageId === message.id
+            ? COLORS.pinnedBg
+            : isMine
+            ? COLORS.primary
+            : isDark
+            ? COLORS.darkCard
+            : COLORS.lightCard,
           color: isMine ? "#fff" : isDark ? COLORS.darkText : "#000",
           cursor: "pointer",
           wordBreak: "break-word",
+          transition: "all 0.3s ease",
         }}
+        onClick={() => setReactionBar(false)}
       >
-        {/* Reply preview */}
-        {message.replyTo && (
-          <div
-            style={{
-              fontSize: 12,
-              color: COLORS.edited,
-              borderLeft: `3px solid ${COLORS.mutedText}`,
-              paddingLeft: 4,
-              marginBottom: 4,
-            }}
-          >
-            {message.replyTo.text || message.replyTo.mediaType}
-          </div>
-        )}
-
-        {/* Text */}
-        {message.text && <div>{message.text}</div>}
-
-        {/* Media */}
-        {message.mediaUrl && (
-          <div style={{ marginTop: 4 }}>
-            {message.mediaType === "image" && (
-              <img
-                src={getCloudinaryUrl(message.mediaUrl, "image")}
-                alt=""
-                style={{ maxWidth: "100%", borderRadius: SPACING.borderRadius }}
-              />
-            )}
-            {message.mediaType === "video" && (
-              <video
-                src={getCloudinaryUrl(message.mediaUrl, "video")}
-                controls
-                style={{ maxWidth: "100%", borderRadius: SPACING.borderRadius }}
-              />
-            )}
-            {message.mediaType === "audio" && <audio src={message.mediaUrl} controls />}
-            {message.mediaType === "pdf" && (
-              <a href={message.mediaUrl} target="_blank" rel="noreferrer">
-                {message.fileName || "PDF Document"}
-              </a>
-            )}
-          </div>
-        )}
-
-        {/* Time and status */}
+        {message.text}
         <div style={{ fontSize: 10, color: COLORS.mutedText, marginTop: 2, textAlign: "right" }}>
-          {message.edited && "(edited)"} {fmtTime(message.createdAt)} {isMine && message.status ? `• ${message.status}` : ""}
+          {fmtTime(message.createdAt)} {isMine && message.status ? `• ${message.status}` : ""}
         </div>
 
         {/* Reactions */}
         {Object.keys(message.reactions || {}).length > 0 && (
-          <div style={{ position: "absolute", bottom: -12, right: -12, display: "flex", gap: 2 }}>
+          <div style={{ display: "flex", gap: 2, marginTop: 4 }}>
             {Object.values(message.reactions).map((r, i) => r && (
               <span key={i} style={{ backgroundColor: COLORS.reactionBg, color: "#fff", borderRadius: 8, padding: "0 4px", fontSize: 10 }}>
                 {r}
@@ -165,38 +217,26 @@ export default function MessageItem({ message, myUid, isDark, replyTo, setReplyT
             border: `1px solid ${COLORS.grayBorder}`,
             borderRadius: SPACING.borderRadius,
             zIndex: 10,
-          }}
-        >
-          <button style={{ padding: 8, border: "none", background: "transparent", width: "100%", textAlign: "left" }} onClick={() => setReplyTo(message)}>Reply</button>
-          <button style={{ padding: 8, border: "none", background: "transparent", width: "100%", textAlign: "left" }} onClick={() => setReactionFor(true)}>React</button>
-          {isMine && <button style={{ padding: 8, border: "none", background: "transparent", width: "100%", textAlign: "left" }} onClick={() => deleteMessageForEveryone(message.id)}>Delete for Everyone</button>}
-          <button style={{ padding: 8, border: "none", background: "transparent", width: "100%", textAlign: "left" }} onClick={() => deleteMessageForMe(message.id)}>Delete for Me</button>
-          <button style={{ padding: 8, border: "none", background: "transparent", width: "100%", textAlign: "left" }} onClick={copyMessageText}>Copy</button>
-          <button style={{ padding: 8, border: "none", background: "transparent", width: "100%", textAlign: "left" }} onClick={() => setMenuOpen(false)}>Close</button>
-        </div>
-      )}
-
-      {/* Reaction picker */}
-      {reactionFor && (
-        <div
-          style={{
-            position: "absolute",
-            bottom: -28,
-            left: 0,
             display: "flex",
-            gap: 4,
-            background: COLORS.lightCard,
-            borderRadius: SPACING.borderRadius,
-            padding: "2px 4px",
+            flexDirection: "column",
           }}
         >
-          {INLINE_REACTIONS.map((r, i) => (
-            <span key={i} style={{ cursor: "pointer", fontSize: 14 }} onClick={() => applyReaction(message.id, r)}>
-              {r}
-            </span>
-          ))}
+          <button style={menuBtn} onClick={copyMessageText}>Copy</button>
+          <button style={menuBtn} onClick={togglePin}>{pinnedMessageId === message.id ? "Unpin" : "Pin"}</button>
+          {isMine && <button style={menuBtn} onClick={deleteMessageForEveryone}>Delete for Everyone</button>}
+          <button style={menuBtn} onClick={deleteMessageForMe}>Delete for Me</button>
+          <button style={menuBtn} onClick={() => setMenuOpen(false)}>Close</button>
         </div>
       )}
     </div>
   );
 }
+
+const menuBtn = {
+  padding: 8,
+  border: "none",
+  background: "transparent",
+  width: "100%",
+  textAlign: "left",
+  cursor: "pointer",
+};
