@@ -1,6 +1,6 @@
 // src/components/Chat/MessageItem.jsx
 import React, { useState, useRef, useEffect } from "react";
-import { doc, updateDoc, deleteDoc, arrayUnion } from "firebase/firestore";
+import { doc, updateDoc, deleteDoc, getDoc } from "firebase/firestore";
 import { db } from "../../firebaseConfig";
 import EmojiPicker from "./EmojiPicker";
 
@@ -10,139 +10,142 @@ const COLORS = {
   darkCard: "#1b1b1b",
   darkText: "#fff",
   mutedText: "#888",
-  grayBorder: "rgba(0,0,0,0.06)",
   reactionBg: "#111",
 };
 
 const SPACING = { sm: 8, lg: 14, borderRadius: 12 };
-const QUICK_EMOJIS = ["❤️", "😂", "👍", "😮", "😢"];
 
-export default function MessageItem({ message, myUid, isDark, chatId, setReplyTo, pinnedMessageId, setPinnedMessageId }) {
+const QUICK = ["❤️", "😂", "👍", "😮", "😢"];
+
+export default function MessageItem({
+  message,
+  myUid,
+  isDark,
+  chatId,
+  setReplyTo,
+  pinnedMessageId,
+  setPinnedMessageId,
+}) {
   const isMine = message.senderId === myUid;
   const [menuOpen, setMenuOpen] = useState(false);
-  const [reactionPickerOpen, setReactionPickerOpen] = useState(false);
-  const [swipeOffset, setSwipeOffset] = useState(0);
-  const containerRef = useRef(null);
+  const [reactionBarOpen, setReactionBarOpen] = useState(false);
+  const [emojiPos, setEmojiPos] = useState({ top: 0, left: 0 });
 
-  // Format time
+  const msgRef = useRef(null);
+
+  // -------------------- Close reaction bar when clicking outside --------------------
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (msgRef.current && !msgRef.current.contains(e.target)) {
+        setReactionBarOpen(false);
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // -------------------- Format time --------------------
   const fmtTime = (ts) => {
     if (!ts) return "";
     const d = ts.toDate ? ts.toDate() : new Date(ts);
     return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   };
 
-  // Cloudinary URL helper
-  const getCloudinaryUrl = (url, type = "image", width = 300) => {
-    if (!url) return "";
-    if (!url.includes("res.cloudinary.com")) return url;
-    const trans = type === "image" ? `c_fill,w_${width},q_auto` : `c_fill,w_${width},q_auto`;
-    return url.replace("/upload/", `/upload/${trans}/`);
-  };
-
-  // Apply reaction
+  // -------------------- Apply reaction --------------------
   const applyReaction = async (emoji) => {
     try {
       const mRef = doc(db, "chats", chatId, "messages", message.id);
-      const current = message.reactions?.[myUid];
-      await updateDoc(mRef, { [`reactions.${myUid}`]: current === emoji ? null : emoji });
-      setReactionPickerOpen(false);
-    } catch (e) { console.error(e); }
-  };
-
-  // Delete message
-  const deleteMessage = async () => {
-    if (!window.confirm("Delete this message?")) return;
-    if (isMine) {
-      await deleteDoc(doc(db, "chats", chatId, "messages", message.id));
-    } else {
-      await updateDoc(doc(db, "chats", chatId, "messages", message.id), { deletedFor: arrayUnion(myUid) });
+      const snap = await getDoc(mRef);
+      if (!snap.exists()) return;
+      const existing = snap.data().reactions?.[myUid];
+      await updateDoc(mRef, { [`reactions.${myUid}`]: existing === emoji ? null : emoji });
+      setReactionBarOpen(false);
+    } catch (e) {
+      console.error(e);
     }
-    setMenuOpen(false);
   };
 
-  // Copy message
+  // -------------------- Delete message --------------------
+  const deleteMessage = async () => {
+    if (window.confirm("Delete message?")) {
+      await deleteDoc(doc(db, "chats", chatId, "messages", message.id));
+    }
+  };
+
+  // -------------------- Copy message --------------------
   const copyMessage = async () => {
     try {
-      await navigator.clipboard.writeText(message.text || message.mediaUrl || "");
-      alert("Copied!");
+      await navigator.clipboard.writeText(message.text || "");
+      alert("Copied");
       setMenuOpen(false);
     } catch {
       alert("Copy failed");
     }
   };
 
-  // Pin message (only one at a time)
+  // -------------------- Pin/Unpin message --------------------
   const togglePin = async () => {
-    const mRef = doc(db, "chats", chatId, "messages", message.id);
+    const chatRef = doc(db, "chats", chatId);
     if (pinnedMessageId === message.id) {
-      setPinnedMessageId(null);
-      await updateDoc(mRef, { pinned: false });
+      // unpin
+      await updateDoc(chatRef, { pinnedMessageId: "" });
+      setPinnedMessageId("");
     } else {
-      if (pinnedMessageId) {
-        const oldRef = doc(db, "chats", chatId, "messages", pinnedMessageId);
-        await updateDoc(oldRef, { pinned: false });
-      }
+      await updateDoc(chatRef, { pinnedMessageId: message.id });
       setPinnedMessageId(message.id);
-      await updateDoc(mRef, { pinned: true });
     }
     setMenuOpen(false);
   };
 
-  // Swipe left to reply
-  const onTouchMove = (e) => {
-    const touch = e.touches[0];
-    setSwipeOffset(Math.min(Math.max(touch.clientX - startX.current, -100), 0));
+  // -------------------- Long press detection --------------------
+  let pressTimer;
+  const handleMouseDown = (e) => {
+    pressTimer = setTimeout(() => {
+      const rect = e.target.getBoundingClientRect();
+      setEmojiPos({ top: rect.top - 50, left: rect.left });
+      setReactionBarOpen(true);
+    }, 500);
   };
-  const startX = useRef(0);
-  const onTouchStart = (e) => { startX.current = e.touches[0].clientX; };
-  const onTouchEnd = () => {
-    if (swipeOffset < -50) setReplyTo(message);
-    setSwipeOffset(0);
+  const handleMouseUp = () => clearTimeout(pressTimer);
+  const handleTouchStart = handleMouseDown;
+  const handleTouchEnd = handleMouseUp;
+
+  // -------------------- Media rendering --------------------
+  const renderMedia = () => {
+    if (message.mediaType === "image")
+      return <img src={message.mediaUrl} style={{ maxWidth: "100%", borderRadius: SPACING.borderRadius }} />;
+    if (message.mediaType === "video")
+      return <video src={message.mediaUrl} controls style={{ maxWidth: "100%", borderRadius: SPACING.borderRadius }} />;
+    if (message.mediaType === "audio")
+      return <audio src={message.mediaUrl} controls />;
+    if (message.mediaType === "pdf")
+      return <a href={message.mediaUrl} target="_blank" rel="noreferrer">{message.fileName || "PDF"}</a>;
+    return null;
   };
 
   return (
     <div
-      ref={containerRef}
-      onTouchStart={onTouchStart}
-      onTouchMove={onTouchMove}
-      onTouchEnd={onTouchEnd}
+      ref={msgRef}
+      onMouseDown={handleMouseDown}
+      onMouseUp={handleMouseUp}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
       style={{
         display: "flex",
         flexDirection: "column",
         alignItems: isMine ? "flex-end" : "flex-start",
         marginBottom: SPACING.sm,
-        transform: `translateX(${swipeOffset}px)`,
-        transition: swipeOffset === 0 ? "transform 0.2s ease" : "none",
         position: "relative",
       }}
     >
-      {/* Floating reactions bar */}
-      {reactionPickerOpen && (
-        <div
-          style={{
-            position: "absolute",
-            bottom: "100%",
-            display: "flex",
-            background: isDark ? COLORS.darkCard : COLORS.lightCard,
-            padding: "4px 8px",
-            borderRadius: SPACING.borderRadius,
-            gap: 4,
-            marginBottom: 4,
-            zIndex: 999,
-            boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
-          }}
-        >
-          {QUICK_EMOJIS.map((e) => (
-            <span key={e} style={{ fontSize: 22, cursor: "pointer" }} onClick={() => applyReaction(e)}>{e}</span>
-          ))}
-          <span style={{ fontSize: 22, cursor: "pointer" }} onClick={() => setReactionPickerOpen(false)}>+</span>
-        </div>
+      {/* Pinned Indicator */}
+      {pinnedMessageId === message.id && (
+        <div style={{ fontSize: 12, color: "orange", marginBottom: 2 }}>📌 Pinned</div>
       )}
 
       {/* Message bubble */}
       <div
-        onClick={() => { setMenuOpen(false); setReactionPickerOpen(false); }}
-        onContextMenu={(e) => { e.preventDefault(); setMenuOpen(!menuOpen); }}
         style={{
           maxWidth: "70%",
           padding: SPACING.sm,
@@ -151,31 +154,21 @@ export default function MessageItem({ message, myUid, isDark, chatId, setReplyTo
           color: isMine ? "#fff" : isDark ? COLORS.darkText : "#000",
           cursor: "pointer",
           wordBreak: "break-word",
-          position: "relative",
+          transition: "all 0.2s",
         }}
       >
-        {/* Pinned icon */}
-        {message.pinned && <div style={{ position: "absolute", top: -12, right: -12 }}>📌</div>}
-
-        {/* Text */}
         {message.text && <div>{message.text}</div>}
+        {renderMedia()}
 
-        {/* Media */}
-        {message.mediaUrl && message.mediaType === "image" && <img src={getCloudinaryUrl(message.mediaUrl, "image")} alt="" style={{ maxWidth: "100%", borderRadius: SPACING.borderRadius }} />}
-        {message.mediaUrl && message.mediaType === "video" && <video src={getCloudinaryUrl(message.mediaUrl, "video")} controls style={{ maxWidth: "100%", borderRadius: SPACING.borderRadius }} />}
-        {message.mediaUrl && message.mediaType === "audio" && <audio src={message.mediaUrl} controls />}
-        {message.mediaUrl && message.mediaType === "pdf" && <a href={message.mediaUrl} target="_blank" rel="noreferrer">{message.fileName || "PDF"}</a>}
-
-        {/* Time */}
-        <div style={{ fontSize: 10, color: COLORS.mutedText, textAlign: "right", marginTop: 2 }}>
+        <div style={{ fontSize: 10, color: COLORS.mutedText, marginTop: 2, textAlign: "right" }}>
           {fmtTime(message.createdAt)}
         </div>
 
-        {/* Reactions under bubble */}
-        {message.reactions && Object.values(message.reactions).length > 0 && (
-          <div style={{ display: "flex", gap: 2, marginTop: 2 }}>
-            {Object.values(message.reactions).map((r, i) => r && (
-              <span key={i} style={{ backgroundColor: COLORS.reactionBg, color: "#fff", borderRadius: 8, padding: "0 4px", fontSize: 10 }}>
+        {/* Reactions under message */}
+        {message.reactions && Object.values(message.reactions).filter(Boolean).length > 0 && (
+          <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
+            {Object.values(message.reactions).filter(Boolean).map((r, i) => (
+              <span key={i} style={{ backgroundColor: COLORS.reactionBg, color: "#fff", borderRadius: 8, padding: "0 4px", fontSize: 12 }}>
                 {r}
               </span>
             ))}
@@ -183,37 +176,46 @@ export default function MessageItem({ message, myUid, isDark, chatId, setReplyTo
         )}
       </div>
 
-      {/* Inline menu */}
+      {/* Menu: Reply, Copy, Pin/Unpin, Delete */}
       {menuOpen && (
-        <div
-          style={{
-            position: "absolute",
-            top: -SPACING.lg,
-            right: 0,
-            background: COLORS.lightCard,
-            border: `1px solid ${COLORS.grayBorder}`,
-            borderRadius: SPACING.borderRadius,
-            zIndex: 10,
-          }}
-        >
-          <button onClick={() => { setReplyTo(message); setMenuOpen(false); }} style={menuBtn}>Reply</button>
-          <button onClick={() => setReactionPickerOpen(true)} style={menuBtn}>React</button>
-          <button onClick={togglePin} style={menuBtn}>Pin</button>
-          <button onClick={copyMessage} style={menuBtn}>Copy</button>
-          <button onClick={deleteMessage} style={menuBtn}>Delete</button>
-          <button onClick={() => setMenuOpen(false)} style={menuBtn}>Close</button>
+        <div style={{
+          position: "absolute",
+          top: -40,
+          right: 0,
+          background: isDark ? "#1b1b1b" : "#fff",
+          border: `1px solid ${isDark ? "#333" : "rgba(0,0,0,0.1)"}`,
+          borderRadius: 8,
+          zIndex: 10,
+        }}>
+          <button onClick={() => { setReplyTo(message); setMenuOpen(false); }}>Reply</button>
+          <button onClick={copyMessage}>Copy</button>
+          <button onClick={togglePin}>{pinnedMessageId === message.id ? "Unpin" : "Pin"}</button>
+          <button onClick={deleteMessage}>Delete</button>
+        </div>
+      )}
+
+      {/* Floating reaction bar */}
+      {reactionBarOpen && (
+        <div style={{
+          position: "fixed",
+          top: emojiPos.top,
+          left: emojiPos.left,
+          display: "flex",
+          gap: 6,
+          background: "#fff",
+          borderRadius: 24,
+          padding: 6,
+          boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
+          zIndex: 2000,
+        }}>
+          {QUICK.map((e) => (
+            <span key={e} style={{ cursor: "pointer", fontSize: 24 }} onClick={() => applyReaction(e)}>
+              {e}
+            </span>
+          ))}
+          <span style={{ cursor: "pointer", fontSize: 24 }}>+</span>
         </div>
       )}
     </div>
   );
 }
-
-const menuBtn = {
-  padding: 8,
-  border: "none",
-  background: "transparent",
-  width: "100%",
-  textAlign: "left",
-  cursor: "pointer",
-  fontSize: 14,
-};
