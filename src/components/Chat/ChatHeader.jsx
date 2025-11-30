@@ -1,19 +1,20 @@
 // src/components/Chat/ChatHeader.jsx
 import React, { useEffect, useState, useContext, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { doc, onSnapshot } from "firebase/firestore";
+import { doc, onSnapshot, updateDoc } from "firebase/firestore";
 import { db } from "../../firebaseConfig";
 import { UserContext } from "../../context/UserContext";
-import { FiMoreVertical } from "react-icons/fi"; // Icon for three-dot menu
+import { FiMoreVertical } from "react-icons/fi";
 
-export default function ChatHeader({ friendId, onClearChat, onSearch, onBlock, onMute }) {
+export default function ChatHeader({ friendId, chatId, onClearChat, onSearch }) {
   const navigate = useNavigate();
   const { profilePic: myProfilePic } = useContext(UserContext);
   const [friendInfo, setFriendInfo] = useState(null);
+  const [chatInfo, setChatInfo] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
 
-  // Detect click outside menu to close it
+  // -------------------- Click outside to close menu --------------------
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (menuRef.current && !menuRef.current.contains(e.target)) {
@@ -24,7 +25,7 @@ export default function ChatHeader({ friendId, onClearChat, onSearch, onBlock, o
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Load friend info
+  // -------------------- Load friend info --------------------
   useEffect(() => {
     if (!friendId) return;
     const unsub = onSnapshot(doc(db, "users", friendId), (snap) => {
@@ -32,6 +33,31 @@ export default function ChatHeader({ friendId, onClearChat, onSearch, onBlock, o
     });
     return () => unsub();
   }, [friendId]);
+
+  // -------------------- Load chat info (for block/mute) --------------------
+  useEffect(() => {
+    if (!chatId) return;
+    const unsub = onSnapshot(doc(db, "chats", chatId), (snap) => {
+      if (snap.exists()) setChatInfo(snap.data());
+    });
+    return () => unsub();
+  }, [chatId]);
+
+  const toggleBlock = async () => {
+    if (!chatInfo) return;
+    const blocked = chatInfo.blocked || false;
+    await updateDoc(doc(db, "chats", chatId), { blocked: !blocked });
+    setMenuOpen(false);
+  };
+
+  const toggleMute = async () => {
+    if (!chatInfo) return;
+    const muted = chatInfo.mutedUntil && chatInfo.mutedUntil > new Date().getTime();
+    await updateDoc(doc(db, "chats", chatId), {
+      mutedUntil: muted ? 0 : new Date().getTime() + 24 * 60 * 60 * 1000, // mute 24h
+    });
+    setMenuOpen(false);
+  };
 
   const getInitials = (name) => {
     if (!name) return "U";
@@ -65,7 +91,7 @@ export default function ChatHeader({ friendId, onClearChat, onSearch, onBlock, o
         alignItems: "center",
         position: "sticky",
         top: 0,
-        zIndex: 20,
+        zIndex: 30,
         boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
       }}
     >
@@ -146,13 +172,16 @@ export default function ChatHeader({ friendId, onClearChat, onSearch, onBlock, o
               padding: "8px 0",
               boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
               width: 160,
-              animation: "fadeIn 0.2s ease",
             }}
           >
             <div style={menuItem} onClick={() => { setMenuOpen(false); onSearch(); }}>Search</div>
             <div style={menuItem} onClick={() => { setMenuOpen(false); onClearChat(); }}>Clear Chat</div>
-            <div style={menuItem} onClick={() => { setMenuOpen(false); onMute(); }}>Mute</div>
-            <div style={{ ...menuItem, color: "red" }} onClick={() => { setMenuOpen(false); onBlock(); }}>Block</div>
+            <div style={menuItem} onClick={toggleMute}>
+              {chatInfo?.mutedUntil && chatInfo.mutedUntil > new Date().getTime() ? "Unmute" : "Mute"}
+            </div>
+            <div style={{ ...menuItem, color: "red" }} onClick={toggleBlock}>
+              {chatInfo?.blocked ? "Unblock" : "Block"}
+            </div>
           </div>
         )}
       </div>
@@ -165,5 +194,4 @@ const menuItem = {
   cursor: "pointer",
   fontSize: 14,
   color: "#333",
-  transition: "background 0.2s",
 };
