@@ -2,7 +2,6 @@
 import React, { useEffect, useRef, useState } from "react";
 
 const QUICK = ["❤️", "😂", "👍", "😮", "😢", "🔥", "👏"];
-
 const ALL = [
   "🤔","❤️‍🔥","❤️","👍","👎","🔥","🥰","👏",
   "😁","🍿","😱","🤬","😔","🎉","🤩","🤢",
@@ -47,30 +46,12 @@ export default function EmojiPicker({ onSelect, onClose, position }) {
         maxWidth: 340,
       }}
     >
-      {/* QUICK reactions */}
-      <div
-        style={{
-          display: "flex",
-          gap: 8,
-          overflowX: "auto",
-          paddingBottom: 5,
-        }}
-      >
+      <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 5 }}>
         {QUICK.map((e) => (
-          <span
-            key={e}
-            onClick={() => onSelect(e)}
-            style={{
-              fontSize: 24,
-              padding: 4,
-              cursor: "pointer",
-            }}
-          >
+          <span key={e} onClick={() => onSelect(e)} style={{ fontSize: 24, padding: 4, cursor: "pointer" }}>
             {e}
           </span>
         ))}
-
-        {/* Toggle full emoji list */}
         <span
           onClick={() => setShowAll((x) => !x)}
           style={{
@@ -88,27 +69,18 @@ export default function EmojiPicker({ onSelect, onClose, position }) {
         </span>
       </div>
 
-      {/* ALL emojis */}
       {showAll && (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(32px, 1fr))",
-            gap: 8,
-            maxHeight: "45vh",
-            overflowY: "auto",
-            padding: 6,
-            touchAction: "pan-y",
-          }}
-        >
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(32px, 1fr))",
+          gap: 8,
+          maxHeight: "45vh",
+          overflowY: "auto",
+          padding: 6,
+          touchAction: "pan-y",
+        }}>
           {ALL.map((e) => (
-            <span
-              key={e}
-              onClick={() => onSelect(e)}
-              style={{ fontSize: 26, cursor: "pointer" }}
-            >
-              {e}
-            </span>
+            <span key={e} onClick={() => onSelect(e)} style={{ fontSize: 26, cursor: "pointer" }}>{e}</span>
           ))}
         </div>
       )}
