@@ -14,7 +14,7 @@ export default function ChatHeader({ friendId, chatId, onClearChat, onSearch }) 
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
 
-  // -------------------- Click outside to close menu --------------------
+  // -------------------- Close menu on click outside --------------------
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (menuRef.current && !menuRef.current.contains(e.target)) {
@@ -34,7 +34,7 @@ export default function ChatHeader({ friendId, chatId, onClearChat, onSearch }) 
     return () => unsub();
   }, [friendId]);
 
-  // -------------------- Load chat info (for block/mute) --------------------
+  // -------------------- Load chat info --------------------
   useEffect(() => {
     if (!chatId) return;
     const unsub = onSnapshot(doc(db, "chats", chatId), (snap) => {
@@ -45,28 +45,30 @@ export default function ChatHeader({ friendId, chatId, onClearChat, onSearch }) 
 
   const toggleBlock = async () => {
     if (!chatInfo) return;
-    const blocked = chatInfo.blocked || false;
-    await updateDoc(doc(db, "chats", chatId), { blocked: !blocked });
+    await updateDoc(doc(db, "chats", chatId), {
+      blocked: !chatInfo?.blocked,
+    });
     setMenuOpen(false);
   };
 
   const toggleMute = async () => {
     if (!chatInfo) return;
-    const muted = chatInfo.mutedUntil && chatInfo.mutedUntil > new Date().getTime();
+    const isMuted =
+      chatInfo.mutedUntil && chatInfo.mutedUntil > new Date().getTime();
+
     await updateDoc(doc(db, "chats", chatId), {
-      mutedUntil: muted ? 0 : new Date().getTime() + 24 * 60 * 60 * 1000, // mute 24h
+      mutedUntil: isMuted ? 0 : Date.now() + 24 * 60 * 60 * 1000, // 24h
     });
+
     setMenuOpen(false);
   };
 
   const getInitials = (name) => {
     if (!name) return "U";
     const parts = name.trim().split(" ");
-    if (parts.length === 1) return parts[0][0].toUpperCase();
+    if (parts.length < 2) return parts[0][0].toUpperCase();
     return (parts[0][0] + parts[1][0]).toUpperCase();
   };
-
-  const profileImage = friendInfo?.profilePic || null;
 
   const formatLastSeen = (timestamp) => {
     if (!timestamp) return "";
@@ -74,11 +76,18 @@ export default function ChatHeader({ friendId, chatId, onClearChat, onSearch }) 
     const now = new Date();
     const yesterday = new Date();
     yesterday.setDate(now.getDate() - 1);
-    const timeString = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const timeString = date.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
 
     if (date.toDateString() === now.toDateString()) return `Today, ${timeString}`;
     if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
-    return date.toLocaleDateString([], { month: "short", day: "numeric", year: date.getFullYear() !== now.getFullYear() ? "numeric" : undefined });
+    return date.toLocaleDateString([], {
+      month: "short",
+      day: "numeric",
+      year: date.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
+    });
   };
 
   return (
@@ -86,100 +95,133 @@ export default function ChatHeader({ friendId, chatId, onClearChat, onSearch }) 
       style={{
         width: "100%",
         backgroundColor: "#0d6efd",
-        padding: "10px 12px",
+        padding: "8px 10px",
         display: "flex",
         alignItems: "center",
         position: "sticky",
         top: 0,
-        zIndex: 30,
-        boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+        zIndex: 999,
+        boxShadow: "0 2px 6px rgba(0,0,0,0.25)",
       }}
     >
-      {/* Back arrow */}
+      {/* Back button */}
       <div
         onClick={() => navigate("/chat")}
         style={{
-          width: 32,
-          height: 32,
+          width: 38,
+          height: 38,
+          borderRadius: "50%",
+          background: "rgba(255,255,255,0.15)",
           display: "flex",
           justifyContent: "center",
           alignItems: "center",
           cursor: "pointer",
-          marginRight: 8,
+          marginRight: 10,
           color: "white",
           fontSize: 20,
-          fontWeight: "bold",
+          fontWeight: "600",
+          userSelect: "none",
         }}
       >
         ←
       </div>
 
-      {/* Profile picture / initials */}
+      {/* Profile */}
       <div
         onClick={() => navigate(`/friend/${friendId}`)}
         style={{
-          width: 42,
-          height: 42,
+          width: 46,
+          height: 46,
+          minWidth: 46,
+          minHeight: 46,
           borderRadius: "50%",
           backgroundColor: "#e0e0e0",
           overflow: "hidden",
-          marginRight: 10,
+          marginRight: 12,
           cursor: "pointer",
           display: "flex",
           justifyContent: "center",
           alignItems: "center",
-          fontWeight: "500",
-          fontSize: 16,
+          fontWeight: "600",
+          fontSize: 17,
           color: "#333",
         }}
       >
-        {profileImage ? (
+        {friendInfo?.profilePic ? (
           <img
-            src={profileImage}
+            src={friendInfo.profilePic}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+            }}
             alt=""
-            style={{ width: "100%", height: "100%", objectFit: "cover" }}
           />
         ) : (
           getInitials(friendInfo?.name)
         )}
       </div>
 
-      {/* Name + status */}
-      <div onClick={() => navigate(`/friend/${friendId}`)} style={{ flex: 1, color: "white", cursor: "pointer" }}>
-        <div style={{ fontSize: 16, fontWeight: "600" }}>{friendInfo?.name || "Loading..."}</div>
-        <div style={{ fontSize: 13, opacity: 0.9 }}>
-          {friendInfo?.isOnline ? "Online" : formatLastSeen(friendInfo?.lastSeen)}
-        </div>
+      {/* Name + last seen */}
+      <div
+        style={{
+          flex: 1,
+          color: "#fff",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+          cursor: "pointer",
+        }}
+        onClick={() => navigate(`/friend/${friendId}`)}
+      >
+        <span style={{ fontSize: 16, fontWeight: "600", whiteSpace: "nowrap" }}>
+          {friendInfo?.name || "Loading..."}
+        </span>
+
+        <span style={{ fontSize: 13, opacity: 0.9 }}>
+          {friendInfo?.isOnline
+            ? "Online"
+            : formatLastSeen(friendInfo?.lastSeen)}
+        </span>
       </div>
 
-      {/* Three-dot menu */}
+      {/* Menu */}
       <div ref={menuRef} style={{ position: "relative" }}>
         <FiMoreVertical
           onClick={() => setMenuOpen(!menuOpen)}
-          size={22}
+          size={24}
           color="white"
-          style={{ cursor: "pointer" }}
+          style={{ cursor: "pointer", padding: 4 }}
         />
 
         {menuOpen && (
           <div
             style={{
               position: "absolute",
-              top: 28,
+              top: 34,
               right: 0,
               background: "white",
-              borderRadius: 6,
+              borderRadius: 10,
               padding: "8px 0",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
-              width: 160,
+              width: 165,
+              boxShadow: "0 4px 14px rgba(0,0,0,0.3)",
+              animation: "fadeIn 0.15s ease",
             }}
           >
             <div style={menuItem} onClick={() => { setMenuOpen(false); onSearch(); }}>Search</div>
-            <div style={menuItem} onClick={() => { setMenuOpen(false); onClearChat(); }}>Clear Chat</div>
-            <div style={menuItem} onClick={toggleMute}>
-              {chatInfo?.mutedUntil && chatInfo.mutedUntil > new Date().getTime() ? "Unmute" : "Mute"}
+
+            <div style={menuItem} onClick={() => { setMenuOpen(false); onClearChat(); }}>
+              Clear Chat
             </div>
-            <div style={{ ...menuItem, color: "red" }} onClick={toggleBlock}>
+
+            <div style={menuItem} onClick={toggleMute}>
+              {chatInfo?.mutedUntil > Date.now() ? "Unmute" : "Mute"}
+            </div>
+
+            <div
+              style={{ ...menuItem, color: "red", fontWeight: 600 }}
+              onClick={toggleBlock}
+            >
               {chatInfo?.blocked ? "Unblock" : "Block"}
             </div>
           </div>
@@ -190,8 +232,8 @@ export default function ChatHeader({ friendId, chatId, onClearChat, onSearch }) 
 }
 
 const menuItem = {
-  padding: "10px 15px",
+  padding: "12px 16px",
   cursor: "pointer",
-  fontSize: 14,
-  color: "#333",
+  fontSize: 15,
+  whiteSpace: "nowrap",
 };
